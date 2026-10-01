@@ -699,6 +699,7 @@ import { ttsSpeak } from "@/core/tts";
         if (e.key === "Escape") { e.preventDefault(); exitSession(); return; }
         if (feedback) {
           if (e.key === "Enter" || e.key.toLowerCase() === "j") { e.preventDefault(); nextQuestion(); }
+          else if (e.key.toLowerCase() === "k") { e.preventDefault(); session.prev(); }
           return;
         }
         const key = e.key.toUpperCase();
@@ -711,6 +712,9 @@ import { ttsSpeak } from "@/core/tts";
         } else if (e.key === "Enter") {
           e.preventDefault();
           submitAnswer();
+        } else if (e.key.toLowerCase() === "k" && session.progress.done > 0) {
+          e.preventDefault();
+          session.prev();
         }
       } else if (view === "recite") {
         if (reciteDone || !reciteQueue.length) return;
