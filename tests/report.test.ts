@@ -65,6 +65,8 @@ describe("时段分布", () => {
   });
 });
 
+import { groupAdjacent } from "../src/core/session";
+
 describe("错题即重排（re-review）", () => {
   it("答错排到队尾且仅一次", () => {
     const qs = [
@@ -91,3 +93,21 @@ function mk(i: number, qid: string, verdict: "correct" | "wrong", hour = 12): At
     sessionId: "s", examId: null, queue: "normal", device: "d", seq: i,
   };
 }
+
+describe("材料组相邻排序", () => {
+  it("同组相邻 + 组间首现顺序 + 无组题殿后", () => {
+    const qs = [
+      { ...makeQuestion({ type: "single", stem: "独1", options: ["1", "2"], answer: "A" }), group: undefined },
+      { ...makeQuestion({ type: "judge", stem: "组B1", answer: "对", kp: "资料" }), group: "g1" },
+      { ...makeQuestion({ type: "single", stem: "独2", options: ["1", "2"], answer: "A" }), group: undefined },
+      { ...makeQuestion({ type: "judge", stem: "组B2", answer: "对", kp: "资料" }), group: "g1" },
+    ] as Question[];
+    const sorted = groupAdjacent(qs);
+    const gs = sorted.map((q) => q.group ?? "-");
+    // 同组相邻
+    const g1Idx = gs.map((g, i) => (g === "g1" ? i : -1)).filter((i) => i >= 0);
+    expect(g1Idx[g1Idx.length - 1] - g1Idx[0]).toBe(1);
+    // 无组题殿后
+    expect(gs[gs.length - 1]).toBe("-");
+  });
+});
