@@ -576,8 +576,11 @@ import { ttsSpeak } from "@/core/tts";
       if (!file) return;
       try {
         const XLSX = await import("xlsx");
+        const { decodeCsv } = await import("@/importer/csvDecode");
         const buf = await file.arrayBuffer();
-        const wb = XLSX.read(buf);
+        const { text } = decodeCsv(buf);
+        if (garbled) showMessage(t("import.garbledWarning"), 5200, "info");
+        const wb = XLSX.read(text, { type: "string" });
         const sheet = wb.Sheets[wb.SheetNames[0]];
         const rows: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
         if (!rows.length) { importError = t("import.emptyFile"); return; }
