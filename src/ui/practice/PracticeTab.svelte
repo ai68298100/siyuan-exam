@@ -172,6 +172,27 @@
       input.value = "";
     }
 
+    /** 键盘流（docs/11 映射表）：A-F 选选项 / ⏎ 提交与下一题 / J·K 切题 / 1-3 错因；composition（中文输入法）期间不响应 */
+    function onKeydown(e: KeyboardEvent) {
+      if (view !== "session" || !session || sessionDone || e.isComposing || e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === "TEXTAREA" || target.tagName === "INPUT")) return;
+      const q = session.current;
+      if (!q) return;
+      if (feedback) {
+        if (e.key === "Enter" || e.key.toLowerCase() === "j") { e.preventDefault(); nextQuestion(); }
+        return;
+      }
+      const key = e.key.toUpperCase();
+      if (q.options.length && /^[A-J]$/.test(key)) {
+        const idx = key.charCodeAt(0) - 65;
+        if (idx < q.options.length) { e.preventDefault(); selected = key; }
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        submitAnswer();
+      }
+    }
+
     async function commitImport() {
       if (!importReport || committing) return;
       committing = true; importError = "";
@@ -185,7 +206,9 @@
     }
 </script>
 
-<div class="fn__flex-1 lv-exam-tab">
+<svelte:window onkeydown={onKeydown} />
+
+<div class="fn__flex-1 lv-exam-tab" role="region" aria-label={t("tab.practice")}>
   <div class="block__icons">
     <div class="block__logo">
       <svg class="block__logoicon"><use xlink:href="#iconExam"></use></svg>
