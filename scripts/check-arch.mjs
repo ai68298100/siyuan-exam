@@ -62,6 +62,17 @@ const walkCore = (dir) => {
 walkCore("src/core");
 must("core 层不依赖 siyuan 包", !coreViolation);
 
+// 6b. core/ 纯函数层禁 `as any` 强转（类型安全守卫）
+let anyCast = false;
+for (const f of readdirSync("src/core", { withFileTypes: true })) {
+  const p = "src/core/" + f.name;
+  if (f.isDirectory() || !f.name.endsWith(".ts")) continue;
+  const src = readFileSync(p, "utf8");
+  const count = (src.match(/as any/g) || []).length;
+  if (count > 0) { console.error("  ✗ core 层 as any: " + p + " (" + count + " 处)"); anyCast = true; }
+}
+must("core 层无 as any 强转", !anyCast);
+
 // 7. 跨插件事件前缀（预留通道契约，ADR/10 §3.3）：凡 emit 自定义事件必须 lv-exam: 前缀
 const srcFiles = ["src/index.ts", "src/app.ts"];
 const badEvents = [];
