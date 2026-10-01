@@ -111,7 +111,8 @@
 
     function goto(i: number) {
       if (!session) return;
-      cursor = Math.max(0, Math.min(session.state.qids.length - 1, i));
+      session.navigateTo(i, Date.now());
+      cursor = session.cursor;
       selected = answeredMap[session.state.qids[cursor]] ?? "";
       if (bp.sectionTimed && currentSection) session.enterSection(currentSection, Date.now());
     }
@@ -248,6 +249,7 @@
     <div class="lv-row">
       <label class="lv-row" style="margin:0"><input type="checkbox" bind:checked={bp.sectionTimed} /> {t("mock.sectionTimed")}</label>
       <label class="lv-row" style="margin:0"><input type="checkbox" bind:checked={bp.shuffleOptions} disabled /> {t("mock.shuffle")}（v0.4）</label>
+      <label class="lv-row" style="margin:0"><input type="checkbox" bind:checked={bp.lockout} /> {t("mock.lockout")}</label>
       <span class="lv-chip">{t("mock.passLine")} <input class="lv-input num" style="width:64px" type="number" bind:value={bp.passLine} /></span>
     </div>
     {#if !bp.sections.length}<div class="lv-empty">{t("mock.needSec")}</div>{/if}
@@ -308,11 +310,11 @@
     <div class="lv-sheet">
       {#each session.state.qids as qid, i}
         <button class="lv-cell" class:done={!!answeredMap[qid]} class:flag={session.flags.has(qid)}
-          class:cur={i === cursor} onclick={() => goto(i)}>{i + 1}</button>
+          class:cur={i === cursor} onclick={() => { session?.navigateTo(i, Date.now()); cursor = session.cursor; selected = answeredMap[session.state.qids[cursor]] ?? ""; }}>{i + 1}</button>
       {/each}
     </div>
     <div class="lv-row">
-      <button class="lv-btn sm" onclick={() => goto(cursor - 1)} disabled={cursor === 0}>◀</button>
+      <button class="lv-btn sm" onclick={() => goto(bp.lockout ? cursor + 1 : cursor - 1)} disabled={bp.lockout ? false : cursor === 0}>◀</button>
       <button class="lv-btn sm" onclick={() => goto(cursor + 1)} disabled={cursor >= session.state.qids.length - 1}>▶</button>
     </div>
   {:else if view === "report" && score}

@@ -4,6 +4,7 @@
 // ============================================================
 import type { Question } from "./types";
 import { grade, type GradeResult } from "./answer";
+import { gradeIndefinite, guardLockout } from "./cbt";
 
 // ---------- 蓝图 ----------
 export type SectionSource = "real" | "mock" | "mixed";
@@ -14,6 +15,7 @@ export interface BlueprintSection {
   scoreEach: number;
   source: SectionSource;
   types: Question["type"][];    // 允许的题型（空 = 不限）
+  indefinite?: boolean;         // 不定项：少选按比例部分分、错选全扣（cbt.gradeIndefinite）
 }
 
 export interface Blueprint {
@@ -23,6 +25,7 @@ export interface Blueprint {
   passLine: number;             // 及格线（百分制）
   shuffleOptions: boolean;
   sectionTimed: boolean;        // 分段计时
+  lockout?: boolean;            // 人机对话作答流锁：不可回退、顺序作答
   sections: BlueprintSection[];
 }
 
@@ -94,6 +97,8 @@ export interface MockAnswer {
   timeMs: number;
   answeredAt: number;           // 相对开考 ms
   changes: number;
+  /** 不定项部分分系数 0-1（非不定项恒 1/0 随 verdict） */
+  factor: number;
 }
 
 export interface MockState {
@@ -110,7 +115,10 @@ export class MockSession {
   readonly answers = new Map<string, MockAnswer>();
   readonly flags = new Set<string>();
   screenSwitches = 0;
+  /** 当前题索引（人机对话导航） */
+  cursor = 0;
   private readonly byId: Map<string, Question>;
+  private readonly indefinite: Set<string>;
   private readonly sectionStart: Record<string, number> = {};   // section 名 → 进入时刻（相对 ms）
   /** 已提交（含自动交卷）标记 */
   submitted = false;
@@ -125,6 +133,12 @@ export class MockSession {
     this.sectionOf = assembleInfo.sectionOf;
     this.scoreOf = assembleInfo.scoreOf;
     this.byId = new Map(paper.map((q) => [q.id, q]));
+    this.indefinite = new Set();
+    for (const q of paper) {
+      const secName = assembleInfo.sectionOf.get(q.id);
+      const sec = bp.sections.find((s) => s.name === secName);
+      if (sec?.indefinite) this.indefinite.add(q.id);
+    }
     if (bp.sectionTimed && paper[0]) {
       const first = this.sectionOf.get(paper[0].id);
       if (first) this.sectionStart[first] = 0;
@@ -156,11 +170,33 @@ export class MockSession {
     }
   }
 
+  /** 导航：lockout 蓝图下强制顺序作答（cbt.guardLockout）；普通蓝图自由跳题 */
+  navigateTo(index: number, now: number): boolean {
+    const last = this.state.qids.length - 1;
+    if (this.bp.lockout) {
+      const flags = this.state.qids.map((id) => this.answers.has(id));
+      this.cursor = guardLockout(index, flags, this.cursor);
+    } else {
+      this.cursor = Math.max(0, Math.min(last, index));
+    }
+    const secName = this.sectionOf.get(this.state.qids[this.cursor]);
+    if (secName) this.enterSection(secName, now);
+    return true;
+  }
+
+  cursorIndex(): number { return this.cursor; }
+
   setAnswer(qid: string, answer: string | null, now: number) {
     const prev = this.answers.get(qid);
     const q = this.byId.get(qid);
     if (!q) return;
-    const g = grade(q, answer);
+    let g = grade(q, answer);
+    let factor = g.verdict === "correct" ? 1 : 0;
+    if (this.indefinite.has(qid)) {
+      const gi = gradeIndefinite(q, answer);
+      g = { verdict: gi.verdict, myAnswer: gi.myAnswer };
+      factor = gi.factor;
+    }
     this.answers.set(qid, {
       qid,
       answer,
@@ -168,6 +204,7 @@ export class MockSession {
       timeMs: (prev?.timeMs ?? 0) + 500,
       answeredAt: this.elapsed(now),
       changes: (prev?.changes ?? 0) + (prev?.answer != null ? 1 : 0),
+      factor,
     });
   }
 
@@ -198,7 +235,9 @@ export class MockSession {
       if (!sec) continue;
       sec.total++;
       sec.timeSpentMs += a.timeMs;
-      if (a.verdict === "correct") { sec.correct++; sec.score += this.scoreOf.get(qid) ?? 0; }
+      if (a.verdict === "correct") { sec.correct++; }
+      // 不定项部分分：scoreEach × factor；整题对=1；错=0
+      sec.score += (this.scoreOf.get(qid) ?? 0) * (a.verdict === "correct" ? 1 : a.factor);
     }
     // 未答的题占满额
     for (const qid of this.state.qids) {

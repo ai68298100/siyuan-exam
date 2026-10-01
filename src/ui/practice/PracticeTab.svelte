@@ -673,7 +673,19 @@ import { ttsSpeak } from "@/core/tts";
                     role="radio" aria-checked={selected === String.fromCharCode(65 + i)}
                     class:right={feedback && feedback.verdict !== "not_attempted" && q.answer.includes(String.fromCharCode(65 + i)) && (q.type === "single" ? q.answer === String.fromCharCode(65 + i) : true)}
                     class:wrong={feedback && feedback.myAnswer === String.fromCharCode(65 + i) && feedback.verdict === "wrong"}
-                    onclick={() => !feedback && (selected = String.fromCharCode(65 + i))}>
+                    onclick={() => {
+                      if (feedback) return;
+                      const L = String.fromCharCode(65 + i);
+                      if (q.type === "multiple") {
+                        // 多选/不定项：点击切换
+                        const arr = (selected || "").split("").filter(Boolean);
+                        const pos = arr.indexOf(L);
+                        pos >= 0 ? arr.splice(pos, 1) : arr.push(L);
+                        selected = arr.sort().join("");
+                      } else {
+                        selected = L;
+                      }
+                    }}>
                     <span class="key">{String.fromCharCode(65 + i)}</span>
                     <span>{opt}</span>
                   </button>

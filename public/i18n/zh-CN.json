@@ -212,5 +212,6 @@
     "export.allTime": "全部",
     "export.run": "导出",
     "mock.legacyRecord": "旧记录：无分模块明细",
-    "mock.radar": "模块正确率雷达"
+    "mock.radar": "模块正确率雷达",
+    "mock.lockout": "人机对话模式（不可回退，顺序作答）"
 }
