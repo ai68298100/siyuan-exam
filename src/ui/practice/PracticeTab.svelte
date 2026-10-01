@@ -272,6 +272,28 @@ import { ttsSpeak } from "@/core/tts";
       }
     }
 
+    /** 拖拽导入（TODO 18 组）：xlsx/csv → Excel 流程；sy.zip → 题库包导入 */
+    function onDrop(e: DragEvent) {
+      e.preventDefault();
+      const file = e.dataTransfer?.files?.[0];
+      if (!file) return;
+      if (!hasBank && !/\.zip$/i.test(file.name)) { errorMsg = t("guard.needBankFirst"); return; }
+      if (/\.xlsx$|\.xls$|\.csv$/i.test(file.name)) {
+        view = "import";
+        void onExcelFile({ target: inputLike(file) } as unknown as Event);
+      } else if (/\.zip$/i.test(file.name)) {
+        errorMsg = ""; importError = ""; importResult = null;
+        void importBank({ target: inputLike(file) } as unknown as Event);
+      } else {
+        errorMsg = t("import.unsupportedDrop");
+      }
+    }
+
+    /** 构造伪 input 对象（复用 onExcelFile/importBank 的取文件逻辑） */
+    function inputLike(file: File): { target: HTMLInputElement } {
+      return { target: { files: [file], value: "" } as unknown as HTMLInputElement };
+    }
+
     async function importBank(e: Event) {
       const input = e.target as HTMLInputElement;
       const file = input.files?.[0];
@@ -652,7 +674,7 @@ import { ttsSpeak } from "@/core/tts";
     }
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<svelte:window onkeydown={onKeydown} ondragover={(e) => e.preventDefault()} ondrop={onDrop} />
 
 <div class="fn__flex-1 lv-exam-tab" role="region" aria-label={t("tab.practice")}>
   <div class="block__icons">
