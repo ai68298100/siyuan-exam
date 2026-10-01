@@ -57,6 +57,9 @@ import { ttsSpeak } from "@/core/tts";
 
     onMount(() => {
       if (!app) { loading = false; errorMsg = t("state.appNotReady"); return; }
+      void (async () => {
+        try { explainHistory = ((await (app as any).deps.storage.load("ai/explain-history")) ?? {}) as Record<string, import("@/ai/client").AiMessage[]>; } catch { /* 忽略 */ }
+      })();
       banks = app.listBanks();
       if (banks.length) activeBankId = banks[0].id;
       // 查询圈题待处理集（块菜单发起，优先于恢复）
@@ -317,6 +320,11 @@ import { ttsSpeak } from "@/core/tts";
     let explainBusy = $state(false);
     let explainQid = $state("");
     let explainHistory = $state<Record<string, import("@/ai/client").AiMessage[]>>({});
+    /** 多轮历史持久化（27 P3）：保存到插件存储，重载后可继续追问；仅保留最近 10 题 */
+    async function persistExplainHistory() {
+      const entries = Object.entries(explainHistory).slice(-10);
+      await (app as any).deps.storage.save("ai/explain-history", Object.fromEntries(entries));
+    }
     let explainFollowUp = $state("");
 
     async function explainCurrent(mode: "explain" | "hint" | "socratic" = "explain") {
@@ -335,6 +343,7 @@ import { ttsSpeak } from "@/core/tts";
         const messages = buildExplainMessages(q, feedback.myAnswer, mode);
         explainText = await ch.chat(messages);
         explainHistory[q.id] = [...messages, { role: "assistant", content: explainText }];
+        void persistExplainHistory();
       } catch (e) {
         explainText = String(e instanceof Error ? e.message : e);
       } finally { explainBusy = false; }
@@ -357,6 +366,7 @@ import { ttsSpeak } from "@/core/tts";
         const messages = continueExplainMessages(history, explainFollowUp.trim());
         const reply = await ch.chat(messages);
         explainHistory[q.id] = [...messages, { role: "assistant", content: reply }];
+        void persistExplainHistory();
         explainText = (explainText.endsWith(reply) ? explainText : explainText + "\n\n") + "【追问】" + explainFollowUp.trim() + "\n" + reply;
         explainFollowUp = "";
       } catch (e) {
