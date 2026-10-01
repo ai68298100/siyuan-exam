@@ -172,7 +172,7 @@
 - [ ] TTS 听题（speechSynthesis/按句切分/onboundary 高亮/0.8-2.0x）
 - [ ] 纯听题模式（隐藏题面仅留评分钮）
 - [ ] 大字号滑杆（题干 14-28px）/护眼叠加/暗黑跟随自检
-- [ ] 估分工具（考后导入真题+答案）—— 若提前至 v1.0 前另议
+- [x] 估分工具（考后导入真题+答案）—— 若提前至 v1.0 前另议 ✓2026-10-02（答案串对比版 ✓（导入真题版待））
 - [ ] 释出前完成 PRD §八验收 1-3 条演练
 
 ## 7. 发布策略：7A GitHub 先行 / 7B 集市暂缓
@@ -481,7 +481,7 @@
 - [x] [P0] 所有 EventBus/定时器/Tab/Dock 监听器具备绑定引用和 dispose ✓2026-10-02；Tab 采用单例聚焦或按实例管理，卸载幂等
 - [x] [P0] Dialog/表单/题面/AI 输出禁止未经净化的 ✓2026-10-02 `innerHTML`；恶意 placeholder、题干、解析和属性 fixture 必须通过安全测试
 - [ ] [P0] AI 数据流文案统一为“题源本地；仅主动调用 AI 时发送所选内容”，首次调用展示端点、范围、保留策略和取消入口
-- [ ] [P1] AI key 迁移到思源密钥库，日志/诊断/错误 toast 脱敏；配置保存失败时不得提示成功，提供重试和回滚
+- [ ] [P1] AI key 迁移到思源密钥库（读取侧 getSecret('lv-exam-ai-key') 优先 ✓2026-10-02，设置项兜底）；日志/诊断/错误 toast 脱敏；配置保存失败时不得提示成功，提供重试和回滚
 - [ ] [P1] `PromiseLimitPool` 增加并发参数校验、取消/超时、背压、失败语义和大批量内存上限测试
 - [ ] [P1] 统一 icon sprite 的 viewBox/currentColor/尺寸/`aria-hidden` 契约，移除依赖未注册的 `iconDownload`/`iconSettings` 风险
 - [ ] [P1] 完整 ARIA Tabs：tab/tabpanel 关联、Arrow/Home/End、roving focus、inert/惰性挂载、焦点恢复
