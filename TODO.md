@@ -482,7 +482,7 @@
 - [x] [P0] Dialog/表单/题面/AI 输出禁止未经净化的 ✓2026-10-02 `innerHTML`；恶意 placeholder、题干、解析和属性 fixture 必须通过安全测试
 - [ ] [P0] AI 数据流文案统一为“题源本地；仅主动调用 AI 时发送所选内容”，首次调用展示端点、范围、保留策略和取消入口
 - [ ] [P1] AI key 迁移到思源密钥库（读取侧 getSecret('lv-exam-ai-key') 优先 ✓2026-10-02，设置项兜底）；日志/诊断/错误 toast 脱敏；配置保存失败时不得提示成功，提供重试和回滚
-- [ ] [P1] `PromiseLimitPool` 增加并发参数校验、取消/超时、背压、失败语义和大批量内存上限测试
+- [x] [P1] `PromiseLimitPool` 增加并发参数校验、取消/超时、背压、失败语义和大批量内存上限测试 ✓2026-10-02（处置变更：PromiseLimitPool 无使用方，已整文件移除（26.2 项随之消解））
 - [ ] [P1] 统一 icon sprite 的 viewBox/currentColor/尺寸/`aria-hidden` 契约，移除依赖未注册的 `iconDownload`/`iconSettings` 风险
 - [ ] [P1] 完整 ARIA Tabs：tab/tabpanel 关联、Arrow/Home/End、roving focus、inert/惰性挂载、焦点恢复
 - [ ] [P1] 练习语义无障碍：选项 radiogroup/aria-checked、反馈 aria-live、进度 progressbar 数值、对错不只依赖颜色、触控 ≥44px
@@ -539,6 +539,7 @@
 - [ ] [P2] openTab doc 跳转参数实测（zoomIn/页内定位到题目块）
 
 ## 28. 调研增量待办（2026-10-02，research/08 挖矿产出）
+- [ ] [P2] av 题库视图候选补强②：3.8.3 数据库文本字段支持富文本——题库管理视图可将考点/解析列升级为富文本字段（minAppVersion 3.8.3 评估）
 - [ ] [P1] AI 出题输入源扩展：当前文档/所选块（生成时挂思源块引用=citation，research/28 Quanta+iDoRecall 项落地载体）
 - [x] [P2] AI 二遍换角色核验 + quality_score 细化（标准/经济档位拆分） ✓2026-10-02（标准=二遍核验 conf≥0.85；quality_score 细化待）
 - [x] [P2] AI 成本记录（每次生成 token/费用入本地日志，设置页可见） ✓2026-10-02（lite：本次生成计数 chip（tokens+调用次数）；持久化日志待）

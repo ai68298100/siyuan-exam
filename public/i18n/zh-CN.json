@@ -221,5 +221,7 @@
     "share.exportDone": "✓ 已生成 ",
     "share.importDone": "✓ 题库包已导入（笔记本列表查看）",
     "share.desktopOnly": "桌面端 · 导入需 Electron（文件路径）",
-    "share.needDesktop": "浏览器端无法读取本地路径，请在思源桌面端使用"
+    "share.needDesktop": "浏览器端无法读取本地路径，请在思源桌面端使用",
+    "estimate.fromBank": "用题库题目作为标准答案序列",
+    "estimate.bankQ": "题库题数"
 }

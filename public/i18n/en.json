@@ -221,5 +221,7 @@
     "share.exportDone": "✓ Generated ",
     "share.importDone": "✓ Bank package imported (see notebook list)",
     "share.desktopOnly": "Desktop · import needs Electron (file path)",
-    "share.needDesktop": "Browser cannot read local paths — use SiYuan desktop"
+    "share.needDesktop": "Browser cannot read local paths — use SiYuan desktop",
+    "estimate.fromBank": "Use bank questions as answer key",
+    "estimate.bankQ": "Bank questions"
 }

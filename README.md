@@ -33,7 +33,7 @@ Design complete, source still scaffold-level. Current version `v0.1.0` (unreleas
 
 ## ⚠ Current real capabilities (v0.1 vertical slice, 2026-10-02)
 
-**Implemented**: create-bank guard → Aiken paste / Excel column-mapped import (per-row validation + error list + dedup) → questions written as SiYuan blocks (exam-* attrs) → single-active practice session (grade/feedback/drafts/resume) → attempt log (idempotent) → wrongbook (eliminate after 2-in-a-row) → live wrongbook dock. 38 unit tests over the domain layer.
+**Implemented (v0.5, 2026-10-02)**: bank guard → import (Excel column-map / Aiken / medical material-group auto-batching) → manual entry form → practice (multi-select toggle, recite-practice mode, keyboard flow) → recite (cover-answer 4-level rating + TTS) → FSRS memory layer (to-card/rating/cram) → mock exam (blueprint/section timing/answer sheet/score report + history sparkline + post-exam scoring) → wrongbook (3-way reasons/elimination/markdown export) → reports (mastery tree/heatmap/weak top10/score prediction) → AI generation & explain (dual channel/2nd-pass review/review queue) → bank .sy.zip package export/import. 102 unit tests.
 
 **Not yet (roadmap)**: topic-tree/paper/fav/cram selection, FSRS memory + recite, mock exam, reports, AI, TTS, bank sharing. Disabled entries state explicit reasons.
 

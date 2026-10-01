@@ -174,10 +174,17 @@
       avg: history.length > 1 ? Math.round(history.slice(0, -1).reduce((n, h) => n + h.percent, 0) / (history.length - 1)) : null,
       target: bp.passLine,
     } : null);
-    // ---------- 考后估分（v0.5）：答案串对比 ----------
+    // ---------- 考后估分（v0.5）：答案串对比 / 题库真题序列 ----------
     let estKey = $state("");
     let estMine = $state("");
     let estResult = $state<ReturnType<typeof import("../../core/estimate").estimateScore>>(null);
+    let estFromBank = $state(false);
+
+    $effect(() => {
+      if (estFromBank && questions.length) {
+        estKey = questions.filter((q) => q.type !== "material").map((q) => q.answer).join("");
+      }
+    });
 
     function runEstimate() {
       estResult = estimateScore(estMine, estKey, { scoreEach: 1, passLine: bp.passLine });
@@ -264,9 +271,15 @@
         <input class="lv-input num" style="flex:1;min-width:160px" bind:value={estKey} placeholder="BADCA…" />
       </div>
       <div class="lv-row">
-        <span class="lv-chip">{t("estimate.mine")}</span>
-        <input class="lv-input num" style="flex:1;min-width:160px" bind:value={estMine} placeholder="B？DCA…（.?=未答）" />
+        <label class="lv-row" style="margin:0"><input type="checkbox" bind:checked={estFromBank} /> {t("estimate.fromBank")}</label>
+        {#if estFromBank}<span class="lv-chip num">{t("estimate.bankQ")} {questions.filter((q) => q.type !== "material").length}</span>{/if}
       </div>
+      {#if !estFromBank}
+      <div class="lv-row">
+        <span class="lv-chip">{t("estimate.key")}</span>
+        <input class="lv-input num" style="flex:1;min-width:160px" bind:value={estKey} placeholder="BADCA…" />
+      </div>
+      {/if}
       <div class="lv-row">
         <button class="lv-btn sm" onclick={runEstimate} disabled={!estKey.trim() || !estMine.trim()}>{t("estimate.run")}</button>
         {#if estResult}
