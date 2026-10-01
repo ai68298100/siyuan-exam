@@ -111,7 +111,19 @@
       view = "exam";
       timer = setInterval(() => {
         nowTick = Date.now();
-        if (session?.shouldAutoSubmit(nowTick)) finishExam(true);
+        if (session?.shouldAutoSubmit(nowTick)) { finishExam(true); return; }
+        // 分段计时归零自动跳段（docs/11 S6：段倒计时归零 → 下一模块首题）
+        if (bp.sectionTimed && session && currentSection) {
+          const sr = session.sectionRemaining(currentSection, nowTick);
+          if (sr !== null && sr <= 0) {
+            const secIdx = bp.sections.findIndex((s) => s.name === currentSection);
+            const nextSec = bp.sections[secIdx + 1];
+            if (nextSec) {
+              const nextQ = session.state.qids.findIndex((id) => session.sectionOfQ(id) === nextSec.name);
+              if (nextQ >= 0) { session.navigateTo(nextQ, nowTick); cursor = nextQ; }
+            }
+          }
+        }
       }, 1000);
     }
 
