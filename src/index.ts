@@ -222,6 +222,28 @@ ${items.length ? rows : `<div class="lv-dock-empty">${this.i18n["dock.empty"]}</
 
     private onBlockIconClick({ detail }: any) {
         if (!detail?.menu) { return; }
+        // 查询圈题（v0.2）：查询嵌入块 → 用此查询开始练习
+        const el = detail.blockElements?.[0];
+        if (el?.getAttribute?.("data-type") === "query_embed" && this.examApp) {
+            const stmt = el.getAttribute("data-query") || (el.textContent ?? "").trim();
+            detail.menu.addItem({
+                iconHTML: "<svg><use xlink:href='#iconExam'></use></svg>",
+                label: this.i18n["blockMenu.queryPractice"],
+                click: async () => {
+                    try {
+                        const bank = this.examApp!.listBanks()[0];
+                        if (!bank) { showMessage(this.i18n["guard.needBankFirst"], 3600, "error"); return; }
+                        const qs = await this.examApp!.queryQuestions(bank.id, stmt);
+                        if (!qs.length) { showMessage(this.i18n["query.empty"], 3600, "info"); return; }
+                        (this as any).pendingPractice = qs;
+                        this.openPractice();
+                    } catch (e) {
+                        showMessage(String(e instanceof Error ? e.message : e), 4800, "error");
+                    }
+                }
+            });
+            return;
+        }
         detail.menu.addItem({
             iconHTML: "<svg><use xlink:href='#iconExam'></use></svg>",
             label: this.i18n["blockMenu.addToPractice"],

@@ -113,5 +113,7 @@
     "memory.toCardMissing": "该题尚未写入块（先完成导入）",
     "memory.sameKp": "🔁 举一反三 · 同考点再来一组",
     "state.noCram": "冲刺队列为空（错 ≥2 次的题不足）",
-    "state.noSameKp": "没有可推荐的变式题"
+    "state.noSameKp": "没有可推荐的变式题",
+    "blockMenu.queryPractice": "用此查询开始练习",
+    "query.empty": "该查询没有圈中本题库的题目"
 }

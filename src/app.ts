@@ -217,6 +217,30 @@ export class ExamApp {
     }
   }
 
+  /** 查询圈题：执行思源 SQL，把结果块中属于本题库的题挑出来（TODO 26.1 增补） */
+  async queryQuestions(bankId: string, stmt: string): Promise<(Question & { blockId: string })[]> {
+    const rows = await this.deps.client.sql<Record<string, string>>(stmt);
+    const ids = new Set(rows.map((r) => String(r.id ?? r.block_id ?? r.blockId ?? "")).filter(Boolean));
+    if (!ids.size) return [];
+    const all = await this.listQuestions(bankId);
+    return all.filter((q) => ids.has(q.blockId));
+  }
+
+  // ---------- 富文本渲染（md2html，按题缓存；离线/失败回退纯文本） ----------
+  private renderCache = new Map<string, string>();
+
+  async renderStem(q: Question): Promise<string> {
+    if (this.renderCache.has(q.id)) return this.renderCache.get(q.id)!;
+    if (!this.kernelOnline) return "";
+    try {
+      const html = await this.deps.client.renderMarkdown(q.stem);
+      this.renderCache.set(q.id, html);
+      return html;
+    } catch {
+      return "";
+    }
+  }
+
   // ---------- 常用抽题 ----------
   quickDrill(questions: Question[], n: number): Question[] {
     return pickRandom(questions, n);

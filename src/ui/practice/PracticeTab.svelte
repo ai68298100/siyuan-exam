@@ -53,6 +53,13 @@
       if (!app) { loading = false; errorMsg = t("state.appNotReady"); return; }
       banks = app.listBanks();
       if (banks.length) activeBankId = banks[0].id;
+      // 查询圈题待处理集（块菜单发起，优先于恢复）
+      const pending = (plugin as any).pendingPractice as Question[] | undefined;
+      if (pending?.length && app.currentSession()?.phase !== "running") {
+        (plugin as any).pendingPractice = undefined;
+        app.startSession(pending, "query").then((s) => { session = s; view = "session"; loading = false; }).catch(() => { loading = false; });
+        return;
+      }
       // 恢复未完成会话
       app.resumeSession(async (qids) => {
         const all = await loadQuestions();
@@ -239,6 +246,15 @@
       input.value = "";
     }
 
+    // ---------- 题面富文本（md2html；离线回退纯文本） ----------
+    let stemHtml = $state("");
+    $effect(() => {
+      const q = view === "session" ? session?.current : view === "recite" ? reciteQueue[reciteCursor] : null;
+      if (!q) { stemHtml = ""; return; }
+      stemHtml = "";
+      void app.renderStem(q).then((html) => { if (html && (view === "session" || view === "recite")) stemHtml = html; });
+    });
+
     /** 键盘流（docs/11 映射表）：会话 A-F/⏎/J；背诵 空格翻开、1-4 自评；composition（中文输入法）期间不响应 */
     function onKeydown(e: KeyboardEvent) {
       if (e.isComposing || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -387,7 +403,7 @@
             <span class="lv-chip lv-chip--acc">{t("qtype." + q.type)}</span>
           </div>
           <div class="lv-card lv-question">
-            <div class="lv-stem">{q.stem}</div>
+            {#if stemHtml}<div class="lv-stem lv-rich b3-typography">{@html stemHtml}</div>{:else}<div class="lv-stem">{q.stem}</div>{/if}
             {#if q.options.length}
               <div role="radiogroup" aria-label={t("session.options")}>
                 {#each q.options as opt, i}
@@ -457,7 +473,7 @@
       {:else if reciteQueue[reciteCursor]}
         {@const q = reciteQueue[reciteCursor]}
         <div class="lv-card lv-question">
-          <div class="lv-stem">{q.stem}</div>
+          {#if stemHtml}<div class="lv-stem lv-rich b3-typography">{@html stemHtml}</div>{:else}<div class="lv-stem">{q.stem}</div>{/if}
           {#if !reciteRevealed}
             <div class="lv-row" style="justify-content:center">
               <button class="lv-btn lv-btn--primary" onclick={() => reciteRevealed = true}>{t("recite.reveal")}</button>

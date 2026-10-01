@@ -113,5 +113,7 @@
     "memory.toCardMissing": "Question not written as block yet (import first)",
     "memory.sameKp": "🔁 More like this — same topic set",
     "state.noCram": "Cram queue empty (not enough wrong ≥2)",
-    "state.noSameKp": "No related questions to recommend"
+    "state.noSameKp": "No related questions to recommend",
+    "blockMenu.queryPractice": "Practice with this query",
+    "query.empty": "Query matched no questions in this bank"
 }
