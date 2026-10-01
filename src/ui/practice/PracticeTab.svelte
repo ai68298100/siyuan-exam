@@ -43,6 +43,7 @@
     const offline = $derived(!app.kernelOnline);
 
     onMount(() => {
+      if (!app) { loading = false; errorMsg = t("state.appNotReady"); return; }
       banks = app.listBanks();
       if (banks.length) activeBankId = banks[0].id;
       // 恢复未完成会话
@@ -220,7 +221,7 @@
             </button>
           </div>
           <div class="lv-row lv-center-text"><span class="lv-muted">{t("guard.or")}</span></div>
-          <button class="lv-btn" style="width:100%" onclick={() => view = "import"} disabled={!hasBank && !app.kernelOnline ? !offline : false}>
+          <button class="lv-btn" style="width:100%" onclick={() => view = "import"}>
             {t("import.title")}
           </button>
           <p class="lv-hint">{t("guard.needBankFirst")}</p>

@@ -80,6 +80,7 @@
     "qtype.fill": "Fill",
     "qtype.short": "Short answer",
     "state.offline": "Offline",
+    "state.appNotReady": "Plugin init not finished — restart SiYuan or retry shortly",
     "state.offlineHint": "SiYuan kernel unreachable — make sure SiYuan is running, then retry",
     "state.emptyBank": "This bank is empty — import questions first",
     "state.noWrong": "Wrongbook is empty — practice some questions first",

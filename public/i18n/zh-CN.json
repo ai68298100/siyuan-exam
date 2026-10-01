@@ -80,6 +80,7 @@
     "qtype.fill": "填空",
     "qtype.short": "简答",
     "state.offline": "离线",
+    "state.appNotReady": "插件初始化未完成，请重启思源或稍后重试",
     "state.offlineHint": "思源内核不可达：请确认思源已启动后重试",
     "state.emptyBank": "当前题库为空，先导入题目",
     "state.noWrong": "错题本是空的，先去刷几道题",
