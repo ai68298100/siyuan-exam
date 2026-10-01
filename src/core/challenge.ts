@@ -5,7 +5,6 @@
 // 编码用 base64(JSON)，无加密诉求（友谊赛，防手滑改题即可）
 // ============================================================
 import type { Question } from "./types";
-import { grade, type GradeResult } from "./answer";
 
 export interface ChallengePaper {
   v: 1;
