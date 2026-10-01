@@ -322,6 +322,14 @@
           {#if estResult.blank}<span class="lv-chip lv-chip--amb num">– {estResult.blank}</span>{/if}
           <span class="lv-chip num">{estResult.percent}%</span>
           <span class="lv-marks num">{estResult.marks.join(" ")}</span>
+          {#if estFromBank}
+            <div class="lv-row" style="margin:4px 0 0">
+              {#each estKey.split("") as _ans, i}
+                {@const q = questions.filter((x) => x.type !== "material")[i]}
+                {#if q}<span class="lv-chip num" title={q.stem.slice(0, 60)}>{i + 1}. {q.answer}</span>{/if}
+              {/each}
+            </div>
+          {/if}
         {/if}
       </div>
       {#if estHistory.length}
