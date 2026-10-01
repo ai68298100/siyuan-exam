@@ -226,5 +226,16 @@
     "estimate.bankQ": "题库题数",
     "tts.pureListen": "纯听题（隐藏题面，自动朗读）",
     "explain.followUp": "继续追问…",
-    "explain.send": "发送"
+    "explain.send": "发送",
+    "report.dataFromLog": "数据来自本地作答流水",
+    "report.attempts": "累计刷题",
+    "report.accuracy": "正确率",
+    "report.eliminated": "已消灭错题",
+    "report.streak": "连胜",
+    "report.heat": "53 周热力图",
+    "report.mastery": "考点掌握度（正确率 × 留存衰减）",
+    "report.insufficient": "数据不足",
+    "report.weak": "薄弱考点",
+    "report.noData": "暂无数据",
+    "report.hourly": "学习时段分布"
 }

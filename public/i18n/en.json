@@ -226,5 +226,16 @@
     "estimate.bankQ": "Bank questions",
     "tts.pureListen": "Pure listening (blur text, auto read)",
     "explain.followUp": "Follow up…",
-    "explain.send": "Send"
+    "explain.send": "Send",
+    "report.dataFromLog": "From local attempt log",
+    "report.attempts": "Attempts",
+    "report.accuracy": "Accuracy",
+    "report.eliminated": "Eliminated",
+    "report.streak": "Streak",
+    "report.heat": "53-week heatmap",
+    "report.mastery": "Kp mastery (accuracy × retention)",
+    "report.insufficient": "Insufficient data",
+    "report.weak": "Weak topics",
+    "report.noData": "No data yet",
+    "report.hourly": "Hourly distribution"
 }

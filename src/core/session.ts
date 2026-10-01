@@ -11,6 +11,7 @@ export type SessionPhase = "running" | "finished";
 export class PracticeSession {
   readonly state: SessionState;
   private readonly byId: Map<string, Question>;
+  private readonly requeued = new Set<string>();
   /** 需要写入流水的事件（作答），上层读取后批量 append */
   readonly answered: { qid: string; grade: GradeResult; timeMs: number }[] = [];
 
@@ -52,6 +53,11 @@ export class PracticeSession {
     if (!q || this.phase === "finished") return null;
     const g = grade(q, myAnswer);
     this.answered.push({ qid: q.id, grade: g, timeMs });
+    // 学习科学 re-review：答错且尚未重排过 → 排到队尾再来一次（每题至多一次，防死循环）
+    if (g.verdict === "wrong" && !this.requeued.has(q.id)) {
+      this.requeued.add(q.id);
+      this.state.qids.push(q.id);
+    }
     this.touch();
     return { q, grade: g };
   }
