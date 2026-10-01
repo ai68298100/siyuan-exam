@@ -88,6 +88,17 @@
       bp.sections = bp.sections.map((s, j) => (j === i ? { ...s, ...patch } : s));
     }
 
+    /** 蓝图持久化（TODO 27 P2）：保存/恢复命名蓝图 */
+    async function saveBlueprint() {
+      try { await (app as any).deps.storage.save("mock/blueprint", JSON.parse(JSON.stringify(bp))); showMessage(t("mock.bpSaved"), 3000, "info"); } catch { /* 忽略 */ }
+    }
+    async function restoreBlueprint() {
+      try {
+        const saved = (await (app as any).deps.storage.load("mock/blueprint")) as Blueprint | undefined;
+        if (saved?.sections?.length) bp = saved;
+      } catch { /* 忽略 */ }
+    }
+
     function startExam() {
       errorMsg = "";
       if (!questions.length) { errorMsg = t("state.emptyBank"); return; }
@@ -292,6 +303,8 @@
     {#if !bp.sections.length}<div class="lv-empty">{t("mock.needSec")}</div>{/if}
     <div class="lv-row">
       <button class="lv-btn lv-btn--primary" onclick={startExam} disabled={!bp.sections.length}>▶ {t("mock.start")}</button>
+      <button class="lv-btn sm" onclick={saveBlueprint}>💾 {t("mock.bpSave")}</button>
+      <button class="lv-btn sm" onclick={restoreBlueprint}>📂 {t("mock.bpRestore")}</button>
     </div>
     <!-- 考后估分 -->
     <details class="lv-card lv-pad-card" style="padding:12px 16px">
