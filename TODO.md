@@ -504,6 +504,23 @@
 - [ ] [P1] schema/题库包迁移回滚演练：旧 fixture→dry-run→自动备份→迁移→校验→失败恢复，明确 RPO/RTO
 - [ ] [P2] 依赖决策落档并安装所需生产依赖（xlsx/sql.js/ts-fsrs/DOMPurify 等）前完成体积、许可证和离线兼容评估
 
+## 27. 纵切实现过程中发现（2026-10-02，第四轮增量）
+
+- [ ] [P0] petal loadData key 含 `/` 的路径语义实测（attempts/log.json 是否正常落在子目录；Windows fs join 边界）——影响流水分片布局
+- [ ] [P0] Svelte 5 `$state` 包裹 class 实例的深层响应性实测（经方法内部变更后模板是否刷新）
+- [ ] [P0] 思源内全链路冒烟：make-link 软链 → 重载插件 → 新建题库 → 导入 5 行 fixture → 刷题 → 错题本（26.1 验收真机执行）
+- [x] [P1] QuestionRenderer 接入 md2html ✓2026-10-02（app.renderStem 缓存 + b3-typography，离线回退纯文本）
+- [ ] [P1] 手工录题表单编辑器（路线图 v0.1 项，纵切以导入+块模板替代；表单 UI 与斜杆命令入口待补）
+- [ ] [P1] 事件写入卸载栅栏（unload 后节流定时器可能触发 saveData）
+- [ ] [P2] multiple 题判分反馈逐选项高亮粒度
+- [ ] [P2] 浏览模式虚拟滚动与分页（万题级）
+- [x] [P2] verify-package 允许 vendored chunk 规则 ✓2026-10-02（xlsx hash chunk）
+- [ ] [P0] query_embed 块的 SQL 取值属性名实测（data-query 属性 + textContent 兜底；用户工作区暂无样例）
+- [x] [P1] stemHtml 渲染竞态防护 ✓2026-10-02（按题 id 校验异步返回）
+- [ ] [P1] 背诵完整版：渐进提示链/可选倒计时/组结算（当前 S4 lite）
+- [ ] [P2] 本地 pre-push 门禁（曾提交过 collection 失败的测试文件，本地应先于 CI 拦截）
+- [ ] [P2] openTab doc 跳转参数实测（zoomIn/页内定位到题目块）
+
 ## 28. 调研增量待办（2026-10-02，research/08 挖矿产出）
 
 - [ ] [P1] AI Inbox 收件箱式出题流（True Recall）：生成卡先进收件箱逐条 应用/拒绝/重试，永不直接入库——v0.4 待审核队列的实现范式
