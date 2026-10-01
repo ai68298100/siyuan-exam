@@ -700,6 +700,12 @@ import { ttsSpeak } from "@/core/tts";
         if (feedback) {
           if (e.key === "Enter" || e.key.toLowerCase() === "j") { e.preventDefault(); nextQuestion(); }
           else if (e.key.toLowerCase() === "k") { e.preventDefault(); session.prev(); }
+          else if (feedback.verdict === "wrong" && /^[1-3]$/.test(e.key)) {
+            // 错因快捷键（docs/11：1-4 错因；1-3 对应三分类）
+            const reasons = ["careless", "unknown", "trap"] as const;
+            void app.saveWrongReason(q.id, reasons[Number(e.key) - 1]);
+            e.preventDefault();
+          }
           return;
         }
         const key = e.key.toUpperCase();
@@ -944,8 +950,8 @@ import { ttsSpeak } from "@/core/tts";
               {#if q.analysis}<div class="lv-analysis">{q.analysis}</div>{/if}
               {#if feedback.verdict === "wrong"}
                 <div class="lv-row lv-muted">{t("session.reason")}:
-                  {#each ["careless", "unknown", "trap"] as r}
-                    <button class="lv-chip" onclick={async () => { await app.saveWrongReason(q.id, r as any); }}>{t("reason." + r)}</button>
+                  {#each ["careless", "unknown", "trap"] as r, ri}
+                    <button class="lv-chip" title={t("entry.days") === "天" ? `快捷键 ${ri + 1}` : `Key ${ri + 1}`} onclick={async () => { await app.saveWrongReason(q.id, r as any); }}>{t("reason." + r)}</button>
                   {/each}
                 </div>
               {/if}
@@ -999,6 +1005,9 @@ import { ttsSpeak } from "@/core/tts";
         <button class="lv-btn lv-btn--ghost" onclick={exitRecite}>← {t("recite.exit")}</button>
         <span class="lv-chip num">{reciteCursor + 1}/{reciteQueue.length}</span>
         <span class="lv-chip">{t("recite.mode")}</span>
+        {#if reciteQueue[reciteCursor]?.group}
+          <span class="lv-chip num">🔗 {t("session.groupPos")}</span>
+        {/if}
         {#if reciteQueue[reciteCursor]}
           <button class="lv-chip" title={t("tts.read")} onclick={() => ttsSpeak(reciteQueue[reciteCursor].stem)}>🔊</button>
         {/if}
