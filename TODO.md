@@ -530,6 +530,7 @@
 
 - [ ] [P0] petal loadData key 含 `/` 的路径语义实测（attempts/log.json 是否正常落在子目录；Windows fs join 边界）——影响流水分片布局
 - [ ] [P0] Svelte 5 `$state` 包裹 class 实例的深层响应性实测（经方法内部变更后模板是否刷新）
+- [x] [P0] 冒烟清单成文（docs/17-真机冒烟清单.md，26 步 10 分钟） ✓2026-10-02
 - [ ] [P0] 思源内全链路冒烟：make-link 软链 → 重载插件 → 新建题库 → 导入 5 行 fixture → 刷题 → 错题本（26.1 验收真机执行）
 - [x] [P1] QuestionRenderer 接入 md2html ✓2026-10-02（app.renderStem 缓存 + b3-typography，离线回退纯文本）
 - [x] [P1] 手工录题表单编辑器 ✓2026-10-02（练习台表单视图：题型联动/选项字母设对/考点考点落档；斜杆命令入口待补）
