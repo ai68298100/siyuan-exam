@@ -262,5 +262,7 @@
     "entry.manual": "手工录题",
     "session.wrong": "答错",
     "ai.customHint": "自定义要求",
-    "ai.customHintHint": "追加到命题指令，如：多用数值计算题"
+    "ai.customHintHint": "追加到命题指令，如：多用数值计算题",
+    "command.openWrongbook": "打开错题本",
+    "ai.endpointTitle": "端点与范围见设置；仅生成时发送所选内容"
 }

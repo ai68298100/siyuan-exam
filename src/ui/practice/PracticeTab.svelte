@@ -483,6 +483,7 @@ import { ttsSpeak } from "@/core/tts";
     let aiCount = $state(5);
     let aiDifficulty = $state<"easy" | "medium" | "hard" | "mixed">("mixed");
     let aiKp = $state("");
+    const aiCustomEndpointSet = $derived(!!String(plugin.settingUtils?.get?.("aiEndpoint") ?? "").trim() && !!String(plugin.settingUtils?.get?.("aiKey") ?? "").trim());
     let aiBusy = $state(false);
     let aiQuality = $state<"standard" | "economy">("standard");
     let aiCost = $state("");
@@ -1024,7 +1025,11 @@ import { ttsSpeak } from "@/core/tts";
         <button class="lv-btn lv-btn--ghost" onclick={() => view = "entry"}>← {t("mode.practice")}</button>
         <span class="lv-chip">✨ {t("ai.title")}</span>
         <span class="fn__flex-1"></span>
-        <span class="lv-chip lv-chip--grn">{t("ai.channel.siyuan")}</span>
+        {#if aiCustomEndpointSet}
+          <span class="lv-chip lv-chip--amb" title={t("setting.aiEndpoint.desc")}>{t("ai.channel.openai")}</span>
+        {:else}
+          <span class="lv-chip lv-chip--grn">{t("ai.channel.siyuan")}</span>
+        {/if}
       </div>
       <div class="lv-card lv-pad-card">
         <div class="lv-field"><label class="lv-muted">{t("ai.source")}</label>

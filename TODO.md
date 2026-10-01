@@ -483,7 +483,7 @@
 
 - [x] [P0] 所有 EventBus/定时器/Tab/Dock 监听器具备绑定引用和 dispose ✓2026-10-02；Tab 采用单例聚焦或按实例管理，卸载幂等
 - [x] [P0] Dialog/表单/题面/AI 输出禁止未经净化的 ✓2026-10-02 `innerHTML`；恶意 placeholder、题干、解析和属性 fixture 必须通过安全测试
-- [ ] [P0] AI 数据流文案统一为“题源本地；仅主动调用 AI 时发送所选内容”，首次调用展示端点、范围、保留策略和取消入口
+- [x] [P0] AI 数据流文案统一为“题源本地；仅主动调用 AI 时发送所选内容”，首次调用展示端点、范围、保留策略和取消入口 ✓2026-10-02（AI 视图通道 chip 实时反映 思源内置/自定义端点 + pipelineNote ✓；首次调用详细弹窗待 v0.4.x）
 - [ ] [P1] AI key 迁移到思源密钥库（读取侧 getSecret('lv-exam-ai-key') 优先 ✓2026-10-02，设置项兜底）；日志/诊断/错误 toast 脱敏；配置保存失败时不得提示成功，提供重试和回滚
 - [x] [P1] `PromiseLimitPool` 增加并发参数校验、取消/超时、背压、失败语义和大批量内存上限测试 ✓2026-10-02（处置变更：PromiseLimitPool 无使用方，已整文件移除（26.2 项随之消解））
 - [ ] [P1] 统一 icon sprite 的 viewBox/currentColor/尺寸/`aria-hidden` 契约，移除依赖未注册的 `iconDownload`/`iconSettings` 风险

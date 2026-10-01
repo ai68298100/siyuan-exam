@@ -262,5 +262,7 @@
     "entry.manual": "Manual entry",
     "session.wrong": "Wrong",
     "ai.customHint": "Custom request",
-    "ai.customHintHint": "Appended to prompt, e.g. focus on numeric problems"
+    "ai.customHintHint": "Appended to prompt, e.g. focus on numeric problems",
+    "command.openWrongbook": "Open wrongbook",
+    "ai.endpointTitle": "Endpoint & scope in settings; content sent only on generate"
 }

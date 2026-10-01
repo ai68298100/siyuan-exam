@@ -254,6 +254,12 @@ ${items.length ? rows : `<div class="lv-dock-empty">${this.i18n["dock.empty"]}</
             hotkey: adaptHotkey("⌥⌘R"),
             callback: () => this.openReport()
         });
+        this.addCommand({
+            langKey: "command.openWrongbook",
+            hotkey: adaptHotkey("⌥⌘E"),
+            // 桌面端 Dock 由思源侧边栏开关管理；此命令在移动端/快捷键场景打开练习台
+            callback: () => this.openPractice()
+        });
     }
 
     private openTabByType(type: string, icon: string, title: string) {
