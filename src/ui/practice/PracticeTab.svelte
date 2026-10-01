@@ -553,7 +553,12 @@ import { ttsSpeak } from "@/core/tts";
     }
 
     let favOnly = $state(false);
-    const shownQuestions = $derived(favOnly ? questions.filter((q) => q.fav) : questions);
+    let browseLimit = $state(200);
+    const shownQuestions = $derived.by(() => {
+      const list = favOnly ? questions.filter((q) => q.fav) : questions;
+      return list.slice(0, browseLimit);
+    });
+    const hasMore = $derived((favOnly ? questions.filter((q) => q.fav) : questions).length > browseLimit);
 
     // ---------- 浏览详情：展开/文档跳转/反链 ----------
     let expandedId = $state("");
@@ -1124,6 +1129,11 @@ import { ttsSpeak } from "@/core/tts";
             {/if}
           </div>
         {/each}
+        {#if hasMore}
+          <button class="lv-btn" style="width:100%" onclick={() => (browseLimit += 200)}>
+            {t("browse.loadMore")}（{shownQuestions.length}/{questions.length}）
+          </button>
+        {/if}
       {/if}
     </div>
   {:else if view === "import"}

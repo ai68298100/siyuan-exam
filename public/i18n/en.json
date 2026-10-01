@@ -252,5 +252,9 @@
     "mode.fav.desc": "Only questions you starred",
     "import.template": "Download template",
     "update.title": "Lv Exam updated",
-    "update.seeChangelog": "See CHANGELOG for what changed"
+    "update.seeChangelog": "See CHANGELOG for what changed",
+    "report.weekCompare": "Week compare",
+    "report.thisWeek": "This week",
+    "report.lastWeek": "Last week",
+    "browse.loadMore": "Load more"
 }

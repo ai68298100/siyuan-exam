@@ -3,6 +3,7 @@
     // 数据全部来自流水重算（可离线）；聚合逻辑见 src/core/report.ts
     import { onMount } from "svelte";
     import { showMessage } from "siyuan";
+    import { weeklyAggregates, weekCompare } from "@/core/weekly";
     import type { ExamApp } from "../../app";
     import { heatmap, masteryByKp, weakTop, hourly } from "@/core/report";
 
@@ -18,6 +19,7 @@
     let hours = $state<number[]>(new Array(24).fill(0));
     let mockHistory = $state<any[]>([]);
     let errorMsg = $state("");
+    let weekCmp = $state<ReturnType<typeof weekCompare> | null>(null);
     let reportBusy = $state(false);
 
     /** 每日战报写入思源日记（联动小驴复盘预留通道） */
@@ -58,6 +60,7 @@
       if (!app) { loading = false; errorMsg = t("state.appNotReady"); return; }
       try {
         const d = app.derived();
+        weekCmp = weekCompare(weeklyAggregates(d.days, new Date(), 2));
         let attempts = 0, correct = 0;
         for (const s of d.byQuestion.values()) { attempts += s.attempts; correct += s.correct; }
         const { streak } = await import("@/core/replayer");
@@ -102,6 +105,21 @@
       <div class="lv-card lv-kpi"><div class="l">❌ {t("report.eliminated")}</div><div class="v num">{kpi.eliminated}</div></div>
       <div class="lv-card lv-kpi"><div class="l">🔥 {t("report.streak")}</div><div class="v num">{kpi.streak} {t("entry.days")}</div></div>
     </div>
+
+    {#if weekCmp}
+      <div class="lv-card lv-section" style="margin-bottom:12px">
+        <b>{t("report.weekCompare")}</b>
+        <div class="lv-row" style="margin:4px 0">
+          <span class="lv-chip">{t("report.thisWeek")} <b class="num">{weekCmp.thisWeek.attempts}</b> {t("browse.count")}</span>
+          <span class="lv-chip">{t("report.lastWeek")} <b class="num">{weekCmp.lastWeek.attempts}</b> {t("browse.count")}</span>
+          {#if weekCmp.thisWeek.attempts >= weekCmp.lastWeek.attempts}
+            <span class="lv-chip lv-chip--grn">↑</span>
+          {:else}
+            <span class="lv-chip lv-chip--red">↓</span>
+          {/if}
+        </div>
+      </div>
+    {/if}
 
     <div class="lv-card lv-section">
       <b>{t("report.heat")}</b>
