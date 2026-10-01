@@ -31,7 +31,9 @@ Design complete, source still scaffold-level. Current version `v0.1.0` (unreleas
 9. **AI** (BYO key) — generation pipeline (structured JSON + source block citation + review queue), explanation sidebar (per-option / hint / Socratic)
 10. **Study plan / listening / gamification** — countdown-driven daily plan, TTS, streak, challenge codes
 
-## ⚠ Current real capabilities (v0.1 vertical slice, 2026-10-02)
+## ⚠ Current real capabilities
+
+> **Acceptance**: [docs/17 smoke checklist](docs/17-真机冒烟清单.md) (26 steps · 10 min) — passes gate v0.5.0 release (v0.1 vertical slice, 2026-10-02)
 
 **Implemented (v0.5+, 2026-10-02)**: bank guard → import (Excel column-map / Aiken / medical material-group auto-batching / runtime-generated official template / drag-drop) → manual entry form → practice (multi-select toggle, practice/recite modes, keyboard flow, material-group context card & adjacent ordering, favorites & search filter, incremental loading) → recite (cover-answer 4-level rating + hint chain + session rating summary + TTS) → FSRS memory (to-card/rating/cram/favorites drill/daily set) → mock exam (blueprint with CBT lockout & indefinite partial credit/section timing/answer sheet/score report + radar + history sparkline + post-exam scoring) → wrongbook (3-way reasons/manual disposition overlay/elimination/markdown export/CSV error list) → report center (KPI/week compare/heatmap/mastery bars/weak drill/hourly) → AI generation & explain (dual channel/2nd-pass review/multi-turn follow-up/cost counter/custom hint/review queue) → bank .sy.zip package export/import → statusbar mini progress/weekly nudge/lv-exam:stats public interface. 118 unit tests.
 
