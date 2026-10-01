@@ -300,22 +300,15 @@
         <p class="lv-muted">{t("state.emptyBank")}</p>
       {:else}
       <div class="lv-row" style="margin-top:10px">
-        <span class="lv-chip">{t("estimate.key")}</span>
-        <input class="lv-input num" style="flex:1;min-width:160px" bind:value={estKey} placeholder="BADCA…" />
-      </div>
-      <div class="lv-row">
         <label class="lv-row" style="margin:0"><input type="checkbox" bind:checked={estFromBank} /> {t("estimate.fromBank")}</label>
         {#if estFromBank}
           <input class="lv-input num" style="width:140px" bind:value={estSourceFilter} placeholder={t("estimate.sourceFilter")} />
           <span class="lv-chip num">{t("estimate.bankQ")} {questions.filter((q) => q.type !== "material" && (!estSourceFilter.trim() || (q.source ?? "").includes(estSourceFilter.trim()))).length}</span>
+        {:else}
+          <span class="lv-chip">{t("estimate.key")}</span>
+          <input class="lv-input num" style="flex:1;min-width:160px" bind:value={estKey} placeholder="BADCA…" />
         {/if}
       </div>
-      {#if !estFromBank}
-      <div class="lv-row">
-        <span class="lv-chip">{t("estimate.key")}</span>
-        <input class="lv-input num" style="flex:1;min-width:160px" bind:value={estKey} placeholder="BADCA…" />
-      </div>
-      {/if}
       <div class="lv-row">
         <button class="lv-btn sm" onclick={runEstimate} disabled={!estKey.trim() || !estMine.trim()}>{t("estimate.run")}</button>
         {#if estResult}

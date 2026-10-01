@@ -81,7 +81,7 @@
     /** 薄弱考点一键组卷：按考点首段过滤 → pendingPractice 移交练习台 */
     function drillWeak(root: string) {
       if (!app) return;
-      const picked = questions.filter((q) => q.kp?.split("/")[0] === root);
+      const picked = questions.filter((q) => q.type !== "material" && q.kp?.split("/")[0] === root);
       if (!picked.length) { showMessage(t("state.emptyBank"), 3000, "error"); return; }
       (plugin as any).pendingPractice = picked;
       void import("siyuan").then(({ openTab }) => {
