@@ -33,6 +33,7 @@
     let answeredMap = $state<Record<string, string>>({});
     let feedbackOn = $state(false);          // 模考默认不即时判分；交卷后统一
     let score = $state<MockScore | null>(null);
+    let history = $state<any[]>([]);
     let nowTick = $state(Date.now());
     let timer: ReturnType<typeof setInterval> | null = null;
     let startedAt = $state(0);
@@ -135,6 +136,10 @@
         plugin.refreshDock?.();
       }
       score = session?.score() ?? null;
+      if (score && app) {
+        await app.saveMockResult({ id: bp.id, name: bp.name, startedAt, total: score.total, full: score.full, percent: score.percent, pass: score.pass });
+        history = await app.listMockResults();
+      }
       view = "report";
     }
 
@@ -154,6 +159,9 @@
       });
     }
 
+    function historyPoints(): string {
+      return history.map((h, i) => `${(i / Math.max(1, history.length - 1)) * 300},${100 - Math.round(h.percent)}`).join(" ");
+    }
     function percentBar(v: number, full: number) { return full ? Math.round((v / full) * 100) : 0; }
 
     /** 雷达图坐标（成绩单；n 段均分圆周，值域 0-100%） */
@@ -303,6 +311,23 @@
       <span class="lv-chip num">{t("mock.changes")} {score.changes}</span>
       <span class="lv-chip num">{t("mock.last20")} {score.last20min.correct}/{score.last20min.attempted}</span>
     </div>
+    {#if history.length >= 2}
+      <div class="lv-card" style="margin:12px 0">
+        <b style="font-size:13px">{t("mock.history")}</b>
+        <svg viewBox="0 0 300 110" style="width:100%;max-width:420px;display:block">
+          <line x1="0" y1={100 - bp.passLine} x2="300" y2={100 - bp.passLine} stroke="var(--lv-green)" stroke-dasharray="4 4" />
+          <polyline points={historyPoints()} fill="none" stroke="var(--lv-accent)" stroke-width="2" />
+          {#each history as h, i}
+            <circle cx={(i / Math.max(1, history.length - 1)) * 300} cy={100 - Math.round(h.percent)} r="3" fill="var(--lv-accent)"><title>{h.name} {h.percent}%</title></circle>
+          {/each}
+        </svg>
+        <div class="lv-row" style="margin:6px 0 0">
+          {#each history.slice(-5) as h}
+            <span class="lv-chip num" title={new Date(h.startedAt).toLocaleString()}>{h.name} {h.percent}%{h.pass ? " ✓" : ""}</span>
+          {/each}
+        </div>
+      </div>
+    {/if}
     <div class="lv-row">
       <button class="lv-btn lv-btn--primary" onclick={rewrongDrill}>❌ {t("mock.rewrong")}</button>
       <button class="lv-btn" onclick={() => { view = "config"; }}>▶ {t("mock.again")}</button>

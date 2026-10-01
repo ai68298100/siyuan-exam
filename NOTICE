@@ -1,0 +1,9 @@
+小驴考试 (Lv Exam) —— 思源笔记本地题库学习管理插件
+Copyright (c) 2026 ai68298100
+
+本插件基于官方模板 siyuan-note/plugin-sample-vite-svelte（MIT, Copyright (c) frostime
+及其贡献者）构建；src/libs/ 下的 setting-utils.ts、dialog.ts、promise-pool.ts 与
+部分构建脚本衍生自该模板，特此致谢并按 MIT 许可保留其声明。
+
+依赖的运行时库归其各自作者所有：xlsx (SheetJS, Apache-2.0)；
+调度算法来自思源内核 go-fsrs 及 open-spaced-repetition 社区。

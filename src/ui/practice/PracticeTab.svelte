@@ -2,6 +2,7 @@
     // 练习台：入口(S1) / 会话(S2) / 浏览(S3) / 导入(S9) 四视图
     // 状态设计（docs/11）：loading/empty(守卫)/error/normal 四态可达
     import { onMount } from "svelte";
+import { showMessage } from "siyuan";
 import { planToday } from "@/core/planner";
     import type { ExamApp } from "../../app";
     import type { Question } from "../../core/types";
@@ -177,6 +178,18 @@ import { planToday } from "@/core/planner";
 
     function exitRecite() {
       view = "entry"; reciteQueue = []; reciteRevealed = false; reciteDone = false;
+    }
+
+    /** 错题册导出：Markdown 文档写入题库"导出"区 */
+    async function exportWrong() {
+      if (!activeBankId) { errorMsg = t("state.emptyBank"); return; }
+      try {
+        const docId = await app.exportWrongbook(activeBankId, bankName);
+        void docId;
+        showMessage(t("export.done"), 3600, "info");
+      } catch (e) {
+        showMessage(offline ? t("state.offlineHint") : String(e instanceof Error ? e.message : e), 4200, "error");
+      }
     }
 
     // ---------- AI 讲解（v0.4：错题逐选项解释；可存为笔记子块） ----------
@@ -579,6 +592,7 @@ import { planToday } from "@/core/planner";
           <button class="lv-btn" onclick={() => view = "import"}>📥 {t("import.title")}</button>
           <button class="lv-btn" onclick={() => view = "ai"}>✨ {t("ai.title")}</button>
           <button class="lv-btn" onclick={() => view = "manual"}>✏️ {t("entry.manual")}</button>
+          <button class="lv-btn" onclick={exportWrong}>📤 {t("export.wrongbook")}</button>
         </div>
       </div>
     {/if}

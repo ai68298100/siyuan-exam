@@ -190,5 +190,8 @@
     "entry.startToday": "开始（零决策）",
     "entry.sprint": "冲刺",
     "entry.examIn": "距考试",
-    "entry.days": "天"
+    "entry.days": "天",
+    "export.wrongbook": "导出错题册",
+    "export.done": "✓ 错题册已导出到题库\"导出\"文档",
+    "mock.history": "历史成绩"
 }

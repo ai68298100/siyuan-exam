@@ -13,6 +13,18 @@ import type { ImportReport } from "./importer/pipeline";
 
 export interface BankInfo { id: string; name: string; createdAt: number }
 
+export interface MockRecord {
+  id: string;               // 蓝图 id
+  name: string;
+  startedAt: number;
+  total: number;
+  full: number;
+  percent: number;
+  pass: boolean;
+}
+
+const MOCK_RESULTS_KEY = "mock/results";
+
 export interface ExamAppDeps {
   client: KernelApiClient;
   storage: StorageAdapter;
@@ -192,6 +204,33 @@ export class ExamApp {
     if (!blockId) throw new Error("题目块不存在（先完成导入）");
     const md = `{{{row\n${text}\n}}}\n{: exam-note-id="${qid}-n-${Date.now().toString(36)}" exam-note-kind="${kind}"`;
     await this.deps.client.appendBlock(blockId, md);
+  }
+
+  // ---------- 导出与模考历史（v0.5） ----------
+  /** 错题册导出：生成 Markdown 并写入题库笔记本"导出"文档，返回文档 id */
+  async exportWrongbook(bankId: string, bankName: string): Promise<string> {
+    const { wrongbookToMarkdown } = await import("./core/exportMd");
+    const items = this.wrongItems();
+    const qs = await this.listQuestions(bankId);
+    const byId = new Map(qs.map((q) => [q.id, q]));
+    const pairs = items.map((w) => ({ wrong: w, q: byId.get(w.qid)! })).filter((p) => p.q);
+    const md = wrongbookToMarkdown(pairs, { bankName, exportedAt: new Date() });
+    await this.ensureDoc(bankId, "/导出");
+    const ymd = new Date().toISOString().slice(0, 10);
+    return this.deps.client.createDocWithMd(bankId, `/导出/错题册 ${ymd}`, md);
+  }
+
+  /** 模考成绩持久化（上限 200 条，FIFO） */
+  async saveMockResult(rec: MockRecord): Promise<void> {
+    const list = await this.listMockResults();
+    list.push(rec);
+    while (list.length > 200) list.shift();
+    await this.deps.storage.save(MOCK_RESULTS_KEY, list);
+  }
+
+  async listMockResults(): Promise<MockRecord[]> {
+    const v = await this.deps.storage.load(MOCK_RESULTS_KEY);
+    return Array.isArray(v) ? (v as MockRecord[]) : [];
   }
 
   // ---------- 记忆层（v0.2：riff 卡包 / 转卡 / 评级） ----------

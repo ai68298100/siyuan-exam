@@ -190,5 +190,8 @@
     "entry.startToday": "Start (zero-decision)",
     "entry.sprint": "Sprint",
     "entry.examIn": "Exam in",
-    "entry.days": "d"
+    "entry.days": "d",
+    "export.wrongbook": "Export wrongbook",
+    "export.done": "✓ Wrongbook exported to the bank docs",
+    "mock.history": "Score history"
 }

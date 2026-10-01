@@ -168,7 +168,7 @@
 - [ ] 每日计划反推（front-load，20 新卡≈200 复习经验值）
 - [x] 冲刺姿态自动切换（默认考前 14 天）+ cram/每日聚合规则 ✓2026-10-02（cram 优先聚合 ✓；海报样式切换待激励系统）
 - [x] 考后一键恢复常规调度 ✓2026-10-02（考日过期自动回常规 ✓）
-- [ ] 错题导出 Markdown（callout 分区，可打印）
+- [x] 错题导出 Markdown（callout 分区，可打印） ✓2026-10-02（入口按钮 → 写入题库导出文档）
 - [ ] TTS 听题（speechSynthesis/按句切分/onboundary 高亮/0.8-2.0x）
 - [ ] 纯听题模式（隐藏题面仅留评分钮）
 - [ ] 大字号滑杆（题干 14-28px）/护眼叠加/暗黑跟随自检
@@ -495,10 +495,10 @@
 - [x] [P0] 统一 `build`/`build:package`/`verify:package` 语义 ✓2026-10-02；产物 allowlist 校验 plugin.json、index.js/css、i18n、icon/preview，不带源码/密钥/测试资料
 - [x] [P0] 增加 push/PR CI ✓2026-10-02：install frozen→check→test→lint/i18n/docs 校验→build→解压安装 smoke；release 复用同一门禁
 - [x] [P0] 首批 vitest + kernel mock/contract test ✓2026-10-02：判分、导入净化/去重、schema 迁移、JSONL 重算、PromisePool、设置保存失败
-- [ ] [P1] 增加架构一致性检查：docs/03 模块清单、实际 `src/` 路径、i18n 路径、构建入口和 plugin manifest 自动对照
+- [x] [P1] 增加架构一致性检查：docs/03 模块清单、实际 `src/` 路径、i18n 路径、构建入口和 plugin manifest 自动对照 ✓2026-10-02（scripts/check-arch.mjs 25 项，已入 check/CI）
 - [ ] [P1] 文档资产单一来源：统一 docs/11-13 与 prototype 的版本/屏数（当前存在 7/14 屏、v2/v3 混用），新增 docs/README 索引
 - [ ] [P1] README/CHANGELOG 明确“设计阶段/脚手架”与“已实现能力”边界，修正报告数量、产物命令、安装/卸载/回滚和 AI 隐私说明
-- [ ] [P1] 清理模板残留并补 NOTICE/许可证决策：版权人、`KernelPluginSample`、frostime 注释和官方模板字段逐项审查
+- [x] [P1] 清理模板残留并补 NOTICE/许可证决策：版权人、`KernelPluginSample`、frostime 注释和官方模板字段逐项审查 ✓2026-10-02（NOTICE 致谢 plugin-sample-vite-svelte/frostime + 依赖声明）
 - [ ] [P1] 为 plugin.json 声明的每个 frontend/backend 建能力矩阵；未经实测的入口必须隐藏、降级或收窄 manifest 声明
 - [ ] [P1] 建立可观测性契约：错误码、模块/action、requestId、版本/frontend、脱敏 qid；设置页可导出不含题干/key/path 的诊断包
 - [ ] [P1] 性能门槛量化：500/5k/50k 题首屏、SQL p95、滚动 FPS、重算耗时、内存上限；基准输出 JSON 并纳入 CI 趋势
@@ -506,6 +506,9 @@
 - [ ] [P2] 依赖决策落档并安装所需生产依赖（xlsx/sql.js/ts-fsrs/DOMPurify 等）前完成体积、许可证和离线兼容评估
 
 ## 27. 纵切实现过程中发现（2026-10-02，第四轮增量）
+- [ ] [P2] check-arch 规则扩充：core 纯函数层禁 siyuan 导入检测、事件键前缀 lv-exam: 校验
+- [ ] [P2] 错题册导出选项：按考点/错因/时间范围过滤导出
+- [ ] [P2] 模考历史对比页（当前仅报告内嵌曲线；独立历史视图含详情回看）
 - [ ] [P2] 考试日期按题库分存（当前全局单考日；多题库各自倒计时需 per-bank storage）
 - [ ] [P2] dueFirst 接入 FSRS 到期卡（当前每日任务 dueFirst 恒为空；riff 有卡后由 getRiffDueCards 供给）
 - [ ] [P3] pre-push 本地门禁补充（check 已含 i18n 校验；本地 hook 文件不入库，README 说明启用方式）

@@ -16,6 +16,7 @@
         { "uses": "actions/setup-node@v4", "with": { "node-version": 24, "cache": "pnpm" } },
         { "name": "Install", "run": "pnpm install --frozen-lockfile" },
         { "name": "Type/Svelte check", "run": "pnpm check" },
+        { "name": "Architecture consistency", "run": "pnpm check:arch" },
         { "name": "i18n parity", "run": "pnpm check:i18n" },
         { "name": "Unit tests", "run": "pnpm test" },
         { "name": "Build + package", "run": "pnpm build" },
