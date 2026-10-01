@@ -387,6 +387,9 @@
     {#if history.length >= 2}
       <div class="lv-card" style="margin:12px 0">
         <b style="font-size:13px">{t("mock.history")}</b>
+        {#if tri}
+          <span class="lv-chip num" style="margin-left:auto">本周 {tri.this}% · 上周 {tri.avg ?? "–"}%</span>
+        {/if}
         <svg viewBox="0 0 300 110" style="width:100%;max-width:420px;display:block">
           <line x1="0" y1={100 - bp.passLine} x2="300" y2={100 - bp.passLine} stroke="var(--lv-green)" stroke-dasharray="4 4" />
           <polyline points={historyPoints()} fill="none" stroke="var(--lv-accent)" stroke-width="2" />

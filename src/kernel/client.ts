@@ -107,6 +107,13 @@ export class KernelApiClient {
     return r.data;
   }
 
+  async getNotebookConf(notebookId: string): Promise<{ name: string; dailyNoteSavePath: string }> {
+    const r = await this.t.post("/api/notebook/getNotebookConf", { notebook: notebookId });
+    const d = (r.data as Record<string, unknown>) ?? {};
+    const conf = (d.conf as Record<string, string>) ?? {};
+    return { name: String(d.name ?? ""), dailyNoteSavePath: String(conf.dailyNoteSavePath ?? "") };
+  }
+
   /** 笔记本导出 .sy.zip（题库包分享；返回工作区相对路径，如 /export/X.sy.zip） */
   async exportNotebookSy(notebookId: string): Promise<{ zipPath: string }> {
     const r = await this.t.post("/api/export/exportNotebookSY", { id: notebookId });

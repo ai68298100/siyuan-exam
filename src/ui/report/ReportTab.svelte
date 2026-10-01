@@ -2,6 +2,7 @@
     // 报告中心（S8 lite）：KPI / 热力图 / 考点掌握度 / 薄弱 Top10 / 时段分布
     // 数据全部来自流水重算（可离线）；聚合逻辑见 src/core/report.ts
     import { onMount } from "svelte";
+    import { showMessage } from "siyuan";
     import type { ExamApp } from "../../app";
     import { heatmap, masteryByKp, weakTop, hourly } from "@/core/report";
 
@@ -17,6 +18,21 @@
     let hours = $state<number[]>(new Array(24).fill(0));
     let mockHistory = $state<any[]>([]);
     let errorMsg = $state("");
+    let reportBusy = $state(false);
+
+    /** 每日战报写入思源日记（联动小驴复盘预留通道） */
+    async function writeDaily() {
+      if (!app || reportBusy) return;
+      reportBusy = true;
+      try {
+        const banks = app.listBanks();
+        if (!banks.length) throw new Error(t("guard.needBankFirst"));
+        await app.writeDailyReport(banks[0].id, banks[0].name);
+        showMessage(t("report.dailyDone"), 3600, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4800, "error");
+      } finally { reportBusy = false; }
+    }
 
     onMount(async () => {
       if (!app) { loading = false; errorMsg = t("state.appNotReady"); return; }
@@ -122,6 +138,9 @@
       <svg viewBox="0 0 300 46" style="width:100%;max-width:420px;display:block">
         <polyline points={hoursSvg} fill="none" stroke="var(--lv-accent)" stroke-width="2" />
       </svg>
+      <button class="lv-btn sm" style="margin-top:8px" disabled={reportBusy} onclick={writeDaily}>
+        📄 {reportBusy ? "…" : t("report.writeDaily")}
+      </button>
     </div>
   {/if}
 </div>

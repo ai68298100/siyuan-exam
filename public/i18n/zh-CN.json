@@ -237,5 +237,8 @@
     "report.insufficient": "数据不足",
     "report.weak": "薄弱考点",
     "report.noData": "暂无数据",
-    "report.hourly": "学习时段分布"
+    "report.hourly": "学习时段分布",
+    "report.writeDaily": "📄 写入今日战报（日记）",
+    "report.dailyDone": "✓ 战报已写入今日日记",
+    "mock.week": "周对比"
 }

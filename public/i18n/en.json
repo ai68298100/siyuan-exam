@@ -237,5 +237,8 @@
     "report.insufficient": "Insufficient data",
     "report.weak": "Weak topics",
     "report.noData": "No data yet",
-    "report.hourly": "Hourly distribution"
+    "report.hourly": "Hourly distribution",
+    "report.writeDaily": "📄 Write daily report",
+    "report.dailyDone": "✓ Written to today's daily note",
+    "mock.week": "Week compare"
 }

@@ -218,6 +218,42 @@ export class ExamApp {
     return next;
   }
 
+  // ---------- 每日战报（联动小驴复盘预留） ----------
+  /** 把当日战报写入思源日记（首个开启"每日笔记"的笔记本），返回日记文档 id */
+  async writeDailyReport(bankId: string, bankName: string): Promise<string> {
+    const { dailyDocPath } = await import("./core/weekly");
+    const d = this.derived();
+    let attempts = 0, correct = 0, eliminated = 0;
+    for (const s of d.byQuestion.values()) { attempts += s.attempts; correct += s.correct; }
+    eliminated = [...d.wrongbook.values()].filter((w) => w.status === "eliminated").length;
+    const today = new Date();
+    const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const md = [
+      `# 📝 小驴考试战报 · ${ymd}`,
+      ``,
+      `- 刷题：**${attempts}** 题 · 正确率 **${attempts ? Math.round((correct / attempts) * 100) : 0}%**`,
+      `- 消灭错题：**${eliminated}**`,
+      `- 题库：${bankName}`,
+      ``,
+    ].join("\n");
+    // 找第一个启用每日笔记的笔记本
+    for (const nb of this.listBanks()) {
+      const conf = await this.deps.client.getNotebookConf(nb.id);
+      if (conf.dailyNoteSavePath) {
+        const hpath = dailyDocPath(conf.dailyNoteSavePath, today);
+        await this.ensureDoc(nb.id, hpath);
+        const docId = await this.deps.client.sql(
+          `SELECT id FROM blocks WHERE box='${nb.id.replace(/'/g, "''")}' AND hpath='${hpath.replace(/'/g, "''")}' AND type='d' LIMIT 1`,
+        ).then((rows) => String(rows[0]?.id ?? ""));
+        if (!docId) throw new Error("日记文档未找到");
+        await this.deps.client.appendBlock(docId, md);
+        return docId;
+      }
+    }
+    void bankId;
+    throw new Error("未找到开启「每日笔记」的笔记本：请先在思源中为某笔记本开启每日笔记");
+  }
+
   // ---------- 题库包分享（v1.0；.sy.zip 原生格式） ----------
   async exportBankSyZip(bankId: string): Promise<{ zipPath: string; filename: string }> {
     const { zipPath } = await this.deps.client.exportNotebookSy(bankId);
