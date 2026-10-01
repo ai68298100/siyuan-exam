@@ -1,0 +1,15 @@
+.idea
+.vscode
+.DS_Store
+package-lock.json
+*.tsbuildinfo
+.svelte-check/
+package.zip
+node_modules
+dev
+dist
+build
+tmp
+
+# 本机扫描历史
+.mimosa/

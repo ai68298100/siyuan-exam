@@ -1,0 +1,53 @@
+{
+  "name": "siyuan-exam",
+  "author": "ai68298100",
+  "url": "https://github.com/ai68298100/siyuan-exam",
+  "version": "0.1.0",
+  "minAppVersion": "3.8.0",
+  "backends": [
+    "windows",
+    "linux",
+    "darwin",
+    "ios",
+    "android",
+    "harmony",
+    "docker"
+  ],
+  "frontends": [
+    "desktop",
+    "mobile",
+    "browser-desktop",
+    "browser-mobile",
+    "desktop-window"
+  ],
+  "disabledInPublish": true,
+  "displayName": {
+    "default": "Lv Exam",
+    "zh-CN": "小驴考试"
+  },
+  "description": {
+    "default": "Local-first exam question bank in SiYuan: import (Excel/GIFT/Anki apkg/AI), practice, recite, mock exam, wrongbook, FSRS flashcards, AI explain & generate. Your question bank lives in your knowledge base.",
+    "zh-CN": "本地题库学习管理大杂烩：题库导入（Excel/GIFT/Anki 包/AI 录题）、刷题、背诵、模考、错题本、FSRS 闪卡记忆、AI 讲解与出题——题库长在你的知识库里。"
+  },
+  "readme": {
+    "default": "README.md",
+    "zh-CN": "README.zh-CN.md"
+  },
+  "icon": "icon.png",
+  "preview": "preview.png",
+  "keywords": [
+    "exam",
+    "quiz",
+    "flashcard",
+    "spaced-repetition",
+    "wrongbook",
+    "题库",
+    "刷题",
+    "背题",
+    "模考",
+    "错题本",
+    "闪卡",
+    "考试",
+    "AI"
+  ]
+}

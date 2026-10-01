@@ -1,0 +1,58 @@
+// ============================================================
+// 小驴考试 Lv Exam · 设计 Token（唯一颜色/圆角/阴影/动效来源）
+// 依据：docs/12-视觉设计规范 §2；视觉基准：design/prototype/index.html
+// 规则：主题色一律引用思源 b3 变量（亮暗自动适配）；
+//       仅中性阴影使用黑色 alpha，并以 body.dark 区分深浅两档。
+// 任何组件不得硬编码色值，只能消费本文件与 b3 变量。
+// ============================================================
+
+:root {
+  /* —— 强调与语义（跟随用户思源主题） —— */
+  --lv-accent: var(--b3-theme-primary);
+  --lv-accent-hi: var(--b3-theme-primary-light, var(--b3-theme-primary));
+  --lv-accent-soft: color-mix(in srgb, var(--b3-theme-primary) 10%, transparent);
+  --lv-accent-grad: linear-gradient(135deg, var(--b3-theme-primary), var(--b3-theme-primary-light, var(--b3-theme-primary)));
+  --lv-green: var(--b3-theme-success, #189a58);
+  --lv-green-soft: color-mix(in srgb, var(--lv-green) 11%, transparent);
+  --lv-red: var(--b3-theme-error, #e5484d);
+  --lv-red-soft: color-mix(in srgb, var(--lv-red) 10%, transparent);
+  --lv-amber: var(--b3-theme-warning, #d9930d);
+  --lv-amber-soft: color-mix(in srgb, var(--lv-amber) 12%, transparent);
+
+  /* —— 表面与文字（三档对比） —— */
+  --lv-surface: var(--b3-theme-surface);
+  --lv-surface-2: var(--b3-theme-background);
+  --lv-border: var(--b3-border-color);
+  --lv-text: var(--b3-theme-on-background);
+  --lv-text-2: color-mix(in srgb, var(--b3-theme-on-background) 70%, transparent);
+  --lv-text-3: color-mix(in srgb, var(--b3-theme-on-background) 45%, transparent);
+
+  /* —— 圆角体系 —— */
+  --lv-r-1: 8px;
+  --lv-r-2: 12px;
+  --lv-r-3: 16px;
+  --lv-r-4: 20px;
+
+  /* —— 动效 —— */
+  --lv-ease-out: cubic-bezier(.22, 1, .36, 1);
+  --lv-ease-spring: cubic-bezier(.3, 1.4, .4, 1);
+  --lv-dur-micro: 160ms;
+  --lv-dur-view: 260ms;
+
+  /* —— 焦点环 —— */
+  --lv-ring: 0 0 0 3px var(--lv-accent-soft);
+}
+
+/* 深浅两档阴影（中性色允许 alpha 黑白；主题色不允许硬编码） */
+:root {
+  --lv-sh-1: 0 1px 1px rgba(18, 25, 38, .03), 0 2px 6px -2px rgba(18, 25, 38, .06);
+  --lv-sh-2: 0 1px 2px rgba(18, 25, 38, .05), 0 12px 36px -12px rgba(18, 25, 38, .16);
+  --lv-sh-pop: 0 2px 4px rgba(18, 25, 38, .06), 0 20px 48px -16px rgba(18, 25, 38, .22);
+}
+
+body.dark,
+html[data-theme-mode="dark"] {
+  --lv-sh-1: 0 1px 2px rgba(0, 0, 0, .35);
+  --lv-sh-2: 0 1px 2px rgba(0, 0, 0, .4), 0 16px 44px -14px rgba(0, 0, 0, .55);
+  --lv-sh-pop: 0 2px 6px rgba(0, 0, 0, .4), 0 24px 56px -18px rgba(0, 0, 0, .65);
+}
