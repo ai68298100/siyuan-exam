@@ -233,6 +233,18 @@ import { ttsSpeak } from "@/core/tts";
       }
     }
 
+    /** 官方 Excel 模板下载（运行时生成，docs/15 规范） */
+    async function downloadTemplate() {
+      const { buildTemplateWorkbook } = await import("@/importer/template");
+      const { buffer, filename } = buildTemplateWorkbook();
+      const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
     // ---------- 题库包分享（.sy.zip 原生格式） ----------
     async function exportBank() {
       if (!activeBankId) return;
@@ -1126,6 +1138,7 @@ import { ttsSpeak } from "@/core/tts";
         <div class="lv-card lv-pad-card">
           <div class="lv-row">
             <label class="lv-btn">📁 {t("import.pickExcel")}<input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange={onExcelFile} /></label>
+            <button class="lv-btn sm" onclick={downloadTemplate}>⬇️ {t("import.template")}</button>
             <span class="lv-muted">{t("import.orPaste")}</span>
           </div>
           <textarea class="lv-input lv-textarea" rows="8" placeholder={t("import.placeholder")} bind:value={importText}></textarea>

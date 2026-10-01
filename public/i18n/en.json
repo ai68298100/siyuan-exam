@@ -249,5 +249,6 @@
     "recite.dist": "Session ratings",
     "session.groupPos": "Group",
     "state.noFav": "No favorites yet — press E while practicing",
-    "mode.fav.desc": "Only questions you starred"
+    "mode.fav.desc": "Only questions you starred",
+    "import.template": "Download template"
 }

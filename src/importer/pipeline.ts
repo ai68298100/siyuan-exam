@@ -154,15 +154,18 @@ export function parseExcelRows(rows: string[][], map: ExcelColumnMap, opt: Impor
       const stem = cell(map.stem);
       const options = map.options.map((n) => cell(n)).filter((s) => s !== "");
       // 共用题干（医考材料组范式）：材料行开启新组；其后子题自动携带组 ID 与材料考点；
-      // 子题带考点或「独立」时结束该组
+      // 子题带「不同」考点时结束该组（考点相同/为空 → 仍在组内）
       let group: string | undefined;
       if (type === "material") {
         group = newGroupId();
         opt._pendingGroup = group;
-      } else if (!cell(map.kp) && opt._pendingGroup != null) {
-        group = opt._pendingGroup;          // 无考点的子题跟随材料组
-      } else {
-        opt._pendingGroup = undefined;      // 有考点的独立子题结束组
+        lastKp = cell(map.kp);
+      } else if (opt._pendingGroup != null) {
+        group = opt._pendingGroup;
+        if (cell(map.kp) && cell(map.kp) !== lastKp) {
+          opt._pendingGroup = undefined;   // 考点变化 → 出组（且本题不带组）
+          group = undefined;
+        }
       }
       const answer = type === "material" ? "" : normalizeAnswer(type, cell(map.answer));
       if (type !== "material" && !answer) throw new Error(`答案无法识别："${cell(map.answer)}"`);
