@@ -7,7 +7,7 @@ import type { StorageAdapter } from "./core/attemptLog";
 import { AttemptLog } from "./core/attemptLog";
 import type { AttemptEvent, Question, ReplayResult, WrongItem, SessionState } from "./core/types";
 import { replay, activeWrongItems } from "./core/replayer";
-import { PracticeSession, pickRandom } from "./core/session";
+import { PracticeSession, pickRandom, groupAdjacent } from "./core/session";
 import { deckNameForBank, selfRatingToRiffRating, pickSameKp, cramQueue, dailySet } from "./core/memory";
 import type { ImportReport } from "./importer/pipeline";
 
@@ -193,7 +193,9 @@ export class ExamApp {
     if (this.activeSession && this.activeSession.phase === "running") {
       throw new Error("已有进行中的会话：请先继续或放弃");
     }
-    this.activeSession = new PracticeSession(questions, mode, undefined, this.deps.now ?? (() => Date.now()));
+    // 材料组聚拢：所有入口统一生效（单点，替代各调用方自行排序）
+    const ordered = groupAdjacent(questions);
+    this.activeSession = new PracticeSession(ordered, mode, undefined, this.deps.now ?? (() => Date.now()));
     await this.saveSession();
     return this.activeSession;
   }
