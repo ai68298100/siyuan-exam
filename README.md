@@ -31,6 +31,14 @@ Design complete, source still scaffold-level. Current version `v0.1.0` (unreleas
 9. **AI** (BYO key) — generation pipeline (structured JSON + source block citation + review queue), explanation sidebar (per-option / hint / Socratic)
 10. **Study plan / listening / gamification** — countdown-driven daily plan, TTS, streak, challenge codes
 
+## ⚠ Current real capabilities (v0.1 vertical slice, 2026-10-02)
+
+**Implemented**: create-bank guard → Aiken paste / Excel column-mapped import (per-row validation + error list + dedup) → questions written as SiYuan blocks (exam-* attrs) → single-active practice session (grade/feedback/drafts/resume) → attempt log (idempotent) → wrongbook (eliminate after 2-in-a-row) → live wrongbook dock. 38 unit tests over the domain layer.
+
+**Not yet (roadmap)**: topic-tree/paper/fav/cram selection, FSRS memory + recite, mock exam, reports, AI, TTS, bank sharing. Disabled entries state explicit reasons.
+
+**Pending in-SiYuan testing**: real block write/query behavior, mobile UX, loadData sync semantics — see TODO group 26 acceptance.
+
 ## Development
 
 ```bash

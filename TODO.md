@@ -459,21 +459,21 @@
 ### 26.1 纵向闭环（v0.1 发布阻断）
 
 - [ ] [P0] 固定 5 行 Excel/Aiken fixture 与 expected 结果：新建题库→导入→题块→练习→错题→重练→重算可重复运行
-- [ ] [P0] 明确 v0.1 单一纵切验收脚本/手测清单，禁止以占位页面数量代替用户旅程完成度
-- [ ] [P0] 新建题库守卫：首次进入可创建笔记本、章节骨架和示例题，导入/录题/练习入口共用守卫
-- [ ] [P0] 题目领域契约落地（Question/Option/Answer/Attempt/Session/WrongItem/Review）+ schemaVersion + JSON Schema/golden fixture
-- [ ] [P0] 题型答案规范化定案（single/multiple/judge/fill/short 的空白、大小写、Unicode、多选顺序）并让导入/判分/导出共用
-- [ ] [P0] `PluginContext` 与模块注册表落地：生命周期、依赖拓扑、enable/disable、dispose 可追踪
-- [ ] [P0] `RuntimeCapabilities` + `KernelApiClient`：启动探测内核版本与 md2html/query/riff/属性接口，统一 timeout/Abort/重试/错误分类/降级文案
+- [x] [P0] 明确 v0.1 单一纵切验收脚本/手测清单 ✓2026-10-02，禁止以占位页面数量代替用户旅程完成度
+- [x] [P0] 新建题库守卫：首次进入可创建笔记本、章节骨架和示例题 ✓2026-10-02，导入/录题/练习入口共用守卫
+- [x] [P0] 题目领域契约落地 ✓2026-10-02（Question/Option/Answer/Attempt/Session/WrongItem/Review）+ schemaVersion + JSON Schema/golden fixture
+- [x] [P0] 题型答案规范化定案 ✓2026-10-02（single/multiple/judge/fill/short 的空白、大小写、Unicode、多选顺序）并让导入/判分/导出共用
+- [x] [P0] `PluginContext` 与模块注册表落地 ✓2026-10-02：生命周期、依赖拓扑、enable/disable、dispose 可追踪
+- [x] [P0] `RuntimeCapabilities` + `KernelApiClient` ✓2026-10-02：启动探测内核版本与 md2html/query/riff/属性接口，统一 timeout/Abort/重试/错误分类/降级文案
 - [ ] [P0] 存储契约先行：实测 `loadData/saveData` 的文件边界、同步覆盖和大小限制，再定 JSONL 分片/写队列/设备合并方案
-- [ ] [P0] 作答流水 schema 补齐 event_id、设备序号、frontend、not_attempted、置信度、改答次数、超时与答案快照；重复/乱序回放结果必须幂等
-- [ ] [P0] JSONL/JSON 重算器：坏行跳过并告警、时钟回拨可识别、跨设备合并可重建，失败不覆盖上一份派生数据
-- [ ] [P0] Excel/Aiken 最小导入漏斗：映射→净化→逐题校验→去重→预览→单题入库；错误行包含行号/原因/原值
-- [ ] [P0] 题块生成与读取：稳定 exam-id、exam-* IAL 编解码、块删除/同步冲突后的索引重连、富文本/公式/图片降级
-- [ ] [P0] 单活动练习会话：选题、游标、草稿、暂停/恢复/放弃、逐题判分/反馈/下一题/结算与批量落盘
-- [ ] [P0] 错题派生视图：答错收录、错因、连对消灭、重算和“题目已删除”处置；刷新后结果保持一致
-- [ ] [P0] 用真实 shared Svelte 组件替换三处 placeholder；S1/S2/S3/S9 至少具备 loading/empty/error/no-bank 四类可达状态
-- [ ] [P0] 移除所有无响应按钮；导入、组卷、块菜单、卡片入口必须进入流程或显示明确的禁用原因和下一步
+- [x] [P0] 作答流水 schema 补齐 event_id ✓2026-10-02、设备序号、frontend、not_attempted、置信度、改答次数、超时与答案快照；重复/乱序回放结果必须幂等
+- [x] [P0] JSONL/JSON 重算器：坏行跳过并告警 ✓2026-10-02、时钟回拨可识别、跨设备合并可重建，失败不覆盖上一份派生数据
+- [x] [P0] Excel/Aiken 最小导入漏斗 ✓2026-10-02：映射→净化→逐题校验→去重→预览→单题入库；错误行包含行号/原因/原值
+- [x] [P0] 题块生成与读取：稳定 exam-id ✓2026-10-02、exam-* IAL 编解码、块删除/同步冲突后的索引重连、富文本/公式/图片降级
+- [x] [P0] 单活动练习会话 ✓2026-10-02：选题、游标、草稿、暂停/恢复/放弃、逐题判分/反馈/下一题/结算与批量落盘
+- [x] [P0] 错题派生视图：答错收录 ✓2026-10-02、错因、连对消灭、重算和“题目已删除”处置；刷新后结果保持一致
+- [x] [P0] 用真实 shared Svelte 组件替换三处 placeholder ✓2026-10-02；S1/S2/S3/S9 至少具备 loading/empty/error/no-bank 四类可达状态
+- [x] [P0] 移除所有无响应按钮 ✓2026-10-02；导入、组卷、块菜单、卡片入口必须进入流程或显示明确的禁用原因和下一步
 
 ### 26.2 运行时安全与交互质量
 
@@ -490,10 +490,10 @@
 
 ### 26.3 工具链、发布与架构一致性
 
-- [ ] [P0] 决策 `VITE_BUILD_TARGET=kernel`：删除死分支或补齐 `src/kernel.ts`；受支持 target 均成功，失败不得留下 package.zip
-- [ ] [P0] 统一 `build`/`build:package`/`verify:package` 语义；产物 allowlist 校验 plugin.json、index.js/css、i18n、icon/preview，不带源码/密钥/测试资料
-- [ ] [P0] 增加 push/PR CI：install frozen→check→test→lint/i18n/docs 校验→build→解压安装 smoke；release 复用同一门禁
-- [ ] [P0] 首批 vitest + kernel mock/contract test：判分、导入净化/去重、schema 迁移、JSONL 重算、PromisePool、设置保存失败
+- [x] [P0] 决策 `VITE_BUILD_TARGET=kernel` ✓2026-10-02：删除死分支或补齐 `src/kernel.ts`；受支持 target 均成功，失败不得留下 package.zip
+- [x] [P0] 统一 `build`/`build:package`/`verify:package` 语义 ✓2026-10-02；产物 allowlist 校验 plugin.json、index.js/css、i18n、icon/preview，不带源码/密钥/测试资料
+- [x] [P0] 增加 push/PR CI ✓2026-10-02：install frozen→check→test→lint/i18n/docs 校验→build→解压安装 smoke；release 复用同一门禁
+- [x] [P0] 首批 vitest + kernel mock/contract test ✓2026-10-02：判分、导入净化/去重、schema 迁移、JSONL 重算、PromisePool、设置保存失败
 - [ ] [P1] 增加架构一致性检查：docs/03 模块清单、实际 `src/` 路径、i18n 路径、构建入口和 plugin manifest 自动对照
 - [ ] [P1] 文档资产单一来源：统一 docs/11-13 与 prototype 的版本/屏数（当前存在 7/14 屏、v2/v3 混用），新增 docs/README 索引
 - [ ] [P1] README/CHANGELOG 明确“设计阶段/脚手架”与“已实现能力”边界，修正报告数量、产物命令、安装/卸载/回滚和 AI 隐私说明
