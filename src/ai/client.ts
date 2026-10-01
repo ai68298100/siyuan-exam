@@ -17,7 +17,7 @@ export type AiMessage = { role: "system" | "user" | "assistant"; content: string
 /** 统一接口：两条通道各自实现 */
 export interface AiChannel {
   readonly id: "siyuan" | "openai";
-  chat(messages: AiMessage[]): Promise<string>;
+  chat(messages: AiMessage[], signal?: AbortSignal): Promise<string>;
 }
 
 /** 通道 A：内核代理（无 key 管理、无 CORS 问题；响应 data 为字符串或 {text}） */
@@ -25,7 +25,7 @@ export class SiyuanAiChannel implements AiChannel {
   readonly id = "siyuan" as const;
   constructor(private readonly kernel: KernelApiClient) {}
 
-  async chat(messages: AiMessage[]): Promise<string> {
+  async chat(messages: AiMessage[], signal?: AbortSignal): Promise<string> {
     // 思源 chatGPT 端点为单轮 msg 语义：拼接为一条消息（系统提示前缀）
     const msg = messages.map((m) => (m.role === "system" ? `[指令]\n${m.content}` : m.content)).join("\n\n");
     const data = await this.kernel.aiChat(msg);
@@ -44,15 +44,19 @@ export class OpenAiChannel implements AiChannel {
     private readonly timeoutMs = 60_000,
   ) {}
 
-  async chat(messages: AiMessage[]): Promise<string> {
+  async chat(messages: AiMessage[], signal?: AbortSignal): Promise<string> {
     if (!this.cfg.endpoint || !this.cfg.apiKey) {
       throw new Error("[lv-exam] AI 端点或 Key 未配置");
     }
     const ctrl = new AbortController();
+    // 外部 signal → 内联中止（链式）
+    const onAbort = () => ctrl.abort();
+    signal?.addEventListener("abort", onAbort, { once: true });
     const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
     try {
       const res = await this.fetchImpl(this.cfg.endpoint, {
         method: "POST",
+        signal: ctrl.signal,
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${this.cfg.apiKey}`,
@@ -67,6 +71,7 @@ export class OpenAiChannel implements AiChannel {
       return content;
     } finally {
       clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
     }
   }
 }
