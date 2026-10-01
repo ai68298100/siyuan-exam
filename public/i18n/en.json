@@ -265,5 +265,6 @@
     "ai.customHintHint": "Appended to prompt, e.g. focus on numeric problems",
     "command.openWrongbook": "Open wrongbook",
     "ai.endpointTitle": "Endpoint & scope in settings; content sent only on generate",
-    "import.unsupportedDrop": "Unsupported file type (xlsx/csv/sy.zip only)"
+    "import.unsupportedDrop": "Unsupported file type (xlsx/csv/sy.zip only)",
+    "report.drillKp": "Drill"
 }

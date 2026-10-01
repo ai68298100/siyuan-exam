@@ -12,6 +12,7 @@
     const t = (k: string, fb = "") => i18n[k] ?? fb;
 
     let loading = $state(true);
+    let questions = $state<any[]>([]);
     let kpi = $state({ attempts: 0, accuracy: 0, eliminated: 0, streak: 0 });
     let heat = $state<{ date: string; count: number }[]>([]);
     let mastery = $state<ReturnType<typeof masteryByKp>>([]);
@@ -68,16 +69,25 @@
         heat = heatmap(d.days);
         hours = hourly(app.attempts.all());
         const banks = app.listBanks();
-        if (banks.length) {
-          const qs = await app.listQuestions(banks[0].id);
-          mastery = masteryByKp(qs, d.byQuestion, app.attempts.all());
-          weak = weakTop(mastery);
-        }
+        if (banks.length) questions = await app.listQuestions(banks[0].id);
         mockHistory = await app.listMockResults();
+        mastery = masteryByKp(questions, d.byQuestion, app.attempts.all());
+        weak = weakTop(mastery);
       } catch (e) {
         errorMsg = String(e instanceof Error ? e.message : e);
       } finally { loading = false; }
     });
+
+    /** 薄弱考点一键组卷：按考点首段过滤 → pendingPractice 移交练习台 */
+    function drillWeak(root: string) {
+      if (!app) return;
+      const picked = questions.filter((q) => q.kp?.split("/")[0] === root);
+      if (!picked.length) { showMessage(t("state.emptyBank"), 3000, "error"); return; }
+      (plugin as any).pendingPractice = picked;
+      void import("siyuan").then(({ openTab }) => {
+        openTab({ app: (plugin as any).app ?? (plugin as any), custom: { id: "exam-practice", icon: "iconExam", title: t("tab.practice"), data: { plugin, examApp: app } } } as any);
+      });
+    }
 
     const heatColor = (n: number) => n === 0 ? "var(--lv-surface-2)" : n < 5 ? "l1" : n < 15 ? "l2" : n < 30 ? "l3" : "l4";
     const maxHour = $derived(Math.max(1, ...hours));
@@ -157,6 +167,7 @@
             <span class="lv-chip lv-chip--red num">{i + 1}</span>
             <span style="flex:1">{w.root}</span>
             <span class="num" style="color:var(--lv-red);font-weight:700">{Math.round(w.accuracy * 100)}%</span>
+            <button class="lv-btn sm" onclick={() => drillWeak(w.root)}>{t("report.drillKp")}</button>
           </div>
         {/each}
       </div>
