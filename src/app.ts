@@ -62,6 +62,7 @@ export class ExamApp {
       this.probeMessage = "内核不可达：离线降级";
     }
     try { await this.attempts.load(deviceId); } catch { /* 流水损坏已在 load 内部兜底 */ }
+    try { await this.loadWrongOverlay(); } catch { this.wrongOverlay = new Map(); }
     this.invalidate();
     try {
       const banks = await this.deps.storage.load(BANK_REGISTRY_KEY);
@@ -139,7 +140,37 @@ export class ExamApp {
     return this.replayCache;
   }
 
-  wrongItems(): WrongItem[] { return activeWrongItems(this.derived()); }
+  wrongItems(): WrongItem[] {
+    const overlay = this.wrongOverlay;
+    const items = activeWrongItems(this.derived());
+    if (!overlay.size) return items;
+    // 手动处置覆盖层：按错次计数判断时效——处置后发生更新的错误（wrongCount 增长）自动清除覆盖
+    return items.filter((w) => {
+      const o = overlay.get(w.qid);
+      if (!o) return true;
+      return w.wrongCount > o.wrongCount;
+    });
+  }
+
+  /** 手动处置（docs/02 附录 A）：mastered=已掌握 / removed=永久移除；此后更新的错误自动清覆盖 */
+  async setWrongStatus(qid: string, status: "mastered" | "removed" | "active"): Promise<void> {
+    const current = this.derived().wrongbook.get(qid);
+    const key = "wrongbook/overlays";
+    const v = (await this.deps.storage.load(key)) as Record<string, { status: string; at: number; wrongCount: number }> | undefined;
+    const map: Record<string, { status: string; at: number; wrongCount: number }> = v ?? {};
+    if (status === "active") delete map[qid];
+    else map[qid] = { status, at: Date.now(), wrongCount: current?.wrongCount ?? 0 };
+    await this.deps.storage.save(key, map);
+    this.wrongOverlay = new Map(Object.entries(map));
+    this.invalidate();
+  }
+
+  private wrongOverlay = new Map<string, { status: string; at: number; wrongCount: number }>();
+
+  private async loadWrongOverlay(): Promise<void> {
+    const v = (await this.deps.storage.load("wrongbook/overlays")) as Record<string, { status: string; at: number; wrongCount: number }> | undefined;
+    this.wrongOverlay = new Map(Object.entries(v ?? {}));
+  }
 
   async saveWrongReason(qid: string, reason: "careless" | "unknown" | "trap"): Promise<void> {
     const key = WRONG_REASON_KEY_PREFIX + qid;

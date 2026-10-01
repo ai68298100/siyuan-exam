@@ -62,6 +62,7 @@ export interface AttemptEvent {
 export interface WrongItem {
   qid: string;
   firstWrongAt: number;
+  lastWrongAt: number;        // 最近一次答错时间（手动覆盖层时效判断依据）
   wrongCount: number;
   streakCorrect: number;
   reason?: "careless" | "unknown" | "trap";

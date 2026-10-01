@@ -59,14 +59,15 @@ export function replay(events: readonly AttemptEvent[]): ReplayResult {
     }
     if (e.verdict === "wrong") {
       if (!w) {
-        w = { qid: e.qid, firstWrongAt: e.ts, wrongCount: 1, streakCorrect: 0, myAnswer: e.myAnswer, status: "active" };
+        w = { qid: e.qid, firstWrongAt: e.ts, lastWrongAt: e.ts, wrongCount: 1, streakCorrect: 0, myAnswer: e.myAnswer, status: "active" };
         wrongbook.set(e.qid, w);
       } else if (w.status === "active") {
         w.wrongCount++;
+        w.lastWrongAt = e.ts;
         w.myAnswer = e.myAnswer;
       } else if (w.status === "eliminated" || w.status === "mastered") {
         // 消灭后再错：重新收录（新一轮）
-        w.status = "active"; w.wrongCount = 1; w.streakCorrect = 0; w.firstWrongAt = e.ts; w.myAnswer = e.myAnswer;
+        w.status = "active"; w.wrongCount = 1; w.streakCorrect = 0; w.firstWrongAt = e.ts; w.lastWrongAt = e.ts; w.myAnswer = e.myAnswer;
       }
     } else if (e.verdict === "correct") {
       if (w && w.status === "active") {

@@ -199,8 +199,16 @@ describe("ExamApp 集成（mock 内核 + 内存存储）", () => {
     await expect(app.startSession(qs, "single")).resolves.toBeDefined();
   });
 
-  it("流水→错题：recordAttempt 后 wrongItems 可见，重练消灭", async () => {
+  it("错题手动处置覆盖层：mastered 生效，更新的错误清覆盖", async () => {
     const { app } = await setup();
+    app.recordAttempt({ qid: "q1", kind: "practice", mode: "single", verdict: "wrong", myAnswer: "A", sessionId: "s" });
+    await app.setWrongStatus("q1", "mastered");
+    expect(app.wrongItems().map((w) => w.qid)).not.toContain("q1");
+    app.recordAttempt({ qid: "q1", kind: "practice", mode: "single", verdict: "wrong", myAnswer: "B", sessionId: "s" });
+    expect(app.wrongItems().map((w) => w.qid)).toContain("q1");
+  });
+
+  it("流水→错题：recordAttempt 后 wrongItems 可见，重练消灭", async () => {    const { app } = await setup();
     app.recordAttempt({ qid: "q9", kind: "practice", mode: "single", verdict: "wrong", myAnswer: "A", sessionId: "s1" });
     expect(app.wrongItems().map((w) => w.qid)).toContain("q9");
     app.recordAttempt({ qid: "q9", kind: "practice", mode: "wrong", verdict: "correct", myAnswer: "B", sessionId: "s1" });
