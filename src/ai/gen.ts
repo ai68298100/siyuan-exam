@@ -16,6 +16,7 @@ export interface GenOptions {
   kp?: string;                  // 考点提示（写入题目 kp）
   sourceTitle?: string;         // 来源材料标题（写入 source；引用=待 v0.4.x 块引用）
   preset?: keyof typeof PROMPT_PRESETS;
+  customHint?: string;          // 用户自定义命题要求（追加到系统提示）
   quality?: "standard" | "economy";  // 标准=二遍换角色核验（默认）；经济=单遍
   existingHashes?: Set<string>;
 }
@@ -60,15 +61,15 @@ export function buildPrompt(chunk: string, opt: GenOptions): AiMessage[] {
   const types = opt.types.length ? opt.types : ["single"];
   const typeLine = types.map((t) => ({ single: "单选", multiple: "多选", judge: "判断", fill: "填空", short: "简答" }[t])).join("、");
   const presetHint = opt.preset && PROMPT_PRESETS[opt.preset] ? PROMPT_PRESETS[opt.preset].hint : "";
+  const customHint = opt.customHint?.trim() ? `\n用户额外要求：${opt.customHint.trim()}` : "";
   const system = [
     "你是严谨的命题专家。根据给定材料出题，禁止编造材料中不存在的事实。",
     presetHint ? `命题风格：${presetHint}` : "",
-    "硬性规则：",
-    "1) 只输出一个 JSON 数组，不要任何解释文字或代码围栏；",
+    "硬性规则：",    "1) 只输出一个 JSON 数组，不要任何解释文字或代码围栏；",
     "2) 每题字段：type(stem 的题型：single/multiple/judge/fill/short)、stem(题干，禁止\"以下说法正确的是\"式空泛句)、options(字符串数组，judge/fill/short 为空数组)、answer(单选=字母；多选=字母连写如 ABD；判断=对/错；填空/简答=文本)、analysis(解析 ≥30 字，必须含因果解释)、kp(知识点标签，可为空)；",
     "3) 干扰项应为常见误解；禁止\"以上都对/都不是\"类选项；",
     "4) 难度目标：" + (opt.difficulty === "mixed" ? "易中难混合" : opt.difficulty === "easy" ? "基础" : opt.difficulty === "hard" ? "较难" : "中等") + "。",
-  ].filter(Boolean).join("\n");
+  ].filter(Boolean).join("\n") + customHint;
   const user = `【材料】\n${chunk}\n\n【要求】出 ${opt.count} 道题（题型：${typeLine}）。${opt.kp ? `考点方向：${opt.kp}。` : ""}只输出 JSON 数组。`;
   return [
     { role: "system", content: system },

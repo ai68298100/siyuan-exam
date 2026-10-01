@@ -254,6 +254,18 @@ export class ExamApp {
     throw new Error("未找到开启「每日笔记」的笔记本：请先在思源中为某笔记本开启每日笔记");
   }
 
+  /** AI 用量累计（成本记录 28 组 P2）：tokens/调用次数 累计 + 最近一次 */
+  async recordAiUsage(channelId: string, tokens: number, calls: number): Promise<void> {
+    const v = (await this.deps.storage.load("ai/usage")) as { totalTokens?: number; totalCalls?: number; last?: unknown } | undefined;
+    const log = { totalTokens: (v?.totalTokens ?? 0) + tokens, totalCalls: (v?.totalCalls ?? 0) + calls, last: { channelId, tokens, calls, at: Date.now() } };
+    await this.deps.storage.save("ai/usage", log);
+  }
+
+  async aiUsage(): Promise<{ totalTokens: number; totalCalls: number }> {
+    const v = (await this.deps.storage.load("ai/usage")) as { totalTokens?: number; totalCalls?: number } | undefined;
+    return { totalTokens: v?.totalTokens ?? 0, totalCalls: v?.totalCalls ?? 0 };
+  }
+
   // ---------- 题库包分享（v1.0；.sy.zip 原生格式） ----------
   async exportBankSyZip(bankId: string): Promise<{ zipPath: string; filename: string }> {
     const { zipPath } = await this.deps.client.exportNotebookSy(bankId);

@@ -450,6 +450,7 @@ import { ttsSpeak } from "@/core/tts";
     let aiBusy = $state(false);
     let aiQuality = $state<"standard" | "economy">("standard");
     let aiCost = $state("");
+    let aiCustomHint = $state("");
     let aiPreset = $state<keyof typeof import("@/ai/gen").PROMPT_PRESETS>("default");
     let aiQueue = $state<Question[]>([]);
     let aiRejected = $state<{ index: number; reason: string }[]>([]);
@@ -470,11 +471,14 @@ import { ttsSpeak } from "@/core/tts";
           ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
           : new SiyuanAiChannel((app as any).deps.client);
         const counting = new CountingChannel(base);
+        const aiCustomHint = String(plugin.settingUtils?.get?.("aiCustomHint") ?? "");
         const r = await generate(counting, aiSource, {
           types: ["single", "multiple", "judge"], count: aiCount, difficulty: aiDifficulty,
           kp: aiKp, sourceTitle: t("ai.pastedMaterial"), preset: aiPreset, quality: aiQuality,
+          customHint: aiCustomHint || undefined,
         });
         aiCost = `≈${counting.approxTokens} tok · ${counting.calls} 次调用`;
+        await app.recordAiUsage(counting.id, counting.approxTokens, counting.calls);
         aiQueue = r.pending; aiRejected = r.rejected; aiDuplicates = r.duplicates;
         if (!r.pending.length && !r.rejected.length) errorMsg = t("ai.empty");
       } catch (e) {
@@ -994,6 +998,10 @@ import { ttsSpeak } from "@/core/tts";
         <div class="lv-row">
           <span class="lv-chip">{t("manual.kp")}</span>
           <input class="lv-input" style="max-width:200px" bind:value={aiKp} placeholder={t("ai.kpHint")} />
+        </div>
+        <div class="lv-row">
+          <span class="lv-chip">{t("ai.customHint")}</span>
+          <input class="lv-input" style="flex:1;min-width:200px" bind:value={aiCustomHint} placeholder={t("ai.customHintHint")} />
         </div>
         <div class="lv-row">
           <button class="lv-btn lv-btn--primary" onclick={runAiGenerate} disabled={aiBusy || !aiSource.trim()}>

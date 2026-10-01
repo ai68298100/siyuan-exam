@@ -18,6 +18,10 @@ describe("切片与提示词", () => {
     expect(msgs[1].content).toContain("5 道");
     expect(msgs[1].content).toContain("判断");
   });
+  it("自定义命题要求追加到系统提示", () => {
+    const msgs = buildPrompt("材料内容", { types: ["single"], count: 3, difficulty: "easy", customHint: "多用数值计算题" });
+    expect(msgs[0].content).toContain("用户额外要求：多用数值计算题");
+  });
 });
 
 describe("容错 JSON 解析", () => {

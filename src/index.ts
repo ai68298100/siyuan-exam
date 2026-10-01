@@ -103,6 +103,14 @@ export default class LvExamPlugin extends Plugin {
             direction: "row"
         });
         this.settingUtils.addItem({
+            title: this.i18n["setting.aiCustomHint.title"],
+            description: this.i18n["setting.aiCustomHint.desc"],
+            type: "textarea",
+            key: "aiCustomHint",
+            value: "",
+            direction: "row"
+        });
+        this.settingUtils.addItem({
             title: this.i18n["setting.aiKey.title"],
             description: this.i18n["setting.aiKey.desc"],
             type: "textinput",
