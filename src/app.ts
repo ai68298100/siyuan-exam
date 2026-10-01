@@ -322,6 +322,16 @@ export class ExamApp {
   }
 
   // ---------- 导出与模考历史（v0.5） ----------
+  /** 模考成绩单写入题库"导出"文档（与错题册导出同通道） */
+  async writeScoreDoc(bankId: string, md: string): Promise<string> {
+    await this.ensureDoc(bankId, "/导出");
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const ymd = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
+    const hms = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    return this.deps.client.createDocWithMd(bankId, `/导出/模考成绩单 ${ymd}-${hms}`, md);
+  }
+
   /** 错题册导出：生成 Markdown 并写入题库笔记本"导出"文档，返回文档 id
    *  过滤（27 组 P2）：kpRoot（考点首段）/ reason（错因）/ sinceDays（最近 N 天首次答错） */
   async exportWrongbook(bankId: string, bankName: string, opts: { kpRoot?: string; reason?: string; sinceDays?: number } = {}): Promise<string> {

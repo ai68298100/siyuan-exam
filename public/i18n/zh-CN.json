@@ -269,5 +269,6 @@
     "report.drillKp": "组卷",
     "browse.searchPlaceholder": "搜索题干/选项/解析…",
     "estimate.sourceFilter": "按来源过滤（如 2023）",
-    "import.garbledWarning": "⚠ 文件编码疑似非 UTF-8/GBK，可能乱码——建议另存为 UTF-8 CSV 后重试"
+    "import.garbledWarning": "⚠ 文件编码疑似非 UTF-8/GBK，可能乱码——建议另存为 UTF-8 CSV 后重试",
+    "mock.exportToDoc": "📚 写入题库导出文档"
 }

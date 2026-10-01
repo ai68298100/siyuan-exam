@@ -269,5 +269,6 @@
     "report.drillKp": "Drill",
     "browse.searchPlaceholder": "Search stems / options / analysis…",
     "estimate.sourceFilter": "Filter by source (e.g. 2023)",
-    "import.garbledWarning": "⚠ File encoding may not be UTF-8/GBK — resave as UTF-8 CSV if garbled"
+    "import.garbledWarning": "⚠ File encoding may not be UTF-8/GBK — resave as UTF-8 CSV if garbled",
+    "mock.exportToDoc": "📚 Write to bank docs"
 }

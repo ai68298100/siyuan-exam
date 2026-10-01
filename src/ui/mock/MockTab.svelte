@@ -7,6 +7,7 @@
     function onBlur() { if (view === "exam" && session && !session.submitted) session.screenSwitches++; }
     import type { ExamApp } from "../../app";
     import type { Question } from "../../core/types";
+    import { showMessage } from "siyuan";
     import { assemble, blueprintTotals, MockSession, type Blueprint, type BlueprintSection, type MockScore } from "../../core/mock";
     import { estimateScore } from "../../core/estimate";
     
@@ -45,6 +46,7 @@
       const banks = app.listBanks();
       if (!banks.length) { loading = false; errorMsg = t("guard.needBankFirst"); return; }
       bankName = banks[0].name;
+      activeBankId = banks[0].id;
       try {
         questions = await app.listQuestions(banks[0].id);
         bp.sections = defaultSections(questions);
@@ -193,6 +195,7 @@
     let estMine = $state("");
     let estResult = $state<ReturnType<typeof import("../../core/estimate").estimateScore>>(null);
     let estFromBank = $state(false);
+    let activeBankId = $state("");
     let estSourceFilter = $state("");
     let estHistory = $state<any[]>([]);
 
@@ -465,6 +468,15 @@
     {/if}
     <div class="lv-row">
       <button class="lv-btn ghost sm" onclick={exportScoreMd}>📄 {t("mock.exportScore")}</button>
+      {#if activeBankId}
+        <button class="lv-btn ghost sm" onclick={async () => {
+          if (!score) return;
+          const { scoreToMarkdown } = await import("@/core/exportScore");
+          const md = scoreToMarkdown(bp, score, startedAt);
+          await (app as any).writeScoreDoc(activeBankId, md);
+          showMessage(t("report.dailyDone"), 3200, "info");
+        }}>📚 {t("mock.exportToDoc")}</button>
+      {/if}
       <button class="lv-btn lv-btn--primary" onclick={rewrongDrill}>❌ {t("mock.rewrong")}</button>
       <button class="lv-btn" onclick={() => { view = "config"; }}>▶ {t("mock.again")}</button>
     </div>
