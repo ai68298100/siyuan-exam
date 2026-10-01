@@ -5,6 +5,7 @@
 import type { Question, QuestionType } from "../core/types";
 import { normalizeAnswer, questionHash, foldText, OPTION_LETTERS } from "../core/answer";
 import { newQuestionId, newBatchId } from "../core/ids";
+import { newGroupId } from "../core/cbt";
 
 export interface ImportOptions {
   kp?: string;                 // 整批兜底考点
@@ -13,6 +14,8 @@ export interface ImportOptions {
   sourceKind?: "real" | "mock";
   dedupe?: boolean;            // 默认 true：批内 + 与已存在 hash 集合去重
   existingHashes?: Set<string>;
+  /** 内部：材料组自动分组的进行中组 ID（parseExcelRows 维护） */
+  _pendingGroup?: string;
 }
 
 export interface ImportError {
@@ -34,6 +37,7 @@ const TYPE_ALIASES: Record<string, QuestionType> = {
   判断: "judge", 判断题: "judge", judge: "judge", truefalse: "judge",
   填空: "fill", 填空题: "fill", fill: "fill",
   简答: "short", 简答题: "short", short: "short", 问答: "short", 论述: "short",
+  材料: "material", 材料题: "material", material: "material", 共用题干: "material", 共用备选答案: "material",
 };
 
 export function parseType(raw: string): QuestionType | null {
@@ -139,6 +143,7 @@ export function parseExcelRows(rows: string[][], map: ExcelColumnMap, opt: Impor
   const dedupe = opt.dedupe !== false;
   let duplicates = 0;
   const batch = newBatchId();
+  let lastKp = "";              // 材料组内子题沿用材料的考点
 
   rows.forEach((row, i) => {
     const rowNo = i + 2; // 首行表头
@@ -148,19 +153,32 @@ export function parseExcelRows(rows: string[][], map: ExcelColumnMap, opt: Impor
       if (!type) throw new Error(`题型无法识别："${cell(map.type)}"`);
       const stem = cell(map.stem);
       const options = map.options.map((n) => cell(n)).filter((s) => s !== "");
-      const answer = normalizeAnswer(type, cell(map.answer));
-      if (!answer) throw new Error(`答案无法识别："${cell(map.answer)}"`);
+      // 共用题干（医考材料组范式）：材料行开启新组；其后子题自动携带组 ID 与材料考点；
+      // 子题带考点或「独立」时结束该组
+      let group: string | undefined;
+      if (type === "material") {
+        group = newGroupId();
+        opt._pendingGroup = group;
+      } else if (!cell(map.kp) && opt._pendingGroup != null) {
+        group = opt._pendingGroup;          // 无考点的子题跟随材料组
+      } else {
+        opt._pendingGroup = undefined;      // 有考点的独立子题结束组
+      }
+      const answer = type === "material" ? "" : normalizeAnswer(type, cell(map.answer));
+      if (type !== "material" && !answer) throw new Error(`答案无法识别："${cell(map.answer)}"`);
       const diffRaw = parseInt(cell(map.difficulty) || "", 10);
       const scoreRaw = parseFloat(cell(map.score) || "0");
       const q = build({
         type, stem, options, answer,
         analysis: cell(map.analysis),
         difficulty: Number.isFinite(diffRaw) ? Math.min(5, Math.max(1, diffRaw)) : undefined,
-        kp: cell(map.kp),
+        kp: cell(map.kp) || (group ? lastKp : ""),
         score: Number.isFinite(scoreRaw) && scoreRaw > 0 ? scoreRaw : undefined,
         source: cell(map.source),
+        group,
       }, opt);
-      const bad = validate(q);
+      if (type === "material") lastKp = q.kp;
+      const bad = type === "material" ? (foldText(stem) ? null : "材料题干为空") : validate(q);
       if (bad) throw new Error(bad);
       if (dedupe && seenHash.has(q.hash)) duplicates++;
       else { seenHash.add(q.hash); ok.push(q); }

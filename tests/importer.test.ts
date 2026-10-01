@@ -43,6 +43,26 @@ describe("Aiken 解析", () => {
     expect(r.ok).toHaveLength(0);
     expect(r.errors[0].reason).toContain("超出选项范围");
   });
+  it("共用题干：材料行开启组，子题自动携带组 ID 与材料考点", () => {
+    const rows = [
+      ["1", "材料", "患者男，35 岁，发热咳嗽……", "", "", "", "", "", "病例分析", "", "呼吸内科"],
+      ["2", "单选", "最可能诊断？", "肺炎", "肺癌", "", "", "A", "略", "", ""],
+      ["3", "判断", "应抗感染治疗？", "", "", "", "", "对", "", "", ""],
+      ["4", "单选", "独立题", "1", "2", "", "", "A", "", "", "算术"],
+    ];
+    const map = { type: 1, stem: 2, answer: 7, options: [3, 4, 5, 6], analysis: 8, kp: 10 };
+    const r = parseExcelRows(rows, map);
+    expect(r.ok).toHaveLength(4);
+    const mat = r.ok.find((q) => q.type === "material")!;
+    const subs = r.ok.filter((q) => q.type !== "material");
+    expect(mat.group).toMatch(/^g-[0-9a-f]{6}$/);
+    for (const s of subs.slice(0, 2)) {
+      expect(s.group).toBe(mat.group);        // 子题携带组 ID
+      expect(s.kp).toBe("呼吸内科");           // 沿用材料考点
+    }
+    expect(subs[2].group).toBeUndefined();     // 独立题不在组内
+    expect(subs[2].kp).toBe("算术");
+  });
 });
 
 describe("Excel 解析", () => {

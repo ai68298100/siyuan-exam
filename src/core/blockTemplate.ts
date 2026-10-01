@@ -8,7 +8,7 @@ import type { Question, QuestionType } from "./types";
 import { OPTION_LETTERS, normalizeAnswer, questionHash } from "./answer";
 import { newQuestionId, newBatchId } from "./ids";
 
-export const QUESTION_TYPES: QuestionType[] = ["single", "multiple", "judge", "fill", "short"];
+export const QUESTION_TYPES: QuestionType[] = ["single", "multiple", "judge", "fill", "short", "material"];
 
 /** Question → 超级块 markdown（写入 createDocWithMd / appendBlock） */
 export function questionToMarkdown(q: Question): string {
@@ -36,6 +36,7 @@ export function ialOf(q: Question): string {
   if (q.year) attrs["exam-year"] = q.year;
   if (q.kp) attrs["exam-kp"] = q.kp;
   if (q.batch) attrs["exam-batch"] = q.batch;
+  if (q.group) attrs["exam-group"] = q.group;
   if (q.review) attrs["exam-review"] = q.review;
   if (q.alt?.length) attrs["exam-alt"] = q.alt.join("|");
   if (typeof q.confidence === "number") attrs["exam-confidence"] = q.confidence.toFixed(2);
@@ -96,6 +97,7 @@ export function questionFromBlock(input: FromBlockInput): Question | null {
     sourceKind: attrs["exam-source-kind"] as Question["sourceKind"],
     year: attrs["exam-year"],
     kp: attrs["exam-kp"],
+    group: attrs["exam-group"],
     origin: (attrs["exam-origin"] as Question["origin"]) ?? "imported",
     batch: attrs["exam-batch"],
     review: attrs["exam-review"] as Question["review"],
@@ -114,7 +116,7 @@ export function makeQuestion(p: {
   alt?: string[];
 }): Question {
   const options = p.options ?? [];
-  const answer = normalizeAnswer(p.type, p.answer) ?? p.answer;
+  const answer = p.type === "material" ? "" : (normalizeAnswer(p.type, p.answer) ?? p.answer);
   return {
     id: newQuestionId(),
     type: p.type,

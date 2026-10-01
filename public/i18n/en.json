@@ -213,5 +213,7 @@
     "export.run": "Export",
     "mock.legacyRecord": "Legacy record: no per-section detail",
     "mock.radar": "Section accuracy radar",
-    "mock.lockout": "CBT lockout (no going back)"
+    "mock.lockout": "CBT lockout (no going back)",
+    "qtype.material": "Material",
+    "manual.group": "Linked material group ID (optional)"
 }

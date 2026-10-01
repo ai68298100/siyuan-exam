@@ -10,7 +10,8 @@ export type QuestionType =
   | "multiple"  // 多选
   | "judge"     // 判断
   | "fill"      // 填空
-  | "short";    // 简答（展示/背诵，不做机器判分）
+  | "short"     // 简答（展示/背诵，不做机器判分）
+  | "material"; // 共用题干材料（题组母块，不参与判分）
 
 /** 题目（题源层的内存表示；持久化为思源块 + exam-* 属性） */
 export interface Question {
@@ -32,6 +33,7 @@ export interface Question {
   alt?: string[];             // fill/short 可接受答案别名
   confidence?: number;        // AI 二遍核验置信度 0-1（ Quanta 范式：≥0.90 可信）
   fav?: boolean;              // 收藏（exam-fav="1"，docs/02 §2.4）
+  group?: string;             // 共用题干组 ID（材料与子题共享，cbt 引擎）
   hash: string;               // 去重指纹（stem+options）
 }
 

@@ -102,7 +102,7 @@ import { ttsSpeak } from "@/core/tts";
 
     async function startDrill(mode: string) {
       errorMsg = "";
-      const qs = await loadQuestions();
+      const qs = (await loadQuestions()).filter((q) => q.type !== "material");
       if (!qs.length) { errorMsg = t("state.emptyBank"); return; }
       let picked: Question[] = [];
       if (mode === "wrong") {
@@ -130,7 +130,25 @@ import { ttsSpeak } from "@/core/tts";
       try { await app.toggleFav(q); } catch { /* 离线静默 */ }
     }
 
+    /** 共用题干：材料组母卡（同组材料的题干作为上下文渲染） */
+    const materialContext = $derived.by(() => {
+      const q = view === "session" ? session?.current : null;
+      if (!q?.group) return "";
+      const mat = questions.find((x) => x.type === "material" && x.group === q.group);
+      return mat?.stem ?? "";
+    });
+
+    /** 共用题干：材料组母卡（背诵视图） */
+    const reciteMaterial = $derived.by(() => {
+      const q = reciteQueue[reciteCursor];
+      if (!q?.group) return "";
+      const mat = questions.find((x) => x.type === "material" && x.group === q.group);
+      return mat?.stem ?? "";
+    });
+
     /** 备考计划（v0.5）：读取设置考日 → planToday 聚合（冲刺 cram 优先/常规到期优先） */
+    // 可练习题过滤在 loadQuestions 后各入口处执行（材料母块只作上下文）
+
     let plan = $state<ReturnType<typeof import("@/core/planner").planToday> | null>(null);
 
     function rebuildPlan() {
@@ -152,10 +170,10 @@ import { ttsSpeak } from "@/core/tts";
     /** 每日任务直接使用计划队列（零决策入口） */
     async function startToday() {
       errorMsg = "";
-      const qs = await loadQuestions();
+      const qs = (await loadQuestions()).filter((q) => q.type !== "material");
       if (!qs.length) { errorMsg = t("state.emptyBank"); return; }
       rebuildPlan();
-      const queue = plan?.queue?.length ? plan.queue : qs.slice(0, 10);
+      const queue = (plan?.queue?.length ? plan.queue : qs.slice(0, 10)).filter((q) => q.type !== "material");
       session = await app.startSession(queue, plan?.mode === "sprint" ? "cram" : "daily");
       feedback = null; selected = ""; sessionDone = null;
       view = "session";
@@ -665,6 +683,9 @@ import { ttsSpeak } from "@/core/tts";
             <button class="lv-chip" class:acc={!!q.fav} title="E" onclick={() => toggleFavCurrent()}>⭐</button>
           </div>
           <div class="lv-card lv-question">
+            {#if materialContext}
+              <div class="lv-analysis" style="margin-bottom:12px"><b>📎 共用材料：</b>{materialContext}</div>
+            {/if}
             {#if stemHtml}<div class="lv-stem lv-rich b3-typography">{@html stemHtml}</div>{:else}<div class="lv-stem">{q.stem}</div>{/if}
             {#if q.options.length}
               <div role="radiogroup" aria-label={t("session.options")}>
@@ -762,6 +783,9 @@ import { ttsSpeak } from "@/core/tts";
       {:else if reciteQueue[reciteCursor]}
         {@const q = reciteQueue[reciteCursor]}
         <div class="lv-card lv-question">
+          {#if reciteMaterial}
+            <div class="lv-analysis" style="margin-bottom:12px"><b>📎 共用材料：</b>{reciteMaterial}</div>
+          {/if}
           {#if stemHtml}<div class="lv-stem lv-rich b3-typography">{@html stemHtml}</div>{:else}<div class="lv-stem">{q.stem}</div>{/if}
           {#if !reciteRevealed}
             <div class="lv-row" style="justify-content:center">
