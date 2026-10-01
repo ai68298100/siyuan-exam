@@ -175,5 +175,11 @@
     "ai.saved": "已入库",
     "ai.pendingBadge": "待审核 · AI 生成",
     "ai.empty": "模型没有返回可用题目，请调整材料或重试",
-    "mock.confirmHandIn": "还有 {n} 题未作答，确认交卷？"
+    "mock.confirmHandIn": "还有 {n} 题未作答，确认交卷？",
+    "ai.preset": "命题风格",
+    "ai.preset.default": "通用",
+    "explain.ask": "🤖 讲解此题",
+    "explain.save": "📌 存为笔记块",
+    "explain.saved": "✓ 已存为题目笔记子块",
+    "mock.fullscreen": "全屏"
 }

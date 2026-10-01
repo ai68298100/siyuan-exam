@@ -187,6 +187,13 @@ export class ExamApp {
     this.invalidate();
   }
 
+  /** 题目笔记子块（docs/02 §2.4）：kind = mnemonic | note | ai-explain */
+  async appendQuestionNote(qid: string, blockId: string | undefined, text: string, kind: "mnemonic" | "note" | "ai-explain"): Promise<void> {
+    if (!blockId) throw new Error("题目块不存在（先完成导入）");
+    const md = `{{{row\n${text}\n}}}\n{: exam-note-id="${qid}-n-${Date.now().toString(36)}" exam-note-kind="${kind}"`;
+    await this.deps.client.appendBlock(blockId, md);
+  }
+
   // ---------- 记忆层（v0.2：riff 卡包 / 转卡 / 评级） ----------
   /** 确保题库卡包存在并返回 deckID（卡包名 小驴考试/<题库名>，与内置闪卡隔离） */
   async ensureDeck(bankName: string): Promise<string> {

@@ -155,6 +155,25 @@
     }
 
     function percentBar(v: number, full: number) { return full ? Math.round((v / full) * 100) : 0; }
+
+    /** 雷达图坐标（成绩单；n 段均分圆周，值域 0-100%） */
+    function radarPoints(vals: number[]): string {
+      const cx = 110, cy = 92, r = 72, n = vals.length;
+      if (!n) return "";
+      return vals.map((v, i) => {
+        const ang = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+        const rr = r * Math.max(0.04, Math.min(1, v));
+        return `${(cx + rr * Math.cos(ang)).toFixed(1)},${(cy + rr * Math.sin(ang)).toFixed(1)}`;
+      }).join(" ");
+    }
+    function radarLabel(vals: number[]): { x: number; y: number; name: string }[] {
+      const cx = 110, cy = 92, r = 86, n = vals.length;
+      return vals.map((_v, i) => {
+        const ang = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+        return { x: cx + r * Math.cos(ang), y: cy + r * Math.sin(ang) + 4, name: score!.sections[i].name };
+      });
+    }
+    const secAccuracy = $derived(score ? score.sections.map((s) => (s.total ? s.correct / s.total : 0)) : []);
 </script>
 
 <svelte:window onblur={onBlur} />
@@ -214,6 +233,11 @@
       <span class="lv-chip num">{cursor + 1}/{session.state.qids.length}</span>
       <span class="fn__flex-1"></span>
       <button class="lv-btn sm" onclick={() => session?.toggleFlag(current)}>🚩 {session.flags.has(current) ? "✓" : ""}</button>
+      <button class="lv-btn sm" title={t("mock.fullscreen")} onclick={(e) => {
+        const el = (e.target as HTMLElement).closest(".lv-pad");
+        if (!document.fullscreenElement) el?.requestFullscreen?.();
+        else document.exitFullscreen?.();
+      }}>⛶</button>
       <button class="lv-btn lv-btn--primary sm" onclick={() => finishExam(false)}>{t("mock.handIn")}</button>
     </div>
     <div class="lv-card lv-question">
@@ -258,9 +282,22 @@
       <div class="lv-row" style="margin:4px 0">
         <span style="width:70px">{sec.name}</span>
         <div class="progress" style="flex:1"><i style="width:{percentBar(sec.score, sec.full)}%"></i></div>
-        <span class="num lv-muted">{sec.score}/{sec.full} · {t("mock.correct")} {sec.correct}/{sec.total}</span>
+        <span class="num lv-muted">{sec.score}/{sec.full} · {t("mock.correct")} {sec.correct}/{sec.total} · {Math.round(sec.timeSpentMs / 1000)}s</span>
       </div>
     {/each}
+    {#if score.sections.length >= 3}
+      <div class="lv-card" style="margin:12px 0">
+        <b style="font-size:13px">{t("mock.radar")}</b>
+        <svg viewBox="0 0 220 190" style="width:100%;max-width:300px;margin:0 auto;display:block">
+          <polygon points={radarPoints(score.sections.map(() => 1))} fill="none" stroke="var(--lv-border)" />
+          <polygon points={radarPoints(score.sections.map(() => 0.5))} fill="none" stroke="var(--lv-border)" stroke-dasharray="3 3" />
+          <polygon points={radarPoints(secAccuracy)} fill="var(--lv-accent-soft)" stroke="var(--lv-accent)" stroke-width="2" />
+          {#each radarLabel(secAccuracy) as lb}
+            <text x={lb.x} y={lb.y} font-size="10" fill="var(--lv-text-3)" text-anchor="middle">{lb.name}</text>
+          {/each}
+        </svg>
+      </div>
+    {/if}
     <div class="lv-row">
       <span class="lv-chip num">🚩 {score.flagsUsed}</span>
       <span class="lv-chip num">{t("mock.changes")} {score.changes}</span>

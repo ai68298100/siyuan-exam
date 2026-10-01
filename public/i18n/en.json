@@ -175,5 +175,11 @@
     "ai.saved": "Imported",
     "ai.pendingBadge": "pending review · AI generated",
     "ai.empty": "Model returned no usable questions — adjust material and retry",
-    "mock.confirmHandIn": "{n} questions unanswered — hand in now?"
+    "mock.confirmHandIn": "{n} questions unanswered — hand in now?",
+    "ai.preset": "Style",
+    "ai.preset.default": "General",
+    "explain.ask": "🤖 Explain",
+    "explain.save": "📌 Save as note block",
+    "explain.saved": "✓ Saved as question note",
+    "mock.fullscreen": "Fullscreen"
 }
