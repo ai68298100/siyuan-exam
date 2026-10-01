@@ -667,6 +667,8 @@ import { ttsSpeak } from "@/core/tts";
 
     async function onExcelFile(e: Event) {
       importError = ""; importResult = null; importReport = null;
+      // 清理上次导入残留（TODO 27 组：多 Sheet 残留状态 bug 预防）
+      pendingWorkbook = null; sheetNames = []; sheetRowsCache = new Map();
       const input = e.target as HTMLInputElement;
       const file = input.files?.[0];
       if (!file) return;
