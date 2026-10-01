@@ -6,6 +6,11 @@ import type { AiMessage } from "./client";
 
 export type ExplainMode = "explain" | "hint" | "socratic";
 
+/** 苏格拉底追问：在既有对话史上追加用户消息（多轮保持） */
+export function continueExplainMessages(history: AiMessage[], followUp: string): AiMessage[] {
+  return [...history, { role: "user", content: followUp }];
+}
+
 export function buildExplainMessages(q: Question, myAnswer: string | null, mode: ExplainMode): AiMessage[] {
   const fact = [
     `题干：${q.stem}`,

@@ -223,5 +223,8 @@
     "share.desktopOnly": "Desktop · import needs Electron (file path)",
     "share.needDesktop": "Browser cannot read local paths — use SiYuan desktop",
     "estimate.fromBank": "Use bank questions as answer key",
-    "estimate.bankQ": "Bank questions"
+    "estimate.bankQ": "Bank questions",
+    "tts.pureListen": "Pure listening (blur text, auto read)",
+    "explain.followUp": "Follow up…",
+    "explain.send": "Send"
 }

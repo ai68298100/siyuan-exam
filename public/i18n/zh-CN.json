@@ -223,5 +223,8 @@
     "share.desktopOnly": "桌面端 · 导入需 Electron（文件路径）",
     "share.needDesktop": "浏览器端无法读取本地路径，请在思源桌面端使用",
     "estimate.fromBank": "用题库题目作为标准答案序列",
-    "estimate.bankQ": "题库题数"
+    "estimate.bankQ": "题库题数",
+    "tts.pureListen": "纯听题（隐藏题面，自动朗读）",
+    "explain.followUp": "继续追问…",
+    "explain.send": "发送"
 }

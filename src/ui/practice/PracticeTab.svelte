@@ -259,10 +259,12 @@ import { ttsSpeak } from "@/core/tts";
       } finally { input.value = ""; }
     }
 
-    // ---------- AI 讲解（v0.4：错题逐选项解释；可存为笔记子块） ----------
+    // ---------- AI 讲解（v0.4：错题逐选项解释；多轮追问；可存为笔记子块） ----------
     let explainText = $state("");
     let explainBusy = $state(false);
     let explainQid = $state("");
+    let explainHistory = $state<Record<string, import("@/ai/client").AiMessage[]>>({});
+    let explainFollowUp = $state("");
 
     async function explainCurrent(mode: "explain" | "hint" | "socratic" = "explain") {
       const q = session?.current;
@@ -272,15 +274,53 @@ import { ttsSpeak } from "@/core/tts";
         const { SiyuanAiChannel, OpenAiChannel } = await import("@/ai/client");
         const { buildExplainMessages } = await import("@/ai/explain");
         const endpoint = String(plugin.settingUtils?.get?.("aiEndpoint") ?? "");
-        const key = String((plugin as any).getSecret?.("lv-exam-ai-key") || plugin.settingUtils?.get?.("aiKey") || "");
+        const key = String(plugin.settingUtils?.get?.("aiKey") ?? "");
         const model = String(plugin.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
         const ch = endpoint && key
           ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
           : new SiyuanAiChannel((app as any).deps.client);
-        explainText = await ch.chat(buildExplainMessages(q, feedback.myAnswer, mode));
+        const messages = buildExplainMessages(q, feedback.myAnswer, mode);
+        explainText = await ch.chat(messages);
+        explainHistory[q.id] = [...messages, { role: "assistant", content: explainText }];
       } catch (e) {
         explainText = String(e instanceof Error ? e.message : e);
       } finally { explainBusy = false; }
+    }
+
+    async function sendFollowUp() {
+      const q = session?.current;
+      const history = explainHistory[q?.id ?? ""];
+      if (!q || !history?.length || explainBusy || !explainFollowUp.trim()) return;
+      explainBusy = true;
+      try {
+        const { SiyuanAiChannel, OpenAiChannel } = await import("@/ai/client");
+        const { continueExplainMessages } = await import("@/ai/explain");
+        const endpoint = String(plugin.settingUtils?.get?.("aiEndpoint") ?? "");
+        const key = String(plugin.settingUtils?.get?.("aiKey") ?? "");
+        const model = String(plugin.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
+        const ch = endpoint && key
+          ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
+          : new SiyuanAiChannel((app as any).deps.client);
+        const messages = continueExplainMessages(history, explainFollowUp.trim());
+        const reply = await ch.chat(messages);
+        explainHistory[q.id] = [...messages, { role: "assistant", content: reply }];
+        explainText = (explainText.endsWith(reply) ? explainText : explainText + "\n\n") + "【追问】" + explainFollowUp.trim() + "\n" + reply;
+        explainFollowUp = "";
+      } catch (e) {
+        explainText = String(e instanceof Error ? e.message : e);
+      } finally { explainBusy = false; }
+    }
+
+    // ---------- 纯听题 lite（TTS + 遮罩） ----------
+    let pureListen = $state(false);
+    function togglePureListen() {
+      const q = session?.current;
+      if (!q) return;
+      pureListen = !pureListen;
+      void import("@/core/tts").then((m) => {
+        if (pureListen) m.ttsSpeak([q.stem, ...q.options].join(" "));
+        else m.ttsStop?.();
+      });
     }
 
     async function saveExplain() {
@@ -717,9 +757,10 @@ import { ttsSpeak } from "@/core/tts";
             <span class="lv-chip">{t("session.progress")}: <span class="num">{session.progress.done}/{session.progress.total}</span></span>
             <span class="lv-chip lv-chip--acc">{t("qtype." + q.type)}</span>
             <button class="lv-chip" title={t("tts.read")} onclick={() => ttsSpeak([q.stem, ...q.options].join(" "))}>🔊</button>
+            <button class="lv-chip" class:acc={pureListen} title={t("tts.pureListen")} onclick={togglePureListen}>🙈</button>
             <button class="lv-chip" class:acc={!!q.fav} title="E" onclick={() => toggleFavCurrent()}>⭐</button>
           </div>
-          <div class="lv-card lv-question">
+          <div class="lv-card lv-question" class:lv-pure={pureListen}>
             {#if materialContext}
               <div class="lv-analysis" style="margin-bottom:12px"><b>📎 共用材料：</b>{materialContext}</div>
             {/if}
@@ -790,10 +831,21 @@ import { ttsSpeak } from "@/core/tts";
                 {@const qidNow = session.current.id}
                 {#if explainQid === qidNow}
                   <div class="lv-analysis lv-explain">{explainText}</div>
+                    <button class="lv-btn" onclick={() => explainCurrent("hint")} disabled={explainBusy}>💡 {t("explain.hint")}</button>
+                  <button class="lv-btn" onclick={() => explainCurrent("socratic")} disabled={explainBusy}>🧠 {t("explain.socratic")}</button>
+                {/if}
+              {/if}
+              {#if explainText && session?.current && explainQid === session.current.id}
+                <div class="lv-analysis lv-explain">{explainText}</div>
+                <div class="lv-row">
                   {#if !explainText.startsWith("✓")}
                     <button class="lv-btn sm" onclick={saveExplain}>📌 {t("explain.save")}</button>
                   {/if}
-                {/if}
+                  <input class="lv-input" style="flex:1;min-width:160px" placeholder={t("explain.followUp")}
+                    bind:value={explainFollowUp}
+                    onkeydown={(e) => e.key === "Enter" && sendFollowUp()} />
+                  <button class="lv-btn sm" onclick={sendFollowUp} disabled={explainBusy || !explainFollowUp.trim()}>{t("explain.send")}</button>
+                </div>
               {/if}
             </div>
           </div>
@@ -1115,6 +1167,8 @@ import { ttsSpeak } from "@/core/tts";
   .lv-resume { display: flex; gap: 14px; align-items: center; }
   .lv-resume > div:first-child { flex: 1; }
   .lv-session-head { justify-content: flex-start; }
+  .lv-pure .lv-stem, .lv-pure .lv-opt > span:not(.key) { filter: blur(8px); user-select: none; }
+  .lv-pure .lv-opt .key { filter: none; }
   .lv-question { margin-top: 6px; }
   .lv-stem { font-size: 16px; line-height: 1.75; margin-bottom: 14px; white-space: pre-wrap; }
   .lv-opt { display: flex; gap: 12px; align-items: flex-start; width: 100%; text-align: left; padding: 11px 14px; border-radius: var(--lv-r-2); border: 1.5px solid var(--lv-border); margin-bottom: 8px; cursor: pointer; background: var(--lv-surface); font: inherit; color: inherit; transition: all var(--lv-dur-micro) ease; }

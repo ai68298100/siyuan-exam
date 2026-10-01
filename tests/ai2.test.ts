@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { generate, reviewQuestions, REVIEW_CONFIDENCE_MIN } from "../src/ai/gen";
-import { buildExplainMessages } from "../src/ai/explain";
+import { buildExplainMessages, continueExplainMessages } from "../src/ai/explain";
 import { CountingChannel } from "../src/ai/counting";
 import { SiyuanAiChannel } from "../src/ai/client";
 import { KernelApiClient } from "../src/kernel/client";
@@ -106,6 +106,14 @@ describe("计数通道与讲解模式", () => {
     expect(ex[0].content).toContain("逐选项");
     expect(hi[0].content).toContain("不得复述正确选项");
     expect(so[0].content).toContain("不陈述正确答案");
+  });
+  it("多轮追问保持历史顺序", () => {
+    const q = makeQuestion({ type: "single", stem: "Q", options: ["1", "2"], answer: "A" });
+    const base = buildExplainMessages(q, "B", "socratic");
+    const cont = continueExplainMessages(base, "为什么 C 不对？");
+    expect(cont).toHaveLength(3);
+    expect(cont[2]).toEqual({ role: "user", content: "为什么 C 不对？" });
+    expect(cont[0].role).toBe("system");
   });
   it("思源通道拼接系统指令", async () => {
     const kernel = { aiChat: async (msg: string) => (msg.startsWith("[指令]") ? "ok" : "") } as unknown as KernelApiClient;
