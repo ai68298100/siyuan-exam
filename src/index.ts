@@ -79,6 +79,14 @@ export default class LvExamPlugin extends Plugin {
             direction: "row"
         });
         this.settingUtils.addItem({
+            title: this.i18n["setting.aiModel.title"],
+            description: this.i18n["setting.aiModel.desc"],
+            type: "textinput",
+            key: "aiModel",
+            value: "gpt-4o-mini",
+            direction: "row"
+        });
+        this.settingUtils.addItem({
             title: this.i18n["setting.aiKey.title"],
             description: this.i18n["setting.aiKey.desc"],
             type: "textinput",

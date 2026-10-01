@@ -2,6 +2,9 @@
     // 模考场（v0.3）：蓝图配置器 → 全真考试（计时/答题卡/标旗）→ 成绩单
     // 规格见 docs/11 S5/S6/S7；引擎见 src/core/mock.ts（53 项单测覆盖）
     import { onMount } from "svelte";
+
+    /** 切屏计数（docs/11 S6：失焦计次进报告，不阻断） */
+    function onBlur() { if (view === "exam" && session && !session.submitted) session.screenSwitches++; }
     import type { ExamApp } from "../../app";
     import type { Question } from "../../core/types";
     import { assemble, blueprintTotals, MockSession, type Blueprint, type BlueprintSection, type MockScore } from "../../core/mock";
@@ -92,7 +95,7 @@
       view = "exam";
       timer = setInterval(() => {
         nowTick = Date.now();
-        if (session?.shouldAutoSubmit(nowTick)) finishExam();
+        if (session?.shouldAutoSubmit(nowTick)) finishExam(true);
       }, 1000);
     }
 
@@ -110,7 +113,12 @@
       if (bp.sectionTimed && currentSection) session.enterSection(currentSection, Date.now());
     }
 
-    async function finishExam() {
+    async function finishExam(auto = false) {
+      // 提前交卷二次确认（TODO 27：未答完且非自动交卷）
+      if (!auto && session && !session.shouldAutoSubmit(Date.now())) {
+        const unanswered = session.state.qids.length - session.answers.size;
+        if (unanswered > 0 && !confirm(t("mock.confirmHandIn").replace("{n}", String(unanswered)))) return;
+      }
       if (timer) { clearInterval(timer); timer = null; }
       session?.submit(Date.now());
       // 作答写流水（kind=mock；模考错题自动进错题本——replayer 收录）
@@ -148,6 +156,8 @@
 
     function percentBar(v: number, full: number) { return full ? Math.round((v / full) * 100) : 0; }
 </script>
+
+<svelte:window onblur={onBlur} />
 
 <div class="fn__flex-1 lv-pad">
   <div class="block__icons">
@@ -204,7 +214,7 @@
       <span class="lv-chip num">{cursor + 1}/{session.state.qids.length}</span>
       <span class="fn__flex-1"></span>
       <button class="lv-btn sm" onclick={() => session?.toggleFlag(current)}>🚩 {session.flags.has(current) ? "✓" : ""}</button>
-      <button class="lv-btn lv-btn--primary sm" onclick={finishExam}>{t("mock.handIn")}</button>
+      <button class="lv-btn lv-btn--primary sm" onclick={() => finishExam(false)}>{t("mock.handIn")}</button>
     </div>
     <div class="lv-card lv-question">
       <div class="lv-stem">{currentQ.stem}</div>

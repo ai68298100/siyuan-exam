@@ -101,6 +101,12 @@ export class KernelApiClient {
     return r;
   }
 
+  /** 思源内置 AI（/api/ai/chatGPT 单轮 msg 语义；端点 2026-10-02 实测存在） */
+  async aiChat(msg: string): Promise<unknown> {
+    const r = await this.t.post("/api/ai/chatGPT", { msg });
+    return r.data;
+  }
+
   async renderMarkdown(markdown: string): Promise<string> {
     const r = await this.t.post("/api/lute/md2html", { markdown, mode: "" });
     return String((r.data as Record<string, unknown>)?.html ?? "");

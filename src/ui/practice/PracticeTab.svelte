@@ -11,7 +11,7 @@
     const i18n = $derived(plugin?.i18n ?? {});
     const t = (k: string, fb = "") => i18n[k] ?? fb;
 
-    type View = "entry" | "session" | "browse" | "import" | "recite" | "manual";
+    type View = "entry" | "session" | "browse" | "import" | "recite" | "manual" | "ai";
     let view: View = $state("entry");
     let loading = $state(true);
     let errorMsg = $state("");
@@ -254,6 +254,54 @@
       } finally { mSaving = false; }
     }
 
+    // ---------- AI 出题（v0.4：双通道 + 待审核队列，Inbox 式永不直接入库） ----------
+    let aiSource = $state("");
+    let aiCount = $state(5);
+    let aiDifficulty = $state<"easy" | "medium" | "hard" | "mixed">("mixed");
+    let aiKp = $state("");
+    let aiBusy = $state(false);
+    let aiQueue = $state<Question[]>([]);
+    let aiRejected = $state<{ index: number; reason: string }[]>([]);
+    let aiDuplicates = $state(0);
+    let aiSaved = $state(0);
+
+    async function runAiGenerate() {
+      if (aiBusy || !aiSource.trim()) return;
+      aiBusy = true; errorMsg = ""; aiQueue = []; aiRejected = []; aiDuplicates = 0; aiSaved = 0;
+      try {
+        const { generate } = await import("@/ai/gen");
+        const { SiyuanAiChannel, OpenAiChannel } = await import("@/ai/client");
+        const endpoint = String(plugin.settingUtils?.get?.("aiEndpoint") ?? "");
+        const key = String(plugin.settingUtils?.get?.("aiKey") ?? "");
+        const model = String(plugin.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
+        const ch = endpoint && key
+          ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
+          : new SiyuanAiChannel((app as any).deps.client);
+        const r = await generate(ch, aiSource, {
+          types: ["single", "multiple", "judge"], count: aiCount, difficulty: aiDifficulty,
+          kp: aiKp, sourceTitle: t("ai.pastedMaterial"),
+        });
+        aiQueue = r.pending; aiRejected = r.rejected; aiDuplicates = r.duplicates;
+        if (!r.pending.length && !r.rejected.length) errorMsg = t("ai.empty");
+      } catch (e) {
+        errorMsg = String(e instanceof Error ? e.message : e);
+      } finally { aiBusy = false; }
+    }
+
+    async function approveAi(q: Question) {
+      await app.writeManualQuestion(activeBankId, q);
+      aiQueue = aiQueue.filter((x) => x.id !== q.id);
+      aiSaved++;
+    }
+
+    function dropAi(q: Question) {
+      aiQueue = aiQueue.filter((x) => x.id !== q.id);
+    }
+
+    async function approveAllAi() {
+      for (const q of [...aiQueue]) await approveAi(q);
+    }
+
     // ---------- 导入 ----------
     function doParseText() {
       importError = ""; importResult = null;
@@ -437,6 +485,7 @@
         </div>
         <div class="lv-row" style="margin-top:14px">
           <button class="lv-btn" onclick={() => view = "import"}>📥 {t("import.title")}</button>
+          <button class="lv-btn" onclick={() => view = "ai"}>✨ {t("ai.title")}</button>
           <button class="lv-btn" onclick={() => view = "manual"}>✏️ {t("entry.manual")}</button>
         </div>
       </div>
@@ -615,6 +664,75 @@
           {#if mSaved}<span class="lv-muted">{t("manual.savedHint")}</span>{/if}
         </div>
       </div>
+    </div>
+  {:else if view === "ai"}
+    <!-- ===== S11 AI 出题（Inbox 式：永不直接入库） ===== -->
+    <div class="lv-pad">
+      <div class="lv-row">
+        <button class="lv-btn lv-btn--ghost" onclick={() => view = "entry"}>← {t("mode.practice")}</button>
+        <span class="lv-chip">✨ {t("ai.title")}</span>
+        <span class="fn__flex-1"></span>
+        <span class="lv-chip lv-chip--grn">{t("ai.channel.siyuan")}</span>
+      </div>
+      <div class="lv-card lv-pad-card">
+        <div class="lv-field"><label class="lv-muted">{t("ai.source")}</label>
+          <textarea class="lv-input lv-textarea" rows="7" bind:value={aiSource} placeholder={t("ai.sourcePlaceholder")}></textarea>
+        </div>
+        <div class="lv-row">
+          <span class="lv-chip">{t("ai.count")}</span>
+          {#each [3, 5, 10, 20] as n}
+            <button class="lv-chip" class:acc={aiCount === n} onclick={() => aiCount = n}>{n}</button>
+          {/each}
+          <span class="lv-chip">{t("ai.difficulty")}</span>
+          {#each ["easy", "medium", "hard", "mixed"] as d}
+            <button class="lv-chip" class:acc={aiDifficulty === d} onclick={() => aiDifficulty = d as any}>{t("ai.diff." + d)}</button>
+          {/each}
+        </div>
+        <div class="lv-row">
+          <span class="lv-chip">{t("manual.kp")}</span>
+          <input class="lv-input" style="max-width:200px" bind:value={aiKp} placeholder={t("ai.kpHint")} />
+        </div>
+        <div class="lv-row">
+          <button class="lv-btn lv-btn--primary" onclick={runAiGenerate} disabled={aiBusy || !aiSource.trim()}>
+            {aiBusy ? "…" : "✨ " + t("ai.generate")}
+          </button>
+          <span class="lv-muted">{t("ai.pipelineNote")}</span>
+        </div>
+      </div>
+      {#if aiQueue.length || aiRejected.length || aiDuplicates}
+        <div class="lv-row" style="margin-top:14px">
+          <b style="font-size:14px">{t("ai.queue")}</b>
+          <span class="lv-chip lv-chip--acc num">{aiQueue.length}</span>
+          {#if aiRejected.length}<span class="lv-chip lv-chip--red num">✕ {aiRejected.length}</span>{/if}
+          {#if aiDuplicates}<span class="lv-chip lv-chip--amb num">⧉ {aiDuplicates}</span>{/if}
+          <span class="fn__flex-1"></span>
+          {#if aiQueue.length}
+            <button class="lv-btn lv-btn--primary sm" onclick={approveAllAi}>✓ {t("ai.approveAll")}（{aiQueue.length}）</button>
+          {/if}
+        </div>
+        {#if aiSaved}<div class="lv-success num">✓ {t("ai.saved")} {aiSaved}</div>{/if}
+        {#each aiQueue as q (q.id)}
+          <div class="lv-card lv-qrow">
+            <div class="lv-qrow-head">
+              <span class="lv-chip lv-chip--acc">{t("qtype." + q.type)}</span>
+              {#if q.kp}<span class="lv-chip">{q.kp}</span>{/if}
+              <span class="lv-muted lv-qrow-src">{t("ai.pendingBadge")}</span>
+            </div>
+            <div class="lv-qrow-stem">{q.stem}</div>
+            {#if q.options.length}
+              <div class="lv-muted" style="margin-top:4px">{q.options.map((o, i) => String.fromCharCode(65 + i) + ". " + o).join("　")}</div>
+            {/if}
+            <div class="lv-analysis" style="margin:8px 0 0">{q.analysis}</div>
+            <div class="lv-row" style="margin:8px 0 0">
+              <button class="lv-btn sm lv-btn--primary" onclick={() => approveAi(q)}>✓ {t("ai.approve")}</button>
+              <button class="lv-btn sm lv-btn--ghost" onclick={() => dropAi(q)}>✕ {t("ai.drop")}</button>
+            </div>
+          </div>
+        {/each}
+        {#each aiRejected.slice(0, 10) as rj}
+          <div class="lv-error-row"><b class="num">#{rj.index}</b> {rj.reason}</div>
+        {/each}
+      {/if}
     </div>
   {:else if view === "browse"}
     <!-- ===== S3 浏览 ===== -->
