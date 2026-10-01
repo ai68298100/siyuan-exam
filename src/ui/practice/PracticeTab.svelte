@@ -63,7 +63,22 @@ import { ttsSpeak } from "@/core/tts";
       })();
       banks = app.listBanks();
       if (banks.length) activeBankId = banks[0].id;
-      // 查询圈题待处理集（块菜单发起，优先于恢复）
+      // Dock 信号优先：按 qid 直达单题
+      if (consumePendingQuestion()) { loading = false; return; }
+      /** Dock 信号：按 qid 开单题会话（题目从已加载列表定位） */
+    function consumePendingQuestion() {
+      const pid = (plugin as any).pendingQuestionId as string | undefined;
+      if (!pid) return false;
+      (plugin as any).pendingQuestionId = undefined;
+      const q = questions.find((x) => x.id === pid);
+      if (!q) { errorMsg = t("state.emptyBank"); return true; }
+      void app.startSession([q], "wrong").then((s) => {
+        session = s; feedback = null; selected = ""; sessionDone = null; view = "session";
+      });
+      return true;
+    }
+
+    // 查询圈题待处理集（块菜单发起，优先于恢复）
       const pending = (plugin as any).pendingPractice as Question[] | undefined;
       if (pending?.length && app.currentSession()?.phase !== "running") {
         (plugin as any).pendingPractice = undefined;

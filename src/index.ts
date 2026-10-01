@@ -278,6 +278,16 @@ ${items.length ? rows : `<div class="lv-dock-empty">${this.i18n["dock.empty"]}</
                 this.refreshStatusBar();
             });
         });
+        // 行点击 → 直达该题练习（经 pendingPractice 通道移交练习台）
+        dockEl.querySelectorAll<HTMLDivElement>(".lv-dock-row").forEach((row) => {
+            row.addEventListener("click", () => {
+                const qid = row.dataset.qid!;
+                (this as any).pendingQuestionId = qid;
+                (this as any).pendingPracticeSignal = true;
+                window.dispatchEvent(new CustomEvent("lv-exam:open-question", { detail: { qid } }));
+                this.openPractice();
+            });
+        });
     }
 
     private registerCommands() {
