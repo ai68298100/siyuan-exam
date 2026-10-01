@@ -493,8 +493,10 @@ import { ttsSpeak } from "@/core/tts";
       const q = session.current;
       if (!q) return;
       const timeMs = Date.now() - answerStart;
-      const g = grade(q, selected || null);
-      session.submit(selected || null, timeMs);
+      // 选择题/判断用 selected；填空/简答用 draft
+      const ans = q.options.length ? selected : session.getDraft(q.id);
+      const g = grade(q, ans || null);
+      session.submit(ans || null, timeMs);
       app.recordAttempt({
         qid: q.id, kind: "practice", mode: session.state.mode,
         verdict: g.verdict, myAnswer: g.myAnswer, sessionId: session.id,
