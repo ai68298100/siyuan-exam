@@ -985,7 +985,7 @@ import { ttsSpeak } from "@/core/tts";
             {#if q.options.length}
               <div role="radiogroup" aria-label={t("session.options")}>
                 {#each q.options as opt, i}
-                  <button class="lv-opt" class:sel={selected === String.fromCharCode(65 + i)}
+                  <button class="lv-opt" class:sel={selected.includes(String.fromCharCode(65 + i))}
                     role="radio" aria-checked={selected === String.fromCharCode(65 + i)}
                     class:right={feedback && feedback.verdict !== "not_attempted" && q.answer.includes(String.fromCharCode(65 + i)) && (q.type === "single" ? q.answer === String.fromCharCode(65 + i) : true)}
                     class:wrong={feedback && feedback.myAnswer === String.fromCharCode(65 + i) && feedback.verdict === "wrong"}
