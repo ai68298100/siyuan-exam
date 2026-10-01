@@ -7,7 +7,7 @@
 ## 0. 仓库与工程基建
 
 - [ ] [P0] git 首次提交（当前全部 untracked；此后按里程碑小步提交）
-- [ ] [!] GitHub 创建 `siyuan-exam` 公开仓库并推送 —— **时点后移：v0.3（模考场可用）后**，门槛见 7A；此前仅本地仓库
+- [x] [!] GitHub 创建 `siyuan-exam` 公开仓库并推送 —— ✓2026-10-02 用户授权提前执行（4 commits；集市仍暂缓）
 - [ ] GitHub 仓库基建（届时）：description/topics（siyuan-plugin/exam/flashcard/spaced-repetition）/社交预览图/README 徽章/Issues+Discussions 开关
 - [ ] CONTRIBUTING.md（本地开发/测试/PR 流程，单人亦维护）
 - [ ] commitlint + conventional commits（配合里程碑小步提交）
