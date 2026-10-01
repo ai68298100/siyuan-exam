@@ -31,6 +31,11 @@ export function encodeChallenge(paper: ChallengePaper): string {
   return btoa(unescape(encodeURIComponent(JSON.stringify(stripForTaker(paper)))));
 }
 
+/** 友谊赛完整版：含答案一起编码（双方本地均可正常判分练习） */
+export function encodeChallengeCopy(paper: ChallengePaper): string {
+  return btoa(unescape(encodeURIComponent(JSON.stringify(paper))));
+}
+
 export function decodeChallenge(code: string): ChallengePaper | null {
   try {
     const json = decodeURIComponent(escape(atob(code.trim())));

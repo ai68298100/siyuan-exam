@@ -270,5 +270,11 @@
     "browse.searchPlaceholder": "搜索题干/选项/解析…",
     "estimate.sourceFilter": "按来源过滤（如 2023）",
     "import.garbledWarning": "⚠ 文件编码疑似非 UTF-8/GBK，可能乱码——建议另存为 UTF-8 CSV 后重试",
-    "mock.exportToDoc": "📚 写入题库导出文档"
+    "mock.exportToDoc": "📚 写入题库导出文档",
+    "challenge.copied": "✓ 挑战码已复制，发给朋友吧（含答案，友谊赛模式）",
+    "challenge.importTitle": "导入挑战码",
+    "challenge.importPlaceholder": "粘贴朋友发来的挑战码…",
+    "challenge.badCode": "挑战码无法识别",
+    "challenge.copy": "🎯 复制挑战码",
+    "challenge.import": "📥 导入挑战码"
 }

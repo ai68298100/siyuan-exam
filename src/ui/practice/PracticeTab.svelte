@@ -9,6 +9,7 @@ import { ttsSpeak } from "@/core/tts";
     import type { Question } from "../../core/types";
     import { parseText, parseExcelRows, autoMapExcel, errorsToCsv, type ImportReport } from "../../importer/pipeline";
     import { groupAdjacent } from "../../core/session";
+    import { makeQuestion } from "../../core/blockTemplate";
     import { grade } from "../../core/answer";
 
     let { plugin, examApp: app }: { plugin: any; examApp: ExamApp } = $props();
@@ -221,6 +222,40 @@ import { ttsSpeak } from "@/core/tts";
     let expReason = $state("");
     let expDays = $state(0);
     const expKpRoots = $derived([...new Set(questions.map((q) => q.kp?.split("/")[0]).filter(Boolean))]);
+
+    // ---------- 挑战码（友谊赛复制/导入：含答案，双方本地判分） ----------
+    function buildChallengePaper() {
+      const pool = questions.filter((q) => q.type !== "material").slice(0, 50);
+      return {
+        v: 1 as const, title: `${bankName} 挑战`, durationS: 600,
+        questions: pool.map((q) => ({ stem: q.stem, options: q.options, answer: q.answer, type: q.type, kp: q.kp })),
+      };
+    }
+
+    async function copyChallengeCode() {
+      const paper = buildChallengePaper();
+      if (!paper.questions.length) { errorMsg = t("state.emptyBank"); return; }
+      const { encodeChallengeCopy } = await import("@/core/challenge");
+      await navigator.clipboard.writeText(encodeChallengeCopy(paper));
+      showMessage(t("challenge.copied"), 3600, "info");
+    }
+
+    async function importChallengeCode() {
+      const { inputDialogSync } = await import("../../libs/dialog");
+      const code = await inputDialogSync({ title: t("challenge.importTitle"), placeholder: t("challenge.importPlaceholder") });
+      if (!code?.trim()) return;
+      try {
+        const { decodeChallenge } = await import("@/core/challenge");
+        const paper = decodeChallenge(code.trim());
+        if (!paper) throw new Error(t("challenge.badCode"));
+        const qs: Question[] = paper.questions.map((q) => makeQuestion({ type: q.type, stem: q.stem, options: q.options, answer: q.answer, kp: q.kp }));
+        session = await app.startSession(qs, "challenge");
+        feedback = null; selected = ""; sessionDone = null;
+        view = "session";
+      } catch (e) {
+        errorMsg = String(e instanceof Error ? e.message : e);
+      }
+    }
 
     async function exportWrong() {
       if (!activeBankId) { errorMsg = t("state.emptyBank"); return; }
@@ -795,7 +830,8 @@ import { ttsSpeak } from "@/core/tts";
           <button class="lv-btn" onclick={() => view = "import"}>📥 {t("import.title")}</button>
           <button class="lv-btn" onclick={() => view = "ai"}>✨ {t("ai.title")}</button>
           <button class="lv-btn" onclick={() => view = "manual"}>✏️ {t("entry.manual")}</button>
-          <button class="lv-btn" onclick={() => view = "manual"}>✏️ {t("entry.manual")}</button>
+          <button class="lv-btn" onclick={copyChallengeCode}>🎯 {t("challenge.copy")}</button>
+          <button class="lv-btn" onclick={importChallengeCode}>📥 {t("challenge.import")}</button>
           <details class="lv-export-fold">
             <summary class="lv-btn">📤 {t("export.wrongbook")}</summary>
             <div class="lv-card" style="padding:10px 12px;margin-top:6px">
