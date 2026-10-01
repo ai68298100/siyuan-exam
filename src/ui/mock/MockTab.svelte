@@ -216,9 +216,10 @@
 
     $effect(() => {
       if (estFromBank && questions.length) {
+        const LETTER_TYPES = new Set(["single", "multiple", "judge"]);
         const pool = estSourceFilter.trim()
-          ? questions.filter((q) => q.type !== "material" && (q.source ?? "").includes(estSourceFilter.trim()))
-          : questions.filter((q) => q.type !== "material");
+          ? questions.filter((q) => LETTER_TYPES.has(q.type) && (q.source ?? "").includes(estSourceFilter.trim()))
+          : questions.filter((q) => LETTER_TYPES.has(q.type));
         estKey = pool.map((q) => q.answer).join("");
       }
     });
