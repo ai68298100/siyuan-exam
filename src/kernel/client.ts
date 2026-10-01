@@ -107,6 +107,19 @@ export class KernelApiClient {
     return r.data;
   }
 
+  /** 笔记本导出 .sy.zip（题库包分享；返回工作区相对路径，如 /export/X.sy.zip） */
+  async exportNotebookSy(notebookId: string): Promise<{ zipPath: string }> {
+    const r = await this.t.post("/api/export/exportNotebookSY", { id: notebookId });
+    const zip = String((r.data as Record<string, unknown>)?.zip ?? "");
+    if (!zip) throw new KernelError("fatal", "exportNotebookSY", "响应缺少 zip 路径");
+    return { zipPath: zip };
+  }
+
+  /** 从本机绝对路径导入 .sy.zip（Electron 前端；browser 前端不可用） */
+  async importSy(zipAbsPath: string): Promise<void> {
+    await this.t.post("/api/import/importSY", { path: zipAbsPath });
+  }
+
   async renderMarkdown(markdown: string): Promise<string> {
     const r = await this.t.post("/api/lute/md2html", { markdown, mode: "" });
     return String((r.data as Record<string, unknown>)?.html ?? "");

@@ -218,6 +218,18 @@ export class ExamApp {
     return next;
   }
 
+  // ---------- 题库包分享（v1.0；.sy.zip 原生格式） ----------
+  async exportBankSyZip(bankId: string): Promise<{ zipPath: string; filename: string }> {
+    const { zipPath } = await this.deps.client.exportNotebookSy(bankId);
+    const filename = decodeURIComponent(zipPath.split("/").pop() ?? "bank.sy.zip");
+    return { zipPath, filename };
+  }
+
+  async importBankSyZip(zipAbsPath: string): Promise<void> {
+    await this.deps.client.importSy(zipAbsPath);
+    this.banks = [];   // 触发题库列表重建
+  }
+
   // ---------- 导出与模考历史（v0.5） ----------
   /** 错题册导出：生成 Markdown 并写入题库笔记本"导出"文档，返回文档 id
    *  过滤（27 组 P2）：kpRoot（考点首段）/ reason（错因）/ sinceDays（最近 N 天首次答错） */

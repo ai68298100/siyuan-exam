@@ -215,5 +215,11 @@
     "mock.radar": "Section accuracy radar",
     "mock.lockout": "CBT lockout (no going back)",
     "qtype.material": "Material",
-    "manual.group": "Linked material group ID (optional)"
+    "manual.group": "Linked material group ID (optional)",
+    "share.export": "Export bank (.sy.zip)",
+    "share.import": "Import bank",
+    "share.exportDone": "✓ Generated ",
+    "share.importDone": "✓ Bank package imported (see notebook list)",
+    "share.desktopOnly": "Desktop · import needs Electron (file path)",
+    "share.needDesktop": "Browser cannot read local paths — use SiYuan desktop"
 }

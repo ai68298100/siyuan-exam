@@ -215,5 +215,11 @@
     "mock.radar": "模块正确率雷达",
     "mock.lockout": "人机对话模式（不可回退，顺序作答）",
     "qtype.material": "材料",
-    "manual.group": "关联材料组 ID（可选）"
+    "manual.group": "关联材料组 ID（可选）",
+    "share.export": "导出题库包",
+    "share.import": "导入题库包",
+    "share.exportDone": "✓ 已生成 ",
+    "share.importDone": "✓ 题库包已导入（笔记本列表查看）",
+    "share.desktopOnly": "桌面端 · 导入需 Electron（文件路径）",
+    "share.needDesktop": "浏览器端无法读取本地路径，请在思源桌面端使用"
 }

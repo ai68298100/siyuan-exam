@@ -227,6 +227,38 @@ import { ttsSpeak } from "@/core/tts";
       }
     }
 
+    // ---------- 题库包分享（.sy.zip 原生格式） ----------
+    async function exportBank() {
+      if (!activeBankId) return;
+      try {
+        const { zipPath, filename } = await app.exportBankSyZip(activeBankId);
+        const a = document.createElement("a");
+        a.href = `${window.location.origin}${zipPath}`;
+        a.download = filename;
+        a.click();
+        showMessage(t("share.exportDone") + filename, 4000, "info");
+      } catch (e) {
+        showMessage(offline ? t("state.offlineHint") : String(e instanceof Error ? e.message : e), 4200, "error");
+      }
+    }
+
+    async function importBank(e: Event) {
+      const input = e.target as HTMLInputElement;
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        // Electron 提供绝对路径；browser 前端按钮已隐藏
+        const path = (file as any).path as string | undefined;
+        if (!path) { showMessage(t("share.needDesktop"), 4200, "error"); return; }
+        await (app as any).deps.client.importSy(path);
+        banks = app.listBanks();
+        showMessage(t("share.importDone"), 4000, "info");
+        void loadQuestions();
+      } catch (err) {
+        showMessage(String(err instanceof Error ? err.message : err), 4200, "error");
+      } finally { input.value = ""; }
+    }
+
     // ---------- AI 讲解（v0.4：错题逐选项解释；可存为笔记子块） ----------
     let explainText = $state("");
     let explainBusy = $state(false);
@@ -653,6 +685,11 @@ import { ttsSpeak } from "@/core/tts";
                 </select>
               </div>
               <button class="lv-btn sm lv-btn--primary" onclick={exportWrong}>📤 {t("export.run")}</button>
+              <div class="lv-row" style="margin:6px 0 0">
+                <button class="lv-btn sm" disabled={offline} onclick={exportBank}>📦 {t("share.export")}</button>
+                <label class="lv-btn sm" class:disabled={offline} style={offline ? "opacity:.5;pointer-events:none" : ""}>📥 {t("share.import")}<input type="file" accept=".sy.zip,.zip" style="display:none" onchange={importBank} /></label>
+                <span class="lv-muted">{t("share.desktopOnly")}</span>
+              </div>
             </div>
           </details>
         </div>
