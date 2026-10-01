@@ -256,5 +256,6 @@
     "report.weekCompare": "Week compare",
     "report.thisWeek": "This week",
     "report.lastWeek": "Last week",
-    "browse.loadMore": "Load more"
+    "browse.loadMore": "Load more",
+    "import.exportErrors": "Export errors CSV"
 }

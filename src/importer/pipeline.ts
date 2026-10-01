@@ -223,3 +223,11 @@ export function autoMapExcel(header: string[]): { map: ExcelColumnMap; missing: 
 export function parseText(text: string, opt: ImportOptions = {}): ImportReport {
   return parseAiken(text, opt);
 }
+
+/** 错误清单导出 CSV（BOM 头保证 Excel 中文不乱码） */
+export function errorsToCsv(errors: ImportError[]): string {
+  const esc = (s: string) => `"${String(s).replace(/"/g, '""')}"`;
+  const head = "行号,原因,原值";
+  const body = errors.map((e) => [e.row, esc(e.reason), esc(e.raw)].join(","));
+  return "\uFEFF" + [head, ...body].join("\r\n");
+}

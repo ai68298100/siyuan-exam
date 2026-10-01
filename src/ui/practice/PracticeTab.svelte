@@ -7,7 +7,7 @@ import { planToday } from "@/core/planner";
 import { ttsSpeak } from "@/core/tts";
     import type { ExamApp } from "../../app";
     import type { Question } from "../../core/types";
-    import { parseText, parseExcelRows, autoMapExcel, type ImportReport } from "../../importer/pipeline";
+    import { parseText, parseExcelRows, autoMapExcel, errorsToCsv, type ImportReport } from "../../importer/pipeline";
     import { grade } from "../../core/answer";
 
     let { plugin, examApp: app }: { plugin: any; examApp: ExamApp } = $props();
@@ -241,6 +241,18 @@ import { ttsSpeak } from "@/core/tts";
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
       a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    /** 错误清单导出 CSV（Excel 友好，BOM 头） */
+    function downloadErrorsCsv() {
+      if (!importReport?.errors.length) return;
+      const csv = errorsToCsv(importReport.errors);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `导入错误清单 ${new Date().toISOString().slice(0, 10)}.csv`;
       a.click();
       URL.revokeObjectURL(a.href);
     }
@@ -1168,6 +1180,11 @@ import { ttsSpeak } from "@/core/tts";
               <div class="lv-error-row"><b class="num">#{err.row}</b> {err.reason}<span class="lv-muted"> · {err.raw}</span></div>
             {/each}
             {#if importReport.errors.length > 20}<div class="lv-muted num">… +{importReport.errors.length - 20}</div>{/if}
+            {#if importReport.errors.length}
+              <div class="lv-row">
+                <button class="lv-btn sm" onclick={downloadErrorsCsv}>⬇️ {t("import.exportErrors")}</button>
+              </div>
+            {/if}
             <div class="lv-row">
               <button class="lv-btn lv-btn--primary" onclick={commitImport} disabled={!importReport.ok.length || committing}>
                 {committing ? "…" : t("import.commit") + " (" + importReport.ok.length + ")"}

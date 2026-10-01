@@ -256,5 +256,6 @@
     "report.weekCompare": "周对比",
     "report.thisWeek": "本周",
     "report.lastWeek": "上周",
-    "browse.loadMore": "加载更多"
+    "browse.loadMore": "加载更多",
+    "import.exportErrors": "导出错误清单 CSV"
 }
