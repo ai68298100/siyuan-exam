@@ -339,9 +339,9 @@ export class ExamApp {
   async exportWrongbook(bankId: string, bankName: string, opts: { kpRoot?: string; reason?: string; sinceDays?: number } = {}): Promise<string> {
     const { wrongbookToMarkdown } = await import("./core/exportMd");
     let items = this.wrongItems();
+    const qs = await this.listQuestions(bankId);
+    const byId = new Map(qs.map((q) => [q.id, q]));
     if (opts.kpRoot || opts.reason || opts.sinceDays != null) {
-      const qs = await this.listQuestions(bankId);
-      const byId = new Map(qs.map((q) => [q.id, q]));
       const sinceTs = opts.sinceDays != null ? Date.now() - opts.sinceDays * 86_400_000 : 0;
       items = items.filter((w) => {
         const q = byId.get(w.qid);
@@ -351,19 +351,14 @@ export class ExamApp {
         if (opts.sinceDays != null && w.firstWrongAt < sinceTs) return false;
         return true;
       });
-      const md = wrongbookToMarkdown(items.map((w) => ({ wrong: w, q: byId.get(w.qid)! })), { bankName, exportedAt: new Date() });
-      await this.ensureDoc(bankId, "/导出");
-      const tag = [opts.kpRoot, opts.reason, opts.sinceDays ? `${opts.sinceDays}d` : ""].filter(Boolean).join("-");
-      const ymd = new Date().toISOString().slice(0, 10);
-      return this.deps.client.createDocWithMd(bankId, `/导出/错题册 ${ymd} ${tag}`, md);
     }
-    const qs = await this.listQuestions(bankId);
-    const byId = new Map(qs.map((q) => [q.id, q]));
     const pairs = items.map((w) => ({ wrong: w, q: byId.get(w.qid)! })).filter((p) => p.q);
     const md = wrongbookToMarkdown(pairs, { bankName, exportedAt: new Date() });
     await this.ensureDoc(bankId, "/导出");
+    const tag = [opts.kpRoot, opts.reason, opts.sinceDays ? `${opts.sinceDays}d` : ""].filter(Boolean).join("-");
     const ymd = new Date().toISOString().slice(0, 10);
-    return this.deps.client.createDocWithMd(bankId, `/导出/错题册 ${ymd}`, md);
+    const name = tag ? `/导出/错题册 ${ymd} ${tag}` : `/导出/错题册 ${ymd}`;
+    return this.deps.client.createDocWithMd(bankId, name, md);
   }
 
   /** 模考成绩持久化（上限 200 条，FIFO） */
