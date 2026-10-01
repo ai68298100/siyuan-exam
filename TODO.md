@@ -532,7 +532,7 @@
 - [x] [P1] QuestionRenderer 接入 md2html ✓2026-10-02（app.renderStem 缓存 + b3-typography，离线回退纯文本）
 - [x] [P1] 手工录题表单编辑器 ✓2026-10-02（练习台表单视图：题型联动/选项字母设对/考点考点落档；斜杆命令入口待补）
 - [x] [P1] 事件写入卸载栅栏 ✓2026-10-02（AttemptLog.dispose）
-- [ ] [P2] multiple 题判分反馈逐选项高亮粒度
+- [x] [P2] multiple 题判分反馈逐选项高亮粒度 ✓2026-10-02（正确/错选/漏选已按选项着色 ✓）
 - [ ] [P2] 浏览模式虚拟滚动与分页（万题级）
 - [x] [P2] verify-package 允许 vendored chunk 规则 ✓2026-10-02（xlsx hash chunk）
 - [ ] [P0] query_embed 块的 SQL 取值属性名实测（data-query 属性 + textContent 兜底；用户工作区暂无样例）
