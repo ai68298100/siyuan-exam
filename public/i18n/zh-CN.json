@@ -250,5 +250,7 @@
     "session.groupPos": "材料组",
     "state.noFav": "收藏夹是空的，先在刷题时按 E 收藏",
     "mode.fav.desc": "只刷你标记的题",
-    "import.template": "下载官方模板"
+    "import.template": "下载官方模板",
+    "update.title": "小驴考试已更新",
+    "update.seeChangelog": "查看 CHANGELOG 了解新功能"
 }

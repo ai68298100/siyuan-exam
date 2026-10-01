@@ -9,6 +9,7 @@ import "./index.scss";
 
 import { SettingUtils } from "./libs/setting-utils";
 import { mount, unmount } from "svelte";
+import manifest from "../plugin.json";
 
 import PracticeTab from "@/ui/practice/PracticeTab.svelte";
 import MockTab from "@/ui/mock/MockTab.svelte";
@@ -137,6 +138,14 @@ export default class LvExamPlugin extends Plugin {
             console.error("[lv-exam] app init failed", e);
         }
         this.refreshDock();
+        // 版本更新引导 lite（TODO 23）：版本变化时提示查看 CHANGELOG
+        const K = "lv-exam-last-version";
+        const last = localStorage.getItem(K);
+        const ver = manifest.version;
+        if (last && last !== ver) {
+            showMessage(`${this.i18n["update.title"]} v${ver} · ${this.i18n["update.seeChangelog"]}`, 6000, "info");
+        }
+        localStorage.setItem(K, ver);
     }
 
     async onunload() {
