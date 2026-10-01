@@ -242,5 +242,6 @@
     "report.dailyDone": "✓ Written to today's daily note",
     "mock.week": "Week compare",
     "mock.exportScore": "📄 Export report MD",
-    "report.weeklyNudge": "📊 Last week report is ready — check Reports"
+    "report.weeklyNudge": "📊 Last week report is ready — check Reports",
+    "estimate.history": "History"
 }

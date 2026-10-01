@@ -46,6 +46,9 @@ pnpm i                # Node >= 24
 pnpm dev              # watch build + livereload
 pnpm make-link        # symlink into <workspace>/data/plugins/siyuan-exam/
 pnpm check            # typecheck + svelte + i18n + arch checks
+pnpm check:i18n       # zh/en key parity
+pnpm check:arch       # architecture consistency (27)
+pnpm verify:package   # package.zip allowlist
 pnpm test             # vitest
 pnpm build            # dist/ (package.zip is not produced by the current app target)
 pnpm make-install     # build and install into a local SiYuan plugin directory

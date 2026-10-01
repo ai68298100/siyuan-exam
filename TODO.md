@@ -542,6 +542,7 @@
 - [ ] [P2] openTab doc 跳转参数实测（zoomIn/页内定位到题目块）
 
 ## 28. 调研增量待办（2026-10-02，research/08 挖矿产出）
+- [ ] [P3] 调研跟踪：Obsidian SR 生态 2026 已全线 FSRS 化（主插件 v1.15.4、Note SR、Incremental Reading、SR-AI 借 Anki 参数）——印证内核 FSRS 路线正确；SR-AI 的"借大数据参数"思路供优化器闭环参考（research/08 增补）
 - [ ] [P2] av 题库视图候选补强②：3.8.3 数据库文本字段支持富文本——题库管理视图可将考点/解析列升级为富文本字段（minAppVersion 3.8.3 评估）
 - [ ] [P1] AI 出题输入源扩展：当前文档/所选块（生成时挂思源块引用=citation，research/28 Quanta+iDoRecall 项落地载体）
 - [x] [P2] AI 二遍换角色核验 + quality_score 细化（标准/经济档位拆分） ✓2026-10-02（标准=二遍核验 conf≥0.85；quality_score 细化待）

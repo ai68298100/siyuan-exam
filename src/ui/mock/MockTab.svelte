@@ -193,6 +193,11 @@
     let estMine = $state("");
     let estResult = $state<ReturnType<typeof import("../../core/estimate").estimateScore>>(null);
     let estFromBank = $state(false);
+    let estHistory = $state<any[]>([]);
+
+    $effect(() => {
+      if (app) void app.listEstimates().then((h) => (estHistory = h.reverse()));
+    });
 
     $effect(() => {
       if (estFromBank && questions.length) {
@@ -204,6 +209,7 @@
       estResult = estimateScore(estMine, estKey, { scoreEach: 1, passLine: bp.passLine });
       if (estResult) {
         await app.saveEstimate({ key: estKey.slice(0, 40), mine: estMine.slice(0, 40), percent: estResult.percent, score: estResult.score, total: estResult.total });
+        estHistory = [...(await app.listEstimates())].reverse();
       }
     }
 
@@ -308,6 +314,14 @@
           <span class="lv-marks num">{estResult.marks.join(" ")}</span>
         {/if}
       </div>
+      {#if estHistory.length}
+        <div class="lv-row" style="margin:6px 0 0">
+          <span class="lv-muted">{t("estimate.history")}</span>
+          {#each estHistory.slice(0, 8) as h}
+            <span class="lv-chip num" title={new Date(h.at).toLocaleString()}>{h.percent}%</span>
+          {/each}
+        </div>
+      {/if}
     </details>
   {:else if view === "exam" && session && currentQ}
     <!-- ===== S6 全真考试 ===== -->

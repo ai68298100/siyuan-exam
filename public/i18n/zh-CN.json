@@ -242,5 +242,6 @@
     "report.dailyDone": "✓ 战报已写入今日日记",
     "mock.week": "周对比",
     "mock.exportScore": "📄 导出成绩单 MD",
-    "report.weeklyNudge": "📊 上周学习报告已生成，去报告中心看看吧"
+    "report.weeklyNudge": "📊 上周学习报告已生成，去报告中心看看吧",
+    "estimate.history": "历史"
 }
