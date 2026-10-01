@@ -180,6 +180,13 @@ export class ExamApp {
     await this.deps.storage.save(SESSION_KEY, null);
   }
 
+  /** 手工录题：按考点落文档（无考点 → /手工录入），写块入库 */
+  async writeManualQuestion(bankId: string, q: Question): Promise<void> {
+    const docId = await this.ensureDoc(bankId, q.kp ? `/${q.kp.split("/")[0]}` : "/手工录入");
+    await this.deps.client.appendQuestions(docId, [q]);
+    this.invalidate();
+  }
+
   // ---------- 记忆层（v0.2：riff 卡包 / 转卡 / 评级） ----------
   /** 确保题库卡包存在并返回 deckID（卡包名 小驴考试/<题库名>，与内置闪卡隔离） */
   async ensureDeck(bankName: string): Promise<string> {

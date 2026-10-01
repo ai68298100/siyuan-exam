@@ -109,6 +109,7 @@ export default class LvExamPlugin extends Plugin {
 
     async onunload() {
         this.eventBus.off("click-blockicon", this.boundBlockIcon);
+        try { this.examApp?.attempts.dispose(); } catch { /* 卸载栅栏 */ }
         try { await this.examApp?.flush(); } catch { /* 尽力而为 */ }
         Object.values(this.tabApps).forEach((instance) => unmount(instance));
         this.tabApps = {};
@@ -128,7 +129,7 @@ export default class LvExamPlugin extends Plugin {
                     el.classList.add("fn__flex-1", "lv-exam-tab");
                     const instance = mount(component, {
                         target: el,
-                        props: { plugin: this.data.plugin, app: this.data.examApp }
+                        props: { plugin: this.data.plugin, examApp: this.data.examApp }
                     });
                     this.data.plugin.tabApps[type] = instance;
                     this.element.appendChild(el);

@@ -130,6 +130,12 @@ export class AttemptLog {
   }
 
   all(): readonly AttemptEvent[] { return this.events; }
+
+  /** 卸载栅栏（27 组）：清掉节流定时器，防 unload 后仍触发 saveData */
+  dispose(): void {
+    if (this.flushTimer) { clearTimeout(this.flushTimer); this.flushTimer = null; }
+    this.dirty = false;
+  }
 }
 
 /** 把 AttemptEvent[] 交给重放器前的时间序（同 ts 按 seq 稳定排序） */

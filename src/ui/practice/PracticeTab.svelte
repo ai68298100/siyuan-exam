@@ -11,7 +11,7 @@
     const i18n = $derived(plugin?.i18n ?? {});
     const t = (k: string, fb = "") => i18n[k] ?? fb;
 
-    type View = "entry" | "session" | "browse" | "import" | "recite";
+    type View = "entry" | "session" | "browse" | "import" | "recite" | "manual";
     let view: View = $state("entry");
     let loading = $state(true);
     let errorMsg = $state("");
@@ -218,6 +218,42 @@
       view = "entry";
     }
 
+    // ---------- 手工录题（S10 表单） ----------
+    let mType = $state<"single" | "multiple" | "judge" | "fill" | "short">("single");
+    let mStem = $state("");
+    let mOptions = $state<string[]>(["", ""]);
+    let mAnswer = $state("");        // single/multiple: 字母；judge: 对/错；fill/short: 文本
+    let mAnalysis = $state("");
+    let mKp = $state("");
+    let mSource = $state("");
+    let mSaving = $state(false);
+    let mSaved = $state("");
+
+    function setCorrectOption(i: number) {
+      const L = String.fromCharCode(65 + i);
+      mAnswer = mType === "multiple"
+        ? (mAnswer.includes(L) ? mAnswer.replace(L, "") : (mAnswer + L).split("").sort().join(""))
+        : L;
+    }
+
+    async function saveManual() {
+      if (mSaving || !mStem.trim()) return;
+      mSaving = true; mSaved = ""; errorMsg = "";
+      try {
+        const { makeQuestion } = await import("@/core/blockTemplate");
+        const q = makeQuestion({
+          type: mType, stem: mStem,
+          options: mType === "single" || mType === "multiple" ? mOptions.filter((o) => o.trim()) : [],
+          answer: mAnswer, analysis: mAnalysis, kp: mKp, source: mSource,
+        });
+        await app.writeManualQuestion(activeBankId, q);
+        mSaved = q.id;
+        mStem = ""; mOptions = ["", ""]; mAnswer = ""; mAnalysis = "";
+      } catch (e) {
+        errorMsg = offline ? t("state.offlineHint") : String(e instanceof Error ? e.message : e);
+      } finally { mSaving = false; }
+    }
+
     // ---------- 导入 ----------
     function doParseText() {
       importError = ""; importResult = null;
@@ -401,7 +437,7 @@
         </div>
         <div class="lv-row" style="margin-top:14px">
           <button class="lv-btn" onclick={() => view = "import"}>📥 {t("import.title")}</button>
-          <button class="lv-btn" disabled title={t("todo")}>✏️ {t("entry.manual")}</button>
+          <button class="lv-btn" onclick={() => view = "manual"}>✏️ {t("entry.manual")}</button>
         </div>
       </div>
     {/if}
@@ -524,6 +560,61 @@
           {/if}
         </div>
       {/if}
+    </div>
+  {:else if view === "manual"}
+    <!-- ===== S10 手工录题表单 ===== -->
+    <div class="lv-pad">
+      <div class="lv-row">
+        <button class="lv-btn lv-btn--ghost" onclick={() => view = "entry"}>← {t("mode.practice")}</button>
+        <span class="lv-chip">{t("manual.title")}</span>
+        {#if mSaved}<span class="lv-chip lv-chip--grn num">✓ {mSaved}</span>{/if}
+      </div>
+      <div class="lv-card lv-pad-card">
+        <div class="lv-row">
+          <span class="lv-chip">{t("manual.type")}</span>
+          {#each ["single", "multiple", "judge", "fill", "short"] as tt}
+            <button class="lv-chip" class:acc={mType === tt} onclick={() => { mType = tt as any; mAnswer = ""; }}>{t("qtype." + tt)}</button>
+          {/each}
+        </div>
+        <div class="lv-field"><label class="lv-muted">{t("manual.stem")}</label>
+          <textarea class="lv-input lv-textarea" bind:value={mStem} placeholder={t("manual.stemPlaceholder")}></textarea>
+        </div>
+        {#if mType === "single" || mType === "multiple"}
+          <div class="lv-field"><label class="lv-muted">{t("manual.options")}</label>
+            {#each mOptions as _opt, i}
+              <div class="lv-row" style="margin:4px 0">
+                <button class="lv-chip" class:acc={mAnswer.includes(String.fromCharCode(65 + i))}
+                  title={t("manual.setCorrect")} onclick={() => setCorrectOption(i)}>{String.fromCharCode(65 + i)}</button>
+                <input class="lv-input" style="flex:1" bind:value={mOptions[i]} />
+                {#if mOptions.length > 2}
+                  <button class="lv-btn lv-btn--ghost sm" onclick={() => mOptions = mOptions.filter((_, j) => j !== i)}>✕</button>
+                {/if}
+              </div>
+            {/each}
+            {#if mOptions.length < 6}
+              <button class="lv-btn sm" style="border-style:dashed" onclick={() => mOptions = [...mOptions, ""]}>＋ {t("manual.addOption")}</button>
+            {/if}
+          </div>
+        {:else if mType === "judge"}
+          <div class="lv-row">
+            <button class="lv-chip" class:acc={mAnswer === "对"} onclick={() => mAnswer = "对"}>对</button>
+            <button class="lv-chip" class:acc={mAnswer === "错"} onclick={() => mAnswer = "错"}>错</button>
+          </div>
+        {/if}
+        <div class="lv-field"><label class="lv-muted">{t("manual.analysis")}</label>
+          <textarea class="lv-input lv-textarea" style="min-height:52px" bind:value={mAnalysis}></textarea>
+        </div>
+        <div class="lv-row">
+          <span class="lv-chip">{t("manual.kp")}</span><input class="lv-input" style="max-width:180px" bind:value={mKp} placeholder="资料分析/增长率" />
+          <span class="lv-chip">{t("manual.source")}</span><input class="lv-input" style="max-width:160px" bind:value={mSource} placeholder="2023 国考 · 115" />
+        </div>
+        <div class="lv-row">
+          <button class="lv-btn lv-btn--primary" onclick={saveManual} disabled={mSaving || !mStem.trim() || !mAnswer.trim()}>
+            {mSaving ? "…" : t("manual.save")}
+          </button>
+          {#if mSaved}<span class="lv-muted">{t("manual.savedHint")}</span>{/if}
+        </div>
+      </div>
     </div>
   {:else if view === "browse"}
     <!-- ===== S3 浏览 ===== -->
