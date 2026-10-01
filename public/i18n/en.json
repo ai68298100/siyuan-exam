@@ -181,5 +181,14 @@
     "explain.ask": "🤖 Explain",
     "explain.save": "📌 Save as note block",
     "explain.saved": "✓ Saved as question note",
-    "mock.fullscreen": "Fullscreen"
+    "mock.fullscreen": "Fullscreen",
+    "setting.examDate.title": "Exam date",
+    "setting.examDate.desc": "YYYY-MM-DD. Enables countdown and sprint mode (auto within N days).",
+    "setting.sprintDays.title": "Sprint threshold (days)",
+    "setting.sprintDays.desc": "Within N days of the exam: wrong≥2 questions fill the daily quota first. Default 14.",
+    "entry.today": "Today",
+    "entry.startToday": "Start (zero-decision)",
+    "entry.sprint": "Sprint",
+    "entry.examIn": "Exam in",
+    "entry.days": "d"
 }

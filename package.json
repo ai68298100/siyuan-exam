@@ -15,7 +15,8 @@
   "scripts": {
     "dev": "pnpm run dev:app",
     "dev:app": "cross-env NODE_ENV=development VITE_SOURCEMAP=inline VITE_BUILD_TARGET=app vite build --watch",
-    "check": "run-s check:types check:svelte",
+    "check": "run-s check:types check:svelte check:i18n",
+    "check:i18n": "node ./scripts/check-i18n.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "verify:package": "node ./scripts/verify-package.mjs",

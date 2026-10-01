@@ -2,6 +2,7 @@
     // 练习台：入口(S1) / 会话(S2) / 浏览(S3) / 导入(S9) 四视图
     // 状态设计（docs/11）：loading/empty(守卫)/error/normal 四态可达
     import { onMount } from "svelte";
+import { planToday } from "@/core/planner";
     import type { ExamApp } from "../../app";
     import type { Question } from "../../core/types";
     import { parseText, parseExcelRows, autoMapExcel, type ImportReport } from "../../importer/pipeline";
@@ -66,6 +67,7 @@
         return qids.map((id) => all.find((q) => q.id === id)).filter(Boolean) as Question[];
       }).then((s) => {
         if (s) { session = s; view = "session"; }
+        rebuildPlan();
         loading = false;
       }).catch(() => { loading = false; });
     });
@@ -115,6 +117,37 @@
         picked = app.quickDrill(qs, 20);
       }
       session = await app.startSession(picked, mode);
+      feedback = null; selected = ""; sessionDone = null;
+      view = "session";
+    }
+
+    /** 备考计划（v0.5）：读取设置考日 → planToday 聚合（冲刺 cram 优先/常规到期优先） */
+    let plan = $state<ReturnType<typeof import("@/core/planner").planToday> | null>(null);
+
+    function rebuildPlan() {
+      if (!app) { plan = null; return; }
+      const examDate = String(plugin.settingUtils?.get?.("examDate") ?? "").trim();
+      const sprintDays = Number(plugin.settingUtils?.get?.("sprintDays") ?? 14);
+      const goal = Number(plugin.settingUtils?.get?.("dailyGoal") ?? 10);
+      const wrongCounts = new Map<string, number>();
+      for (const w of app.derived().wrongbook.values()) wrongCounts.set(w.qid, w.wrongCount);
+      const activeWrongIds = new Set(app.wrongItems().map((w) => w.qid));
+      plan = planToday({
+        examDate: examDate || undefined,
+        sprintDays: Number.isFinite(sprintDays) && sprintDays > 0 ? sprintDays : 14,
+        dailyGoal: Number.isFinite(goal) && goal > 0 ? goal : 10,
+        all: questions, wrongCounts, activeWrongIds,
+      });
+    }
+
+    /** 每日任务直接使用计划队列（零决策入口） */
+    async function startToday() {
+      errorMsg = "";
+      const qs = await loadQuestions();
+      if (!qs.length) { errorMsg = t("state.emptyBank"); return; }
+      rebuildPlan();
+      const queue = plan?.queue?.length ? plan.queue : qs.slice(0, 10);
+      session = await app.startSession(queue, plan?.mode === "sprint" ? "cram" : "daily");
       feedback = null; selected = ""; sessionDone = null;
       view = "session";
     }
@@ -467,6 +500,10 @@
     {/if}
     <span class="fn__flex-1"></span>
     {#if offline}<span class="lv-chip lv-chip--amb">{t("state.offline")}</span>{/if}
+    {#if plan}
+      {#if plan.mode === "sprint"}<span class="lv-chip lv-chip--red num">🔥 {t("entry.sprint")} D-{plan.daysToExam}</span>
+      {:else if plan.daysToExam != null}<span class="lv-chip amb num">⏱ {t("entry.examIn")} {plan.daysToExam} {t("entry.days")}</span>{/if}
+    {/if}
     {#if hasBank}<span class="lv-chip">{t("bank.label")} {bankName}</span>{/if}
   </div>
 
@@ -509,6 +546,15 @@
         </div>
       {/if}
       <div class="lv-pad">
+        {#if plan}
+          <div class="lv-card lv-resume" style="margin-bottom:12px">
+            <div>
+              <b>📅 {t("entry.today")}</b>
+              <div class="lv-muted">{plan.reason}</div>
+            </div>
+            <button class="lv-btn lv-btn--primary" onclick={startToday}>▶ {t("entry.startToday")}</button>
+          </div>
+        {/if}
         <div class="lv-modes">
           <button class="lv-mode" onclick={() => startDrill("single")}>
             <b>⚡ {t("mode.quick")}</b><span class="lv-muted">{t("mode.quick.desc")}</span>

@@ -54,6 +54,22 @@ export default class LvExamPlugin extends Plugin {
             }
         });
         this.settingUtils.addItem({
+            title: this.i18n["setting.examDate.title"],
+            description: this.i18n["setting.examDate.desc"],
+            type: "textinput",
+            key: "examDate",
+            value: "",
+            direction: "row"
+        });
+        this.settingUtils.addItem({
+            title: this.i18n["setting.sprintDays.title"],
+            description: this.i18n["setting.sprintDays.desc"],
+            type: "number",
+            key: "sprintDays",
+            value: 14,
+            direction: "row"
+        });
+        this.settingUtils.addItem({
             title: this.i18n["setting.dailyGoal.title"],
             description: this.i18n["setting.dailyGoal.desc"],
             type: "number",

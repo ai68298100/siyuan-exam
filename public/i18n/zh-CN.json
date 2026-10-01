@@ -181,5 +181,14 @@
     "explain.ask": "🤖 讲解此题",
     "explain.save": "📌 存为笔记块",
     "explain.saved": "✓ 已存为题目笔记子块",
-    "mock.fullscreen": "全屏"
+    "mock.fullscreen": "全屏",
+    "setting.examDate.title": "考试日期",
+    "setting.examDate.desc": "YYYY-MM-DD。设置后进入倒计时与冲刺姿态（距考 N 天自动切换）。",
+    "setting.sprintDays.title": "冲刺姿态阈值（天）",
+    "setting.sprintDays.desc": "距考试 N 天内自动进入冲刺：错≥2 优先占满每日配额。默认 14。",
+    "entry.today": "今日任务",
+    "entry.startToday": "开始（零决策）",
+    "entry.sprint": "冲刺",
+    "entry.examIn": "距考试",
+    "entry.days": "天"
 }
