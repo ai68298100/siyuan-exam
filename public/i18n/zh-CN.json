@@ -243,5 +243,8 @@
     "mock.week": "周对比",
     "mock.exportScore": "📄 导出成绩单 MD",
     "report.weeklyNudge": "📊 上周学习报告已生成，去报告中心看看吧",
-    "estimate.history": "历史"
+    "estimate.history": "历史",
+    "recite.hint1": "提示① 考点",
+    "recite.hint2": "提示② 解析开头",
+    "recite.dist": "本组自评分布"
 }

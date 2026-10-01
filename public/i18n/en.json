@@ -243,5 +243,8 @@
     "mock.week": "Week compare",
     "mock.exportScore": "📄 Export report MD",
     "report.weeklyNudge": "📊 Last week report is ready — check Reports",
-    "estimate.history": "History"
+    "estimate.history": "History",
+    "recite.hint1": "Hint 1 · Topic",
+    "recite.hint2": "Hint 2 · Analysis opening",
+    "recite.dist": "Session ratings"
 }

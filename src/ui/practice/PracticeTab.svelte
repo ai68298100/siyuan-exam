@@ -29,6 +29,8 @@ import { ttsSpeak } from "@/core/tts";
     let reciteRevealed = $state(false);
     let reciteSessionId = $state("");
     let reciteDone = $state(false);
+    let reciteHint = $state(0);
+    let reciteRatings = $state<number[]>([]);
 
     // 会话态
     let session = $state<any>(null);
@@ -185,7 +187,7 @@ import { ttsSpeak } from "@/core/tts";
       const pool = qs.length ? qs : questions;
       if (!pool.length) { errorMsg = t("state.emptyBank"); return; }
       reciteQueue = app.quickDrill(pool, 15);
-      reciteCursor = 0; reciteRevealed = false; reciteDone = false;
+      reciteCursor = 0; reciteRevealed = false; reciteDone = false; reciteHint = 0; reciteRatings = [];
       reciteSessionId = `s-recite-${Date.now().toString(36)}`;
       view = "recite";
     }
@@ -193,8 +195,10 @@ import { ttsSpeak } from "@/core/tts";
     async function rateSelf(rating: 1 | 2 | 3 | 4) {
       const q = reciteQueue[reciteCursor];
       if (!q) return;
+      reciteRatings.push(rating);
       await app.reciteAnswer(bankName, q as Question & { blockId?: string }, rating, reciteSessionId, 0);
       plugin.refreshDock?.();
+      reciteHint = 0;
       if (reciteCursor < reciteQueue.length - 1) {
         reciteCursor++; reciteRevealed = false;
       } else {
@@ -203,7 +207,7 @@ import { ttsSpeak } from "@/core/tts";
     }
 
     function exitRecite() {
-      view = "entry"; reciteQueue = []; reciteRevealed = false; reciteDone = false;
+      view = "entry"; reciteQueue = []; reciteRevealed = false; reciteDone = false; reciteHint = 0; reciteRatings = [];
     }
 
     /** 错题册导出：Markdown 文档写入题库"导出"区（支持考点/错因/时间过滤） */
@@ -322,6 +326,12 @@ import { ttsSpeak } from "@/core/tts";
         else m.ttsStop?.();
       });
     }
+    /** 纯听题完整态：切题时自动朗读新题 */
+    $effect(() => {
+      const q = view === "session" ? session?.current : null;
+      if (!q || !pureListen) return;
+      void import("@/core/tts").then((m) => m.ttsSpeak([q.stem, ...q.options].join(" ")));
+    });
 
     async function saveExplain() {
       const q = session?.current;
@@ -870,7 +880,7 @@ import { ttsSpeak } from "@/core/tts";
       {#if reciteDone}
         <div class="lv-card lv-guard">
           <div class="lv-guard-title">🏁 {t("recite.done")}</div>
-          <p class="lv-muted">{t("recite.doneHint")}</p>
+          <p class="num lv-muted">{t("recite.dist")}：不会 {reciteRatings.filter((x) => x === 1).length} · 模糊 {reciteRatings.filter((x) => x === 2).length} · 会 {reciteRatings.filter((x) => x === 3).length} · 熟知 {reciteRatings.filter((x) => x === 4).length}</p>
           <button class="lv-btn lv-btn--primary" style="width:100%" onclick={exitRecite}>{t("session.back")}</button>
         </div>
       {:else if reciteQueue[reciteCursor]}
@@ -881,6 +891,12 @@ import { ttsSpeak } from "@/core/tts";
           {/if}
           {#if stemHtml}<div class="lv-stem lv-rich b3-typography">{@html stemHtml}</div>{:else}<div class="lv-stem">{q.stem}</div>{/if}
           {#if !reciteRevealed}
+            {#if q.kp}
+              <div class="lv-row"><button class="lv-chip" onclick={() => reciteHint = 1}>💡 {t("recite.hint1")}：{q.kp}</button></div>
+            {/if}
+            {#if reciteHint >= 2 && q.analysis}
+              <div class="lv-row"><span class="lv-chip">💡 {t("recite.hint2")}：{q.analysis.slice(0, 24)}…</span></div>
+            {/if}
             <div class="lv-row" style="justify-content:center">
               <button class="lv-btn lv-btn--primary" onclick={() => reciteRevealed = true}>{t("recite.reveal")}</button>
             </div>
@@ -1175,8 +1191,9 @@ import { ttsSpeak } from "@/core/tts";
   .lv-resume { display: flex; gap: 14px; align-items: center; }
   .lv-resume > div:first-child { flex: 1; }
   .lv-session-head { justify-content: flex-start; }
-  .lv-pure .lv-stem, .lv-pure .lv-opt > span:not(.key) { filter: blur(8px); user-select: none; }
+  .lv-pure .lv-stem, .lv-pure .lv-opt > span:not(.key) { display: none; }
   .lv-pure .lv-opt .key { filter: none; }
+  .lv-pure .lv-opt { justify-content: center; }
   .lv-question { margin-top: 6px; }
   .lv-stem { font-size: 16px; line-height: 1.75; margin-bottom: 14px; white-space: pre-wrap; }
   .lv-opt { display: flex; gap: 12px; align-items: flex-start; width: 100%; text-align: left; padding: 11px 14px; border-radius: var(--lv-r-2); border: 1.5px solid var(--lv-border); margin-bottom: 8px; cursor: pointer; background: var(--lv-surface); font: inherit; color: inherit; transition: all var(--lv-dur-micro) ease; }
