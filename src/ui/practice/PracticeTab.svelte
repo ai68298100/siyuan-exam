@@ -578,7 +578,7 @@ import { ttsSpeak } from "@/core/tts";
         const XLSX = await import("xlsx");
         const { decodeCsv } = await import("@/importer/csvDecode");
         const buf = await file.arrayBuffer();
-        const { text } = decodeCsv(buf);
+        const { text, garbled } = decodeCsv(buf);
         if (garbled) showMessage(t("import.garbledWarning"), 5200, "info");
         const wb = XLSX.read(text, { type: "string" });
         const sheet = wb.Sheets[wb.SheetNames[0]];
