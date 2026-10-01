@@ -357,6 +357,12 @@
     <!-- ===== S6 全真考试 ===== -->
     <div class="lv-row">
       <span class="lv-chip">{currentSection}</span>
+      {#if bp.sectionTimed}
+        {@const sr = session.sectionRemaining(currentSection, Date.now())}
+        <span class="lv-chip num" class:lv-chip--red={sr !== null && sr < 60_000}>
+          ⏱ 段 {sr !== null ? `${Math.max(0, Math.floor(sr / 60_000))}:${String(Math.floor((sr % 60_000) / 1000)).padStart(2, "0")}` : "--"}
+        </span>
+      {/if}
       <span class="lv-chip num">{cursor + 1}/{session.state.qids.length}</span>
       <span class="fn__flex-1"></span>
       <button class="lv-btn sm" onclick={() => session?.toggleFlag(current)}>🚩 {session.flags.has(current) ? "✓" : ""}</button>
