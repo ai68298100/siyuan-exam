@@ -276,5 +276,6 @@
     "challenge.importPlaceholder": "Paste a challenge code…",
     "challenge.badCode": "Challenge code not recognized",
     "challenge.copy": "🎯 Copy challenge",
-    "challenge.import": "📥 Import challenge"
+    "challenge.import": "📥 Import challenge",
+    "dock.goPractice": "Go to Practice"
 }

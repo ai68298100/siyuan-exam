@@ -266,8 +266,10 @@ export default class LvExamPlugin extends Plugin {
     <span class="lv-chip lv-chip--red num">${items.length}</span>
 </div>
 <div class="lv-dock-list">
-${items.length ? rows : `<div class="lv-dock-empty">${this.i18n["dock.empty"]}</div>`}
+${items.length ? rows : `<div class="lv-dock-empty">${this.i18n["dock.empty"]}<br/><button class="lv-btn sm lv-dock-go" style="margin-top:8px">${this.i18n["dock.goPractice"]}</button></div>`}
 </div>`;
+        // 空态按钮：打开练习台
+        dockEl.querySelector<HTMLButtonElement>(".lv-dock-go")?.addEventListener("click", () => this.openPractice());
         // 事件委托：手动处置（覆盖层由 examApp.setWrongStatus 持久化）
         dockEl.querySelectorAll<HTMLButtonElement>(".lv-dock-act").forEach((btn) => {
             btn.addEventListener("click", async (ev) => {

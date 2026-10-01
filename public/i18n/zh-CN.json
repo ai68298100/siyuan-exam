@@ -276,5 +276,6 @@
     "challenge.importPlaceholder": "粘贴朋友发来的挑战码…",
     "challenge.badCode": "挑战码无法识别",
     "challenge.copy": "🎯 复制挑战码",
-    "challenge.import": "📥 导入挑战码"
+    "challenge.import": "📥 导入挑战码",
+    "dock.goPractice": "去练习台"
 }
