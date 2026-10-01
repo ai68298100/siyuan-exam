@@ -246,5 +246,8 @@
     "estimate.history": "History",
     "recite.hint1": "Hint 1 · Topic",
     "recite.hint2": "Hint 2 · Analysis opening",
-    "recite.dist": "Session ratings"
+    "recite.dist": "Session ratings",
+    "session.groupPos": "Group",
+    "state.noFav": "No favorites yet — press E while practicing",
+    "mode.fav.desc": "Only questions you starred"
 }

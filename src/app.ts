@@ -462,6 +462,11 @@ export class ExamApp {
     return dailySet(questions, dueFirst, counts, n);
   }
 
+  /** 收藏练习：只刷 exam-fav 的题 */
+  favDrill(questions: Question[]): Question[] {
+    return questions.filter((q) => q.fav);
+  }
+
   wrongDrill(questions: Question[]): Question[] {
     const active = new Set(this.wrongItems().map((w) => w.qid));
     return questions.filter((q) => active.has(q.id));

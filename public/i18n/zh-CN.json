@@ -246,5 +246,8 @@
     "estimate.history": "历史",
     "recite.hint1": "提示① 考点",
     "recite.hint2": "提示② 解析开头",
-    "recite.dist": "本组自评分布"
+    "recite.dist": "本组自评分布",
+    "session.groupPos": "材料组",
+    "state.noFav": "收藏夹是空的，先在刷题时按 E 收藏",
+    "mode.fav.desc": "只刷你标记的题"
 }

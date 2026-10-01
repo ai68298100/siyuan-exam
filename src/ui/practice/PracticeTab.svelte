@@ -113,6 +113,9 @@ import { ttsSpeak } from "@/core/tts";
       } else if (mode === "cram") {
         picked = app.cramDrill(qs);
         if (!picked.length) { errorMsg = t("state.noCram"); return; }
+      } else if (mode === "fav") {
+        picked = app.favDrill(qs);
+        if (!picked.length) { errorMsg = t("state.noFav"); return; }
       } else if (mode === "daily") {
         const goal = Number(plugin.settingUtils?.get?.("dailyGoal") ?? 10);
         picked = app.dailyDrill(qs, [], Number.isFinite(goal) && goal > 0 ? goal : 10);
@@ -140,8 +143,7 @@ import { ttsSpeak } from "@/core/tts";
       return mat?.stem ?? "";
     });
 
-    /** 共用题干：材料组母卡（背诵视图） */
-    const reciteMaterial = $derived.by(() => {
+    /** 共用题干：材料组母卡（背诵视图） */    const reciteMaterial = $derived.by(() => {
       const q = reciteQueue[reciteCursor];
       if (!q?.group) return "";
       const mat = questions.find((x) => x.type === "material" && x.group === q.group);
@@ -706,6 +708,9 @@ import { ttsSpeak } from "@/core/tts";
           <button class="lv-mode" onclick={() => startDrill("cram")}>
             <b>🔥 {t("mode.cram")}</b><span class="lv-muted">{t("mode.cram.desc")}</span>
           </button>
+          <button class="lv-mode" onclick={() => startDrill("fav")}>
+            <b>⭐ {t("mode.fav")}</b><span class="lv-muted num">{questions.filter((q) => q.fav).length} {t("mode.wrong.unit")}</span>
+          </button>
           <button class="lv-mode lv-mode--disabled" title={t("todo")}>
             <b>🌲 {t("mode.special")}</b><span class="lv-muted">{t("todo")}</span>
           </button>
@@ -770,6 +775,11 @@ import { ttsSpeak } from "@/core/tts";
             <button class="lv-btn lv-btn--ghost" onclick={exitSession}>← {t("session.exit")}</button>
             <span class="lv-chip">{t("session.progress")}: <span class="num">{session.progress.done}/{session.progress.total}</span></span>
             <span class="lv-chip lv-chip--acc">{t("qtype." + q.type)}</span>
+            {#if q.group}
+              {@const sibs = questions.filter((x) => x.group === q.group)}
+              {@const pos = sibs.findIndex((x) => x.id === q.id) + 1}
+              <span class="lv-chip num">🔗 {t("session.groupPos")} {pos}/{sibs.length}</span>
+            {/if}
             <button class="lv-chip" title={t("tts.read")} onclick={() => ttsSpeak([q.stem, ...q.options].join(" "))}>🔊</button>
             <button class="lv-chip" class:acc={pureListen} title={t("tts.pureListen")} onclick={togglePureListen}>🙈</button>
             <button class="lv-chip" class:acc={!!q.fav} title="E" onclick={() => toggleFavCurrent()}>⭐</button>
