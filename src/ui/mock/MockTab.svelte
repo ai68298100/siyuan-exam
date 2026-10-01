@@ -149,6 +149,20 @@
       view = "report";
     }
 
+    /** 成绩单导出 Markdown（本地下载） */
+    function exportScoreMd() {
+      if (!score) return;
+      void import("@/core/exportScore").then((m) => {
+        const md = m.scoreToMarkdown(bp, score!, startedAt);
+        const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `模考成绩单 ${bp.name}.md`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      });
+    }
+
     /** 错题回炉：本次模考错题开练习会话 */
     async function rewrongDrill() {
       if (!session) return;
@@ -426,6 +440,7 @@
       </div>
     {/if}
     <div class="lv-row">
+      <button class="lv-btn ghost sm" onclick={exportScoreMd}>📄 {t("mock.exportScore")}</button>
       <button class="lv-btn lv-btn--primary" onclick={rewrongDrill}>❌ {t("mock.rewrong")}</button>
       <button class="lv-btn" onclick={() => { view = "config"; }}>▶ {t("mock.again")}</button>
     </div>

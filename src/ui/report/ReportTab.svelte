@@ -34,6 +34,26 @@
       } finally { reportBusy = false; }
     }
 
+    /** 周报通知 lite：周一首次打开且有上周数据时轻提示（localStorage 防重） */
+    let weeklyNudged = false;
+    $effect(() => {
+      if (loading || weeklyNudged || !app) return;
+      const now = new Date();
+      if (now.getDay() !== 1) return;
+      const K = "lv-exam-weekly-nudge";
+      const wk = `${now.getFullYear()}-W${Math.ceil(now.getDate() / 7)}`;
+      if (localStorage.getItem(K) === wk) return;
+      const d = app.derived();
+      const lastMonday = new Date(now);
+      lastMonday.setDate(now.getDate() - 7);
+      const k2 = `${lastMonday.getFullYear()}-${String(lastMonday.getMonth() + 1).padStart(2, "0")}-${String(lastMonday.getDate()).padStart(2, "0")}`;
+      if ([...d.days.keys()].some((k) => k.startsWith(k2.slice(0, 7)))) {
+        localStorage.setItem(K, wk);
+        weeklyNudged = true;
+        showMessage(t("report.weeklyNudge"), 5200, "info");
+      }
+    });
+
     onMount(async () => {
       if (!app) { loading = false; errorMsg = t("state.appNotReady"); return; }
       try {
