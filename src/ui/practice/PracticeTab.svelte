@@ -40,6 +40,16 @@ import { ttsSpeak } from "@/core/tts";
     let selected = $state<string>("");
     let answerStart = $state(0);
     let sessionDone = $state<null | { total: number; correct: number; wrong: number }>(null);
+    /** 已存错因回显（app.loadWrongReason；答错时载入，选择后即时高亮） */
+    let savedReason = $state<string | undefined>(undefined);
+    $effect(() => {
+      const q = session?.current;
+      if (feedback?.verdict === "wrong" && q) {
+        void (app as any).loadWrongReason(q.id).then((r: string | undefined) => { savedReason = r; });
+      } else {
+        savedReason = undefined;
+      }
+    });
 
     // 守卫态
     let newBankName = $state("");
@@ -121,6 +131,16 @@ import { ttsSpeak } from "@/core/tts";
       } catch (e) {
         errorMsg = offline ? t("state.offlineHint") : String(e instanceof Error ? e.message : e);
       } finally { creating = false; }
+    }
+
+    /** 移出题库管理（app.removeBank）：仅移出注册表，笔记本本体保留可手动删 */
+    async function removeActiveBank() {
+      if (!activeBankId) return;
+      if (!confirm(t("bank.removeConfirm").replace("{name}", bankName))) return;
+      (app as any).removeBank(activeBankId);
+      banks = app.listBanks();
+      activeBankId = banks[0]?.id ?? "";
+      showMessage(t("bank.removed"), 2800, "info");
     }
 
     async function startDrill(mode: string) {
@@ -357,7 +377,7 @@ import { ttsSpeak } from "@/core/tts";
         // Electron 提供绝对路径；browser 前端按钮已隐藏
         const path = (file as any).path as string | undefined;
         if (!path) { showMessage(t("share.needDesktop"), 4200, "error"); return; }
-        await (app as any).deps.client.importSy(path);
+        await (app as any).importBankSyZip(path);
         banks = app.listBanks();
         showMessage(t("share.importDone"), 4000, "info");
         void loadQuestions();
@@ -580,6 +600,9 @@ import { ttsSpeak } from "@/core/tts";
     let aiRejected = $state<{ index: number; reason: string }[]>([]);
     let aiDuplicates = $state(0);
     let aiSaved = $state(0);
+    /** 累计 AI 用量（app.aiUsage；本地统计，生成后刷新） */
+    let aiUsageTotal = $state<{ totalTokens: number; totalCalls: number } | null>(null);
+    $effect(() => { void (app as any).aiUsage().then((u: { totalTokens: number; totalCalls: number }) => (aiUsageTotal = u)); });
     /** 待审核队列持久化（TODO 27 组）：切视图/重载不丢生成结果 */
     async function persistAiQueue() {
       try { await (app as any).deps.storage.save("ai/review-queue", { queue: aiQueue, rejected: aiRejected, duplicates: aiDuplicates }); } catch { /* 忽略 */ }
@@ -621,8 +644,9 @@ import { ttsSpeak } from "@/core/tts";
           kp: aiKp, sourceTitle: t("ai.pastedMaterial"), preset: aiPreset, quality: aiQuality,
           customHint: aiCustomHint || undefined, signal: aiCancel,
         });
-        aiCost = `≈${counting.approxTokens} tok · ${counting.calls} 次调用`;
+        aiCost = `≈${counting.approxTokens} tok · ${counting.calls} ${t("ai.usageCalls")}`;
         await app.recordAiUsage(counting.id, counting.approxTokens, counting.calls);
+        aiUsageTotal = await (app as any).aiUsage();
         aiQueue = r.pending; aiRejected = r.rejected; aiDuplicates = r.duplicates;
         void persistAiQueue();
         if (!r.pending.length && !r.rejected.length) errorMsg = t("ai.empty");
@@ -775,6 +799,7 @@ import { ttsSpeak } from "@/core/tts";
             // 错因快捷键（docs/11：1-4 错因；1-3 对应三分类）
             const reasons = ["careless", "unknown", "trap"] as const;
             void app.saveWrongReason(q.id, reasons[Number(e.key) - 1]);
+            savedReason = reasons[Number(e.key) - 1];
             e.preventDefault();
           }
           return;
@@ -833,7 +858,7 @@ import { ttsSpeak } from "@/core/tts";
       {#if plan.mode === "sprint"}<span class="lv-chip lv-chip--red num">🔥 {t("entry.sprint")} D-{plan.daysToExam}</span>
       {:else if plan.daysToExam != null}<span class="lv-chip amb num">⏱ {t("entry.examIn")} {plan.daysToExam} {t("entry.days")}</span>{/if}
     {/if}
-    {#if hasBank}<span class="lv-chip">{t("bank.label")} {bankName}</span>{/if}
+    {#if hasBank}<span class="lv-chip">{t("bank.label")} {bankName}</span><button class="lv-chip" title={t("bank.removeTitle")} onclick={removeActiveBank}>✕</button>{/if}
   </div>
 
   {#if loading}
@@ -1022,7 +1047,7 @@ import { ttsSpeak } from "@/core/tts";
               {#if feedback.verdict === "wrong"}
                 <div class="lv-row lv-muted">{t("session.reason")}:
                   {#each ["careless", "unknown", "trap"] as r, ri}
-                    <button class="lv-chip" title={t("entry.days") === "天" ? `快捷键 ${ri + 1}` : `Key ${ri + 1}`} onclick={async () => { await app.saveWrongReason(q.id, r as any); }}>{t("reason." + r)}</button>
+                    <button class="lv-chip" class:acc={savedReason === r} title={t("entry.days") === "天" ? `快捷键 ${ri + 1}` : `Key ${ri + 1}`} onclick={async () => { await app.saveWrongReason(q.id, r as any); savedReason = r; }}>{savedReason === r ? "✓ " : ""}{t("reason." + r)}</button>
                   {/each}
                 </div>
               {/if}
@@ -1237,6 +1262,7 @@ import { ttsSpeak } from "@/core/tts";
           <button class="lv-btn sm" onclick={cancelAiGenerate}>✕ {t("ai.cancel")}</button>
         {/if}
           <span class="lv-muted">{t("ai.pipelineNote")}</span>
+          {#if aiUsageTotal}<span class="lv-chip num" title={t("ai.usageTitle")}>Σ ≈{aiUsageTotal.totalTokens} tok · {aiUsageTotal.totalCalls} {t("ai.usageCalls")}</span>{/if}
         </div>
       </div>
         {#if aiQueue.length || aiRejected.length || aiDuplicates || aiCost}
@@ -1404,6 +1430,7 @@ import { ttsSpeak } from "@/core/tts";
   .lv-btn--primary { background: var(--lv-accent-grad); border-color: transparent; color: #fff; box-shadow: var(--lv-glow, none); }
   .lv-btn--ghost { border-color: transparent; color: var(--lv-text-2); background: transparent; }
   .lv-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 550; color: var(--lv-text-2); background: var(--lv-surface-2); border: 1px solid var(--lv-border); }
+  .lv-chip.acc { color: var(--lv-accent); background: var(--lv-accent-soft); border-color: transparent; }
   .lv-chip--acc { color: var(--lv-accent); background: var(--lv-accent-soft); border-color: transparent; }
   .lv-chip--grn { color: var(--lv-green); background: var(--lv-green-soft); border-color: transparent; }
   .lv-chip--red { color: var(--lv-red); background: var(--lv-red-soft); border-color: transparent; }
