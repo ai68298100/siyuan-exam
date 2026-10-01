@@ -178,7 +178,7 @@ import { ttsSpeak } from "@/core/tts";
       const qs = (await loadQuestions()).filter((q) => q.type !== "material");
       if (!qs.length) { errorMsg = t("state.emptyBank"); return; }
       rebuildPlan();
-      const queue = (plan?.queue?.length ? plan.queue : qs.slice(0, 10)).filter((q) => q.type !== "material");
+      const queue = groupAdjacent((plan?.queue?.length ? plan.queue : qs.slice(0, 10)).filter((q) => q.type !== "material"));
       session = await app.startSession(queue, plan?.mode === "sprint" ? "cram" : "daily");
       feedback = null; selected = ""; sessionDone = null;
       view = "session";

@@ -267,5 +267,6 @@
     "ai.endpointTitle": "Endpoint & scope in settings; content sent only on generate",
     "import.unsupportedDrop": "Unsupported file type (xlsx/csv/sy.zip only)",
     "report.drillKp": "Drill",
-    "browse.searchPlaceholder": "Search stems / options / analysis…"
+    "browse.searchPlaceholder": "Search stems / options / analysis…",
+    "estimate.sourceFilter": "Filter by source (e.g. 2023)"
 }

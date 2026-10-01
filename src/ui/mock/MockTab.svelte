@@ -193,6 +193,7 @@
     let estMine = $state("");
     let estResult = $state<ReturnType<typeof import("../../core/estimate").estimateScore>>(null);
     let estFromBank = $state(false);
+    let estSourceFilter = $state("");
     let estHistory = $state<any[]>([]);
 
     $effect(() => {
@@ -201,7 +202,10 @@
 
     $effect(() => {
       if (estFromBank && questions.length) {
-        estKey = questions.filter((q) => q.type !== "material").map((q) => q.answer).join("");
+        const pool = estSourceFilter.trim()
+          ? questions.filter((q) => q.type !== "material" && (q.source ?? "").includes(estSourceFilter.trim()))
+          : questions.filter((q) => q.type !== "material");
+        estKey = pool.map((q) => q.answer).join("");
       }
     });
 
@@ -295,7 +299,10 @@
       </div>
       <div class="lv-row">
         <label class="lv-row" style="margin:0"><input type="checkbox" bind:checked={estFromBank} /> {t("estimate.fromBank")}</label>
-        {#if estFromBank}<span class="lv-chip num">{t("estimate.bankQ")} {questions.filter((q) => q.type !== "material").length}</span>{/if}
+        {#if estFromBank}
+          <input class="lv-input num" style="width:140px" bind:value={estSourceFilter} placeholder={t("estimate.sourceFilter")} />
+          <span class="lv-chip num">{t("estimate.bankQ")} {questions.filter((q) => q.type !== "material" && (!estSourceFilter.trim() || (q.source ?? "").includes(estSourceFilter.trim()))).length}</span>
+        {/if}
       </div>
       {#if !estFromBank}
       <div class="lv-row">
