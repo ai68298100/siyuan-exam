@@ -19,6 +19,8 @@ export interface GenOptions {
   customHint?: string;          // 用户自定义命题要求（追加到系统提示）
   quality?: "standard" | "economy";  // 标准=二遍换角色核验（默认）；经济=单遍
   existingHashes?: Set<string>;
+  /** 取消信号：每个分片完成后检查，中止后续分片（已完成分片保留） */
+  signal?: { aborted: boolean };
 }
 
 export interface GenIssue {
@@ -181,8 +183,9 @@ export async function generate(channel: AiChannel, sourceText: string, opt: GenO
   let idx = 0;
   const batch = newBatchId();
   const quality = opt.quality ?? "standard";
-  // 超量 1.2×：分片自然超量（每片按 count 出，收满即停）
+  // 超量 1.2×：分片自然超量（每片按 count 出，收满即停）；取消信号每片间检查
   for (const chunk of chunks) {
+    if (opt.signal?.aborted) break;
     const messages = buildPrompt(chunk, opt);
     const raw = await channel.chat(messages);
     const arr = extractJsonArray(raw);

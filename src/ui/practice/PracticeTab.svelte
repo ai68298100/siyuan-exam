@@ -569,6 +569,7 @@ import { ttsSpeak } from "@/core/tts";
     let aiKp = $state("");
     const aiCustomEndpointSet = $derived(!!String(plugin.settingUtils?.get?.("aiEndpoint") ?? "").trim() && !!String(plugin.settingUtils?.get?.("aiKey") ?? "").trim());
     let aiBusy = $state(false);
+    let aiCancel = $state({ aborted: false });
     let aiQuality = $state<"standard" | "economy">("standard");
     let aiCost = $state("");
     let aiCustomHint = $state("");
@@ -590,6 +591,16 @@ import { ttsSpeak } from "@/core/tts";
 
     async function runAiGenerate() {
       if (aiBusy || !aiSource.trim()) return;
+      // 首次调用数据流确认（26.2 P0）：端点/范围/取消入口
+      if (!localStorage.getItem("lv-exam-ai-consent")) {
+        const ep = String(plugin.settingUtils?.get?.("aiEndpoint") ?? "").trim();
+        const msg = ep
+          ? `${t("ai.consentTitle")}\n${t("ai.consentCustom")} ${ep}`
+          : `${t("ai.consentTitle")}\n${t("ai.consentSiyuan")}`;
+        if (!confirm(`${msg}\n\n${t("ai.consentScope")}`)) return;
+        localStorage.setItem("lv-exam-ai-consent", "1");
+      }
+      aiCancel = { aborted: false };
       aiBusy = true; errorMsg = ""; aiQueue = []; aiRejected = []; aiDuplicates = 0; aiSaved = 0;
       try {
         const { generate } = await import("@/ai/gen");
@@ -606,7 +617,7 @@ import { ttsSpeak } from "@/core/tts";
         const r = await generate(counting, aiSource, {
           types: ["single", "multiple", "judge"], count: aiCount, difficulty: aiDifficulty,
           kp: aiKp, sourceTitle: t("ai.pastedMaterial"), preset: aiPreset, quality: aiQuality,
-          customHint: aiCustomHint || undefined,
+          customHint: aiCustomHint || undefined, signal: aiCancel,
         });
         aiCost = `≈${counting.approxTokens} tok · ${counting.calls} 次调用`;
         await app.recordAiUsage(counting.id, counting.approxTokens, counting.calls);
@@ -615,7 +626,15 @@ import { ttsSpeak } from "@/core/tts";
         if (!r.pending.length && !r.rejected.length) errorMsg = t("ai.empty");
       } catch (e) {
         errorMsg = String(e instanceof Error ? e.message : e);
-      } finally { aiBusy = false; }
+      } finally {
+        aiCancel.aborted = false;
+        aiBusy = false;
+      }
+    }
+
+    function cancelAiGenerate() {
+      aiCancel.aborted = true;
+      showMessage(t("ai.cancelled"), 3000, "info");
     }
 
     async function approveAi(q: Question) {
@@ -1207,9 +1226,12 @@ import { ttsSpeak } from "@/core/tts";
           <input class="lv-input" style="flex:1;min-width:200px" bind:value={aiCustomHint} placeholder={t("ai.customHintHint")} />
         </div>
         <div class="lv-row">
-          <button class="lv-btn lv-btn--primary" onclick={runAiGenerate} disabled={aiBusy || !aiSource.trim()}>
-            {aiBusy ? "…" : "✨ " + t("ai.generate")}
-          </button>
+        <button class="lv-btn lv-btn--primary" onclick={runAiGenerate} disabled={aiBusy || !aiSource.trim()}>
+          {aiBusy ? t("ai.generating") : "✨ " + t("ai.generate")}
+        </button>
+        {#if aiBusy}
+          <button class="lv-btn sm" onclick={cancelAiGenerate}>✕ {t("ai.cancel")}</button>
+        {/if}
           <span class="lv-muted">{t("ai.pipelineNote")}</span>
         </div>
       </div>

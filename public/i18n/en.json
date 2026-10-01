@@ -277,5 +277,12 @@
     "challenge.badCode": "Challenge code not recognized",
     "challenge.copy": "🎯 Copy challenge",
     "challenge.import": "📥 Import challenge",
-    "dock.goPractice": "Go to Practice"
+    "dock.goPractice": "Go to Practice",
+    "ai.generating": "Generating…",
+    "ai.cancel": "✕ Cancel",
+    "ai.cancelled": "Cancelled (completed chunks kept)",
+    "ai.consentTitle": "AI data flow",
+    "ai.consentCustom": "Will be sent to your custom endpoint",
+    "ai.consentSiyuan": "Will be sent via SiYuan built-in AI",
+    "ai.consentScope": "Only the pasted material above is sent; your question bank stays local. Continue?"
 }

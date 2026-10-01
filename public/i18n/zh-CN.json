@@ -277,5 +277,12 @@
     "challenge.badCode": "挑战码无法识别",
     "challenge.copy": "🎯 复制挑战码",
     "challenge.import": "📥 导入挑战码",
-    "dock.goPractice": "去练习台"
+    "dock.goPractice": "去练习台",
+    "ai.generating": "生成中…",
+    "ai.cancel": "✕ 取消生成",
+    "ai.cancelled": "已取消（已完成分片保留）",
+    "ai.consentTitle": "AI 数据流说明",
+    "ai.consentCustom": "将发送至你的自定义端点",
+    "ai.consentSiyuan": "将发送至思源内置 AI 通道",
+    "ai.consentScope": "仅发送上方粘贴的出题材料，题库数据不上传。确认继续？"
 }
