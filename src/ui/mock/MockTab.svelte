@@ -8,6 +8,7 @@
     import type { ExamApp } from "../../app";
     import type { Question } from "../../core/types";
     import { assemble, blueprintTotals, MockSession, type Blueprint, type BlueprintSection, type MockScore } from "../../core/mock";
+    import { estimateScore } from "../../core/estimate";
     
     let { plugin, examApp: app }: { plugin: any; examApp: ExamApp } = $props();
     const i18n = $derived(plugin?.i18n ?? {});
@@ -168,6 +169,15 @@
       avg: history.length > 1 ? Math.round(history.slice(0, -1).reduce((n, h) => n + h.percent, 0) / (history.length - 1)) : null,
       target: bp.passLine,
     } : null);
+    // ---------- 考后估分（v0.5）：答案串对比 ----------
+    let estKey = $state("");
+    let estMine = $state("");
+    let estResult = $state<ReturnType<typeof import("../../core/estimate").estimateScore>>(null);
+
+    function runEstimate() {
+      estResult = estimateScore(estMine, estKey, { scoreEach: 1, passLine: bp.passLine });
+    }
+
     function percentBar(v: number, full: number) { return full ? Math.round((v / full) * 100) : 0; }
 
     /** 雷达图坐标（成绩单；n 段均分圆周，值域 0-100%） */
@@ -240,6 +250,29 @@
     <div class="lv-row">
       <button class="lv-btn lv-btn--primary" onclick={startExam} disabled={!bp.sections.length}>▶ {t("mock.start")}</button>
     </div>
+    <!-- 考后估分 -->
+    <details class="lv-card lv-pad-card" style="padding:12px 16px">
+      <summary style="cursor:pointer;font-weight:650">{t("estimate.title")}</summary>
+      <div class="lv-row" style="margin-top:10px">
+        <span class="lv-chip">{t("estimate.key")}</span>
+        <input class="lv-input num" style="flex:1;min-width:160px" bind:value={estKey} placeholder="BADCA…" />
+      </div>
+      <div class="lv-row">
+        <span class="lv-chip">{t("estimate.mine")}</span>
+        <input class="lv-input num" style="flex:1;min-width:160px" bind:value={estMine} placeholder="B？DCA…（.?=未答）" />
+      </div>
+      <div class="lv-row">
+        <button class="lv-btn sm" onclick={runEstimate} disabled={!estKey.trim() || !estMine.trim()}>{t("estimate.run")}</button>
+        {#if estResult}
+          <span class="lv-chip num">{t("estimate.score")} <b>{estResult.score}</b>/{estResult.full}</span>
+          <span class="lv-chip lv-chip--grn num">✓ {estResult.correct}</span>
+          <span class="lv-chip lv-chip--red num">✕ {estResult.wrong}</span>
+          {#if estResult.blank}<span class="lv-chip lv-chip--amb num">– {estResult.blank}</span>{/if}
+          <span class="lv-chip num">{estResult.percent}%</span>
+          <span class="lv-marks num">{estResult.marks.join(" ")}</span>
+        {/if}
+      </div>
+    </details>
   {:else if view === "exam" && session && currentQ}
     <!-- ===== S6 全真考试 ===== -->
     <div class="lv-row">

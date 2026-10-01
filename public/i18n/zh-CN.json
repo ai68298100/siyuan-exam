@@ -202,5 +202,10 @@
     "browse.favOnly": "只看收藏",
     "tts.read": "朗读本题",
     "mock.vsAvg": "较历均",
-    "mock.points": "分"
+    "mock.points": "分",
+    "estimate.title": "考后估分（对答案）",
+    "estimate.key": "标准答案",
+    "estimate.mine": "我的答案",
+    "estimate.run": "估分",
+    "estimate.score": "得分"
 }

@@ -202,5 +202,10 @@
     "browse.favOnly": "Favorites only",
     "tts.read": "Read aloud",
     "mock.vsAvg": "vs avg",
-    "mock.points": "pts"
+    "mock.points": "pts",
+    "estimate.title": "Post-exam scoring",
+    "estimate.key": "Answer key",
+    "estimate.mine": "My answers",
+    "estimate.run": "Score",
+    "estimate.score": "Score"
 }

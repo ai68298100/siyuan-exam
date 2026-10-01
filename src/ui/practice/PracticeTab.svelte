@@ -162,7 +162,7 @@ import { ttsSpeak } from "@/core/tts";
     }
 
     // ---------- 背诵（S4 lite） ----------
-    function startRecite() {
+    function startRecite() { void 0; // 背诵朗读按钮在视图内直接调用 ttsSpeak
       const qs = app.wrongDrill(questions.length ? questions : []);
       const pool = qs.length ? qs : questions;
       if (!pool.length) { errorMsg = t("state.emptyBank"); return; }
@@ -213,7 +213,7 @@ import { ttsSpeak } from "@/core/tts";
         const { SiyuanAiChannel, OpenAiChannel } = await import("@/ai/client");
         const { buildExplainMessages } = await import("@/ai/explain");
         const endpoint = String(plugin.settingUtils?.get?.("aiEndpoint") ?? "");
-        const key = String(plugin.settingUtils?.get?.("aiKey") ?? "");
+        const key = String((plugin as any).getSecret?.("lv-exam-ai-key") || plugin.settingUtils?.get?.("aiKey") || "");
         const model = String(plugin.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
         const ch = endpoint && key
           ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
@@ -365,7 +365,7 @@ import { ttsSpeak } from "@/core/tts";
         const { SiyuanAiChannel, OpenAiChannel } = await import("@/ai/client");
         const { CountingChannel } = await import("@/ai/counting");
         const endpoint = String(plugin.settingUtils?.get?.("aiEndpoint") ?? "");
-        const key = String(plugin.settingUtils?.get?.("aiKey") ?? "");
+        const key = String((plugin as any).getSecret?.("lv-exam-ai-key") || plugin.settingUtils?.get?.("aiKey") || "");
         const model = String(plugin.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
         const base = endpoint && key
           ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
@@ -702,6 +702,9 @@ import { ttsSpeak } from "@/core/tts";
         <button class="lv-btn lv-btn--ghost" onclick={exitRecite}>← {t("recite.exit")}</button>
         <span class="lv-chip num">{reciteCursor + 1}/{reciteQueue.length}</span>
         <span class="lv-chip">{t("recite.mode")}</span>
+        {#if reciteQueue[reciteCursor]}
+          <button class="lv-chip" title={t("tts.read")} onclick={() => ttsSpeak(reciteQueue[reciteCursor].stem)}>🔊</button>
+        {/if}
       </div>
       {#if reciteDone}
         <div class="lv-card lv-guard">
