@@ -8,6 +8,7 @@
  */
 import { Dialog } from "siyuan";
 import { Component, mount, unmount } from "svelte";
+import { escapeHtml } from "./sanitize";
 
 export const inputDialog = (args: {
     title: string, placeholder?: string, defaultText?: string,
@@ -17,7 +18,7 @@ export const inputDialog = (args: {
     const dialog = new Dialog({
         title: args.title,
         content: `<div class="b3-dialog__content">
-    <div class="ft__breakword"><textarea class="b3-text-field fn__block" style="height: 100%;" placeholder=${args?.placeholder ?? ''}>${args?.defaultText ?? ''}</textarea></div>
+    <div class="ft__breakword"><textarea class="b3-text-field fn__block" style="height: 100%;" placeholder="${escapeHtml(args?.placeholder ?? '')}">${escapeHtml(args?.defaultText ?? '')}</textarea></div>
 </div>
 <div class="b3-dialog__action">
     <button class="b3-button b3-button--cancel">${window.siyuan.languages.cancel}</button><div class="fn__space"></div>

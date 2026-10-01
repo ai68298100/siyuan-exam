@@ -11,7 +11,7 @@
     const i18n = $derived(plugin?.i18n ?? {});
     const t = (k: string, fb = "") => i18n[k] ?? fb;
 
-    type View = "entry" | "session" | "browse" | "import";
+    type View = "entry" | "session" | "browse" | "import" | "recite";
     let view: View = $state("entry");
     let loading = $state(true);
     let errorMsg = $state("");
@@ -19,6 +19,13 @@
     let activeBankId = $state("");
     let questions = $state<Question[]>([]);
     let questionsError = $state("");
+
+    // 背诵态（S4 lite）：盖答案 → 四级自评
+    let reciteQueue = $state<Question[]>([]);
+    let reciteCursor = $state(0);
+    let reciteRevealed = $state(false);
+    let reciteSessionId = $state("");
+    let reciteDone = $state(false);
 
     // 会话态
     let session = $state<any>(null);
@@ -90,10 +97,70 @@
       if (mode === "wrong") {
         picked = app.wrongDrill(qs);
         if (!picked.length) { errorMsg = t("state.noWrong"); return; }
+      } else if (mode === "cram") {
+        picked = app.cramDrill(qs);
+        if (!picked.length) { errorMsg = t("state.noCram"); return; }
+      } else if (mode === "daily") {
+        const goal = Number(plugin.settingUtils?.get?.("dailyGoal") ?? 10);
+        picked = app.dailyDrill(qs, [], Number.isFinite(goal) && goal > 0 ? goal : 10);
+        if (!picked.length) { errorMsg = t("state.emptyBank"); return; }
       } else {
         picked = app.quickDrill(qs, 20);
       }
       session = await app.startSession(picked, mode);
+      feedback = null; selected = ""; sessionDone = null;
+      view = "session";
+    }
+
+    // ---------- 背诵（S4 lite） ----------
+    function startRecite() {
+      const qs = app.wrongDrill(questions.length ? questions : []);
+      const pool = qs.length ? qs : questions;
+      if (!pool.length) { errorMsg = t("state.emptyBank"); return; }
+      reciteQueue = app.quickDrill(pool, 15);
+      reciteCursor = 0; reciteRevealed = false; reciteDone = false;
+      reciteSessionId = `s-recite-${Date.now().toString(36)}`;
+      view = "recite";
+    }
+
+    async function rateSelf(rating: 1 | 2 | 3 | 4) {
+      const q = reciteQueue[reciteCursor];
+      if (!q) return;
+      await app.reciteAnswer(bankName, q as Question & { blockId?: string }, rating, reciteSessionId, 0);
+      plugin.refreshDock?.();
+      if (reciteCursor < reciteQueue.length - 1) {
+        reciteCursor++; reciteRevealed = false;
+      } else {
+        reciteDone = true;
+      }
+    }
+
+    function exitRecite() {
+      view = "entry"; reciteQueue = []; reciteRevealed = false; reciteDone = false;
+    }
+
+    // ---------- 转卡 ----------
+    let cardResult = $state("");
+    async function toCard() {
+      if (!session?.current) return;
+      cardResult = "…";
+      try {
+        const n = await app.convertToCards(activeBankId, bankName, [session.current as Question & { blockId?: string }]);
+        cardResult = n ? t("memory.toCardDone") : t("memory.toCardMissing");
+      } catch (e) {
+        cardResult = offline ? t("state.offlineHint") : String(e instanceof Error ? e.message : e);
+      }
+    }
+
+    // ---------- 举一反三 ----------
+    async function sameKpSession() {
+      const wrongs = session?.answered?.filter((a: any) => a.grade.verdict === "wrong") ?? [];
+      const all = await loadQuestions();
+      const exclude = new Set<string>(session?.state?.qids ?? []);
+      const seed = all.find((q) => q.id === wrongs[0]?.qid) ?? session?.current ?? all[0];
+      const picked = app.sameKpDrill(all, seed, 10, exclude);
+      if (!picked.length) { errorMsg = t("state.noSameKp"); return; }
+      session = await app.startSession(picked, "special");
       feedback = null; selected = ""; sessionDone = null;
       view = "session";
     }
@@ -172,24 +239,31 @@
       input.value = "";
     }
 
-    /** 键盘流（docs/11 映射表）：A-F 选选项 / ⏎ 提交与下一题 / J·K 切题 / 1-3 错因；composition（中文输入法）期间不响应 */
+    /** 键盘流（docs/11 映射表）：会话 A-F/⏎/J；背诵 空格翻开、1-4 自评；composition（中文输入法）期间不响应 */
     function onKeydown(e: KeyboardEvent) {
-      if (view !== "session" || !session || sessionDone || e.isComposing || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.isComposing || e.metaKey || e.ctrlKey || e.altKey) return;
       const target = e.target as HTMLElement;
       if (target && (target.tagName === "TEXTAREA" || target.tagName === "INPUT")) return;
-      const q = session.current;
-      if (!q) return;
-      if (feedback) {
-        if (e.key === "Enter" || e.key.toLowerCase() === "j") { e.preventDefault(); nextQuestion(); }
-        return;
-      }
-      const key = e.key.toUpperCase();
-      if (q.options.length && /^[A-J]$/.test(key)) {
-        const idx = key.charCodeAt(0) - 65;
-        if (idx < q.options.length) { e.preventDefault(); selected = key; }
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        submitAnswer();
+      if (view === "session") {
+        if (!session || sessionDone) return;
+        const q = session.current;
+        if (!q) return;
+        if (feedback) {
+          if (e.key === "Enter" || e.key.toLowerCase() === "j") { e.preventDefault(); nextQuestion(); }
+          return;
+        }
+        const key = e.key.toUpperCase();
+        if (q.options.length && /^[A-J]$/.test(key)) {
+          const idx = key.charCodeAt(0) - 65;
+          if (idx < q.options.length) { e.preventDefault(); selected = key; }
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          submitAnswer();
+        }
+      } else if (view === "recite") {
+        if (reciteDone || !reciteQueue.length) return;
+        if (!reciteRevealed && e.key === " ") { e.preventDefault(); reciteRevealed = true; return; }
+        if (reciteRevealed && /^[1-4]$/.test(e.key)) { e.preventDefault(); void rateSelf(Number(e.key) as 1 | 2 | 3 | 4); }
       }
     }
 
@@ -268,20 +342,20 @@
           <button class="lv-mode" onclick={() => startDrill("single")}>
             <b>⚡ {t("mode.quick")}</b><span class="lv-muted">{t("mode.quick.desc")}</span>
           </button>
+          <button class="lv-mode" onclick={() => startDrill("daily")}>
+            <b>📅 {t("mode.daily")}</b><span class="lv-muted">{t("mode.daily.desc")}</span>
+          </button>
+          <button class="lv-mode" onclick={() => startRecite()}>
+            <b>🔄 {t("mode.recite")}</b><span class="lv-muted">{t("mode.recite.desc")}</span>
+          </button>
           <button class="lv-mode" onclick={() => startDrill("wrong")}>
             <b>❌ {t("mode.wrong")}</b><span class="lv-muted num">{app.wrongItems().length} {t("mode.wrong.unit")}</span>
           </button>
+          <button class="lv-mode" onclick={() => startDrill("cram")}>
+            <b>🔥 {t("mode.cram")}</b><span class="lv-muted">{t("mode.cram.desc")}</span>
+          </button>
           <button class="lv-mode lv-mode--disabled" title={t("todo")}>
             <b>🌲 {t("mode.special")}</b><span class="lv-muted">{t("todo")}</span>
-          </button>
-          <button class="lv-mode lv-mode--disabled" title={t("todo")}>
-            <b>📄 {t("mode.paper")}</b><span class="lv-muted">{t("todo")}</span>
-          </button>
-          <button class="lv-mode lv-mode--disabled" title={t("todo")}>
-            <b>⭐ {t("mode.fav")}</b><span class="lv-muted">{t("todo")}</span>
-          </button>
-          <button class="lv-mode lv-mode--disabled" title={t("todo")}>
-            <b>🔥 {t("mode.cram")}</b><span class="lv-muted">{t("todo")}</span>
           </button>
         </div>
         <div class="lv-row" style="margin-top:14px">
@@ -297,7 +371,10 @@
         <div class="lv-card lv-guard">
           <div class="lv-guard-title">🏁 {t("session.done")}</div>
           <p class="num">{t("session.total")} {sessionDone.total} · <span class="lv-green">{t("session.correct")} {sessionDone.correct}</span> · <span class="lv-red">{t("session.wrong")} {sessionDone.wrong}</span></p>
-          <button class="lv-btn lv-btn--primary" style="width:100%" onclick={exitSession}>{t("session.back")}</button>
+          {#if sessionDone.wrong > 0}
+            <button class="lv-btn" style="width:100%" onclick={sameKpSession}>🔁 {t("memory.sameKp")}</button>
+          {/if}
+          <button class="lv-btn lv-btn--primary" style="width:100%;margin-top:8px" onclick={exitSession}>{t("session.back")}</button>
         </div>
       </div>
     {:else}
@@ -353,12 +430,60 @@
                 {/if}
               {:else}
                 <button class="lv-btn lv-btn--primary" onclick={nextQuestion}>{t("session.next")} →</button>
+                {#if feedback.verdict === "wrong"}
+                  <button class="lv-btn" onclick={toCard}>🎴 {t("memory.toCard")}</button>
+                  {#if cardResult}<span class="lv-muted">{cardResult}</span>{/if}
+                {/if}
               {/if}
             </div>
           </div>
         </div>
       {/if}
     {/if}
+  {:else if view === "recite"}
+    <!-- ===== S4 背诵（lite）：盖答案 → 四级自评 ===== -->
+    <div class="lv-pad">
+      <div class="lv-row">
+        <button class="lv-btn lv-btn--ghost" onclick={exitRecite}>← {t("recite.exit")}</button>
+        <span class="lv-chip num">{reciteCursor + 1}/{reciteQueue.length}</span>
+        <span class="lv-chip">{t("recite.mode")}</span>
+      </div>
+      {#if reciteDone}
+        <div class="lv-card lv-guard">
+          <div class="lv-guard-title">🏁 {t("recite.done")}</div>
+          <p class="lv-muted">{t("recite.doneHint")}</p>
+          <button class="lv-btn lv-btn--primary" style="width:100%" onclick={exitRecite}>{t("session.back")}</button>
+        </div>
+      {:else if reciteQueue[reciteCursor]}
+        {@const q = reciteQueue[reciteCursor]}
+        <div class="lv-card lv-question">
+          <div class="lv-stem">{q.stem}</div>
+          {#if !reciteRevealed}
+            <div class="lv-row" style="justify-content:center">
+              <button class="lv-btn lv-btn--primary" onclick={() => reciteRevealed = true}>{t("recite.reveal")}</button>
+            </div>
+          {:else}
+            {#if q.options.length}
+              <div class="lv-analysis"><b>{t("recite.answer")}:</b> {q.answer}</div>
+              {#each q.options as opt, i}
+                <div class="lv-opt" class:right={q.answer.includes(String.fromCharCode(65 + i))} style="cursor:default">
+                  <span class="key">{String.fromCharCode(65 + i)}</span><span>{opt}</span>
+                </div>
+              {/each}
+            {:else}
+              <div class="lv-analysis"><b>{t("recite.answer")}:</b> {q.answer}</div>
+            {/if}
+            {#if q.analysis}<div class="lv-analysis">{q.analysis}</div>{/if}
+            <div class="lv-rate">
+              <button class="lv-btn r1" onclick={() => rateSelf(1)}>1 {t("rate.1")}</button>
+              <button class="lv-btn r2" onclick={() => rateSelf(2)}>2 {t("rate.2")}</button>
+              <button class="lv-btn r3" onclick={() => rateSelf(3)}>3 {t("rate.3")}</button>
+              <button class="lv-btn r4" onclick={() => rateSelf(4)}>4 {t("rate.4")}</button>
+            </div>
+          {/if}
+        </div>
+      {/if}
+    </div>
   {:else if view === "browse"}
     <!-- ===== S3 浏览 ===== -->
     <div class="lv-pad">
@@ -495,6 +620,12 @@
   .lv-qrow-head { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; flex-wrap: wrap; }
   .lv-qrow-src { margin-left: auto; font-size: 11.5px; }
   .lv-qrow-stem { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lv-rate { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 12px; }
+  .lv-rate .lv-btn { justify-content: center; }
+  .lv-rate .r1:hover { border-color: var(--lv-red); color: var(--lv-red); }
+  .lv-rate .r2:hover { border-color: var(--lv-amber); color: var(--lv-amber); }
+  .lv-rate .r3:hover { border-color: var(--lv-green); color: var(--lv-green); }
+  .lv-rate .r4:hover { border-color: var(--lv-accent); color: var(--lv-accent); }
   @media (max-width: 960px) { .lv-modes { grid-template-columns: repeat(2, 1fr); } }
   @media (prefers-reduced-motion: reduce) { .lv-skeleton { animation: none; } .lv-mode, .lv-btn, .lv-opt { transition: none; } }
 </style>

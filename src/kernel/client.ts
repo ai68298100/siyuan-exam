@@ -189,6 +189,24 @@ export class KernelApiClient {
     await this.t.post("/api/riff/addRiffCards", { deckID: deckId, blockIDs: blockIds });
   }
 
+  async getRiffDecks(): Promise<{ id: string; name: string }[]> {
+    const r = await this.t.post("/api/riff/getRiffDecks", {});
+    const arr = Array.isArray(r.data) ? (r.data as { id: string; name: string }[]) : [];
+    return arr.map((d) => ({ id: d.id, name: d.name }));
+  }
+
+  /** 块 → 卡 ID 映射（转卡后的评级入口；响应结构待真机复核 TODO 27） */
+  async getCardIDsByBlockIDs(blockIds: string[]): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    if (!blockIds.length) return map;
+    const r = await this.t.post("/api/riff/getRiffCardsByBlockIDs", { blockIDs: blockIds });
+    const arr = Array.isArray(r.data) ? (r.data as { cardID?: string; blockID?: string }[]) : [];
+    for (const it of arr) {
+      if (it.cardID && it.blockID) map.set(it.blockID, it.cardID);
+    }
+    return map;
+  }
+
   async reviewRiffCard(cardId: string, deckId: string, rating: 0 | 1 | 2 | 3): Promise<void> {
     await this.t.post("/api/riff/reviewRiffCard", { cardID: cardId, deckID: deckId, rating, reviewedCards: [] });
   }

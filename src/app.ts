@@ -8,6 +8,7 @@ import { AttemptLog } from "./core/attemptLog";
 import type { AttemptEvent, Question, ReplayResult, WrongItem, SessionState } from "./core/types";
 import { replay, activeWrongItems } from "./core/replayer";
 import { PracticeSession, pickRandom } from "./core/session";
+import { deckNameForBank, selfRatingToRiffRating, pickSameKp, cramQueue, dailySet } from "./core/memory";
 import type { ImportReport } from "./importer/pipeline";
 
 export interface BankInfo { id: string; name: string; createdAt: number }
@@ -179,9 +180,65 @@ export class ExamApp {
     await this.deps.storage.save(SESSION_KEY, null);
   }
 
+  // ---------- 记忆层（v0.2：riff 卡包 / 转卡 / 评级） ----------
+  /** 确保题库卡包存在并返回 deckID（卡包名 小驴考试/<题库名>，与内置闪卡隔离） */
+  async ensureDeck(bankName: string): Promise<string> {
+    const full = deckNameForBank(bankName);
+    const decks = await this.deps.client.getRiffDecks();
+    const found = decks.find((d) => d.name === full);
+    if (found) return found.id;
+    return this.deps.client.createRiffDeck(full);
+  }
+
+  /** 错题/收藏转卡：返回成功送入卡包的块数（bankId 预留：将来按章节拆卡包） */
+  async convertToCards(_bankId: string, bankName: string, questions: (Question & { blockId?: string })[]): Promise<number> {
+    const blockIds = questions.map((q) => q.blockId).filter((s): s is string => !!s);
+    if (!blockIds.length) return 0;
+    const deckId = await this.ensureDeck(bankName);
+    await this.deps.client.addRiffCards(deckId, blockIds);
+    return blockIds.length;
+  }
+
+  /** 背诵/闪卡作答：写流水（kind=recite + selfRating）；若块已转卡则同步 riff 评级 */
+  async reciteAnswer(bankName: string, q: Question & { blockId?: string }, selfRating: 1 | 2 | 3 | 4, sessionId: string, timeMs = 0): Promise<void> {
+    const remembered = selfRating >= 3;
+    this.recordAttempt({
+      qid: q.id, kind: "recite", mode: "recite",
+      verdict: remembered ? "correct" : "wrong",
+      myAnswer: null, selfRating, sessionId, queue: "normal", timeMs,
+    });
+    if (q.blockId && this.kernelOnline) {
+      try {
+        const deckId = await this.ensureDeck(bankName);
+        const ids = await this.deps.client.getCardIDsByBlockIDs([q.blockId]);
+        const cardId = ids.get(q.blockId);
+        if (cardId) await this.deps.client.reviewRiffCard(cardId, deckId, selfRatingToRiffRating(selfRating));
+      } catch { /* riff 失败不阻塞背诵流水（离线降级语义） */ }
+    }
+  }
+
   // ---------- 常用抽题 ----------
   quickDrill(questions: Question[], n: number): Question[] {
     return pickRandom(questions, n);
+  }
+
+  /** 举一反三：同考点变式题 */
+  sameKpDrill(all: Question[], seed: Question, n: number, excludeIds: Set<string>): Question[] {
+    return pickSameKp(all, seed, n, excludeIds);
+  }
+
+  /** 冲刺 cram：错 ≥minWrong 的题按错次排序 */
+  cramDrill(questions: Question[], minWrong = 2, limit = 50): Question[] {
+    const counts = new Map<string, number>();
+    for (const w of this.derived().wrongbook.values()) counts.set(w.qid, w.wrongCount);
+    return cramQueue(questions, counts, minWrong, limit);
+  }
+
+  /** 每日一练：到期优先（FSRS 层 v0.2+ 当前传空）→ 高频错题 → 随机补足 */
+  dailyDrill(questions: Question[], dueFirst: Question[], n: number): Question[] {
+    const counts = new Map<string, number>();
+    for (const w of this.derived().wrongbook.values()) counts.set(w.qid, w.wrongCount);
+    return dailySet(questions, dueFirst, counts, n);
   }
 
   wrongDrill(questions: Question[]): Question[] {

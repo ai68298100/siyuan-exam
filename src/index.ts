@@ -201,6 +201,14 @@ ${items.length ? rows : `<div class="lv-dock-empty">${this.i18n["dock.empty"]}</
     }
 
     private openTabByType(type: string, icon: string, title: string) {
+        // 单例聚焦（26.2）：同类型 Tab 已开则切换过去，避免 tabApps 覆盖引用
+        const existing = (this.getOpenedTab()[type] ?? [])[0] as any;
+        if (existing) {
+            const tab = existing.parent;
+            if (tab?.switchTab) tab.switchTab(existing.headElement);
+            else existing.headElement?.click?.();
+            return;
+        }
         openTab({
             app: this.app as any,
             custom: {
