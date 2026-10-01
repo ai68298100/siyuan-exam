@@ -266,5 +266,6 @@
     "command.openWrongbook": "Open wrongbook",
     "ai.endpointTitle": "Endpoint & scope in settings; content sent only on generate",
     "import.unsupportedDrop": "Unsupported file type (xlsx/csv/sy.zip only)",
-    "report.drillKp": "Drill"
+    "report.drillKp": "Drill",
+    "browse.searchPlaceholder": "Search stems / options / analysis…"
 }

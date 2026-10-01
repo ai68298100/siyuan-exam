@@ -590,11 +590,20 @@ import { ttsSpeak } from "@/core/tts";
 
     let favOnly = $state(false);
     let browseLimit = $state(200);
-    const shownQuestions = $derived.by(() => {
-      const list = favOnly ? questions.filter((q) => q.fav) : questions;
-      return list.slice(0, browseLimit);
+    let searchText = $state("");
+    const filteredQuestions = $derived.by(() => {
+      let list = favOnly ? questions.filter((q) => q.fav) : questions;
+      const kw = searchText.trim().toLowerCase();
+      if (kw) {
+        list = list.filter((q) =>
+          q.stem.toLowerCase().includes(kw) ||
+          q.options.some((o) => o.toLowerCase().includes(kw)) ||
+          (q.analysis ?? "").toLowerCase().includes(kw));
+      }
+      return list;
     });
-    const hasMore = $derived((favOnly ? questions.filter((q) => q.fav) : questions).length > browseLimit);
+    const shownQuestions = $derived(filteredQuestions.slice(0, browseLimit));
+    const hasMore = $derived(filteredQuestions.length > browseLimit);
 
     // ---------- 浏览详情：展开/文档跳转/反链 ----------
     let expandedId = $state("");
@@ -1135,8 +1144,9 @@ import { ttsSpeak } from "@/core/tts";
     <div class="lv-pad">
       <div class="lv-row">
         <button class="lv-btn lv-btn--ghost" onclick={() => view = "entry"}>← {t("mode.practice")}</button>
-        <span class="lv-chip num">{questions.length} {t("browse.count")}</span>
+        <span class="lv-chip num">{shownQuestions.length}/{questions.length} {t("browse.count")}</span>
         <button class="lv-chip" class:acc={favOnly} onclick={() => favOnly = !favOnly}>⭐ {t("browse.favOnly")}</button>
+        <input class="lv-input" style="flex:1;min-width:160px" placeholder={t("browse.searchPlaceholder")} bind:value={searchText} />
       </div>
       {#if questionsError}
         <div class="lv-error">{questionsError}</div>

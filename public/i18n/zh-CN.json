@@ -266,5 +266,6 @@
     "command.openWrongbook": "打开错题本",
     "ai.endpointTitle": "端点与范围见设置；仅生成时发送所选内容",
     "import.unsupportedDrop": "暂不支持该文件类型（支持 xlsx/csv/sy.zip）",
-    "report.drillKp": "组卷"
+    "report.drillKp": "组卷",
+    "browse.searchPlaceholder": "搜索题干/选项/解析…"
 }
