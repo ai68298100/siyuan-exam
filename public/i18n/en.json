@@ -257,5 +257,10 @@
     "report.thisWeek": "This week",
     "report.lastWeek": "Last week",
     "browse.loadMore": "Load more",
-    "import.exportErrors": "Export errors CSV"
+    "import.exportErrors": "Export errors CSV",
+    "ai.pastedMaterial": "Pasted material",
+    "entry.manual": "Manual entry",
+    "session.wrong": "Wrong",
+    "ai.customHint": "Custom request",
+    "ai.customHintHint": "Appended to prompt, e.g. focus on numeric problems"
 }

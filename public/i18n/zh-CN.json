@@ -257,5 +257,10 @@
     "report.thisWeek": "本周",
     "report.lastWeek": "上周",
     "browse.loadMore": "加载更多",
-    "import.exportErrors": "导出错误清单 CSV"
+    "import.exportErrors": "导出错误清单 CSV",
+    "ai.pastedMaterial": "粘贴材料",
+    "entry.manual": "手工录题",
+    "session.wrong": "答错",
+    "ai.customHint": "自定义要求",
+    "ai.customHintHint": "追加到命题指令，如：多用数值计算题"
 }
