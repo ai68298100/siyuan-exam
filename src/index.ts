@@ -16,6 +16,7 @@ import MockTab from "@/ui/mock/MockTab.svelte";
 import ReportTab from "@/ui/report/ReportTab.svelte";
 import { createExamApp } from "./app-runtime";
 import type { ExamApp } from "./app";
+import { streak } from "./core/replayer";
 
 const TAB_PRACTICE = "exam-practice";
 const TAB_MOCK = "exam-mock";
@@ -146,6 +147,20 @@ export default class LvExamPlugin extends Plugin {
             showMessage(`${this.i18n["update.title"]} v${ver} · ${this.i18n["update.seeChangelog"]}`, 6000, "info");
         }
         localStorage.setItem(K, ver);
+        this.dispatchPublicStats();
+    }
+
+    /** 对外只读数据接口（TODO 21/24 组）：lv-exam:stats 广播（脱敏聚合，无题目内容） */
+    private dispatchPublicStats() {
+        if (!this.examApp) return;
+        try {
+            import("@/core/publicStats").then((m) => {
+                const d = this.examApp!.derived();
+                window.dispatchEvent(new CustomEvent("lv-exam:stats", {
+                    detail: m.buildPublicStats(d, this.examApp!.attempts.all(), streak(d)),
+                }));
+            });
+        } catch { /* 统计失败不影响主流程 */ }
     }
 
     async onunload() {
