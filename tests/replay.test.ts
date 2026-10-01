@@ -77,7 +77,7 @@ describe("AttemptLog + replay：错题状态机", () => {
     expect(r.byQuestion.get("q1")!.attempts).toBe(2);
     expect(r.skipped).toBe(1);
   });
-  it("背诵连击毕业：4 连"会"出清，中断归零", async () => {
+  it("背诵连击毕业：4 连『会』出清，中断归零", async () => {
     const clock = stepClock();
     const log = new AttemptLog(new MemoryStorage(), "k", clock);
     await log.load("d1");
