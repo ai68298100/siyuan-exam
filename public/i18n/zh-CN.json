@@ -198,5 +198,9 @@
     "ai.quality.standard": "标准（二遍核验）",
     "ai.quality.economy": "经济（单遍）",
     "explain.hint": "💡 Hint 递进",
-    "explain.socratic": "🧠 苏格拉底"
+    "explain.socratic": "🧠 苏格拉底",
+    "browse.favOnly": "只看收藏",
+    "tts.read": "朗读本题",
+    "mock.vsAvg": "较历均",
+    "mock.points": "分"
 }

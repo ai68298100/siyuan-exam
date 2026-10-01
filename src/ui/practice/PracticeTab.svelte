@@ -4,6 +4,7 @@
     import { onMount } from "svelte";
 import { showMessage } from "siyuan";
 import { planToday } from "@/core/planner";
+import { ttsSpeak } from "@/core/tts";
     import type { ExamApp } from "../../app";
     import type { Question } from "../../core/types";
     import { parseText, parseExcelRows, autoMapExcel, type ImportReport } from "../../importer/pipeline";
@@ -120,6 +121,13 @@ import { planToday } from "@/core/planner";
       session = await app.startSession(picked, mode);
       feedback = null; selected = ""; sessionDone = null;
       view = "session";
+    }
+
+    // ---------- 收藏（exam-fav；E 键 + 星标 + 过滤） ----------
+    async function toggleFavCurrent() {
+      const q = session?.current as (Question & { blockId?: string; fav?: boolean }) | undefined;
+      if (!q) return;
+      try { await app.toggleFav(q); } catch { /* 离线静默 */ }
     }
 
     /** 备考计划（v0.5）：读取设置考日 → planToday 聚合（冲刺 cram 优先/常规到期优先） */
@@ -417,6 +425,9 @@ import { planToday } from "@/core/planner";
       input.value = "";
     }
 
+    let favOnly = $state(false);
+    const shownQuestions = $derived(favOnly ? questions.filter((q) => q.fav) : questions);
+
     // ---------- 浏览详情：展开/文档跳转/反链 ----------
     let expandedId = $state("");
     let backlinkCache = $state(new Map<string, { docId: string; title: string; content: string }[]>());
@@ -468,6 +479,9 @@ import { planToday } from "@/core/planner";
         if (q.options.length && /^[A-J]$/.test(key)) {
           const idx = key.charCodeAt(0) - 65;
           if (idx < q.options.length) { e.preventDefault(); selected = key; }
+        } else if (e.key.toLowerCase() === "e") {
+          e.preventDefault();
+          void toggleFavCurrent();
         } else if (e.key === "Enter") {
           e.preventDefault();
           submitAnswer();
@@ -612,6 +626,8 @@ import { planToday } from "@/core/planner";
             <button class="lv-btn lv-btn--ghost" onclick={exitSession}>← {t("session.exit")}</button>
             <span class="lv-chip">{t("session.progress")}: <span class="num">{session.progress.done}/{session.progress.total}</span></span>
             <span class="lv-chip lv-chip--acc">{t("qtype." + q.type)}</span>
+            <button class="lv-chip" title={t("tts.read")} onclick={() => ttsSpeak([q.stem, ...q.options].join(" "))}>🔊</button>
+            <button class="lv-chip" class:acc={!!q.fav} title="E" onclick={() => toggleFavCurrent()}>⭐</button>
           </div>
           <div class="lv-card lv-question">
             {#if stemHtml}<div class="lv-stem lv-rich b3-typography">{@html stemHtml}</div>{:else}<div class="lv-stem">{q.stem}</div>{/if}
@@ -865,13 +881,14 @@ import { planToday } from "@/core/planner";
       <div class="lv-row">
         <button class="lv-btn lv-btn--ghost" onclick={() => view = "entry"}>← {t("mode.practice")}</button>
         <span class="lv-chip num">{questions.length} {t("browse.count")}</span>
+        <button class="lv-chip" class:acc={favOnly} onclick={() => favOnly = !favOnly}>⭐ {t("browse.favOnly")}</button>
       </div>
       {#if questionsError}
         <div class="lv-error">{questionsError}</div>
       {:else if !questions.length}
         <div class="lv-empty">{t("browse.empty")}</div>
       {:else}
-        {#each questions as q (q.id)}
+        {#each shownQuestions as q (q.id)}
           <div class="lv-card lv-qrow">
             <div class="lv-qrow-head" role="button" tabindex="0"
               onclick={() => expandedId = expandedId === q.id ? "" : q.id}

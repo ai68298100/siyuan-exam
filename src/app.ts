@@ -206,6 +206,16 @@ export class ExamApp {
     await this.deps.client.appendBlock(blockId, md);
   }
 
+  /** 收藏切换（写块属性；本地缓存同步更新避免整表刷新） */
+  async toggleFav(q: Question & { blockId?: string }): Promise<boolean> {
+    const next = !q.fav;
+    if (q.blockId && this.kernelOnline) {
+      await this.deps.client.setExamFav(q.blockId, next);
+    }
+    q.fav = next;
+    return next;
+  }
+
   // ---------- 导出与模考历史（v0.5） ----------
   /** 错题册导出：生成 Markdown 并写入题库笔记本"导出"文档，返回文档 id */
   async exportWrongbook(bankId: string, bankName: string): Promise<string> {

@@ -100,6 +100,7 @@ export function questionFromBlock(input: FromBlockInput): Question | null {
     batch: attrs["exam-batch"],
     review: attrs["exam-review"] as Question["review"],
     alt: attrs["exam-alt"] ? attrs["exam-alt"].split("|") : undefined,
+    fav: attrs["exam-fav"] === "1",
     hash: questionHash(stem, denseOptions),
   };
 }

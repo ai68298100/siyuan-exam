@@ -192,6 +192,11 @@ export class KernelApiClient {
     return (r.data as Record<string, string>) ?? {};
   }
 
+  /** 收藏切换（exam-fav 属性；空值=思源会保留空串，读侧只认 "1"） */
+  async setExamFav(blockId: string, on: boolean): Promise<void> {
+    await this.t.post("/api/attr/setBlockAttrs", { id: blockId, attrs: { "exam-fav": on ? "1" : "" } });
+  }
+
   async getDueCards(deckId: string): Promise<unknown[]> {
     const r = await this.t.post("/api/riff/getRiffDueCards", { deckID: deckId, reviewedCards: [] });
     return (r.data as unknown[]) ?? [];

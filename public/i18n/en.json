@@ -198,5 +198,9 @@
     "ai.quality.standard": "Standard (2nd-pass review)",
     "ai.quality.economy": "Economy (single pass)",
     "explain.hint": "💡 Hint",
-    "explain.socratic": "🧠 Socratic"
+    "explain.socratic": "🧠 Socratic",
+    "browse.favOnly": "Favorites only",
+    "tts.read": "Read aloud",
+    "mock.vsAvg": "vs avg",
+    "mock.points": "pts"
 }

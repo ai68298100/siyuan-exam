@@ -162,6 +162,12 @@
     function historyPoints(): string {
       return history.map((h, i) => `${(i / Math.max(1, history.length - 1)) * 300},${100 - Math.round(h.percent)}`).join(" ");
     }
+    /** 三线对比数据（docs/11 S7）：本次 / 历史均值 / 及格线目标（本地版以及格线为目标锚） */
+    const tri = $derived(score ? {
+      this: percentBar(score.total, score.full),
+      avg: history.length > 1 ? Math.round(history.slice(0, -1).reduce((n, h) => n + h.percent, 0) / (history.length - 1)) : null,
+      target: bp.passLine,
+    } : null);
     function percentBar(v: number, full: number) { return full ? Math.round((v / full) * 100) : 0; }
 
     /** 雷达图坐标（成绩单；n 段均分圆周，值域 0-100%） */
@@ -284,6 +290,21 @@
         <span class="lv-muted">/ {score.full}</span>
         <span class="lv-chip" class:grn={score.pass} class:red={!score.pass}>{score.pass ? t("mock.pass") : t("mock.fail")}（{t("mock.passLine")} {bp.passLine}）</span>
         <span class="lv-chip num">{score.percent}%</span>
+        {#if tri}
+          <div class="lv-row" style="width:100%;margin:10px 0 0">
+            <span class="lv-muted" style="width:44px">本次</span>
+            <div class="progress" style="flex:1"><i style="width:{tri.this}%"></i></div>
+            <span class="num lv-muted">{tri.this}%</span>
+          </div>
+          {#if tri.avg != null}
+            <div class="lv-row" style="width:100%;margin:0">
+              <span class="lv-muted" style="width:44px">历均</span>
+              <div class="progress" style="flex:1"><i style="width:{tri.avg}%"></i></div>
+              <span class="num lv-muted">{tri.avg}%</span>
+            </div>
+            <p class="lv-muted" style="margin:4px 0 0">{tri.this >= tri.avg ? "↑" : "↓"} {t("mock.vsAvg")} {Math.abs(tri.this - tri.avg)} {t("mock.points")}</p>
+          {/if}
+        {/if}
       </div>
     </div>
     {#each score.sections as sec}
