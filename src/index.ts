@@ -125,6 +125,7 @@ export default class LvExamPlugin extends Plugin {
         this.registerTabs();
         if (!this.isMobile) {
             this.registerDock();
+            this.registerStatusBar();
         }
         this.registerCommands();
 
@@ -139,6 +140,7 @@ export default class LvExamPlugin extends Plugin {
             console.error("[lv-exam] app init failed", e);
         }
         this.refreshDock();
+        this.refreshStatusBar();
         // 版本更新引导 lite（TODO 23）：版本变化时提示查看 CHANGELOG
         const K = "lv-exam-last-version";
         const last = localStorage.getItem(K);
@@ -169,6 +171,30 @@ export default class LvExamPlugin extends Plugin {
         try { await this.examApp?.flush(); } catch { /* 尽力而为 */ }
         Object.values(this.tabApps).forEach((instance) => unmount(instance));
         this.tabApps = {};
+    }
+
+    /** 状态栏迷你进度（TODO 18 组）：今日完成/连胜，点击打开练习台 */
+    private registerStatusBar() {
+        this.addStatusBar({
+            element: (() => {
+                const el = document.createElement("div");
+                el.classList.add("lv-statusbar", "fn__flex-center");
+                el.style.cursor = "pointer";
+                el.addEventListener("click", () => this.openPractice());
+                return el;
+            })(),
+        });
+    }
+
+    refreshStatusBar() {
+        if (this.isMobile || !this.examApp) return;
+        const el = document.querySelector(".lv-statusbar");
+        if (!el) return;
+        const d = this.examApp.derived();
+        const todayKey = (() => { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`; })();
+        const today = d.days.get(todayKey)?.attempts ?? 0;
+        const wrong = this.examApp.wrongItems().length;
+        el.textContent = `📝 ${today} · ❌ ${wrong} · 🔥 ${streak(d)}`;
     }
 
     private registerTabs() {
@@ -249,6 +275,7 @@ ${items.length ? rows : `<div class="lv-dock-empty">${this.i18n["dock.empty"]}</
                 const qid = btn.dataset.qid!;
                 await this.examApp?.setWrongStatus(qid, btn.dataset.act as "mastered" | "removed");
                 this.refreshDock();
+                this.refreshStatusBar();
             });
         });
     }
