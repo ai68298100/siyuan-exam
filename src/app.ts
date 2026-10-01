@@ -21,6 +21,8 @@ export interface MockRecord {
   full: number;
   percent: number;
   pass: boolean;
+  /** 分模块明细（历史详情回看；旧记录无此字段需容错） */
+  sections?: { name: string; score: number; full: number; correct: number; total: number }[];
 }
 
 const MOCK_RESULTS_KEY = "mock/results";
@@ -217,10 +219,29 @@ export class ExamApp {
   }
 
   // ---------- 导出与模考历史（v0.5） ----------
-  /** 错题册导出：生成 Markdown 并写入题库笔记本"导出"文档，返回文档 id */
-  async exportWrongbook(bankId: string, bankName: string): Promise<string> {
+  /** 错题册导出：生成 Markdown 并写入题库笔记本"导出"文档，返回文档 id
+   *  过滤（27 组 P2）：kpRoot（考点首段）/ reason（错因）/ sinceDays（最近 N 天首次答错） */
+  async exportWrongbook(bankId: string, bankName: string, opts: { kpRoot?: string; reason?: string; sinceDays?: number } = {}): Promise<string> {
     const { wrongbookToMarkdown } = await import("./core/exportMd");
-    const items = this.wrongItems();
+    let items = this.wrongItems();
+    if (opts.kpRoot || opts.reason || opts.sinceDays != null) {
+      const qs = await this.listQuestions(bankId);
+      const byId = new Map(qs.map((q) => [q.id, q]));
+      const sinceTs = opts.sinceDays != null ? Date.now() - opts.sinceDays * 86_400_000 : 0;
+      items = items.filter((w) => {
+        const q = byId.get(w.qid);
+        if (!q) return false;
+        if (opts.kpRoot && q.kp?.split("/")[0] !== opts.kpRoot) return false;
+        if (opts.reason && w.reason !== opts.reason) return false;
+        if (opts.sinceDays != null && w.firstWrongAt < sinceTs) return false;
+        return true;
+      });
+      const md = wrongbookToMarkdown(items.map((w) => ({ wrong: w, q: byId.get(w.qid)! })), { bankName, exportedAt: new Date() });
+      await this.ensureDoc(bankId, "/导出");
+      const tag = [opts.kpRoot, opts.reason, opts.sinceDays ? `${opts.sinceDays}d` : ""].filter(Boolean).join("-");
+      const ymd = new Date().toISOString().slice(0, 10);
+      return this.deps.client.createDocWithMd(bankId, `/导出/错题册 ${ymd} ${tag}`, md);
+    }
     const qs = await this.listQuestions(bankId);
     const byId = new Map(qs.map((q) => [q.id, q]));
     const pairs = items.map((w) => ({ wrong: w, q: byId.get(w.qid)! })).filter((p) => p.q);

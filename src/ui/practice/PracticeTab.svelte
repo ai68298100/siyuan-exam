@@ -188,11 +188,20 @@ import { ttsSpeak } from "@/core/tts";
       view = "entry"; reciteQueue = []; reciteRevealed = false; reciteDone = false;
     }
 
-    /** 错题册导出：Markdown 文档写入题库"导出"区 */
+    /** 错题册导出：Markdown 文档写入题库"导出"区（支持考点/错因/时间过滤） */
+    let expKp = $state("");
+    let expReason = $state("");
+    let expDays = $state(0);
+    const expKpRoots = $derived([...new Set(questions.map((q) => q.kp?.split("/")[0]).filter(Boolean))]);
+
     async function exportWrong() {
       if (!activeBankId) { errorMsg = t("state.emptyBank"); return; }
       try {
-        const docId = await app.exportWrongbook(activeBankId, bankName);
+        const docId = await app.exportWrongbook(activeBankId, bankName, {
+          kpRoot: expKp || undefined,
+          reason: (expReason || undefined) as any,
+          sinceDays: expDays || undefined,
+        });
         void docId;
         showMessage(t("export.done"), 3600, "info");
       } catch (e) {
@@ -601,7 +610,33 @@ import { ttsSpeak } from "@/core/tts";
           <button class="lv-btn" onclick={() => view = "import"}>📥 {t("import.title")}</button>
           <button class="lv-btn" onclick={() => view = "ai"}>✨ {t("ai.title")}</button>
           <button class="lv-btn" onclick={() => view = "manual"}>✏️ {t("entry.manual")}</button>
-          <button class="lv-btn" onclick={exportWrong}>📤 {t("export.wrongbook")}</button>
+          <button class="lv-btn" onclick={() => view = "manual"}>✏️ {t("entry.manual")}</button>
+          <details class="lv-export-fold">
+            <summary class="lv-btn">📤 {t("export.wrongbook")}</summary>
+            <div class="lv-card" style="padding:10px 12px;margin-top:6px">
+              <div class="lv-row" style="margin:4px 0">
+                <span class="lv-chip">{t("manual.kp")}</span>
+                <select class="lv-select" bind:value={expKp}>
+                  <option value="">全部</option>
+                  {#each expKpRoots as k}<option value={k}>{k}</option>{/each}
+                </select>
+                <span class="lv-chip">{t("session.reason")}</span>
+                <select class="lv-select" bind:value={expReason}>
+                  <option value="">全部</option>
+                  <option value="careless">{t("reason.careless")}</option>
+                  <option value="unknown">{t("reason.unknown")}</option>
+                  <option value="trap">{t("reason.trap")}</option>
+                </select>
+                <span class="lv-chip">{t("export.range")}</span>
+                <select class="lv-select" bind:value={expDays}>
+                  <option value={0}>{t("export.allTime")}</option>
+                  <option value={7}>7{t("entry.days")}</option>
+                  <option value={30}>30{t("entry.days")}</option>
+                </select>
+              </div>
+              <button class="lv-btn sm lv-btn--primary" onclick={exportWrong}>📤 {t("export.run")}</button>
+            </div>
+          </details>
         </div>
       </div>
     {/if}

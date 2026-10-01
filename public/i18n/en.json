@@ -207,5 +207,10 @@
     "estimate.key": "Answer key",
     "estimate.mine": "My answers",
     "estimate.run": "Score",
-    "estimate.score": "Score"
+    "estimate.score": "Score",
+    "export.range": "Range",
+    "export.allTime": "All time",
+    "export.run": "Export",
+    "mock.legacyRecord": "Legacy record: no per-section detail",
+    "mock.radar": "Section accuracy radar"
 }

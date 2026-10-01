@@ -45,5 +45,39 @@ if (offenders.length) console.error("  违规行:\n" + offenders.map((o) => "  -
 
 const failed = checks.filter((c) => !c.ok);
 for (const c of checks) console.log((c.ok ? "✓" : "✗") + " " + c.name);
-if (failed.length) process.exit(1);
+
+// 6. core/ 纯函数层禁 import "siyuan"（可搬内核/可单测的保障，ADR 0002）
+let coreViolation = false;
+const { readdirSync } = await import("node:fs");
+const walkCore = (dir) => {
+  for (const f of readdirSync(dir, { withFileTypes: true })) {
+    const p = dir + "/" + f.name;
+    if (f.isDirectory()) walkCore(p);
+    else if (f.name.endsWith(".ts") && /from\s+["']siyuan["']/.test(readFileSync(p, "utf8"))) {
+      console.error("  ✗ core 层引入 siyuan: " + p);
+      coreViolation = true;
+    }
+  }
+};
+walkCore("src/core");
+must("core 层不依赖 siyuan 包", !coreViolation);
+
+// 7. 跨插件事件前缀（预留通道契约，ADR/10 §3.3）：凡 emit 自定义事件必须 lv-exam: 前缀
+const srcFiles = ["src/index.ts", "src/app.ts"];
+const badEvents = [];
+for (const f of srcFiles) {
+  const src = readFileSync(f, "utf8");
+  for (const m of src.matchAll(/eventBus\.(?:emit|on)\(\s*["']([^"']+)["']/g)) {
+    const ev = m[1];
+    if (ev !== "click-blockicon" && !ev.startsWith("lv-exam:") && !/^ws-|^open-|^click-|^locked-/.test(ev)) {
+      badEvents.push(`${f}: ${ev}`);
+    }
+  }
+}
+must("自定义事件带 lv-exam: 前缀", badEvents.length === 0);
+if (badEvents.length) console.error("  违规:\n" + badEvents.map((b) => "  - " + b).join("\n"));
+
+const failedAll = checks.filter((c) => !c.ok);
+for (const c of checks.slice(-2)) console.log((c.ok ? "✓" : "✗") + " " + c.name);
+if (failedAll.length) process.exit(1);
 console.log(`✓ 架构一致性 ${checks.length} 项全部通过`);

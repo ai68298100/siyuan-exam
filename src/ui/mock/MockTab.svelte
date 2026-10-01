@@ -35,6 +35,7 @@
     let feedbackOn = $state(false);          // 模考默认不即时判分；交卷后统一
     let score = $state<MockScore | null>(null);
     let history = $state<any[]>([]);
+    let historyDetail = $state(-1);
     let nowTick = $state(Date.now());
     let timer: ReturnType<typeof setInterval> | null = null;
     let startedAt = $state(0);
@@ -138,7 +139,10 @@
       }
       score = session?.score() ?? null;
       if (score && app) {
-        await app.saveMockResult({ id: bp.id, name: bp.name, startedAt, total: score.total, full: score.full, percent: score.percent, pass: score.pass });
+        await app.saveMockResult({
+          id: bp.id, name: bp.name, startedAt, total: score.total, full: score.full, percent: score.percent, pass: score.pass,
+          sections: score.sections.map((s) => ({ name: s.name, score: s.score, full: s.full, correct: s.correct, total: s.total })),
+        });
         history = await app.listMockResults();
       }
       view = "report";
@@ -376,10 +380,31 @@
           {/each}
         </svg>
         <div class="lv-row" style="margin:6px 0 0">
-          {#each history.slice(-5) as h}
-            <span class="lv-chip num" title={new Date(h.startedAt).toLocaleString()}>{h.name} {h.percent}%{h.pass ? " ✓" : ""}</span>
+          {#each history.slice(-5) as h, i}
+            <button class="lv-chip num" class:acc={historyDetail === history.length - 5 + i}
+              title={new Date(h.startedAt).toLocaleString()}
+              onclick={() => historyDetail = historyDetail === history.length - 5 + i ? -1 : history.length - 5 + i}>
+              {h.name} {h.percent}%{h.pass ? " ✓" : ""}
+            </button>
           {/each}
         </div>
+        {#if historyDetail >= 0 && history[historyDetail]}
+          {@const h = history[historyDetail]}
+          <div class="lv-card" style="padding:10px 14px;margin-top:8px">
+            <b class="num" style="font-size:13px">{h.name} · {h.percent}%</b>
+            {#if h.sections?.length}
+              {#each h.sections as s}
+                <div class="lv-row" style="margin:3px 0">
+                  <span class="lv-muted" style="width:64px">{s.name}</span>
+                  <div class="progress" style="flex:1"><i style="width:{percentBar(s.score, s.full)}%"></i></div>
+                  <span class="num lv-muted">{s.score}/{s.full}</span>
+                </div>
+              {/each}
+            {:else}
+              <p class="lv-muted" style="margin:4px 0 0">{t("mock.legacyRecord")}</p>
+            {/if}
+          </div>
+        {/if}
       </div>
     {/if}
     <div class="lv-row">

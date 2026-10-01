@@ -207,5 +207,10 @@
     "estimate.key": "标准答案",
     "estimate.mine": "我的答案",
     "estimate.run": "估分",
-    "estimate.score": "得分"
+    "estimate.score": "得分",
+    "export.range": "时间范围",
+    "export.allTime": "全部",
+    "export.run": "导出",
+    "mock.legacyRecord": "旧记录：无分模块明细",
+    "mock.radar": "模块正确率雷达"
 }
