@@ -60,6 +60,7 @@ import { ttsSpeak } from "@/core/tts";
       if (!app) { loading = false; errorMsg = t("state.appNotReady"); return; }
       void (async () => {
         try { explainHistory = ((await (app as any).deps.storage.load("ai/explain-history")) ?? {}) as Record<string, import("@/ai/client").AiMessage[]>; } catch { /* 忽略 */ }
+        await restoreAiQueue();
       })();
       banks = app.listBanks();
       if (banks.length) activeBankId = banks[0].id;
@@ -576,6 +577,16 @@ import { ttsSpeak } from "@/core/tts";
     let aiRejected = $state<{ index: number; reason: string }[]>([]);
     let aiDuplicates = $state(0);
     let aiSaved = $state(0);
+    /** 待审核队列持久化（TODO 27 组）：切视图/重载不丢生成结果 */
+    async function persistAiQueue() {
+      try { await (app as any).deps.storage.save("ai/review-queue", { queue: aiQueue, rejected: aiRejected, duplicates: aiDuplicates }); } catch { /* 忽略 */ }
+    }
+    async function restoreAiQueue() {
+      try {
+        const v = (await (app as any).deps.storage.load("ai/review-queue")) as { queue: Question[]; rejected: typeof aiRejected; duplicates: number } | undefined;
+        if (v?.queue?.length) { aiQueue = v.queue; aiRejected = v.rejected ?? []; aiDuplicates = v.duplicates ?? 0; }
+      } catch { /* 忽略 */ }
+    }
 
     async function runAiGenerate() {
       if (aiBusy || !aiSource.trim()) return;
@@ -600,6 +611,7 @@ import { ttsSpeak } from "@/core/tts";
         aiCost = `≈${counting.approxTokens} tok · ${counting.calls} 次调用`;
         await app.recordAiUsage(counting.id, counting.approxTokens, counting.calls);
         aiQueue = r.pending; aiRejected = r.rejected; aiDuplicates = r.duplicates;
+        void persistAiQueue();
         if (!r.pending.length && !r.rejected.length) errorMsg = t("ai.empty");
       } catch (e) {
         errorMsg = String(e instanceof Error ? e.message : e);
@@ -610,14 +622,19 @@ import { ttsSpeak } from "@/core/tts";
       await app.writeManualQuestion(activeBankId, q);
       aiQueue = aiQueue.filter((x) => x.id !== q.id);
       aiSaved++;
+      aiQueue = aiQueue.filter((x) => x.id !== q.id);
+      aiSaved++;
+      void persistAiQueue();
     }
 
     function dropAi(q: Question) {
       aiQueue = aiQueue.filter((x) => x.id !== q.id);
+      void persistAiQueue();
     }
 
     async function approveAllAi() {
       for (const q of [...aiQueue]) await approveAi(q);
+      void persistAiQueue();
     }
 
     // ---------- 导入 ----------
