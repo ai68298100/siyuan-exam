@@ -87,6 +87,8 @@ export interface ReplayResult {
   wrongbook: Map<string, WrongItem>;
   byQuestion: Map<string, { attempts: number; correct: number; lastAt: number }>;
   days: Map<string, DayStats>;
+  /** 背诵连击（连续"会"次数）——≥ RECITE_GRADUATE_STREAK 出清背诵池 */
+  reciteStreak: Map<string, number>;
   skipped: number;            // 坏行/重复事件数（幂等去重）
   clockAnomalies: number;     // 时钟回拨检出数
 }

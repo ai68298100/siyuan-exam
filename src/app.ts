@@ -109,7 +109,7 @@ export class ExamApp {
     return this.deps.client.createDocWithMd(bankId, hpath, `# ${hpath.split("/").pop()}\n\n`);
   }
 
-  async listQuestions(bankId: string): Promise<(Question & { blockId: string })[]> {
+  async listQuestions(bankId: string): Promise<(Question & { blockId: string; rootId: string })[]> {
     return this.deps.client.listQuestions(bankId);
   }
 
@@ -242,6 +242,16 @@ export class ExamApp {
   }
 
   // ---------- 常用抽题 ----------
+  /** 背诵池：优先错题；已毕业（背诵连击 ≥4）的题出清，回选择题形态 */
+  recitePool(questions: Question[]): Question[] {
+    const graduated = new Set(
+      [...this.derived().reciteStreak.entries()].filter(([, s]) => s >= 4).map(([qid]) => qid),
+    );
+    const wrongs = this.wrongDrill(questions).filter((q) => !graduated.has(q.id));
+    const rest = questions.filter((q) => !graduated.has(q.id) && !wrongs.includes(q));
+    return wrongs.length ? wrongs : rest;
+  }
+
   quickDrill(questions: Question[], n: number): Question[] {
     return pickRandom(questions, n);
   }

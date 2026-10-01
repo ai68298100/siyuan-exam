@@ -146,27 +146,39 @@ export class KernelApiClient {
     return out;
   }
 
-  /** 题库内检索：custom-exam-* 属性驱动（2026-10-02 实测前缀约定） */
-  async listQuestions(notebook: string): Promise<(Question & { blockId: string })[]> {
+  /** 题库内检索：custom-exam-* 属性驱动（2026-10-02 实测前缀约定）；带 root_id 供文档跳转 */
+  async listQuestions(notebook: string): Promise<(Question & { blockId: string; rootId: string })[]> {
     const rows = await this.sql<Record<string, string>>(
-      `SELECT b.id AS blockId, b.content AS content,
+      `SELECT b.id AS blockId, b.root_id AS rootId, b.content AS content,
               a.name AS attrName, a.value AS attrValue
        FROM attributes a JOIN blocks b ON a.block_id = b.id
        WHERE b.root_id IN (SELECT id FROM blocks WHERE box='${escapeSql(notebook)}' AND type='d')
          AND a.name LIKE 'custom-exam-%'`,
     );
-    const byBlock = new Map<string, { attrs: Record<string, string>; content: string }>();
+    const byBlock = new Map<string, { attrs: Record<string, string>; content: string; rootId: string }>();
     for (const row of rows) {
-      const e = byBlock.get(row.blockId) ?? { attrs: {}, content: row.content ?? "" };
+      const e = byBlock.get(row.blockId) ?? { attrs: {}, content: row.content ?? "", rootId: row.rootId ?? "" };
       e.attrs[row.attrName] = row.attrValue ?? "";
       byBlock.set(row.blockId, e);
     }
-    const out: (Question & { blockId: string })[] = [];
+    const out: (Question & { blockId: string; rootId: string })[] = [];
     for (const [blockId, e] of byBlock) {
       const q = questionFromBlock({ attrs: e.attrs, text: e.content });
-      if (q) out.push({ ...q, blockId });
+      if (q) out.push({ ...q, blockId, rootId: e.rootId });
     }
     return out;
+  }
+
+  /** 反链聚合：引用了某题块的笔记（refs 表 2026-10-02 实测：block_id=容器块, def_block_id=被引块, root_id=文档） */
+  async backlinks(blockId: string): Promise<{ docId: string; title: string; content: string }[]> {
+    const rows = await this.sql<Record<string, string>>(
+      `SELECT r.root_id AS docId, d.content AS title, r.content AS content
+       FROM refs r
+       JOIN blocks d ON r.root_id = d.id
+       WHERE r.def_block_id = '${escapeSql(blockId)}'
+       LIMIT 20`,
+    );
+    return rows.map((r) => ({ docId: r.docId ?? "", title: r.title ?? "", content: (r.content ?? "").slice(0, 120) }));
   }
 
   async getBlockAttrs(blockId: string): Promise<Record<string, string>> {

@@ -77,6 +77,19 @@ describe("AttemptLog + replay：错题状态机", () => {
     expect(r.byQuestion.get("q1")!.attempts).toBe(2);
     expect(r.skipped).toBe(1);
   });
+  it("背诵连击毕业：4 连"会"出清，中断归零", async () => {
+    const clock = stepClock();
+    const log = new AttemptLog(new MemoryStorage(), "k", clock);
+    await log.load("d1");
+    for (let i = 0; i < 4; i++) {
+      log.append({ qid: "qg", kind: "recite", mode: "recite", verdict: "correct", myAnswer: null, sessionId: "s", selfRating: 3 });
+    }
+    log.append({ qid: "qg", kind: "recite", mode: "recite", verdict: "wrong", myAnswer: null, sessionId: "s", selfRating: 1 });
+    log.append({ qid: "qg", kind: "recite", mode: "recite", verdict: "correct", myAnswer: null, sessionId: "s", selfRating: 3 });
+    const r = replay(log.all());
+    expect(r.reciteStreak.get("qg")).toBe(1);
+  });
+
   it("streak 连续天数（按事件所在自然日）", async () => {
     const { run } = makeLog([
       { qid: "q1", kind: "practice", mode: "single", verdict: "correct", myAnswer: "A", sessionId: "s" },

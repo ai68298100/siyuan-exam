@@ -17,7 +17,7 @@
     let errorMsg = $state("");
     let banks = $state<any[]>([]);
     let activeBankId = $state("");
-    let questions = $state<Question[]>([]);
+    let questions = $state<(Question & { blockId: string; rootId: string })[]>([]);
     let questionsError = $state("");
 
     // 背诵态（S4 lite）：盖答案 → 四级自评
@@ -246,13 +246,38 @@
       input.value = "";
     }
 
+    // ---------- 浏览详情：展开/文档跳转/反链 ----------
+    let expandedId = $state("");
+    let backlinkCache = $state(new Map<string, { docId: string; title: string; content: string }[]>());
+
+    async function loadBacklinks(blockId: string) {
+      if (!app.kernelOnline) return;
+      try {
+        const links = await (app as any).deps.client.backlinks(blockId);
+        const next = new Map(backlinkCache);
+        next.set(blockId, links);
+        backlinkCache = next;
+      } catch { /* 静默：反链失败不阻塞浏览 */ }
+    }
+
+    function openInSiYuan(rootId: string) {
+      if (!rootId) return;
+      void import("siyuan").then(({ openTab }) => {
+        openTab({ app: (plugin as any).app ?? (plugin as any), doc: { id: rootId } } as any);
+      });
+    }
+
     // ---------- 题面富文本（md2html；离线回退纯文本） ----------
     let stemHtml = $state("");
+    let stemHtmlFor = $state("");
     $effect(() => {
       const q = view === "session" ? session?.current : view === "recite" ? reciteQueue[reciteCursor] : null;
-      if (!q) { stemHtml = ""; return; }
-      stemHtml = "";
-      void app.renderStem(q).then((html) => { if (html && (view === "session" || view === "recite")) stemHtml = html; });
+      if (!q) { stemHtml = ""; stemHtmlFor = ""; return; }
+      // 竞态防护（27 组）：异步返回时校验仍是当前题才应用
+      stemHtml = ""; stemHtmlFor = q.id;
+      void app.renderStem(q).then((html) => {
+        if (html && stemHtmlFor === q.id) stemHtml = html;
+      });
     });
 
     /** 键盘流（docs/11 映射表）：会话 A-F/⏎/J；背诵 空格翻开、1-4 自评；composition（中文输入法）期间不响应 */
@@ -514,12 +539,28 @@
       {:else}
         {#each questions as q (q.id)}
           <div class="lv-card lv-qrow">
-            <div class="lv-qrow-head">
+            <div class="lv-qrow-head" role="button" tabindex="0"
+              onclick={() => expandedId = expandedId === q.id ? "" : q.id}
+              onkeydown={(e) => e.key === "Enter" && (expandedId = expandedId === q.id ? "" : q.id)}>
               <span class="lv-chip lv-chip--acc">{t("qtype." + q.type)}</span>
               {#if q.kp}<span class="lv-chip">{q.kp}</span>{/if}
               {#if q.source}<span class="lv-muted lv-qrow-src">{q.source}</span>{/if}
             </div>
             <div class="lv-qrow-stem">{q.stem}</div>
+            {#if expandedId === q.id}
+              {@const links = app.kernelOnline ? backlinkCache.get(q.blockId) : undefined}
+              <div class="lv-detail">
+                <div class="lv-muted"><b>{t("browse.answer")}:</b> {q.answer}{#if q.analysis} · {q.analysis}{/if}</div>
+                <div class="lv-row">
+                  <button class="lv-btn sm" onclick={() => openInSiYuan((q as any).rootId)}>📍 {t("browse.openDoc")}</button>
+                  <button class="lv-btn sm" onclick={() => void loadBacklinks(q.blockId)}>🔗 {t("browse.backlinks")}</button>
+                  {#if links}
+                    {#if links.length === 0}<span class="lv-muted">{t("browse.noBacklinks")}</span>
+                    {:else}{#each links as l}<span class="lv-chip" title={l.content}>📎 {l.title}</span>{/each}{/if}
+                  {/if}
+                </div>
+              </div>
+            {/if}
           </div>
         {/each}
       {/if}

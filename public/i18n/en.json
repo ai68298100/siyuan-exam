@@ -115,5 +115,9 @@
     "state.noCram": "Cram queue empty (not enough wrong ≥2)",
     "state.noSameKp": "No related questions to recommend",
     "blockMenu.queryPractice": "Practice with this query",
-    "query.empty": "Query matched no questions in this bank"
+    "query.empty": "Query matched no questions in this bank",
+    "browse.answer": "Answer",
+    "browse.openDoc": "Open in SiYuan",
+    "browse.backlinks": "Backlinks",
+    "browse.noBacklinks": "No notes reference this question yet"
 }

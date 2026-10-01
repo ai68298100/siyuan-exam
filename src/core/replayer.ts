@@ -6,11 +6,14 @@
 import type { AttemptEvent, ReplayResult, WrongItem, DayStats } from "./types";
 
 export const ELIMINATE_STREAK = 2;
+/** 背诵连击毕业线：连续 ≥4 次"会"从背诵池出清（形态升级回选择题） */
+export const RECITE_GRADUATE_STREAK = 4;
 
 export function replay(events: readonly AttemptEvent[]): ReplayResult {
   const wrongbook = new Map<string, WrongItem>();
   const byQuestion = new Map<string, { attempts: number; correct: number; lastAt: number }>();
   const days = new Map<string, DayStats>();
+  const reciteStreak = new Map<string, number>();
   const seen = new Set<string>();
   let skipped = 0;
   let clockAnomalies = 0;
@@ -46,7 +49,12 @@ export function replay(events: readonly AttemptEvent[]): ReplayResult {
     // 错题状态机
     let w = wrongbook.get(e.qid);
     if (e.kind === "recite" || e.kind === "card") {
-      // 背诵/闪卡不改变错题本（形态分离）；自评仅用于 FSRS 侧
+      // 形态分离：只更新背诵连击（≥4 毕业出清背诵池），不碰错题本
+      if (e.kind === "recite") {
+        const s = reciteStreak.get(e.qid) ?? 0;
+        if (e.verdict === "correct") reciteStreak.set(e.qid, s + 1);
+        else if (e.verdict === "wrong") reciteStreak.set(e.qid, 0);
+      }
       continue;
     }
     if (e.verdict === "wrong") {
@@ -68,7 +76,7 @@ export function replay(events: readonly AttemptEvent[]): ReplayResult {
     }
   }
 
-  return { wrongbook, byQuestion, days, skipped, clockAnomalies };
+  return { wrongbook, byQuestion, days, reciteStreak, skipped, clockAnomalies };
 }
 
 /** 本地时区自然日（streak/热力/每日口径；事件 ts 为 UTC） */

@@ -115,5 +115,9 @@
     "state.noCram": "冲刺队列为空（错 ≥2 次的题不足）",
     "state.noSameKp": "没有可推荐的变式题",
     "blockMenu.queryPractice": "用此查询开始练习",
-    "query.empty": "该查询没有圈中本题库的题目"
+    "query.empty": "该查询没有圈中本题库的题目",
+    "browse.answer": "答案",
+    "browse.openDoc": "在思源中打开",
+    "browse.backlinks": "反链",
+    "browse.noBacklinks": "暂无笔记引用此题"
 }
