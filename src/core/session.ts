@@ -103,3 +103,19 @@ export function pickRandom(questions: Question[], n: number, rnd: () => number =
   }
   return out;
 }
+
+/** 材料组聚拢：同 exam-group 的题目排到相邻位置，组间保持首次出现顺序 */
+export function groupAdjacent(questions: Question[]): Question[] {
+  const groups = new Map<string, Question[]>();
+  const loose: Question[] = [];
+  for (const q of questions) {
+    if (q.group) {
+      const arr = groups.get(q.group) ?? [];
+      arr.push(q);
+      groups.set(q.group, arr);
+    } else {
+      loose.push(q);
+    }
+  }
+  return [...Array.from(groups.values()).flat(), ...loose];
+}

@@ -8,6 +8,7 @@ import { ttsSpeak } from "@/core/tts";
     import type { ExamApp } from "../../app";
     import type { Question } from "../../core/types";
     import { parseText, parseExcelRows, autoMapExcel, errorsToCsv, type ImportReport } from "../../importer/pipeline";
+    import { groupAdjacent } from "../../core/session";
     import { grade } from "../../core/answer";
 
     let { plugin, examApp: app }: { plugin: any; examApp: ExamApp } = $props();
@@ -123,7 +124,7 @@ import { ttsSpeak } from "@/core/tts";
       } else {
         picked = app.quickDrill(qs, 20);
       }
-      session = await app.startSession(picked, mode);
+      session = await app.startSession(groupAdjacent(picked), mode);
       feedback = null; selected = ""; sessionDone = null;
       view = "session";
     }
