@@ -335,7 +335,8 @@
             <div class="lv-row" style="margin:4px 0 0">
               {#each estKey.split("") as _ans, i}
                 {@const q = questions.filter((x) => x.type !== "material")[i]}
-                {#if q}<span class="lv-chip num" title={q.stem.slice(0, 60)}>{i + 1}. {q.answer}</span>{/if}
+                {@const mark = estResult.marks[i] ?? "–"}
+                {#if q}<span class="lv-chip num" class:lv-chip--grn={mark === "✓"} class:lv-chip--red={mark === "✕"} class:lv-chip--amb={mark === "–"} title={q.stem.slice(0, 60)}>{i + 1}. {q.answer} {mark}</span>{/if}
               {/each}
             </div>
           {/if}
