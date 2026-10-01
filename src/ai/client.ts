@@ -25,8 +25,9 @@ export class SiyuanAiChannel implements AiChannel {
   readonly id = "siyuan" as const;
   constructor(private readonly kernel: KernelApiClient) {}
 
-  async chat(messages: AiMessage[], signal?: AbortSignal): Promise<string> {
+  async chat(messages: AiMessage[], _signal?: AbortSignal): Promise<string> {
     // 思源 chatGPT 端点为单轮 msg 语义：拼接为一条消息（系统提示前缀）
+    // 内核 API 无取消机制——signal 被忽略（长按取消仅中断本地 await，HTTP 已发出不可撤）
     const msg = messages.map((m) => (m.role === "system" ? `[指令]\n${m.content}` : m.content)).join("\n\n");
     const data = await this.kernel.aiChat(msg);
     if (typeof data === "string") return data;
@@ -40,7 +41,7 @@ export class OpenAiChannel implements AiChannel {
   readonly id = "openai" as const;
   constructor(
     private readonly cfg: OpenAiConfig,
-    private readonly fetchImpl: (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>,
+    private readonly fetchImpl: (url: string, init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>,
     private readonly timeoutMs = 60_000,
   ) {}
 
