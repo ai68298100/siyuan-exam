@@ -202,7 +202,12 @@ export default class LvExamPlugin extends Plugin {
         if (!dockEl) return;
         const items = this.examApp.wrongItems();
         const rows = items.slice(0, 30).map((w) =>
-            `<div class="lv-dock-row"><span class="num">${w.qid}</span><span>错 ${w.wrongCount}</span></div>`
+            `<div class="lv-dock-row" data-qid="${w.qid}">
+                <span class="num">${w.qid}</span>
+                <span>错 ${w.wrongCount}</span>
+                <button class="lv-dock-act" data-act="mastered" data-qid="${w.qid}" title="已掌握">✓</button>
+                <button class="lv-dock-act" data-act="removed" data-qid="${w.qid}" title="永久移除">✕</button>
+            </div>`
         ).join("");
         dockEl.innerHTML = `
 <div class="block__icons" style="padding:4px 8px">
@@ -213,6 +218,15 @@ export default class LvExamPlugin extends Plugin {
 <div class="lv-dock-list">
 ${items.length ? rows : `<div class="lv-dock-empty">${this.i18n["dock.empty"]}</div>`}
 </div>`;
+        // 事件委托：手动处置（覆盖层由 examApp.setWrongStatus 持久化）
+        dockEl.querySelectorAll<HTMLButtonElement>(".lv-dock-act").forEach((btn) => {
+            btn.addEventListener("click", async (ev) => {
+                ev.stopPropagation();
+                const qid = btn.dataset.qid!;
+                await this.examApp?.setWrongStatus(qid, btn.dataset.act as "mastered" | "removed");
+                this.refreshDock();
+            });
+        });
     }
 
     private registerCommands() {

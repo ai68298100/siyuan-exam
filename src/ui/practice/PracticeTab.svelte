@@ -598,6 +598,7 @@ import { ttsSpeak } from "@/core/tts";
         if (!session || sessionDone) return;
         const q = session.current;
         if (!q) return;
+        if (e.key === "Escape") { e.preventDefault(); exitSession(); return; }
         if (feedback) {
           if (e.key === "Enter" || e.key.toLowerCase() === "j") { e.preventDefault(); nextQuestion(); }
           return;

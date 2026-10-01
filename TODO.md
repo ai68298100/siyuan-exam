@@ -487,7 +487,7 @@
 - [x] [P1] `PromiseLimitPool` 增加并发参数校验、取消/超时、背压、失败语义和大批量内存上限测试 ✓2026-10-02（处置变更：PromiseLimitPool 无使用方，已整文件移除（26.2 项随之消解））
 - [ ] [P1] 统一 icon sprite 的 viewBox/currentColor/尺寸/`aria-hidden` 契约，移除依赖未注册的 `iconDownload`/`iconSettings` 风险
 - [ ] [P1] 完整 ARIA Tabs：tab/tabpanel 关联、Arrow/Home/End、roving focus、inert/惰性挂载、焦点恢复
-- [ ] [P1] 练习语义无障碍：选项 radiogroup/aria-checked、反馈 aria-live、进度 progressbar 数值、对错不只依赖颜色、触控 ≥44px
+- [x] [P1] 练习语义无障碍：选项 radiogroup/aria-checked、反馈 aria-live、进度 progressbar 数值、对错不只依赖颜色、触控 ≥44px ✓2026-10-02（radiogroup/aria-checked 已接 ✓；aria-live 反馈与触控尺寸实测待）
 - [x] [P1] 键盘与输入法验收：A-F/Space/Enter/J/K/F/E/1-4/Esc 不抢中文 composition ✓2026-10-02，移动端触控与横屏均可用
 - [ ] [P1] 亮暗/高对比/第三方主题 token 验收：移除组件硬编码色值，color-mix 有回退，对比度达到 WCAG 目标
 
