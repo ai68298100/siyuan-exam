@@ -278,6 +278,18 @@ export class ExamApp {
     this.banks = [];   // 触发题库列表重建
   }
 
+  /** 估分历史（FIFO 20 条） */
+  async saveEstimate(rec: { key: string; mine: string; percent: number; score: number; total: number }): Promise<void> {
+    const list = (await this.deps.storage.load("estimate/history")) as typeof rec[] | undefined;
+    const next = [...(list ?? []), { ...rec, at: Date.now() }].slice(-20);
+    await this.deps.storage.save("estimate/history", next);
+  }
+
+  async listEstimates(): Promise<(Record<string, unknown> & { percent: number })[]> {
+    const v = await this.deps.storage.load("estimate/history");
+    return Array.isArray(v) ? (v as any[]) : [];
+  }
+
   // ---------- 导出与模考历史（v0.5） ----------
   /** 错题册导出：生成 Markdown 并写入题库笔记本"导出"文档，返回文档 id
    *  过滤（27 组 P2）：kpRoot（考点首段）/ reason（错因）/ sinceDays（最近 N 天首次答错） */

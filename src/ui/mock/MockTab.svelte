@@ -200,8 +200,11 @@
       }
     });
 
-    function runEstimate() {
+    async function runEstimate() {
       estResult = estimateScore(estMine, estKey, { scoreEach: 1, passLine: bp.passLine });
+      if (estResult) {
+        await app.saveEstimate({ key: estKey.slice(0, 40), mine: estMine.slice(0, 40), percent: estResult.percent, score: estResult.score, total: estResult.total });
+      }
     }
 
     function percentBar(v: number, full: number) { return full ? Math.round((v / full) * 100) : 0; }

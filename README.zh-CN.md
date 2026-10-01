@@ -45,7 +45,8 @@
 pnpm i                # Node >= 24
 pnpm dev              # watch 构建 + 热重载
 pnpm make-link        # 软链到 <工作空间>/data/plugins/siyuan-exam/
-pnpm check            # 类型 + svelte 检查
+pnpm check            # 类型 + svelte + i18n + 架构一致性检查
+pnpm test             # vitest 单测
 pnpm build            # 产出 dist/（当前不会生成 package.zip）
 pnpm make-install     # 构建后安装到本机思源插件目录
 ```
