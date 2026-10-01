@@ -26,9 +26,9 @@
 
 ## 1. 内核在线复核（开工前置，内核需运行）
 
-- [ ] [P0] `/api/lute/md2html` 实调：输出 HTML 与 b3-typography 的兼容性、公式/代码/图片表现
+- [x] [P0] `/api/lute/md2html` 实调：**mode:"" 返回思源 block DOM（p/li 带 id、language-math span）**，公式/代码/中文 OK；mode 非空报 unknown [mode]（2026-10-02）
 - [ ] [P0] `attributes` SQL 表复核：`SELECT ... FROM attributes WHERE name='exam-fav'` 可用性（兜底：遍历块 IAL）
-- [ ] [P0] `/api/riff/addRiffCards` / `reviewRiffCard` / `getRiffDueCards` 实调（参数与返回结构）
+- [x] [P0] riff 端点在线可达：getRiffDecks 返回 []（空卡包），参数面以官方 schema 为准；addRiffCards/reviewRiffCard 待有真实题块后随插件联调验证（2026-10-02）
 - [ ] `/api/ai/chatGPT` 实调（msg 参数、流式行为、CORS）
 - [ ] `/api/av/*` 属性视图实调（为"数据库承载题库视图"候选评估采样）
 - [ ] 斜杆命令实现路径验证：open-slash-menu 事件 or 降级块菜单

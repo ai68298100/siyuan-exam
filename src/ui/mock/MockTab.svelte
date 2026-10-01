@@ -1,32 +1,30 @@
 <script lang="ts">
-    // 模考场：组卷蓝图 / 限时与分段计时 / 答题卡标旗 / 成绩单
-    // 功能规格见 docs/01-功能全景PRD.md 第六节第 6 节
+    // 模考场：v0.3 路线（docs/04）。当前仅入口，所有动作给明确禁用原因（TODO 26.1：无响应按钮清零）
     let { plugin }: { plugin: any } = $props();
     const i18n = $derived(plugin?.i18n ?? {});
-    const placeholder = $derived(i18n["placeholder.mock"] ?? "");
+    const t = (k: string, fb = "") => i18n[k] ?? fb;
 </script>
 
-<div class="lv-exam-placeholder fn__flex-1 fn__flex-column">
+<div class="fn__flex-1 lv-pad">
     <div class="block__icons">
         <div class="block__logo">
             <svg class="block__logoicon"><use xlink:href="#iconMock"></use></svg>
-            {i18n["tab.mock"] ?? "Mock Exam"}
+            {t("tab.mock")}
         </div>
-        <div class="fn__flex-1"></div>
-        <button class="b3-button b3-button--outline" title="Blueprint">
-            <svg><use xlink:href="#iconSettings"></use></svg> {i18n["action.blueprint"] ?? ""}
-        </button>
+        <span class="fn__flex-1"></span>
+        <span class="lv-chip lv-chip--amb">{t("planned.v03")}</span>
     </div>
-    <div class="fn__flex-1 fn__flex-center">
-        <div class="b3-card b3-card--wrap" style="max-width:560px">
-            <div class="b3-card__body">
-                <p class="b3-typography">{placeholder}</p>
-            </div>
-        </div>
+    <div class="lv-empty">
+        <div style="font-size:26px;margin-bottom:6px;opacity:.7">📋</div>
+        <b>{t("mock.placeholder.title")}</b>
+        <p class="lv-muted">{t("mock.placeholder.desc")}</p>
+        <p class="lv-muted">{t("mock.placeholder.hint")}</p>
     </div>
 </div>
 
 <style>
-    .lv-exam-placeholder { padding: 0 8px; }
-    .fn__flex-center { display: flex; align-items: center; justify-content: center; }
+    .lv-pad { padding: 12px 16px; overflow: auto; }
+    .lv-empty { border: 1.5px dashed var(--lv-border); border-radius: 14px; padding: 28px; text-align: center; color: var(--lv-text-3); max-width: 520px; margin: 40px auto; }
+    .lv-muted { color: var(--lv-text-3); font-size: 12.5px; margin: 4px 0; }
+    .lv-chip { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 550; color: var(--lv-amber); background: var(--lv-amber-soft); }
 </style>

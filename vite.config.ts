@@ -12,7 +12,7 @@ import { useLiveReload } from "./scripts/siyuan_live_reload.js";
 const env = process.env;
 const isSrcmap = env.VITE_SOURCEMAP === "inline";
 const isDev = env.NODE_ENV === "development";
-const buildTarget = env.VITE_BUILD_TARGET === "kernel" ? "kernel" : "app";
+// 本插件无 kernel.js（docs/03 决策 #9）：仅 app target；kernel 死分支已于 26.3 移除
 
 const outputDir = isDev ? "dev" : "dist";
 const pluginManifest = JSON.parse(readFileSync(resolve(import.meta.dirname, "plugin.json"), "utf8"));
@@ -24,46 +24,9 @@ const packageImageTargets = [
     return fileName ? [{ src: `./${fileName}`, dest: "./" }] : [];
 });
 console.log("isDev=>", isDev);
-console.log("isSrcmap=>", isSrcmap);
 console.log("outputDir=>", outputDir);
-console.log("buildTarget=>", buildTarget);
 
-export default defineConfig(buildTarget === "kernel" ? {
-    build: {
-        outDir: outputDir,
-        emptyOutDir: false,
-        minify: true,
-        sourcemap: isSrcmap ? "inline" : false,
-
-        lib: {
-            entry: resolve(import.meta.dirname, "src/kernel.ts"),
-            name: "KernelPluginSample",
-            fileName: () => "kernel.js",
-            formats: ["iife"],
-        },
-        rollupOptions: {
-            plugins: isDev ? [
-                watchExternalFiles(["src/kernel.ts"])
-            ] : [
-                cleanupDistFiles({
-                    patterns: ["i18n/*.yaml", "i18n/*.md"],
-                    distDir: outputDir
-                }),
-                zipPack({
-                    inDir: "./dist",
-                    outDir: "./",
-                    outFileName: "package.zip"
-                })
-            ],
-
-            external: [],
-
-            output: {
-                entryFileNames: "kernel.js",
-            },
-        },
-    }
-} : {
+export default defineConfig({
     resolve: {
         alias: {
             "@": resolve(import.meta.dirname, "src"),
@@ -82,11 +45,16 @@ export default defineConfig(buildTarget === "kernel" ? {
             targets: [
                 ...packageImageTargets,
                 { src: "./README*.md", dest: "./" },
-                { src: "./docs/*.md", dest: "./docs", rename: { stripBase: true } },
-                { src: "./asset/*", dest: "./asset", rename: { stripBase: true } },
                 { src: "./plugin.json", dest: "./" },
             ],
         }),
+
+        // 生产构建后打包 package.zip（26.3：单一发布命令；失败构建不留伪产物）
+        ...(isDev ? [] : [zipPack({
+            inDir: "./dist",
+            outDir: "./",
+            outFileName: "package.zip"
+        })]),
     ],
 
     define: {
@@ -112,10 +80,14 @@ export default defineConfig(buildTarget === "kernel" ? {
                 watchExternalFiles([
                     "public/i18n/**",
                     "./README*.md",
-                    "./docs/*.md",
                     "./plugin.json"
                 ])
-            ] : [],
+            ] : [
+                cleanupDistFiles({
+                    patterns: ["i18n/*.yaml", "i18n/*.md"],
+                    distDir: outputDir
+                }),
+            ],
 
             external: ["siyuan", "process"],
 
@@ -142,10 +114,8 @@ function watchExternalFiles(patterns: string[]): Plugin {
 /**
  * Clean up some dist files after compiled
  * @author frostime
- * @param options:
- * @returns
  */
-function cleanupDistFiles(options: { patterns: string[], distDir: string }): Plugin {
+function cleanupDistFiles(options: { patterns: string[]; distDir: string }): Plugin {
     const {
         patterns,
         distDir
@@ -156,24 +126,16 @@ function cleanupDistFiles(options: { patterns: string[], distDir: string }): Plu
         enforce: "post",
         writeBundle: {
             sequential: true,
-            order: "post" as "post",
+            order: "post" as const,
             async handler() {
                 const fg = await import("fast-glob");
                 const fs = await import("fs");
-                // const path = await import('path');
-
-                // Use glob syntax so nested translation files are included.
                 const distPatterns = patterns.map(pat => `${distDir}/${pat}`);
-                console.debug("Cleanup searching patterns:", distPatterns);
-
                 const files = await fg.default(distPatterns, {
                     dot: true,
                     absolute: true,
                     onlyFiles: false
                 });
-
-                // console.info('Files to be cleaned up:', files);
-
                 for (const file of files) {
                     try {
                         if (fs.default.existsSync(file)) {
@@ -183,10 +145,9 @@ function cleanupDistFiles(options: { patterns: string[], distDir: string }): Plu
                             } else {
                                 fs.default.unlinkSync(file);
                             }
-                            console.log(`Cleaned up: ${file}`);
                         }
                     } catch (error) {
-                        console.error(`Failed to clean up ${file}:`, error);
+                        console.error("Failed to clean up:", file, error);
                     }
                 }
             }

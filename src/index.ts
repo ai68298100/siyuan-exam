@@ -13,6 +13,8 @@ import { mount, unmount } from "svelte";
 import PracticeTab from "@/ui/practice/PracticeTab.svelte";
 import MockTab from "@/ui/mock/MockTab.svelte";
 import ReportTab from "@/ui/report/ReportTab.svelte";
+import { createExamApp } from "./app-runtime";
+import type { ExamApp } from "./app";
 
 const TAB_PRACTICE = "exam-practice";
 const TAB_MOCK = "exam-mock";
@@ -24,6 +26,9 @@ export default class LvExamPlugin extends Plugin {
     private isMobile: boolean;
     private settingUtils: SettingUtils;
     private tabApps: { [tabType: string]: object } = {};
+    /** 应用组装层（与基类 Plugin.app: App 无关，刻意改名避免遮蔽） */
+    private examApp: ExamApp | null = null;
+    private boundBlockIcon = this.onBlockIconClick.bind(this);
 
     async onload() {
         this.isMobile = getFrontend() === "mobile" || getFrontend() === "browser-mobile";
@@ -42,7 +47,6 @@ export default class LvExamPlugin extends Plugin {
 <path d="M16 3a13 13 0 1 0 13 13 13 13 0 0 0-13-13zM16 26a10 10 0 1 1 10-10 10 10 0 0 1-10 10zM21 12.4l-1.4-1.4-3.6 3.6-3.6-3.6-1.4 1.4 3.6 3.6-3.6 3.6 1.4 1.4 3.6-3.6 3.6 3.6 1.4-1.4-3.6-3.6z"></path>
 </symbol>`);
 
-        // 模块开关与核心配置（详见 docs/01-功能全景PRD.md 第三节设计原则）
         this.settingUtils = new SettingUtils({
             plugin: this,
             callback: () => {
@@ -80,8 +84,8 @@ export default class LvExamPlugin extends Plugin {
             type: "textinput",
             key: "aiKey",
             value: "",
-            password: true,
-            direction: "row"
+            direction: "row",
+            password: true
         });
 
         this.registerTabs();
@@ -90,16 +94,23 @@ export default class LvExamPlugin extends Plugin {
         }
         this.registerCommands();
 
-        this.eventBus.on("click-blockicon", this.onBlockIconClick);
+        this.eventBus.on("click-blockicon", this.boundBlockIcon);
     }
 
     async onLayoutReady() {
         await this.settingUtils.load();
+        try {
+            this.examApp = await createExamApp(this);
+        } catch (e) {
+            console.error("[lv-exam] app init failed", e);
+        }
+        this.refreshDock();
     }
 
-    onunload() {
-        this.eventBus.off("click-blockicon", this.onBlockIconClick);
-        Object.values(this.tabApps).forEach((app) => unmount(app));
+    async onunload() {
+        this.eventBus.off("click-blockicon", this.boundBlockIcon);
+        try { await this.examApp?.flush(); } catch { /* 尽力而为 */ }
+        Object.values(this.tabApps).forEach((instance) => unmount(instance));
         this.tabApps = {};
     }
 
@@ -115,11 +126,11 @@ export default class LvExamPlugin extends Plugin {
                 init() {
                     const el = document.createElement("div");
                     el.classList.add("fn__flex-1", "lv-exam-tab");
-                    const app = mount(component, {
+                    const instance = mount(component, {
                         target: el,
-                        props: { app: this.data.app, plugin: this.data.plugin }
+                        props: { plugin: this.data.plugin, app: this.data.examApp }
                     });
-                    (this.data.plugin as LvExamPlugin).tabApps[type] = app;
+                    this.data.plugin.tabApps[type] = instance;
                     this.element.appendChild(el);
                 },
                 destroy() {
@@ -142,32 +153,33 @@ export default class LvExamPlugin extends Plugin {
                 title: this.i18n["dock.wrongbook"],
                 hotkey: "⌥⌘E"
             },
-            data: {
-                title: this.i18n["dock.wrongbook"],
-                empty: this.i18n["dock.empty"]
-            },
+            data: {},
             type: DOCK_WRONGBOOK,
             init() {
-                this.element.innerHTML = `
-<div class="fn__flex-1 fn__flex-column">
-    <div class="block__icons">
-        <div class="block__logo">
-            <svg class="block__logoicon"><use xlink:href="#iconWrongbook"></use></svg>
-            ${this.data.title}
-        </div>
-        <span class="fn__flex-1 fn__space"></span>
-    </div>
-    <div class="fn__flex-1 lv-exam-wrongbook">
-        <div class="b3-card b3-card--wrap">
-            <div class="b3-card__body">
-                <p class="b3-typography">${this.data.empty}</p>
-            </div>
-        </div>
-    </div>
-</div>`;
+                this.element.innerHTML = `<div class="fn__flex-1 lv-dock-body"></div>`;
             },
             destroy() { }
         });
+    }
+
+    /** 错题 Dock 实数据渲染（作答后由 Tab 调用） */
+    refreshDock() {
+        if (this.isMobile || !this.examApp) return;
+        const dockEl = document.querySelector<HTMLElement>(".lv-dock-body");
+        if (!dockEl) return;
+        const items = this.examApp.wrongItems();
+        const rows = items.slice(0, 30).map((w) =>
+            `<div class="lv-dock-row"><span class="num">${w.qid}</span><span>错 ${w.wrongCount}</span></div>`
+        ).join("");
+        dockEl.innerHTML = `
+<div class="block__icons" style="padding:4px 8px">
+    <div class="block__logo">${this.i18n["dock.wrongbook"]}</div>
+    <span class="fn__flex-1"></span>
+    <span class="lv-chip lv-chip--red num">${items.length}</span>
+</div>
+<div class="lv-dock-list">
+${items.length ? rows : `<div class="lv-dock-empty">${this.i18n["dock.empty"]}</div>`}
+</div>`;
     }
 
     private registerCommands() {
@@ -190,26 +202,23 @@ export default class LvExamPlugin extends Plugin {
 
     private openTabByType(type: string, icon: string, title: string) {
         openTab({
-            app: this.app,
+            app: this.app as any,
             custom: {
                 id: type,
                 icon,
                 title,
-                data: { app: this.app, plugin: this }
+                data: { plugin: this, examApp: this.examApp }
             }
         });
     }
 
-    // Use an arrow property so the event bus cannot detach the plugin `this`
-    // context. The same function reference is passed to `off` during unload.
-    private onBlockIconClick = ({ detail }: any) => {
-        // 块菜单：加入练习集 / 转为闪卡 / 标记考点（v0.1 起逐步实现，先占位）
+    private onBlockIconClick({ detail }: any) {
         if (!detail?.menu) { return; }
         detail.menu.addItem({
             iconHTML: "<svg><use xlink:href='#iconExam'></use></svg>",
             label: this.i18n["blockMenu.addToPractice"],
             click: () => {
-                showMessage(this.i18n["todo"], 2600, "info");
+                showMessage(this.i18n["blockMenu.practiceHint"], 3600, "info");
             }
         });
     }
