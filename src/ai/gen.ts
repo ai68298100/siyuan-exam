@@ -16,6 +16,7 @@ export interface GenOptions {
   kp?: string;                  // 考点提示（写入题目 kp）
   sourceTitle?: string;         // 来源材料标题（写入 source；引用=待 v0.4.x 块引用）
   preset?: keyof typeof PROMPT_PRESETS;
+  quality?: "standard" | "economy";  // 标准=二遍换角色核验（默认）；经济=单遍
   existingHashes?: Set<string>;
 }
 
@@ -131,7 +132,43 @@ function toQuestion(o: Record<string, unknown>, opt: GenOptions, batch: string):
   return { q };
 }
 
-/** 生成入口：调通道 → 解析 → 门槛 → 去重 → 待审核 */
+/** 二遍核验（换角色）：严格审题人对每题打置信度；<0.85 或 pass=false 淘汰（research/08 Quanta+QuizAPI 范式） */
+export const REVIEW_CONFIDENCE_MIN = 0.85;
+
+export async function reviewQuestions(channel: AiChannel, questions: Question[], sourceChunk: string): Promise<Map<string, { confidence: number; pass: boolean; reason?: string }>> {
+  const out = new Map<string, { confidence: number; pass: boolean; reason?: string }>();
+  if (!questions.length) return out;
+  const compact = questions.map((q, i) => ({
+    index: i + 1, id: q.id, type: q.type, stem: q.stem,
+    options: q.options, answer: q.answer, analysis: q.analysis,
+  }));
+  const messages: AiMessage[] = [
+    { role: "system", content: "你是苛刻的审题人。对照材料逐题核查：答案是否唯一正确、解析是否因果成立、干扰项是否合理。只输出 JSON 数组：[{\"id\":题目id,\"confidence\":0到1,\"pass\":布尔,\"reason\":一句否决理由（pass 时省略）}]。" },
+    { role: "user", content: `【材料】\n${sourceChunk.slice(0, 3000)}\n\n【待核题目】\n${JSON.stringify(compact)}` },
+  ];
+  const raw = await channel.chat(messages);
+  const arr = extractJsonArray(raw);
+  if (!arr) {
+    // 核验失败不吞题：全部标低置信待人工（降级语义）
+    for (const q of questions) out.set(q.id, { confidence: 0, pass: false, reason: "核验响应不可解析" });
+    return out;
+  }
+  for (const item of arr) {
+    const o = item as Record<string, unknown>;
+    if (typeof o?.id === "string" && typeof o?.confidence === "number") {
+      out.set(String(o.id), {
+        confidence: Math.max(0, Math.min(1, o.confidence)),
+        pass: o.pass !== false,
+        reason: typeof o.reason === "string" ? o.reason : undefined,
+      });
+    }
+  }
+  // 缺失的题按未核验处理
+  for (const q of questions) if (!out.has(q.id)) out.set(q.id, { confidence: 0, pass: false, reason: "审题人未返回该题" });
+  return out;
+}
+
+/** 生成入口：调通道 → 解析 → 门槛 → （标准档）二遍核验 → 去重 → 待审核 */
 export async function generate(channel: AiChannel, sourceText: string, opt: GenOptions): Promise<GenResult> {
   const chunks = sliceText(sourceText);
   if (!chunks.length) throw new Error("材料为空");
@@ -142,6 +179,7 @@ export async function generate(channel: AiChannel, sourceText: string, opt: GenO
   let duplicates = 0;
   let idx = 0;
   const batch = newBatchId();
+  const quality = opt.quality ?? "standard";
   // 超量 1.2×：分片自然超量（每片按 count 出，收满即停）
   for (const chunk of chunks) {
     const messages = buildPrompt(chunk, opt);
@@ -151,15 +189,37 @@ export async function generate(channel: AiChannel, sourceText: string, opt: GenO
       rejected.push({ index: ++idx, reason: "响应不是有效 JSON 数组", raw: raw.slice(0, 120) });
       continue;
     }
+    const candidates: Question[] = [];
     for (const item of arr) {
       idx++;
       if (!(item && typeof item === "object")) { rejected.push({ index: idx, reason: "非对象", raw: JSON.stringify(item).slice(0, 80) }); continue; }
       const r = toQuestion(item as Record<string, unknown>, opt, batch);
       if (r.reason || !r.q) { rejected.push({ index: idx, reason: r.reason ?? "未知", raw: JSON.stringify(item).slice(0, 80) }); continue; }
       if (dedupe && seenHash.has(r.q.hash)) { duplicates++; continue; }
-      seenHash.add(r.q.hash);
-      pending.push(r.q);
-      if (pending.length >= opt.count) break;
+      candidates.push(r.q);
+    }
+    // 标准档：二遍换角色核验
+    if (quality === "standard" && candidates.length) {
+      const verdicts = await reviewQuestions(channel, candidates, chunk);
+      for (const q of candidates) {
+        const v = verdicts.get(q.id) ?? { confidence: 0, pass: false, reason: "未核验" };
+        if (!v.pass || v.confidence < REVIEW_CONFIDENCE_MIN) {
+          rejected.push({ index: idx, reason: `二遍核验淘汰：置信 ${v.confidence.toFixed(2)}${v.reason ? " · " + v.reason : ""}`, raw: q.stem.slice(0, 80) });
+          continue;
+        }
+        q.confidence = v.confidence;
+        if (seenHash.has(q.hash)) { duplicates++; continue; }
+        seenHash.add(q.hash);
+        pending.push(q);
+        if (pending.length >= opt.count) break;
+      }
+    } else {
+      for (const q of candidates) {
+        if (seenHash.has(q.hash)) { duplicates++; continue; }
+        seenHash.add(q.hash);
+        pending.push(q);
+        if (pending.length >= opt.count) break;
+      }
     }
     if (pending.length >= opt.count) break;
   }

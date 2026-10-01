@@ -193,5 +193,10 @@
     "entry.days": "天",
     "export.wrongbook": "导出错题册",
     "export.done": "✓ 错题册已导出到题库\"导出\"文档",
-    "mock.history": "历史成绩"
+    "mock.history": "历史成绩",
+    "ai.quality": "质量档位",
+    "ai.quality.standard": "标准（二遍核验）",
+    "ai.quality.economy": "经济（单遍）",
+    "explain.hint": "💡 Hint 递进",
+    "explain.socratic": "🧠 苏格拉底"
 }

@@ -61,7 +61,7 @@ describe("生成管线（mock 通道）", () => {
 
   it("质量门槛：好题入库；短解析/禁用选项/坏题型/非对象拒绝；重复去重", async () => {
     const r = await generate(channel, "一些材料", {
-      types: ["single"], count: 10, difficulty: "mixed",
+      types: ["single"], count: 10, difficulty: "mixed", quality: "economy",
       existingHashes: new Set(),
     });
     expect(r.pending).toHaveLength(1);
@@ -75,8 +75,8 @@ describe("生成管线（mock 通道）", () => {
     expect(reasons).toContain("非对象");
   });
   it("外部 hash 去重", async () => {
-    const seed = await generate(channel, "材料", { types: ["single"], count: 10 });
-    const r2 = await generate(channel, "材料", { types: ["single"], count: 10, existingHashes: new Set(seed.pending.map((q) => q.hash)) });
+    const seed = await generate(channel, "材料", { types: ["single"], count: 10, quality: "economy" });
+    const r2 = await generate(channel, "材料", { types: ["single"], count: 10, quality: "economy", existingHashes: new Set(seed.pending.map((q) => q.hash)) });
     expect(r2.pending).toHaveLength(0);
     expect(r2.duplicates).toBe(2);   // mock 通道两次出现同一好题，均撞外部 hash
   });

@@ -193,5 +193,10 @@
     "entry.days": "d",
     "export.wrongbook": "Export wrongbook",
     "export.done": "✓ Wrongbook exported to the bank docs",
-    "mock.history": "Score history"
+    "mock.history": "Score history",
+    "ai.quality": "Quality",
+    "ai.quality.standard": "Standard (2nd-pass review)",
+    "ai.quality.economy": "Economy (single pass)",
+    "explain.hint": "💡 Hint",
+    "explain.socratic": "🧠 Socratic"
 }

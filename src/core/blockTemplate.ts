@@ -38,6 +38,7 @@ export function ialOf(q: Question): string {
   if (q.batch) attrs["exam-batch"] = q.batch;
   if (q.review) attrs["exam-review"] = q.review;
   if (q.alt?.length) attrs["exam-alt"] = q.alt.join("|");
+  if (typeof q.confidence === "number") attrs["exam-confidence"] = q.confidence.toFixed(2);
   return Object.entries(attrs).map(([k, v]) => `${k}="${escapeAttr(v)}"`).join(" ");
 }
 

@@ -197,30 +197,20 @@ import { planToday } from "@/core/planner";
     let explainBusy = $state(false);
     let explainQid = $state("");
 
-    async function explainCurrent() {
+    async function explainCurrent(mode: "explain" | "hint" | "socratic" = "explain") {
       const q = session?.current;
       if (!q || explainBusy || !feedback) return;
       explainBusy = true; explainText = ""; explainQid = q.id;
       try {
         const { SiyuanAiChannel, OpenAiChannel } = await import("@/ai/client");
+        const { buildExplainMessages } = await import("@/ai/explain");
         const endpoint = String(plugin.settingUtils?.get?.("aiEndpoint") ?? "");
         const key = String(plugin.settingUtils?.get?.("aiKey") ?? "");
         const model = String(plugin.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
         const ch = endpoint && key
           ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
           : new SiyuanAiChannel((app as any).deps.client);
-        const prompt = [
-          `题干：${q.stem}`,
-          ...q.options.map((o, i) => `${String.fromCharCode(65 + i)}. ${o}`),
-          `正确答案：${q.answer}`,
-          `我的答案：${feedback.myAnswer ?? "（跳过）"}`,
-          ``,
-          `请逐选项解释：每个选项一行，格式"字母. 对/错 —— 一句话因果"；最后一段给出针对我错因的一句话建议。只输出解释本身。`,
-        ].join("\n");
-        explainText = await ch.chat([
-          { role: "system", content: "你是耐心的考试辅导老师，解释简洁、直指误区，用中文。" },
-          { role: "user", content: prompt },
-        ]);
+        explainText = await ch.chat(buildExplainMessages(q, feedback.myAnswer, mode));
       } catch (e) {
         explainText = String(e instanceof Error ? e.message : e);
       } finally { explainBusy = false; }
@@ -351,6 +341,8 @@ import { planToday } from "@/core/planner";
     let aiDifficulty = $state<"easy" | "medium" | "hard" | "mixed">("mixed");
     let aiKp = $state("");
     let aiBusy = $state(false);
+    let aiQuality = $state<"standard" | "economy">("standard");
+    let aiCost = $state("");
     let aiPreset = $state<keyof typeof import("@/ai/gen").PROMPT_PRESETS>("default");
     let aiQueue = $state<Question[]>([]);
     let aiRejected = $state<{ index: number; reason: string }[]>([]);
@@ -363,16 +355,19 @@ import { planToday } from "@/core/planner";
       try {
         const { generate } = await import("@/ai/gen");
         const { SiyuanAiChannel, OpenAiChannel } = await import("@/ai/client");
+        const { CountingChannel } = await import("@/ai/counting");
         const endpoint = String(plugin.settingUtils?.get?.("aiEndpoint") ?? "");
         const key = String(plugin.settingUtils?.get?.("aiKey") ?? "");
         const model = String(plugin.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
-        const ch = endpoint && key
+        const base = endpoint && key
           ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
           : new SiyuanAiChannel((app as any).deps.client);
-        const r = await generate(ch, aiSource, {
+        const counting = new CountingChannel(base);
+        const r = await generate(counting, aiSource, {
           types: ["single", "multiple", "judge"], count: aiCount, difficulty: aiDifficulty,
-          kp: aiKp, sourceTitle: t("ai.pastedMaterial"), preset: aiPreset,
+          kp: aiKp, sourceTitle: t("ai.pastedMaterial"), preset: aiPreset, quality: aiQuality,
         });
+        aiCost = `≈${counting.approxTokens} tok · ${counting.calls} 次调用`;
         aiQueue = r.pending; aiRejected = r.rejected; aiDuplicates = r.duplicates;
         if (!r.pending.length && !r.rejected.length) errorMsg = t("ai.empty");
       } catch (e) {
@@ -665,7 +660,9 @@ import { planToday } from "@/core/planner";
                 {#if feedback.verdict === "wrong"}
                   <button class="lv-btn" onclick={toCard}>🎴 {t("memory.toCard")}</button>
                   {#if cardResult}<span class="lv-muted">{cardResult}</span>{/if}
-                  <button class="lv-btn" onclick={explainCurrent} disabled={explainBusy}>🤖 {explainBusy ? "…" : t("explain.ask")}</button>
+                  <button class="lv-btn" onclick={() => explainCurrent("explain")} disabled={explainBusy}>🤖 {explainBusy ? "…" : t("explain.ask")}</button>
+                  <button class="lv-btn" onclick={() => explainCurrent("hint")} disabled={explainBusy}>💡 {t("explain.hint")}</button>
+                  <button class="lv-btn" onclick={() => explainCurrent("socratic")} disabled={explainBusy}>🧠 {t("explain.socratic")}</button>
                 {/if}
               {/if}
               {#if explainText && session?.current}
@@ -811,6 +808,11 @@ import { planToday } from "@/core/planner";
           {/each}
         </div>
         <div class="lv-row">
+          <span class="lv-chip">{t("ai.quality")}</span>
+          <button class="lv-chip" class:acc={aiQuality === "standard"} onclick={() => aiQuality = "standard"}>{t("ai.quality.standard")}</button>
+          <button class="lv-chip" class:acc={aiQuality === "economy"} onclick={() => aiQuality = "economy"}>{t("ai.quality.economy")}</button>
+        </div>
+        <div class="lv-row">
           <span class="lv-chip">{t("manual.kp")}</span>
           <input class="lv-input" style="max-width:200px" bind:value={aiKp} placeholder={t("ai.kpHint")} />
         </div>
@@ -821,12 +823,13 @@ import { planToday } from "@/core/planner";
           <span class="lv-muted">{t("ai.pipelineNote")}</span>
         </div>
       </div>
-      {#if aiQueue.length || aiRejected.length || aiDuplicates}
+        {#if aiQueue.length || aiRejected.length || aiDuplicates || aiCost}
         <div class="lv-row" style="margin-top:14px">
           <b style="font-size:14px">{t("ai.queue")}</b>
           <span class="lv-chip lv-chip--acc num">{aiQueue.length}</span>
           {#if aiRejected.length}<span class="lv-chip lv-chip--red num">✕ {aiRejected.length}</span>{/if}
           {#if aiDuplicates}<span class="lv-chip lv-chip--amb num">⧉ {aiDuplicates}</span>{/if}
+          {#if aiCost}<span class="lv-chip num">{aiCost}</span>{/if}
           <span class="fn__flex-1"></span>
           {#if aiQueue.length}
             <button class="lv-btn lv-btn--primary sm" onclick={approveAllAi}>✓ {t("ai.approveAll")}（{aiQueue.length}）</button>
