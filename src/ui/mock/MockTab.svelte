@@ -296,6 +296,9 @@
     <!-- 考后估分 -->
     <details class="lv-card lv-pad-card" style="padding:12px 16px">
       <summary style="cursor:pointer;font-weight:650">{t("estimate.title")}</summary>
+      {#if !questions.length}
+        <p class="lv-muted">{t("state.emptyBank")}</p>
+      {:else}
       <div class="lv-row" style="margin-top:10px">
         <span class="lv-chip">{t("estimate.key")}</span>
         <input class="lv-input num" style="flex:1;min-width:160px" bind:value={estKey} placeholder="BADCA…" />
@@ -339,6 +342,7 @@
             <span class="lv-chip num" title={new Date(h.at).toLocaleString()}>{h.percent}%</span>
           {/each}
         </div>
+      {/if}
       {/if}
     </details>
   {:else if view === "exam" && session && currentQ}

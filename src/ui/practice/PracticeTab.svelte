@@ -640,15 +640,31 @@ import { ttsSpeak } from "@/core/tts";
         const buf = await file.arrayBuffer();
         const { text, garbled } = decodeCsv(buf);
         if (garbled) showMessage(t("import.garbledWarning"), 5200, "info");
-        const wb = XLSX.read(text, { type: "string" });
-        const sheet = wb.Sheets[wb.SheetNames[0]];
-        const rows: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-        if (!rows.length) { importError = t("import.emptyFile"); return; }
-        const { map, missing } = autoMapExcel(rows[0].map(String));
-        if (missing.length) { importError = t("import.missingColumns") + missing.join("、"); return; }
-        importReport = parseExcelRows(rows.slice(1), map);
+        pendingWorkbook = XLSX.read(text, { type: "string" });
+        sheetNames = pendingWorkbook.SheetNames;
+        sheetRowsCache = new Map(sheetNames.map((n: string) => {
+          const rows: string[][] = XLSX.utils.sheet_to_json(pendingWorkbook.Sheets[n], { header: 1, defval: "" });
+          return [n, rows] as [string, string[][]];
+        }));
+        activeSheet = sheetNames[0];
+        parseActiveSheet();
       } catch (e) { importError = String(e instanceof Error ? e.message : e); }
       input.value = "";
+    }
+
+    /** 多 Sheet 支持（TODO 12 组）：读文件时缓存各行，选择工作表重解析 */
+    let pendingWorkbook: any = null;
+    let sheetNames = $state<string[]>([]);
+    let activeSheet = $state("");
+    let sheetRowsCache = $state(new Map<string, string[][]>());
+
+    function parseActiveSheet() {
+      importError = "";
+      const rows = sheetRowsCache.get(activeSheet);
+      if (!rows?.length) { importError = t("import.emptyFile"); return; }
+      const { map, missing } = autoMapExcel(rows[0].map(String));
+      if (missing.length) { importError = t("import.missingColumns") + missing.join("、"); return; }
+      importReport = parseExcelRows(rows.slice(1), map);
     }
 
     let favOnly = $state(false);
