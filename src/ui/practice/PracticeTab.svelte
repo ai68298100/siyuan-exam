@@ -537,6 +537,23 @@ import { ttsSpeak } from "@/core/tts";
       await app.saveSession();
       await app.flush();
       plugin.refreshDock?.();
+      rebuildPlan();
+    }
+
+    /** 结算页错题批量转卡（LeetFlash 零成本化）：一次点击入 FSRS 队列（按块幂等，重复转卡自动跳过） */
+    async function wrongsToCard() {
+      if (!session || !activeBankId) return;
+      const wrongQs = session.answered
+        .filter((a) => a.grade.verdict === "wrong")
+        .map((a) => questions.find((q) => q.id === a.qid))
+        .filter((q): q is Question & { blockId?: string } => !!q?.blockId);
+      if (!wrongQs.length) { showMessage(t("session.noCardable"), 2800, "info"); return; }
+      try {
+        const n = await app.convertToCards(activeBankId, bankName, wrongQs);
+        showMessage(`${t("memory.toCardDone")} ${n}`, 2800, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
+      }
     }
 
     async function exitSession() {
@@ -657,6 +674,24 @@ import { ttsSpeak } from "@/core/tts";
     function cancelAiGenerate() {
       aiCancel.aborted = true;
       showMessage(t("ai.cancelled"), 3000, "info");
+    }
+
+    /** 材料源扩展（v1.x）：从当前打开的文档载入（research/28 citation 载体；块引用随 v1.x 深化） */
+    async function aiSourceFromCurrentDoc() {
+      try {
+        const sApp = (plugin as any).app ?? plugin;
+        // 社区约定：app.ui.currentEditor（官方类型未导出，as any + 多级兜底）
+        const ed = sApp?.ui?.currentEditor ?? sApp?.ui?.lastEditor ?? null;
+        const rootId: string | undefined = ed?.protyle?.block?.rootID;
+        if (!rootId) { showMessage(t("ai.noCurrentDoc"), 3600, "error"); return; }
+        const { title, content } = await (app as any).deps.client.exportDocMarkdown(rootId);
+        if (!content) { showMessage(t("ai.noCurrentDoc"), 3600, "error"); return; }
+        aiSource = content;
+        if (!aiKp.trim() && title) aiKp = title;
+        showMessage(`${t("ai.sourceLoaded")} ${title || rootId.slice(0, 8)}`, 2600, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
+      }
     }
 
     /** 通道构造（生成/修复共用）：端点+Key 配置走 OpenAI 兼容，否则思源内置 */
@@ -1019,8 +1054,17 @@ import { ttsSpeak } from "@/core/tts";
         <div class="lv-card lv-guard">
           <div class="lv-guard-title">🏁 {t("session.done")}</div>
           <p class="num">{t("session.total")} {sessionDone.total} · <span class="lv-green">{t("session.correct")} {sessionDone.correct}</span> · <span class="lv-red">{t("session.wrong")} {sessionDone.wrong}</span></p>
+          {#if session.answered.length}
+            <div class="lv-row" style="flex-wrap:wrap;gap:4px;margin:8px 0">
+              {#each session.answered as a, ai}
+                {@const aq = questions.find((x) => x.id === a.qid)}
+                <span class="lv-chip num" class:lv-chip--grn={a.grade.verdict === "correct"} class:lv-chip--red={a.grade.verdict === "wrong"} title={aq?.stem.slice(0, 60) ?? a.qid}>{ai + 1} {a.grade.verdict === "correct" ? "✓" : a.grade.verdict === "wrong" ? "✕" : "–"} {(a.timeMs / 1000).toFixed(0)}s</span>
+              {/each}
+            </div>
+          {/if}
           {#if sessionDone.wrong > 0}
             <button class="lv-btn" style="width:100%" onclick={sameKpSession}>🔁 {t("memory.sameKp")}</button>
+            <button class="lv-btn" style="width:100%;margin-top:6px" onclick={wrongsToCard}>🎴 {t("session.wrongsToCard")}</button>
           {/if}
           <button class="lv-btn lv-btn--primary" style="width:100%;margin-top:8px" onclick={exitSession}>{t("session.back")}</button>
         </div>
@@ -1273,6 +1317,7 @@ import { ttsSpeak } from "@/core/tts";
       </div>
       <div class="lv-card lv-pad-card">
         <div class="lv-field"><span class="lv-muted">{t("ai.source")}</span>
+          <button class="lv-chip" title={t("ai.fromDocTitle")} onclick={aiSourceFromCurrentDoc}>📄 {t("ai.fromDoc")}</button>
           <textarea class="lv-input lv-textarea" rows="7" bind:value={aiSource} placeholder={t("ai.sourcePlaceholder")} aria-label={t("ai.source")}></textarea>
         </div>
         <div class="lv-row">

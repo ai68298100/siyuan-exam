@@ -127,6 +127,15 @@ export class KernelApiClient {
     await this.t.post("/api/import/importSY", { path: zipAbsPath });
   }
 
+  /** 文档导出 Markdown（AI 出题"当前文档"输入源；2026-10-02 实测返回 hPath+content，content 带 YAML 头需剥离） */
+  async exportDocMarkdown(docId: string): Promise<{ title: string; content: string }> {
+    const r = await this.t.post("/api/export/exportMdContent", { id: docId });
+    const d = (r.data ?? {}) as { hPath?: string; content?: string };
+    const raw = String(d.content ?? "");
+    const content = raw.replace(/^---\n[\s\S]*?\n---\n*/, "").trim();
+    return { title: (d.hPath ?? "").split("/").pop() ?? "", content };
+  }
+
   async renderMarkdown(markdown: string): Promise<string> {
     const r = await this.t.post("/api/lute/md2html", { markdown, mode: "" });
     return String((r.data as Record<string, unknown>)?.html ?? "");
