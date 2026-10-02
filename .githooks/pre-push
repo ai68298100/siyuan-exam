@@ -1,0 +1,11 @@
+#!/bin/sh
+# 本地 pre-push 门禁（TODO 27 组 P2）：CI 之前拦截失败（曾发生过 collection 失败的测试文件入库）
+# 启用：git config core.hooksPath .githooks
+echo "[lv-exam] pre-push 门禁：types → svelte → i18n → arch → test"
+run() { name="$1"; shift; echo "--- $name"; "$@" || { echo "✗ $name 失败，推送已拦截"; exit 1; }; }
+run types  npx tsc --noEmit -p tsconfig.json
+run svelte npx svelte-check --tsconfig ./tsconfig.json --threshold error
+run i18n   node ./scripts/check-i18n.mjs
+run arch   node ./scripts/check-arch.mjs
+run test   npx vitest run
+echo "✓ 本地门禁全绿，允许推送"

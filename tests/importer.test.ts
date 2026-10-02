@@ -106,10 +106,11 @@ describe("块模板往返", () => {
     expect(md).toContain("{{{row");
     expect(md).toContain('- A. 甲');
     const ial = parseIal(md.split("{: ")[1]!.replace(/}$/, "").trim());
-    expect(ial["exam-id"]).toBe(q.id);
-    expect(ial["exam-answer"]).toBe("A");
+    // 3.8.5 实测：attributes 表只索引 custom- 前缀，IAL 必须写全名
+    expect(ial["custom-exam-id"]).toBe(q.id);
+    expect(ial["custom-exam-answer"]).toBe("A");
     const back = questionFromBlock({
-      attrs: Object.fromEntries(Object.entries(ial).map(([k, v]) => [`custom-${k}`, v])),
+      attrs: ial,
       text: `题干"带引号"\n- A. 甲\n- B. 乙`,
     });
     expect(back).not.toBeNull();

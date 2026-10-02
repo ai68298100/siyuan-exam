@@ -341,7 +341,8 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
         // 查询圈题（v0.2）：查询嵌入块 → 用此查询开始练习
         const el = detail.blockElements?.[0];
         if (el?.getAttribute?.("data-type") === "query_embed" && this.examApp) {
-            const stmt = el.getAttribute("data-query") || (el.textContent ?? "").trim();
+            // 3.8.5 实测：query_embed 的 content 为空、无 data-query 属性，SQL 只在 kramdown 的 {{...}} 内
+            let stmt = el.getAttribute("data-query") || (el.textContent ?? "").trim();
             detail.menu.addItem({
                 iconHTML: "<svg><use xlink:href='#iconExam'></use></svg>",
                 label: this.i18n["blockMenu.queryPractice"],
@@ -349,6 +350,14 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
                     try {
                         const bank = this.examApp!.listBanks()[0];
                         if (!bank) { showMessage(this.i18n["guard.needBankFirst"], 3600, "error"); return; }
+                        if (!stmt) {
+                            const blockId = el.getAttribute("data-node-id") || el.dataset?.nodeId || "";
+                            if (blockId) {
+                                const kd = await this.examApp!.deps.client.getBlockKramdown(blockId);
+                                stmt = (kd.match(/\{\{([\s\S]*?)\}\}/)?.[1] ?? "").trim();
+                            }
+                        }
+                        if (!stmt) { showMessage(this.i18n["query.empty"], 3600, "info"); return; }
                         const qs = await this.examApp!.queryQuestions(bank.id, stmt);
                         if (!qs.length) { showMessage(this.i18n["query.empty"], 3600, "info"); return; }
                         (this as any).pendingPractice = qs;

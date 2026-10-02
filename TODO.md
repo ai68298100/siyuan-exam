@@ -538,7 +538,7 @@
 - [x] [P2] multiple 题判分反馈逐选项高亮粒度 ✓2026-10-02（正确/错选/漏选已按选项着色 ✓）
 - [x] [P2] 浏览模式虚拟滚动与分页（万题级） ✓2026-10-02（增量加载 200/批 ✓（完整虚拟滚动待真机性能验证））
 - [x] [P2] verify-package 允许 vendored chunk 规则 ✓2026-10-02（xlsx hash chunk）
-- [ ] [P0] query_embed 块的 SQL 取值属性名实测（data-query 属性 + textContent 兜底；用户工作区暂无样例）
+- [x] [P0] query_embed 块的 SQL 取值实测 ✓2026-10-02（活内核实测：content 为空、无 data-query 属性，SQL 只在 kramdown 的 {{...}} 内 → client 增 getBlockKramdown，圈题菜单加内核回退链 data-query → textContent → kramdown）
 - [x] [P1] stemHtml 渲染竞态防护 ✓2026-10-02（按题 id 校验异步返回）
 - [x] [P1] 背诵完整版：渐进提示链/可选倒计时/组结算（当前 S4 lite） ✓2026-10-02（提示链(考点/解析开头)+组结算自评分布 ✓；倒计时与超时自动计模糊待）
 - [ ] [P2] 本地 pre-push 门禁（曾提交过 collection 失败的测试文件，本地应先于 CI 拦截）
@@ -588,6 +588,15 @@
 - [x] [P3] 内联 TODO/FIXME 残留扫描 ✓2026-10-02（src 零残留）
 - [x] [P2] 会话进度 chip 升级为真实进度条 + session.kbdPrev/session.choose 键 ✓2026-10-02
 
+## 32. 真机预检自动化（2026-10-02，docs/17 可脚本化部分收口）
+- [x] [P0] 实测 4 处内核 API 漂移并修复：①insertBlock 必须带 dataType（否则题块写入全失败）②createRiffDeck 3.8.5 返回 {id} 对象（旧代码 String() → "[object Object]"）③getDueCards data 为 {cards} 包裹 ④IAL 与 setExamFav 必须写 custom-exam-* 全名（attributes 表只索引 custom- 前缀，裸 exam-id 不入表 → 导入的题对 listQuestions 不可见、收藏跨会话丢失） ✓2026-10-02
+- [x] [P1] scripts/smoke-preflight.mjs（npm run preflight）：17 项内核行为断言 + 临时库自清理；实测 17/17 通过 ✓2026-10-02
+- [x] [P1] IAL 属性入 attributes 表有 1-3s 异步索引滞后 → commitImport/writeManualQuestion 内置基线轮询等待 ✓2026-10-02
+- [x] [P2] 本地 pre-push 门禁（TODO 27 组遗留）：.githooks/pre-push 五链 + core.hooksPath + npm run guard ✓2026-10-02
+- [x] [P3] appendBlock 返回值修正为真实块 id 列表 ✓2026-10-02
+- [x] [P3] docs/17 头部标注预检结果与剩余人工项范围（UI 流转/键盘手感） ✓2026-10-02
+- [x] [P0] query_embed SQL 取值实测+修复（活内核探明：content 空/无 data-query；getBlockKramdown 内核回退链） ✓2026-10-02（并入本组）
+
 
 ---
-**统计**：共 32 组、427 项（26 审计 +39 / 27 实现发现 +14 / 28 调研增量 +9 / 29 接线审计 +6 / 30 四向审计 +6 / 31 三向审计 +6；含全部勾选状态）。发布策略：**GitHub 已公开（ai68298100/siyuan-exam），集市上架（7B）暂缓至门槛达成**。挂起等真机：27 组冒烟项。发布策略：**GitHub 公开（7A，建议 v0.3+）先行，集市上架（7B）暂缓至门槛达成**。当前 P0 关键路径收敛为：`26.1 纵切基线 → 26.3 工具链/契约 → 2.2 题库引擎 → 2.3 导入 → 2.4 练习台 → 2.5 错题本`；模考、AI、游戏化和 TTS 在纵切通过后推进。
+**统计**：共 33 组、434 项（26 审计 +39 / 27 实现发现 +14 / 28 调研增量 +9 / 29 接线审计 +6 / 30 四向审计 +6 / 31 三向审计 +6 / 32 预检自动化 +6；含全部勾选状态）。发布策略：**GitHub 已公开（ai68298100/siyuan-exam），集市上架（7B）暂缓至门槛达成**。挂起等真机：27 组冒烟项。发布策略：**GitHub 公开（7A，建议 v0.3+）先行，集市上架（7B）暂缓至门槛达成**。当前 P0 关键路径收敛为：`26.1 纵切基线 → 26.3 工具链/契约 → 2.2 题库引擎 → 2.3 导入 → 2.4 练习台 → 2.5 错题本`；模考、AI、游戏化和 TTS 在纵切通过后推进。

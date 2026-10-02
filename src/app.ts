@@ -97,6 +97,7 @@ export class ExamApp {
   /** 导入提交：按考点落章节文档（无考点 → "导入/<批次>"），返回写入数 */
   async commitImport(bankId: string, report: ImportReport): Promise<{ written: number; docs: string[] }> {
     if (!report.ok.length) return { written: 0, docs: [] };
+    const baseline = this.kernelOnline ? await this.listQuestions(bankId).then((qs) => qs.length).catch(() => 0) : 0;
     const byDoc = new Map<string, typeof report.ok>();
     for (const q of report.ok) {
       const doc = q.kp ? `/${q.kp.split("/")[0]}` : `/导入/${report.batch}`;
@@ -112,6 +113,17 @@ export class ExamApp {
       docs.push(doc);
     }
     this.invalidate();
+    // 3.8.5 实测：IAL 属性入 attributes 表有 1-3s 异步索引滞后，
+    // 立即 listQuestions 会查不到刚导入的题 → 轮询到账后再返回
+    if (this.kernelOnline) {
+      for (let i = 0; i < 6; i++) {
+        await new Promise((r) => setTimeout(r, 700));
+        try {
+          const n = await this.listQuestions(bankId);
+          if (n.length >= baseline + written) break;
+        } catch { /* 索引未就绪，继续等 */ }
+      }
+    }
     return { written, docs };
   }
 
@@ -232,6 +244,15 @@ export class ExamApp {
     const docId = await this.ensureDoc(bankId, q.kp ? `/${q.kp.split("/")[0]}` : "/手工录入");
     await this.deps.client.appendQuestions(docId, [q]);
     this.invalidate();
+    // IAL 属性入 attributes 表有索引滞后（3.8.5 实测 1-3s），等待到账再返回
+    if (this.kernelOnline) {
+      for (let i = 0; i < 5; i++) {
+        await new Promise((r) => setTimeout(r, 700));
+        try {
+          if (await this.listQuestions(bankId).then((qs) => qs.some((x) => x.id === q.id))) break;
+        } catch { /* 继续 等 */ }
+      }
+    }
   }
 
   /** 题目笔记子块（docs/02 §2.4）：kind = mnemonic | note | ai-explain */
@@ -404,7 +425,7 @@ export class ExamApp {
     if (q.blockId && this.kernelOnline) {
       try {
         const deckId = await this.ensureDeck(bankName);
-        const ids = await this.deps.client.getCardIDsByBlockIDs([q.blockId]);
+        const ids = await this.deps.client.getCardIDsByBlockIDs([q.blockId], deckId);
         const cardId = ids.get(q.blockId);
         if (cardId) await this.deps.client.reviewRiffCard(cardId, deckId, selfRatingToRiffRating(selfRating));
       } catch { /* riff 失败不阻塞背诵流水（离线降级语义） */ }

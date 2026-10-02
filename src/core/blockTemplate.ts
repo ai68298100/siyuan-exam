@@ -1,8 +1,9 @@
 // ============================================================
 // 题块模板：Question ↔ 思源超级块 markdown + exam-* IAL（双向编解码）
 // 红线（docs/02 §2.2）：题干/选项/解析永远在块内容里，属性只存元数据
-// 注意：思源自定义属性存储带 custom- 前缀（2026-10-02 实测），
-//       kramdown IAL 写 exam-id，读回时按 custom-exam-id 匹配。
+// 注意：思源 3.8.5 实测——IAL 与 setBlockAttrs 都必须写 custom-exam-* 全名，
+//       attributes 表只索引 custom- 前缀属性（裸 exam-id 不入表 → listQuestions 查不到）。
+//       读侧 stripCustom 归一后按 exam-* 取值。
 // ============================================================
 import type { Question, QuestionType } from "./types";
 import { OPTION_LETTERS, normalizeAnswer, questionHash } from "./answer";
@@ -40,7 +41,7 @@ export function ialOf(q: Question): string {
   if (q.review) attrs["exam-review"] = q.review;
   if (q.alt?.length) attrs["exam-alt"] = q.alt.join("|");
   if (typeof q.confidence === "number") attrs["exam-confidence"] = q.confidence.toFixed(2);
-  return Object.entries(attrs).map(([k, v]) => `${k}="${escapeAttr(v)}"`).join(" ");
+  return Object.entries(attrs).map(([k, v]) => `custom-${k}="${escapeAttr(v)}"`).join(" ");
 }
 
 const escapeAttr = (s: string) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');

@@ -148,9 +148,10 @@ export class KernelApiClient {
   }
 
   async appendBlock(parentId: string, markdown: string): Promise<string[]> {
-    const r = await this.t.post("/api/block/insertBlock", { data: markdown, parentID: parentId });
-    const ops = (r.data as Record<string, unknown>)?.[0] as Record<string, unknown> | undefined;
-    return ops ? [String(ops.doOperations ?? "")] : [];
+    // 3.8.5 实测：insertBlock 必须带 dataType
+    const r = await this.t.post("/api/block/insertBlock", { dataType: "markdown", data: markdown, parentID: parentId });
+    const ops = (r.data as { doOperations?: { id?: string }[] }[] | null)?.[0]?.doOperations;
+    return ops ? ops.map((o) => String(o.id ?? "")) : [];
   }
 
   /** 批量写入题目块：返回 (qid, blockId) 对（insertBlock 响应逐操作回传） */
@@ -161,7 +162,7 @@ export class KernelApiClient {
       const slice = questions.slice(i, i + 20);
       const md = slice.map(questionToMarkdown).join("\n");
       const r = await this.t.post("/api/block/insertBlock", {
-        data: md, parentID: parentId,
+        dataType: "markdown", data: md, parentID: parentId,
       });
       const opsArr = Array.isArray(r.data) ? (r.data as { doOperations?: { id?: string }[] }[]) : [];
       const ops = opsArr[0]?.doOperations ?? [];
@@ -212,19 +213,29 @@ export class KernelApiClient {
     return (r.data as Record<string, string>) ?? {};
   }
 
-  /** 收藏切换（exam-fav 属性；空值=思源会保留空串，读侧只认 "1"） */
+  /** 块 kramdown 原文（query_embed 的 SQL 只存于此；3.8.5 实测 content 为空） */
+  async getBlockKramdown(blockId: string): Promise<string> {
+    const r = await this.t.post("/api/block/getBlockKramdown", { id: blockId });
+    return String((r.data as { kramdown?: string } | null)?.kramdown ?? "");
+  }
+
+  /** 收藏切换（custom-exam-fav 属性；attributes 表只索引 custom- 前缀，3.8.5 实测） */
   async setExamFav(blockId: string, on: boolean): Promise<void> {
-    await this.t.post("/api/attr/setBlockAttrs", { id: blockId, attrs: { "exam-fav": on ? "1" : "" } });
+    await this.t.post("/api/attr/setBlockAttrs", { id: blockId, attrs: { "custom-exam-fav": on ? "1" : "" } });
   }
 
   async getDueCards(deckId: string): Promise<unknown[]> {
+    // 3.8.5 实测：data 为 { cards: [...], unreviewedCount } 包裹对象
     const r = await this.t.post("/api/riff/getRiffDueCards", { deckID: deckId, reviewedCards: [] });
-    return (r.data as unknown[]) ?? [];
+    const cards = (r.data as { cards?: unknown[] } | null)?.cards;
+    return Array.isArray(cards) ? cards : [];
   }
 
   async createRiffDeck(name: string): Promise<string> {
+    // 3.8.5 实测：data 为 { id, name, size, ... } 对象（旧版为裸 id 字符串，双形态兼容）
     const r = await this.t.post("/api/riff/createRiffDeck", { name });
-    return String(r.data ?? "");
+    const d = r.data as unknown;
+    return typeof d === "string" ? d : String((d as { id?: string } | null)?.id ?? "");
   }
 
   async addRiffCards(deckId: string, blockIds: string[]): Promise<void> {
@@ -238,14 +249,25 @@ export class KernelApiClient {
     return arr.map((d) => ({ id: d.id, name: d.name }));
   }
 
-  /** 块 → 卡 ID 映射（转卡后的评级入口；响应结构待真机复核 TODO 27） */
-  async getCardIDsByBlockIDs(blockIds: string[]): Promise<Map<string, string>> {
+  /** 块 → 卡 ID 映射（转卡后的评级入口）
+   *  3.8.5 实测：getRiffCardsByBlockIDs 返回 data.blocks[]（riffCardID 字段，索引可能滞后为空）；
+   *  回退源 getRiffDueCards(deckID) → data.cards[]（{cardID, blockID}，新卡必在） */
+  async getCardIDsByBlockIDs(blockIds: string[], deckId?: string): Promise<Map<string, string>> {
     const map = new Map<string, string>();
     if (!blockIds.length) return map;
-    const r = await this.t.post("/api/riff/getRiffCardsByBlockIDs", { blockIDs: blockIds });
-    const arr = Array.isArray(r.data) ? (r.data as { cardID?: string; blockID?: string }[]) : [];
-    for (const it of arr) {
-      if (it.cardID && it.blockID) map.set(it.blockID, it.cardID);
+    const want = new Set(blockIds);
+    try {
+      const r = await this.t.post("/api/riff/getRiffCardsByBlockIDs", { blockIDs: blockIds });
+      const blocks = (r.data as { blocks?: { id?: string; riffCardID?: string }[] } | null)?.blocks ?? [];
+      for (const b of blocks) {
+        if (b.id && b.riffCardID && want.has(b.id)) map.set(b.id, b.riffCardID);
+      }
+    } catch { /* 回退 due 卡 */ }
+    if (map.size < blockIds.length && deckId) {
+      const r = await this.t.post("/api/riff/getRiffDueCards", { deckID: deckId, reviewedCards: [] });
+      for (const c of ((r.data as { cards?: { cardID?: string; blockID?: string }[] } | null)?.cards ?? [])) {
+        if (c.cardID && c.blockID && want.has(c.blockID) && !map.has(c.blockID)) map.set(c.blockID, c.cardID);
+      }
     }
     return map;
   }

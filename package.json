@@ -16,6 +16,8 @@
     "dev": "pnpm run dev:app",
     "dev:app": "cross-env NODE_ENV=development VITE_SOURCEMAP=inline VITE_BUILD_TARGET=app vite build --watch",
     "check": "run-s check:types check:svelte check:i18n check:arch",
+    "guard": "run-s check:types check:svelte check:i18n check:arch test",
+    "preflight": "node ./scripts/smoke-preflight.mjs",
     "check:i18n": "node ./scripts/check-i18n.mjs",
     "check:arch": "node ./scripts/check-arch.mjs",
     "test": "vitest run",
