@@ -48,6 +48,7 @@ pnpm dev              # watch build + livereload
 pnpm make-link        # symlink into <workspace>/data/plugins/siyuan-exam/
 pnpm check            # typecheck + svelte + i18n + arch checks
 pnpm guard            # full pre-push gate chain (types/svelte/i18n/arch/test)
+git config core.hooksPath .githooks   # enable the local pre-push hook (once per clone)
 pnpm check:i18n       # zh/en key parity + usage coverage
 pnpm check:arch       # architecture consistency (28 assertions)
 pnpm verify:package   # package.zip allowlist

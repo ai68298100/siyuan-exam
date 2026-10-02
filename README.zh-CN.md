@@ -48,6 +48,7 @@ pnpm dev              # watch 构建 + 热重载
 pnpm make-link        # 软链到 <工作空间>/data/plugins/siyuan-exam/
 pnpm check            # 类型 + svelte + i18n + 架构一致性检查
 pnpm guard            # 完整 pre-push 门禁链（类型/svelte/i18n/架构/单测）
+git config core.hooksPath .githooks   # 启用本地 pre-push 门禁钩子（克隆后一次性配置）
 pnpm test             # vitest 单测（151）
 pnpm check:i18n       # 中英键一致性 + 使用覆盖率
 pnpm check:arch       # 架构一致性（28 项）

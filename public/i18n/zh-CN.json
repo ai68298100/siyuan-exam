@@ -97,6 +97,7 @@
     "mode.recite.desc": "盖答案 · 四级自评（优先错题）",
     "mode.cram.desc": "错 ≥2 次 · 按错次排序",
     "recite.mode": "背诵模式",
+    "recite.jumpSource": "源笔记",
     "recite.exit": "退出背诵",
     "recite.reveal": "翻开答案（空格）",
     "recite.answer": "答案",

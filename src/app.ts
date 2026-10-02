@@ -433,6 +433,20 @@ export class ExamApp {
     return blockIds.length;
   }
 
+  /** FSRS 到期题（planToday.dueFirst 供给；离线/无卡包/无到期返回空，不建卡包） */
+  async dueQuestions(bankName: string, questions: (Question & { blockId?: string })[]): Promise<Question[]> {
+    if (!this.kernelOnline) return [];
+    try {
+      const name = deckNameForBank(bankName);
+      const deck = (await this.deps.client.getRiffDecks()).find((d) => d.name === name);
+      if (!deck) return [];
+      const cards = await this.deps.client.getDueCards(deck.id);
+      const due = new Set(cards.map((c) => String((c as { blockID?: string }).blockID ?? "")).filter(Boolean));
+      if (!due.size) return [];
+      return questions.filter((q) => q.blockId != null && due.has(q.blockId));
+    } catch { return []; }
+  }
+
   /** 背诵/闪卡作答：写流水（kind=recite + selfRating）；若块已转卡则同步 riff 评级 */
   async reciteAnswer(bankName: string, q: Question & { blockId?: string }, selfRating: 1 | 2 | 3 | 4, sessionId: string, timeMs = 0): Promise<void> {
     const remembered = selfRating >= 3;

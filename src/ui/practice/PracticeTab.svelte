@@ -196,7 +196,7 @@ import { ttsSpeak } from "@/core/tts";
 
     let plan = $state<ReturnType<typeof import("@/core/planner").planToday> | null>(null);
 
-    function rebuildPlan() {
+    function rebuildPlan(dueFirst?: Question[]) {
       if (!app) { plan = null; return; }
       const examDate = String(plugin.settingUtils?.get?.("examDate") ?? "").trim();
       const sprintDays = Number(plugin.settingUtils?.get?.("sprintDays") ?? 14);
@@ -210,6 +210,7 @@ import { ttsSpeak } from "@/core/tts";
         dailyGoal: Number.isFinite(goal) && goal > 0 ? goal : 10,
         all: questions, wrongCounts, activeWrongIds,
         wrongReasons: (app as any).wrongReasonMap?.() ?? undefined,
+        dueFirst: dueFirst ?? [],
       });
     }
 
@@ -218,7 +219,10 @@ import { ttsSpeak } from "@/core/tts";
       errorMsg = "";
       const qs = (await loadQuestions()).filter((q) => q.type !== "material");
       if (!qs.length) { errorMsg = t("state.emptyBank"); return; }
-      rebuildPlan();
+      // FSRS 到期优先（docs/11 S8：dueFirst 供给；离线/无卡自然为空）
+      let due: Question[] = [];
+      try { due = await (app as any).dueQuestions(bankName, qs); } catch { due = []; }
+      rebuildPlan(due);
       const queue = groupAdjacent((plan?.queue?.length ? plan.queue : qs.slice(0, 10)).filter((q) => q.type !== "material"));
       session = await app.startSession(queue, plan?.mode === "sprint" ? "cram" : "daily");
       feedback = null; selected = ""; sessionDone = null;
@@ -226,6 +230,14 @@ import { ttsSpeak } from "@/core/tts";
     }
 
     // ---------- 背诵（S4 lite） ----------
+    /** 跳回源笔记精确位置（iDoRecall 范式 lite：doc zoomIn 到题目块） */
+    function jumpToSource() {
+      const q = reciteQueue[reciteCursor] as Question & { blockId?: string; rootId?: string };
+      if (!q?.blockId || !q?.rootId) return;
+      void import("siyuan").then(({ openTab }) => {
+        openTab({ app: (plugin as any).app ?? plugin, doc: { id: q.rootId, zoomIn: q.blockId } } as any);
+      });
+    }
     function startRecite() { void 0; // 背诵朗读按钮在视图内直接调用 ttsSpeak
       const qs = app.wrongDrill(questions.length ? questions : []);
       const pool = qs.length ? qs : questions;
@@ -1193,6 +1205,9 @@ import { ttsSpeak } from "@/core/tts";
         <button class="lv-btn lv-btn--ghost" onclick={exitRecite}>← {t("recite.exit")}</button>
         <span class="lv-chip num">{reciteCursor + 1}/{reciteQueue.length}</span>
         <span class="lv-chip">{t("recite.mode")}</span>
+        {#if (reciteQueue[reciteCursor] as any)?.blockId && (reciteQueue[reciteCursor] as any)?.rootId}
+          <button class="lv-chip" title={t("recite.jumpSource")} onclick={jumpToSource}>📍 {t("recite.jumpSource")}</button>
+        {/if}
         {#if reciteQueue[reciteCursor]?.group}
           <span class="lv-chip num">🔗 {t("session.groupPos")}</span>
         {/if}

@@ -97,6 +97,7 @@
     "mode.recite.desc": "Cover answer · 4-level rating (wrongs first)",
     "mode.cram.desc": "wrong ≥2 · sorted by count",
     "recite.mode": "Recite",
+    "recite.jumpSource": "Source note",
     "recite.exit": "Exit recite",
     "recite.reveal": "Reveal answer (Space)",
     "recite.answer": "Answer",
