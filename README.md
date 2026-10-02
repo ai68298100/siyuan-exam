@@ -6,7 +6,7 @@ A local-first **exam question bank learning manager** for SiYuan: import questio
 
 ## Status
 
-**Implemented end-to-end** (v0.5.0, pending real-machine smoke): bank → import → practice → wrongbook → FSRS memory → mock exam → reports → AI → sharing all work offline-verified. **136 unit tests**; five quality gates (types / svelte-check / arch 28 assertions / i18n parity+coverage / build+package allowlist) plus a **live-kernel preflight** (`npm run preflight`, 17 kernel-behavior checks, 17/17 on SiYuan 3.8.5). The only release gate left is the 10-minute manual smoke in [docs/17](docs/17-真机冒烟清单.md).
+**Implemented end-to-end** (v0.5.0, pending real-machine smoke): bank → import → practice → wrongbook → FSRS memory → mock exam → reports → AI → sharing all work offline-verified. **151 unit tests**; five quality gates (types / svelte-check / arch 28 assertions / i18n parity+coverage / build+package allowlist) plus a **live-kernel preflight** (`npm run preflight`, 17 kernel-behavior checks, 17/17 on SiYuan 3.8.5). The only release gate left is the 10-minute manual smoke in [docs/17](docs/17-真机冒烟清单.md).
 
 | Folder | Content |
 |---|---|
@@ -52,7 +52,7 @@ pnpm check:i18n       # zh/en key parity + usage coverage
 pnpm check:arch       # architecture consistency (28 assertions)
 pnpm verify:package   # package.zip allowlist
 pnpm preflight        # live-kernel API preflight (17 checks, needs SiYuan running)
-pnpm test             # vitest (136)
+pnpm test             # vitest (151)
 pnpm build            # dist/ + package.zip
 pnpm make-install     # build and install into a local SiYuan plugin directory
 ```

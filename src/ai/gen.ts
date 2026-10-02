@@ -259,6 +259,7 @@ export async function repairIssues(channel: AiChannel, issues: GenIssue[], sourc
   let duplicates = 0;
   const quality = opt.quality ?? "standard";
 
+  const unfixable = issues.filter((i) => !i.raw.trim().startsWith("{"));
   const fixable = issues.filter((i) => i.raw.trim().startsWith("{"));
   if (!fixable.length) return { pending: [], rejected: issues, duplicates: 0, batch };
 
@@ -266,36 +267,33 @@ export async function repairIssues(channel: AiChannel, issues: GenIssue[], sourc
   for (let i = 0; i < fixable.length; i += 5) {
     chunks.push(fixable.slice(i, i + 5).map((f) => `【否决原因】${f.reason}\n【原题 JSON】${f.raw}`).join("\n\n"));
   }
-  let idx = 0;
-  for (const chunk of chunks) {
+  for (let ci = 0; ci < chunks.length; ci++) {
     if (opt.signal?.aborted) break;
-    const group = fixable.slice(idx, idx + 5);
+    const group = fixable.slice(ci * 5, ci * 5 + 5);
     const messages: AiMessage[] = [
       { role: "system", content: "你是严谨的命题修订人。针对每道被否决的题，按否决原因修复（改干扰项/补解析/修答案），保持题型与考点不变。只输出修复后的 JSON 数组，元素结构：{\"type\":\"single|multiple|judge|fill|short\",\"stem\":\"...\",\"options\":[...],\"answer\":\"...\",\"analysis\":\"...\",\"kp\":\"...\"}。" },
-      { role: "user", content: `【材料】\n${sourceText.slice(0, 3000)}\n\n【待修复题目】\n${chunk}` },
+      { role: "user", content: `【材料】\n${sourceText.slice(0, 3000)}\n\n【待修复题目】\n${chunks[ci]}` },
     ];
     const raw = await channel.chat(messages);
     const arr = extractJsonArray(raw);
     if (!arr) {
       group.forEach((f) => rejected.push({ index: f.index, reason: f.reason + "（修复响应不可解析）", raw: f.raw }));
-      idx += 5;
       continue;
     }
     const candidates: Question[] = [];
     for (const item of arr) {
       if (!(item && typeof item === "object")) continue;
       const r = toQuestion(item as Record<string, unknown>, opt, batch);
-      if (r.reason || !r.q) { rejected.push({ index: ++idx, reason: r.reason ?? "未知", raw: JSON.stringify(item).slice(0, 120) }); continue; }
+      if (r.reason || !r.q) { rejected.push({ index: 0, reason: r.reason ?? "未知", raw: JSON.stringify(item).slice(0, 120) }); continue; }
       if (seenHash.has(r.q.hash)) { duplicates++; continue; }
       candidates.push(r.q);
     }
-    idx += 5;
     if (quality === "standard" && candidates.length) {
       const verdicts = await reviewQuestions(channel, candidates, sourceText.slice(0, 3000));
       for (const q of candidates) {
         const v = verdicts.get(q.id) ?? { confidence: 0, pass: false, reason: "未核验" };
         if (!v.pass || v.confidence < REVIEW_CONFIDENCE_MIN) {
-          rejected.push({ index: idx, reason: `修复后核验仍淘汰：置信 ${v.confidence.toFixed(2)}${v.reason ? " · " + v.reason : ""}`, raw: rawOf(q) });
+          rejected.push({ index: 0, reason: `修复后核验仍淘汰：置信 ${v.confidence.toFixed(2)}${v.reason ? " · " + v.reason : ""}`, raw: rawOf(q) });
           continue;
         }
         q.confidence = v.confidence;
@@ -311,7 +309,7 @@ export async function repairIssues(channel: AiChannel, issues: GenIssue[], sourc
       }
     }
   }
-  // 未进入修复循环的项原样保留
-  for (const f of issues.slice(fixable.length)) rejected.push(f);
+  // 不可解析的拒绝项原样保留（不参与修复）
+  rejected.push(...unfixable);
   return { pending, rejected, duplicates, batch };
 }

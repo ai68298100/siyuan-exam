@@ -6,7 +6,7 @@
 
 ## 仓库状态
 
-**全链路已实现**（v0.5.0，待真机冒烟定版）：题库 → 导入 → 刷题 → 错题本 → FSRS 记忆 → 模考 → 报告 → AI → 题库包分享全部离线可验证。**136 项单测**；六重门禁（类型 / svelte-check / 架构 28 项 / i18n 对齐+覆盖率 / 构建+打包白名单 / **活内核预检 17 项**，SiYuan 3.8.5 实测 17/17）。唯一剩余发版门槛是 [docs/17](docs/17-真机冒烟清单.md) 的 10 分钟人工冒烟。
+**全链路已实现**（v0.5.0，待真机冒烟定版）：题库 → 导入 → 刷题 → 错题本 → FSRS 记忆 → 模考 → 报告 → AI → 题库包分享全部离线可验证。**151 项单测**；六重门禁（类型 / svelte-check / 架构 28 项 / i18n 对齐+覆盖率 / 构建+打包白名单 / **活内核预检 17 项**，SiYuan 3.8.5 实测 17/17）。唯一剩余发版门槛是 [docs/17](docs/17-真机冒烟清单.md) 的 10 分钟人工冒烟。
 
 | 目录 | 内容 |
 |---|---|
@@ -48,7 +48,7 @@ pnpm dev              # watch 构建 + 热重载
 pnpm make-link        # 软链到 <工作空间>/data/plugins/siyuan-exam/
 pnpm check            # 类型 + svelte + i18n + 架构一致性检查
 pnpm guard            # 完整 pre-push 门禁链（类型/svelte/i18n/架构/单测）
-pnpm test             # vitest 单测（136）
+pnpm test             # vitest 单测（151）
 pnpm check:i18n       # 中英键一致性 + 使用覆盖率
 pnpm check:arch       # 架构一致性（28 项）
 pnpm verify:package   # package.zip 白名单校验
