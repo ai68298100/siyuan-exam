@@ -137,8 +137,3 @@ export class AttemptLog {
     this.dirty = false;
   }
 }
-
-/** 把 AttemptEvent[] 交给重放器前的时间序（同 ts 按 seq 稳定排序） */
-export function orderedEvents(events: readonly AttemptEvent[]): AttemptEvent[] {
-  return [...events].sort((a, b) => a.ts - b.ts || a.seq - b.seq);
-}

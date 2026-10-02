@@ -19,7 +19,6 @@
     let view: View = $state("config");
     let loading = $state(true);
     let errorMsg = $state("");
-    let bankName = $state(""); void bankName;
     let questions = $state<Question[]>([]);
 
     let bp = $state<Blueprint>({
@@ -45,7 +44,6 @@
       if (!app) { loading = false; errorMsg = t("state.appNotReady"); return; }
       const banks = app.listBanks();
       if (!banks.length) { loading = false; errorMsg = t("guard.needBankFirst"); return; }
-      bankName = banks[0].name;
       activeBankId = banks[0].id;
       try {
         questions = await app.listQuestions(banks[0].id);

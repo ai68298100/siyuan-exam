@@ -40,9 +40,6 @@ export function normalizeAnswer(type: Question["type"], raw: string): string | n
   return s; // fill / short
 }
 
-/** 选项字母 → 下标 */
-export const letterIndex = (letter: string) => letter.charCodeAt(0) - 65;
-
 export interface GradeResult {
   verdict: "correct" | "wrong" | "not_attempted";
   myAnswer: string | null;

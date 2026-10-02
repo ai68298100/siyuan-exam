@@ -49,6 +49,8 @@
     "session.submit": "提交",
     "session.skip": "跳过",
     "session.next": "下一题",
+    "session.kbdPrev": "上一题",
+    "session.choose": "选择",
     "session.correct": "回答正确",
     "session.wrongAns": "回答错误 · 正确答案",
     "session.skipped": "已跳过",

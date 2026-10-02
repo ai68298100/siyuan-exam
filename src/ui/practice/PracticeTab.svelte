@@ -993,7 +993,10 @@ import { ttsSpeak } from "@/core/tts";
         <div class="lv-pad">
           <div class="lv-row lv-session-head">
             <button class="lv-btn lv-btn--ghost" onclick={exitSession}>← {t("session.exit")}</button>
-            <span class="lv-chip">{t("session.progress")}: <span class="num">{session.progress.done}/{session.progress.total}</span></span>
+            <div class="lv-row" style="flex:1;min-width:120px;gap:8px">
+              <div class="lv-progress" style="flex:1" role="progressbar" aria-label={t("session.progress")} aria-valuemin="0" aria-valuemax={session.progress.total} aria-valuenow={session.progress.done}><i style="width:{session.progress.total ? Math.round((session.progress.done / session.progress.total) * 100) : 0}%"></i></div>
+              <span class="num lv-muted">{session.progress.done}/{session.progress.total}</span>
+            </div>
             <span class="lv-chip lv-chip--acc">{t("qtype." + q.type)}</span>
             {#if q.group}
               {@const sibs = questions.filter((x) => x.group === q.group)}
@@ -1054,6 +1057,15 @@ import { ttsSpeak } from "@/core/tts";
                 </div>
               {/if}
             {/if}
+            {#if !feedback}
+              <div class="lv-row lv-muted" style="font-size:11px;gap:6px;flex-wrap:wrap">
+                <span class="lv-kbd">A</span>-<span class="lv-kbd">J</span> {t("session.choose")} ·
+                <span class="lv-kbd">Enter</span> {t("session.submit")} ·
+                <span class="lv-kbd">J</span>/<span class="lv-kbd">K</span> {t("session.next")}/{t("session.kbdPrev")} ·
+                <span class="lv-kbd">E</span> ⭐ ·
+                <span class="lv-kbd">Esc</span> {t("session.exit")}
+              </div>
+            {/if}
 
             <div class="lv-row">
               {#if !feedback}
@@ -1071,20 +1083,16 @@ import { ttsSpeak } from "@/core/tts";
                   <button class="lv-btn" onclick={() => explainCurrent("socratic")} disabled={explainBusy}>🧠 {t("explain.socratic")}</button>
                 {/if}
               {/if}
-              {#if explainText && session?.current}
-                {@const qidNow = session.current.id}
-                {#if explainQid === qidNow}
-                  <div class="lv-analysis lv-explain">{explainText}</div>
-                    <button class="lv-btn" onclick={() => explainCurrent("hint")} disabled={explainBusy}>💡 {t("explain.hint")}</button>
-                  <button class="lv-btn" onclick={() => explainCurrent("socratic")} disabled={explainBusy}>🧠 {t("explain.socratic")}</button>
-                {/if}
-              {/if}
               {#if explainText && session?.current && explainQid === session.current.id}
                 <div class="lv-analysis lv-explain">{explainText}</div>
                 <div class="lv-row">
                   {#if !explainText.startsWith("✓")}
                     <button class="lv-btn sm" onclick={saveExplain}>📌 {t("explain.save")}</button>
                   {/if}
+                  <button class="lv-btn sm" onclick={() => explainCurrent("hint")} disabled={explainBusy}>💡 {t("explain.hint")}</button>
+                  <button class="lv-btn sm" onclick={() => explainCurrent("socratic")} disabled={explainBusy}>🧠 {t("explain.socratic")}</button>
+                </div>
+                <div class="lv-row">
                   <input class="lv-input" style="flex:1;min-width:160px" placeholder={t("explain.followUp")}
                     bind:value={explainFollowUp}
                     onkeydown={(e) => e.key === "Enter" && sendFollowUp()} />
@@ -1171,11 +1179,11 @@ import { ttsSpeak } from "@/core/tts";
             <button class="lv-chip" class:acc={mType === tt} onclick={() => { mType = tt as any; mAnswer = ""; }}>{t("qtype." + tt)}</button>
           {/each}
         </div>
-        <div class="lv-field"><label class="lv-muted">{t("manual.stem")}</label>
-          <textarea class="lv-input lv-textarea" bind:value={mStem} placeholder={t("manual.stemPlaceholder")}></textarea>
+        <div class="lv-field"><span class="lv-muted">{t("manual.stem")}</span>
+          <textarea class="lv-input lv-textarea" bind:value={mStem} placeholder={t("manual.stemPlaceholder")} aria-label={t("manual.stem")}></textarea>
         </div>
         {#if mType === "single" || mType === "multiple"}
-          <div class="lv-field"><label class="lv-muted">{t("manual.options")}</label>
+          <div class="lv-field"><span class="lv-muted">{t("manual.options")}</span>
             {#each mOptions as _opt, i}
               <div class="lv-row" style="margin:4px 0">
                 <button class="lv-chip" class:acc={mAnswer.includes(String.fromCharCode(65 + i))}
@@ -1196,8 +1204,8 @@ import { ttsSpeak } from "@/core/tts";
             <button class="lv-chip" class:acc={mAnswer === "错"} onclick={() => mAnswer = "错"}>错</button>
           </div>
         {/if}
-        <div class="lv-field"><label class="lv-muted">{t("manual.analysis")}</label>
-          <textarea class="lv-input lv-textarea" style="min-height:52px" bind:value={mAnalysis}></textarea>
+        <div class="lv-field"><span class="lv-muted">{t("manual.analysis")}</span>
+          <textarea class="lv-input lv-textarea" style="min-height:52px" bind:value={mAnalysis} aria-label={t("manual.analysis")}></textarea>
         </div>
         <div class="lv-row">
           <span class="lv-chip">{t("manual.kp")}</span><input class="lv-input" style="max-width:180px" bind:value={mKp} placeholder="资料分析/增长率" />
@@ -1226,8 +1234,8 @@ import { ttsSpeak } from "@/core/tts";
         {/if}
       </div>
       <div class="lv-card lv-pad-card">
-        <div class="lv-field"><label class="lv-muted">{t("ai.source")}</label>
-          <textarea class="lv-input lv-textarea" rows="7" bind:value={aiSource} placeholder={t("ai.sourcePlaceholder")}></textarea>
+        <div class="lv-field"><span class="lv-muted">{t("ai.source")}</span>
+          <textarea class="lv-input lv-textarea" rows="7" bind:value={aiSource} placeholder={t("ai.sourcePlaceholder")} aria-label={t("ai.source")}></textarea>
         </div>
         <div class="lv-row">
           <span class="lv-chip">{t("ai.count")}</span>

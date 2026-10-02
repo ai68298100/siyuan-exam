@@ -49,6 +49,8 @@
     "session.submit": "Submit",
     "session.skip": "Skip",
     "session.next": "Next",
+    "session.kbdPrev": "Prev",
+    "session.choose": "Choose",
     "session.correct": "Correct",
     "session.wrongAns": "Wrong · correct answer",
     "session.skipped": "Skipped",
