@@ -556,6 +556,7 @@ import { ttsSpeak } from "@/core/tts";
     let mAnalysis = $state("");
     let mKp = $state("");
     let mSource = $state("");
+    let mGroup = $state("");
     let mSaving = $state(false);
     let mSaved = $state("");
 
@@ -575,6 +576,7 @@ import { ttsSpeak } from "@/core/tts";
           type: mType, stem: mStem,
           options: mType === "single" || mType === "multiple" ? mOptions.filter((o) => o.trim()) : [],
           answer: mAnswer, analysis: mAnalysis, kp: mKp, source: mSource,
+          group: mGroup.trim() || undefined,
         });
         await app.writeManualQuestion(activeBankId, q);
         mSaved = q.id;
@@ -926,7 +928,7 @@ import { ttsSpeak } from "@/core/tts";
             <b>🔥 {t("mode.cram")}</b><span class="lv-muted">{t("mode.cram.desc")}</span>
           </button>
           <button class="lv-mode" onclick={() => startDrill("fav")}>
-            <b>⭐ {t("mode.fav")}</b><span class="lv-muted num">{questions.filter((q) => q.fav).length} {t("mode.wrong.unit")}</span>
+            <b>⭐ {t("mode.fav")}</b><span class="lv-muted">{t("mode.fav.desc")}（<span class="num">{questions.filter((q) => q.fav).length}</span> {t("mode.wrong.unit")}）</span>
           </button>
           <button class="lv-mode lv-mode--disabled" title={t("todo")}>
             <b>🌲 {t("mode.special")}</b><span class="lv-muted">{t("todo")}</span>
@@ -1111,7 +1113,8 @@ import { ttsSpeak } from "@/core/tts";
       {#if reciteDone}
         <div class="lv-card lv-guard">
           <div class="lv-guard-title">🏁 {t("recite.done")}</div>
-          <p class="num lv-muted">{t("recite.dist")}：不会 {reciteRatings.filter((x) => x === 1).length} · 模糊 {reciteRatings.filter((x) => x === 2).length} · 会 {reciteRatings.filter((x) => x === 3).length} · 熟知 {reciteRatings.filter((x) => x === 4).length}</p>
+          <p class="num lv-muted">{t("recite.dist")}：{t("rate.1")} {reciteRatings.filter((x) => x === 1).length} · {t("rate.2")} {reciteRatings.filter((x) => x === 2).length} · {t("rate.3")} {reciteRatings.filter((x) => x === 3).length} · {t("rate.4")} {reciteRatings.filter((x) => x === 4).length}</p>
+          <p class="lv-muted" style="font-size:12px">{t("recite.doneHint")}</p>
           <button class="lv-btn lv-btn--primary" style="width:100%" onclick={exitRecite}>{t("session.back")}</button>
         </div>
       {:else if reciteQueue[reciteCursor]}
@@ -1199,6 +1202,7 @@ import { ttsSpeak } from "@/core/tts";
         <div class="lv-row">
           <span class="lv-chip">{t("manual.kp")}</span><input class="lv-input" style="max-width:180px" bind:value={mKp} placeholder="资料分析/增长率" />
           <span class="lv-chip">{t("manual.source")}</span><input class="lv-input" style="max-width:160px" bind:value={mSource} placeholder="2023 国考 · 115" />
+          <span class="lv-chip">{t("manual.group")}</span><input class="lv-input num" style="max-width:200px" bind:value={mGroup} placeholder="grp-…" />
         </div>
         <div class="lv-row">
           <button class="lv-btn lv-btn--primary" onclick={saveManual} disabled={mSaving || !mStem.trim() || !mAnswer.trim()}>
@@ -1216,9 +1220,9 @@ import { ttsSpeak } from "@/core/tts";
         <span class="lv-chip">✨ {t("ai.title")}</span>
         <span class="fn__flex-1"></span>
         {#if aiCustomEndpointSet}
-          <span class="lv-chip lv-chip--amb" title={t("setting.aiEndpoint.desc")}>{t("ai.channel.openai")}</span>
+          <span class="lv-chip lv-chip--amb" title={t("ai.endpointTitle") + " · " + t("setting.aiEndpoint.desc")}>{t("ai.channel.openai")}</span>
         {:else}
-          <span class="lv-chip lv-chip--grn">{t("ai.channel.siyuan")}</span>
+          <span class="lv-chip lv-chip--grn" title={t("ai.endpointTitle")}>{t("ai.channel.siyuan")}</span>
         {/if}
       </div>
       <div class="lv-card lv-pad-card">

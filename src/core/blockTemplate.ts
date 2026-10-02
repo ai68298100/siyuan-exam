@@ -113,7 +113,7 @@ const letterIdx = (L: string) => L.charCodeAt(0) - 65;
 export function makeQuestion(p: {
   type: QuestionType; stem: string; options?: string[]; answer: string;
   analysis?: string; kp?: string; source?: string; difficulty?: number;
-  alt?: string[];
+  alt?: string[]; group?: string;
 }): Question {
   const options = p.options ?? [];
   const answer = p.type === "material" ? "" : (normalizeAnswer(p.type, p.answer) ?? p.answer);
@@ -129,6 +129,7 @@ export function makeQuestion(p: {
     source: p.source,
     kp: p.kp,
     origin: "manual",
+    group: p.group || undefined,
     batch: newBatchId(),
     review: "verified",
     alt: p.alt,

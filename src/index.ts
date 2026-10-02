@@ -254,9 +254,9 @@ export default class LvExamPlugin extends Plugin {
         const rows = items.slice(0, 30).map((w) =>
             `<div class="lv-dock-row" data-qid="${w.qid}">
                 <span class="num">${w.qid}</span>
-                <span>错 ${w.wrongCount}</span>
-                <button class="lv-dock-act" data-act="mastered" data-qid="${w.qid}" title="已掌握">✓</button>
-                <button class="lv-dock-act" data-act="removed" data-qid="${w.qid}" title="永久移除">✕</button>
+                <span>${this.i18n["dock.wrongTag"]} ${w.wrongCount}</span>
+                <button class="lv-dock-act" data-act="mastered" data-qid="${w.qid}" title="${this.i18n["dock.actMastered"]}">✓</button>
+                <button class="lv-dock-act" data-act="removed" data-qid="${w.qid}" title="${this.i18n["dock.actRemoved"]}">✕</button>
             </div>`
         ).join("");
         dockEl.innerHTML = `
@@ -266,7 +266,7 @@ export default class LvExamPlugin extends Plugin {
     <span class="lv-chip lv-chip--red num">${items.length}</span>
 </div>
 <div class="lv-dock-list">
-${items.length ? rows : `<div class="lv-dock-empty">${this.i18n["dock.empty"]}<br/><button class="lv-btn sm lv-dock-go" style="margin-top:8px">${this.i18n["dock.goPractice"]}</button></div>`}
+${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedHint"]}</div>` : `<div class="lv-dock-empty">${this.i18n["dock.empty"]}<br/><button class="lv-btn sm lv-dock-go" style="margin-top:8px">${this.i18n["dock.goPractice"]}</button></div>`}
 </div>`;
         // 空态按钮：打开练习台
         dockEl.querySelector<HTMLButtonElement>(".lv-dock-go")?.addEventListener("click", () => this.openPractice());

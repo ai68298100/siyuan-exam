@@ -335,6 +335,10 @@
           <input class="lv-input num" style="flex:1;min-width:160px" bind:value={estKey} placeholder="BADCA…" />
         {/if}
       </div>
+      <div class="lv-row" style="margin-top:6px">
+        <span class="lv-chip">{t("estimate.mine")}</span>
+        <input class="lv-input num" style="flex:1;min-width:160px" bind:value={estMine} placeholder="BADCA…" />
+      </div>
       <div class="lv-row">
         <button class="lv-btn sm" onclick={runEstimate} disabled={!estKey.trim() || !estMine.trim()}>{t("estimate.run")}</button>
         {#if estResult}
