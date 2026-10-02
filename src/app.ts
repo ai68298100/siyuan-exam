@@ -35,7 +35,7 @@ export interface ExamAppDeps {
 
 const BANK_REGISTRY_KEY = "banks";
 const SESSION_KEY = "session/active";
-const WRONG_REASON_KEY_PREFIX = "wrongbook/reasons/";
+const WRONG_REASON_KEY = "wrongbook/reasons";
 
 export class ExamApp {
   readonly attempts: AttemptLog;
@@ -63,6 +63,7 @@ export class ExamApp {
     }
     try { await this.attempts.load(deviceId); } catch { /* 流水损坏已在 load 内部兜底 */ }
     try { await this.loadWrongOverlay(); } catch { this.wrongOverlay = new Map(); }
+    try { await this.loadWrongReasons(); } catch { this.wrongReasons = new Map(); }
     this.invalidate();
     try {
       const banks = await this.deps.storage.load(BANK_REGISTRY_KEY);
@@ -184,14 +185,32 @@ export class ExamApp {
     this.wrongOverlay = new Map(Object.entries(v ?? {}));
   }
 
+  /** 错因（单键 map；计划加权回流的数据源） */
+  private wrongReasons = new Map<string, "careless" | "unknown" | "trap">();
+
   async saveWrongReason(qid: string, reason: "careless" | "unknown" | "trap"): Promise<void> {
-    const key = WRONG_REASON_KEY_PREFIX + qid;
-    await this.deps.storage.save(key, { reason, at: Date.now() });
+    const map = ((await this.deps.storage.load(WRONG_REASON_KEY)) as Record<string, { reason: string; at: number }> | undefined) ?? {};
+    map[qid] = { reason, at: Date.now() };
+    await this.deps.storage.save(WRONG_REASON_KEY, map);
+    this.wrongReasons.set(qid, reason);
+    this.invalidate();
   }
 
   async loadWrongReason(qid: string): Promise<string | undefined> {
-    const v = await this.deps.storage.load(WRONG_REASON_KEY_PREFIX + qid) as { reason?: string } | undefined;
-    return v?.reason;
+    const map = (await this.deps.storage.load(WRONG_REASON_KEY)) as Record<string, { reason?: string }> | undefined;
+    return map?.[qid]?.reason;
+  }
+
+  private async loadWrongReasons(): Promise<void> {
+    const map = (await this.deps.storage.load(WRONG_REASON_KEY)) as Record<string, { reason?: string }> | undefined;
+    this.wrongReasons = new Map(
+      Object.entries(map ?? {}).filter((e): e is [string, { reason: "careless" | "unknown" | "trap" }] => !!e[1]?.reason).map(([k, v]) => [k, v.reason]),
+    );
+  }
+
+  /** 错因快照（计划引擎加权用；只读） */
+  wrongReasonMap(): Map<string, "careless" | "unknown" | "trap"> {
+    return new Map(this.wrongReasons);
   }
 
   private invalidate() { this.replayCache = null; }

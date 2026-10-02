@@ -209,6 +209,7 @@ import { ttsSpeak } from "@/core/tts";
         sprintDays: Number.isFinite(sprintDays) && sprintDays > 0 ? sprintDays : 14,
         dailyGoal: Number.isFinite(goal) && goal > 0 ? goal : 10,
         all: questions, wrongCounts, activeWrongIds,
+        wrongReasons: (app as any).wrongReasonMap?.() ?? undefined,
       });
     }
 
@@ -631,15 +632,8 @@ import { ttsSpeak } from "@/core/tts";
       aiBusy = true; errorMsg = ""; aiQueue = []; aiRejected = []; aiDuplicates = 0; aiSaved = 0;
       try {
         const { generate } = await import("@/ai/gen");
-        const { SiyuanAiChannel, OpenAiChannel } = await import("@/ai/client");
         const { CountingChannel } = await import("@/ai/counting");
-        const endpoint = String(plugin.settingUtils?.get?.("aiEndpoint") ?? "");
-        const key = String((plugin as any).getSecret?.("lv-exam-ai-key") || plugin.settingUtils?.get?.("aiKey") || "");
-        const model = String(plugin.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
-        const base = endpoint && key
-          ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
-          : new SiyuanAiChannel((app as any).deps.client);
-        const counting = new CountingChannel(base);
+        const counting = new CountingChannel(await makeAiChannel());
         const aiCustomHint = String(plugin.settingUtils?.get?.("aiCustomHint") ?? "");
         const r = await generate(counting, aiSource, {
           types: ["single", "multiple", "judge"], count: aiCount, difficulty: aiDifficulty,
@@ -663,6 +657,50 @@ import { ttsSpeak } from "@/core/tts";
     function cancelAiGenerate() {
       aiCancel.aborted = true;
       showMessage(t("ai.cancelled"), 3000, "info");
+    }
+
+    /** 通道构造（生成/修复共用）：端点+Key 配置走 OpenAI 兼容，否则思源内置 */
+    async function makeAiChannel() {
+      const { SiyuanAiChannel, OpenAiChannel } = await import("@/ai/client");
+      const endpoint = String(plugin.settingUtils?.get?.("aiEndpoint") ?? "");
+      const key = String((plugin as any).getSecret?.("lv-exam-ai-key") || plugin.settingUtils?.get?.("aiKey") || "");
+      const model = String(plugin.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
+      return endpoint && key
+        ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
+        : new SiyuanAiChannel((app as any).deps.client);
+    }
+
+    /** 拒绝项重试（AI Inbox 范式"重试"腿）：带否决原因让 AI 修复 → 复检 → 合入待审核 */
+    async function retryRejected() {
+      if (aiBusy || !aiRejected.length) return;
+      const source = aiSource.trim();
+      if (!source) { errorMsg = t("ai.emptySource"); return; }
+      aiCancel = { aborted: false };
+      aiBusy = true;
+      try {
+        const { repairIssues } = await import("@/ai/gen");
+        const { CountingChannel } = await import("@/ai/counting");
+        const counting = new CountingChannel(await makeAiChannel());
+        const aiCustomHint = String(plugin.settingUtils?.get?.("aiCustomHint") ?? "");
+        const r = await repairIssues(counting, aiRejected as import("@/ai/gen").GenIssue[], source, {
+          types: ["single", "multiple", "judge"], count: aiRejected.length, difficulty: aiDifficulty,
+          kp: aiKp, sourceTitle: t("ai.pastedMaterial"), preset: aiPreset, quality: aiQuality,
+          customHint: aiCustomHint || undefined, signal: aiCancel,
+        });
+        aiCost = `≈${counting.approxTokens} tok · ${counting.calls} ${t("ai.usageCalls")}`;
+        await app.recordAiUsage(counting.id, counting.approxTokens, counting.calls);
+        aiUsageTotal = await (app as any).aiUsage();
+        aiQueue = [...aiQueue, ...r.pending];
+        aiRejected = r.rejected;
+        aiDuplicates += r.duplicates;
+        void persistAiQueue();
+        if (r.pending.length) showMessage(`${t("ai.saved")} ${r.pending.length}`, 2600, "info");
+      } catch (e) {
+        errorMsg = String(e instanceof Error ? e.message : e);
+      } finally {
+        aiCancel.aborted = false;
+        aiBusy = false;
+      }
     }
 
     async function approveAi(q: Question) {
@@ -1285,6 +1323,9 @@ import { ttsSpeak } from "@/core/tts";
           {#if aiDuplicates}<span class="lv-chip lv-chip--amb num">⧉ {aiDuplicates}</span>{/if}
           {#if aiCost}<span class="lv-chip num">{aiCost}</span>{/if}
           <span class="fn__flex-1"></span>
+          {#if aiRejected.length}
+            <button class="lv-btn sm" onclick={retryRejected} disabled={aiBusy} title={t("ai.retryTitle")}>⟳ {t("ai.retryRejected")}（{aiRejected.length}）</button>
+          {/if}
           {#if aiQueue.length}
             <button class="lv-btn lv-btn--primary sm" onclick={approveAllAi}>✓ {t("ai.approveAll")}（{aiQueue.length}）</button>
           {/if}

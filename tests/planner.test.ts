@@ -53,4 +53,32 @@ describe("planToday", () => {
     const p = planToday({ ...base, dailyGoal: 0 }, NOW);
     expect(p.queue.length).toBeGreaterThanOrEqual(1);
   });
+  it("加权回流：unknown 错因权重压过错次更多的 careless", () => {
+    // qs[2] 错 1 次但"知识不会"(×2.0=2.0)；qs[0] 错 5 次但"粗心"(×1.2=6.0) → 仍 qs[0] 先
+    const p = planToday({
+      ...base,
+      dailyGoal: 2,
+      wrongReasons: new Map([[qs[0].id, "careless" as const], [qs[2].id, "unknown" as const]]),
+    }, NOW);
+    expect(p.queue[0].id).toBe(qs[0].id);
+    expect(p.queue[1].id).toBe(qs[2].id);
+    // 未知错因按粗心档：错次相同时 unknown 排前
+    const p2 = planToday({
+      dailyGoal: 2, all: qs,
+      wrongCounts: new Map([[qs[0].id, 1], [qs[2].id, 1]]),
+      activeWrongIds: new Set([qs[0].id, qs[2].id]),
+      wrongReasons: new Map([[qs[2].id, "unknown" as const]]),
+    }, NOW);
+    expect(p2.queue[0].id).toBe(qs[2].id);
+  });
+  it("冲刺 cram 同样按权重排序；reason 提示顽固数", () => {
+    const p = planToday({
+      ...base,
+      examDate: "2026-10-10",
+      wrongReasons: new Map([[qs[1].id, "trap" as const]]),
+    }, NOW);
+    // qs[0]=5×1.2(默认粗心)=6.0 > qs[1]=2×1.6=3.2 > qs[2]=1×1.2=1.2
+    expect(p.queue.map((q) => q.id)).toEqual([qs[0].id, qs[1].id, qs[2].id]);
+    expect(p.reason).toContain("顽固 1");
+  });
 });

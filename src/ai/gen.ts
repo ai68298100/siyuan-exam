@@ -59,11 +59,25 @@ export const PROMPT_PRESETS: Record<string, { label: string; hint: string }> = {
   jiakao: { label: "驾考", hint: "命题风格贴近驾考科目一/四：交规条款、标志标线、安全文明驾驶；题干简短直白。" },
 };
 
+/**
+ * 干扰项构建规范（docs/03 附录 A；Haladyna & Downing 1993 / TGM-D 复述版）
+ * 选择题选项必须逐条自查，避免"唯长选项""词面呼应题干"等表面线索。
+ */
+export const HALADYNA_RULES = [
+  "干扰项彼此同质（同类概念/同类量纲/同类表述长度，禁止唯一长选项或唯一精确表述）；",
+  "每个干扰项对应一个可诊断的常见误解（算错/偷换概念/张冠李戴），并在解析中点名该误区；",
+  "禁止绝对化词面（都/最/必然/一定）与题干词面重复造成的提示性线索；",
+  "选项避免\"以上都对/都不是/全部/都不\"及组合式兜底；",
+  "选项相互独立不重叠（单项只有一个可辩护正确答案，多选各正确项有独立依据）；",
+  "正确项位置/长度不形成规律性偏好。",
+].join("\n");
+
 export function buildPrompt(chunk: string, opt: GenOptions): AiMessage[] {
   const types = opt.types.length ? opt.types : ["single"];
   const typeLine = types.map((t) => ({ single: "单选", multiple: "多选", judge: "判断", fill: "填空", short: "简答" }[t])).join("、");
   const presetHint = opt.preset && PROMPT_PRESETS[opt.preset] ? PROMPT_PRESETS[opt.preset].hint : "";
   const customHint = opt.customHint?.trim() ? `\n用户额外要求：${opt.customHint.trim()}` : "";
+  const hasChoice = types.some((t) => t === "single" || t === "multiple");
   const system = [
     "你是严谨的命题专家。根据给定材料出题，禁止编造材料中不存在的事实。",
     presetHint ? `命题风格：${presetHint}` : "",
@@ -71,6 +85,7 @@ export function buildPrompt(chunk: string, opt: GenOptions): AiMessage[] {
     "2) 每题字段：type(stem 的题型：single/multiple/judge/fill/short)、stem(题干，禁止\"以下说法正确的是\"式空泛句)、options(字符串数组，judge/fill/short 为空数组)、answer(单选=字母；多选=字母连写如 ABD；判断=对/错；填空/简答=文本)、analysis(解析 ≥30 字，必须含因果解释)、kp(知识点标签，可为空)；",
     "3) 干扰项应为常见误解；禁止\"以上都对/都不是\"类选项；",
     "4) 难度目标：" + (opt.difficulty === "mixed" ? "易中难混合" : opt.difficulty === "easy" ? "基础" : opt.difficulty === "hard" ? "较难" : "中等") + "。",
+    hasChoice ? "5) 干扰项构建规范（逐题自查）：\n" + HALADYNA_RULES : "",
   ].filter(Boolean).join("\n") + customHint;
   const user = `【材料】\n${chunk}\n\n【要求】出 ${opt.count} 道题（题型：${typeLine}）。${opt.kp ? `考点方向：${opt.kp}。` : ""}只输出 JSON 数组。`;
   return [
@@ -133,6 +148,11 @@ function toQuestion(o: Record<string, unknown>, opt: GenOptions, batch: string):
   const bad = validate(q);
   if (bad) return { reason: bad };
   return { q };
+}
+
+/** Question → 可重试的完整 JSON（repairIssues 的修复输入；不截断） */
+function rawOf(q: Question): string {
+  return JSON.stringify({ type: q.type, stem: q.stem, options: q.options, answer: q.answer, analysis: q.analysis, kp: q.kp });
 }
 
 /** 二遍核验（换角色）：严格审题人对每题打置信度；<0.85 或 pass=false 淘汰（research/08 Quanta+QuizAPI 范式） */
@@ -208,7 +228,7 @@ export async function generate(channel: AiChannel, sourceText: string, opt: GenO
       for (const q of candidates) {
         const v = verdicts.get(q.id) ?? { confidence: 0, pass: false, reason: "未核验" };
         if (!v.pass || v.confidence < REVIEW_CONFIDENCE_MIN) {
-          rejected.push({ index: idx, reason: `二遍核验淘汰：置信 ${v.confidence.toFixed(2)}${v.reason ? " · " + v.reason : ""}`, raw: q.stem.slice(0, 80) });
+          rejected.push({ index: idx, reason: `二遍核验淘汰：置信 ${v.confidence.toFixed(2)}${v.reason ? " · " + v.reason : ""}`, raw: rawOf(q) });
           continue;
         }
         q.confidence = v.confidence;
@@ -227,5 +247,71 @@ export async function generate(channel: AiChannel, sourceText: string, opt: GenO
     }
     if (pending.length >= opt.count) break;
   }
+  return { pending, rejected, duplicates, batch };
+}
+
+/** 拒绝项重试（AI Inbox 范式的"重试"腿）：带否决原因让 AI 逐题修复 → 再过一遍门槛+二遍核验 */
+export async function repairIssues(channel: AiChannel, issues: GenIssue[], sourceText: string, opt: GenOptions): Promise<GenResult> {
+  const batch = newBatchId();
+  const seenHash = new Set(opt.existingHashes);
+  const pending: Question[] = [];
+  const rejected: GenIssue[] = [];
+  let duplicates = 0;
+  const quality = opt.quality ?? "standard";
+
+  const fixable = issues.filter((i) => i.raw.trim().startsWith("{"));
+  if (!fixable.length) return { pending: [], rejected: issues, duplicates: 0, batch };
+
+  const chunks: string[] = [];
+  for (let i = 0; i < fixable.length; i += 5) {
+    chunks.push(fixable.slice(i, i + 5).map((f) => `【否决原因】${f.reason}\n【原题 JSON】${f.raw}`).join("\n\n"));
+  }
+  let idx = 0;
+  for (const chunk of chunks) {
+    if (opt.signal?.aborted) break;
+    const group = fixable.slice(idx, idx + 5);
+    const messages: AiMessage[] = [
+      { role: "system", content: "你是严谨的命题修订人。针对每道被否决的题，按否决原因修复（改干扰项/补解析/修答案），保持题型与考点不变。只输出修复后的 JSON 数组，元素结构：{\"type\":\"single|multiple|judge|fill|short\",\"stem\":\"...\",\"options\":[...],\"answer\":\"...\",\"analysis\":\"...\",\"kp\":\"...\"}。" },
+      { role: "user", content: `【材料】\n${sourceText.slice(0, 3000)}\n\n【待修复题目】\n${chunk}` },
+    ];
+    const raw = await channel.chat(messages);
+    const arr = extractJsonArray(raw);
+    if (!arr) {
+      group.forEach((f) => rejected.push({ index: f.index, reason: f.reason + "（修复响应不可解析）", raw: f.raw }));
+      idx += 5;
+      continue;
+    }
+    const candidates: Question[] = [];
+    for (const item of arr) {
+      if (!(item && typeof item === "object")) continue;
+      const r = toQuestion(item as Record<string, unknown>, opt, batch);
+      if (r.reason || !r.q) { rejected.push({ index: ++idx, reason: r.reason ?? "未知", raw: JSON.stringify(item).slice(0, 120) }); continue; }
+      if (seenHash.has(r.q.hash)) { duplicates++; continue; }
+      candidates.push(r.q);
+    }
+    idx += 5;
+    if (quality === "standard" && candidates.length) {
+      const verdicts = await reviewQuestions(channel, candidates, sourceText.slice(0, 3000));
+      for (const q of candidates) {
+        const v = verdicts.get(q.id) ?? { confidence: 0, pass: false, reason: "未核验" };
+        if (!v.pass || v.confidence < REVIEW_CONFIDENCE_MIN) {
+          rejected.push({ index: idx, reason: `修复后核验仍淘汰：置信 ${v.confidence.toFixed(2)}${v.reason ? " · " + v.reason : ""}`, raw: rawOf(q) });
+          continue;
+        }
+        q.confidence = v.confidence;
+        if (seenHash.has(q.hash)) { duplicates++; continue; }
+        seenHash.add(q.hash);
+        pending.push(q);
+      }
+    } else {
+      for (const q of candidates) {
+        if (seenHash.has(q.hash)) { duplicates++; continue; }
+        seenHash.add(q.hash);
+        pending.push(q);
+      }
+    }
+  }
+  // 未进入修复循环的项原样保留
+  for (const f of issues.slice(fixable.length)) rejected.push(f);
   return { pending, rejected, duplicates, batch };
 }
