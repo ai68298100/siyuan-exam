@@ -10,7 +10,7 @@ const ALLOW = [
   /^icon\.png$/,
   /^preview\.png$/,
   /^i18n\/[a-zA-Z-]+\.json$/,
-  /^README(\.zh-CN)?\.md$/,
+  /^README(\.en-US)?\.md$/,
   // 打包器拆出的 vendored 依赖 chunk（如 xlsx-C6P8P8QC.cjs / gen-BS969Kwy.cjs）
   /^[a-zA-Z0-9_.-]+-[A-Za-z0-9_-]{8}\.(cjs|js)$/,
 ];
