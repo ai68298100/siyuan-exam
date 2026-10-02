@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.1 (2026-10-02)
+
+- **仓库呈现重构**：README 改为中文主文档（徽章 + 预览图 + 功能矩阵 + 文档地图），英文版迁至 `README.en-US.md`
+- 插件元数据 readme 映射同步（default/zh-CN → README.md，en_US → README.en-US.md）；打包白名单更新
+
 ## 0.5.0 (待真机冒烟后定版；GitHub 已公开)
 
 ### 已实现（离线可验证 + 活内核预检）
