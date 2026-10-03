@@ -8,6 +8,7 @@ import {
 import "./index.scss";
 
 import { SettingUtils } from "./libs/setting-utils";
+import { escapeHtml } from "./libs/sanitize";
 import { mount, unmount } from "svelte";
 import manifest from "../plugin.json";
 
@@ -77,6 +78,22 @@ export default class LvExamPlugin extends Plugin {
             type: "number",
             key: "dailyGoal",
             value: 10,
+            direction: "row"
+        });
+        this.settingUtils.addItem({
+            title: this.i18n["setting.reciteGroup.title"],
+            description: this.i18n["setting.reciteGroup.desc"],
+            type: "number",
+            key: "reciteGroupSize",
+            value: 15,
+            direction: "row"
+        });
+        this.settingUtils.addItem({
+            title: this.i18n["setting.perQuestionTimeout.title"],
+            description: this.i18n["setting.perQuestionTimeout.desc"],
+            type: "number",
+            key: "perQuestionTimeoutS",
+            value: 0,
             direction: "row"
         });
         this.settingUtils.addItem({
@@ -167,8 +184,10 @@ export default class LvExamPlugin extends Plugin {
 
     async onunload() {
         this.eventBus.off("click-blockicon", this.boundBlockIcon);
-        try { this.examApp?.attempts.dispose(); } catch { /* 卸载栅栏 */ }
-        try { await this.examApp?.flush(); } catch { /* 尽力而为 */ }
+        // 37-02 卸载顺序：先最终落盘（此时 dirty 仍在），再 dispose 清定时器——
+        // 反过来 dispose 先清 dirty 会让随后的 flush 变成空操作，未落盘事件全部丢失
+        try { await this.examApp?.flush(); } catch { /* 尽力而为：失败时 dirty 由 dispose 收尾，不阻塞卸载 */ }
+        try { this.examApp?.attempts.dispose(); } catch { /* 卸载栅栏：防卸载后仍触发 saveData */ }
         Object.values(this.tabApps).forEach((instance) => unmount(instance));
         this.tabApps = {};
     }
@@ -251,12 +270,13 @@ export default class LvExamPlugin extends Plugin {
         const dockEl = document.querySelector<HTMLElement>(".lv-dock-body");
         if (!dockEl) return;
         const items = this.examApp.wrongItems();
+        // sanitize 政策（26.2 P0）：innerHTML 插值的动态文本一律 escapeHtml（qid 来自本地流水，纵深防御）
         const rows = items.slice(0, 30).map((w) =>
-            `<div class="lv-dock-row" data-qid="${w.qid}">
-                <span class="num">${w.qid}</span>
+            `<div class="lv-dock-row" data-qid="${escapeHtml(w.qid)}">
+                <span class="num">${escapeHtml(w.qid)}</span>
                 <span>${this.i18n["dock.wrongTag"]} ${w.wrongCount}</span>
-                <button class="lv-dock-act" data-act="mastered" data-qid="${w.qid}" title="${this.i18n["dock.actMastered"]}">✓</button>
-                <button class="lv-dock-act" data-act="removed" data-qid="${w.qid}" title="${this.i18n["dock.actRemoved"]}">✕</button>
+                <button class="lv-dock-act" data-act="mastered" data-qid="${escapeHtml(w.qid)}" title="${escapeHtml(this.i18n["dock.actMastered"])}">✓</button>
+                <button class="lv-dock-act" data-act="removed" data-qid="${escapeHtml(w.qid)}" title="${escapeHtml(this.i18n["dock.actRemoved"])}">✕</button>
             </div>`
         ).join("");
         dockEl.innerHTML = `
@@ -362,6 +382,40 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
                         if (!qs.length) { showMessage(this.i18n["query.empty"], 3600, "info"); return; }
                         (this as any).pendingPractice = qs;
                         this.openPractice();
+                    } catch (e) {
+                        showMessage(String(e instanceof Error ? e.message : e), 4800, "error");
+                    }
+                }
+            });
+            return;
+        }
+        // 块菜单直通（TODO 2.2 真实化）：题目块 → 加入练习集 / 转卡；离线或非题目块降级提示
+        const blockId = el?.getAttribute?.("data-node-id") || el?.dataset?.nodeId || "";
+        if (blockId && this.examApp) {
+            const exam = this.examApp;
+            detail.menu.addItem({
+                iconHTML: "<svg><use xlink:href='#iconExam'></use></svg>",
+                label: this.i18n["blockMenu.addToPractice"],
+                click: async () => {
+                    try {
+                        const hit = await exam.findQuestionByBlock(blockId);
+                        if (!hit) { showMessage(this.examApp!.kernelOnline ? this.i18n["query.empty"] : this.i18n["state.offlineHint"], 3600, "info"); return; }
+                        (this as any).pendingPractice = [hit.q];
+                        this.openPractice();
+                    } catch (e) {
+                        showMessage(String(e instanceof Error ? e.message : e), 4800, "error");
+                    }
+                }
+            });
+            detail.menu.addItem({
+                iconHTML: "<svg><use xlink:href='#iconExam'></use></svg>",
+                label: this.i18n["blockMenu.toCard"],
+                click: async () => {
+                    try {
+                        const hit = await exam.findQuestionByBlock(blockId);
+                        if (!hit) { showMessage(this.examApp!.kernelOnline ? this.i18n["memory.toCardMissing"] : this.i18n["state.offlineHint"], 3600, "info"); return; }
+                        const n = await exam.convertToCards(hit.bank.id, hit.bank.name, [hit.q]);
+                        showMessage(n ? `${this.i18n["memory.toCardDone"]} ${n}` : this.i18n["memory.toCardMissing"], 3200, n ? "info" : "error");
                     } catch (e) {
                         showMessage(String(e instanceof Error ? e.message : e), 4800, "error");
                     }

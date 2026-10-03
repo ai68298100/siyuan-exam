@@ -26,6 +26,9 @@ export const newEventId = () => `e-${Date.now().toString(36)}-${rand(8)}`;
 /** 设备 ID：生成一次持久化（d-xxxxxx） */
 export const newDeviceId = () => `d-${rand(6)}`;
 
+/** 模考运行 ID：r-时间戳-随机（与蓝图 id 分离，同蓝图多次考试互不覆盖） */
+export const newRunId = () => `r-${Date.now().toString(36)}-${rand(6)}`;
+
 /** 导入批次 ID：b-yyyyMMdd-xxxx */
 export const newBatchId = () => {
   const d = new Date();

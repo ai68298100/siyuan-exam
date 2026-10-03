@@ -148,7 +148,23 @@ export class KernelApiClient {
 
   async createNotebook(name: string): Promise<string> {
     const r = await this.t.post("/api/notebook/createNotebook", { name });
-    return String((r.data as Record<string, unknown>)?.notebook ?? "");
+    const d = r.data as unknown;
+    // 形状漂移（perf-bank 脚本 3.8.6 实测发现）三形态并存：
+    // ① 3.8.6={ notebook: { id, ... } } 嵌套对象；② 3.8.5 部分={ notebook: "id" }；③ 另有裸 id 字符串。
+    // 取不到 id 时显式失败，绝不带 "[object Object]" 下行。
+    const id = typeof d === "string"
+      ? d
+      : String(
+          (d as { notebook?: { id?: string } | string } | null)?.notebook != null
+            ? typeof (d as { notebook: { id?: string } | string }).notebook === "string"
+              ? (d as { notebook: string }).notebook
+              : (d as { notebook: { id?: string } }).notebook.id ?? ""
+            : (d as { id?: string })?.id ?? "",
+        );
+    if (!id || id === "[object Object]" || id === "null") {
+      throw new KernelError("fatal", "notebook/createNotebook", `响应缺少 notebook id（内核版本形状变化？）: ${JSON.stringify(d).slice(0, 80)}`);
+    }
+    return id;
   }
 
   async createDocWithMd(notebook: string, hpath: string, markdown: string): Promise<string> {
@@ -231,6 +247,18 @@ export class KernelApiClient {
   /** 收藏切换（custom-exam-fav 属性；attributes 表只索引 custom- 前缀，3.8.5 实测） */
   async setExamFav(blockId: string, on: boolean): Promise<void> {
     await this.t.post("/api/attr/setBlockAttrs", { id: blockId, attrs: { "custom-exam-fav": on ? "1" : "" } });
+  }
+
+  /** 批量编辑写属性（43-06）：exam-* 裸名 → custom-exam-* 全名；空值写 ""（内核语义=清除） */
+  async setExamAttrs(blockId: string, attrs: Record<string, string>): Promise<void> {
+    const full: Record<string, string> = {};
+    for (const [k, v] of Object.entries(attrs)) full[`custom-${k.startsWith("exam-") ? k : `exam-${k}`}`] = v;
+    await this.t.post("/api/attr/setBlockAttrs", { id: blockId, attrs: full });
+  }
+
+  /** 删除单个块（12 组批次回滚用；真实宿主行为待 preflight/冒烟复核） */
+  async removeBlock(blockId: string): Promise<void> {
+    await this.t.post("/api/block/deleteBlock", { id: blockId });
   }
 
   async getDueCards(deckId: string): Promise<unknown[]> {

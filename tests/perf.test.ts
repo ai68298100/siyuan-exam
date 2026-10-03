@@ -36,14 +36,16 @@ const events: AttemptEvent[] = Array.from({ length: N_EVENTS }, (_, i) => ({
 }));
 
 describe("性能基线（软上限）", () => {
-  it(`重算 ${N_EVENTS} 条流水 < 2s`, () => {
+  // 注：基线 ~400ms（2026-10-03 实测）；上限放宽到 5s 以吸收 guard 全量并发下的负载抖动，
+  // 只作回归警报（数量级劣化才会触发），不是精确基准
+  it(`重算 ${N_EVENTS} 条流水 < 5s`, () => {
     const t0 = performance.now();
     const r = replay(events);
     const ms = performance.now() - t0;
     expect(r.byQuestion.size).toBeGreaterThan(0);
-    expect(ms).toBeLessThan(2000);
+    expect(ms).toBeLessThan(5000);
   });
-  it(`组装 5000 题库蓝图 < 500ms`, () => {
+  it(`组装 5000 题库蓝图 < 1500ms`, () => {
     const bp = {
       id: "b", name: "bench", durationS: 3600, passLine: 60,
       shuffleOptions: false, sectionTimed: false,
@@ -53,14 +55,14 @@ describe("性能基线（软上限）", () => {
     const r = assemble(bp, bank);
     const ms = performance.now() - t0;
     expect(r.paper).toHaveLength(2000);
-    expect(ms).toBeLessThan(500);
+    expect(ms).toBeLessThan(1500);
   });
-  it(`判分 10000 次 < 300ms`, () => {
+  it(`判分 10000 次 < 1000ms`, () => {
     const q = bank[0];
     const t0 = performance.now();
     for (let i = 0; i < 10_000; i++) grade(q, "A");
     const ms = performance.now() - t0;
-    expect(ms).toBeLessThan(300);
+    expect(ms).toBeLessThan(1000);
   });
   it("蓝图合计纯计算", () => {
     const bp = { id: "b", name: "x", durationS: 60, passLine: 60, shuffleOptions: false, sectionTimed: false, sections: [{ name: "s", count: 10, scoreEach: 2, source: "mixed" as const, types: [] }] };

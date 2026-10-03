@@ -19,6 +19,11 @@ export class PracticeSession {
     this.byId = new Map(questions.map((q) => [q.id, q]));
     if (existing) {
       this.state = { ...existing, finishedAt: undefined };
+      // 37-05 续做完整性：回填已答结果与重排集合——恢复后结算/错题转卡名单与原进度一致
+      for (const a of existing.answered ?? []) {
+        this.answered.push({ qid: a.qid, grade: { verdict: a.verdict, myAnswer: a.myAnswer }, timeMs: a.timeMs });
+      }
+      for (const id of existing.requeued ?? []) this.requeued.add(id);
     } else {
       this.state = {
         id: newSessionId(),
@@ -47,19 +52,44 @@ export class PracticeSession {
 
   getDraft(qid: string): string { return this.state.drafts[qid] ?? ""; }
 
-  /** 提交当前题：判分 + 记录待写流水事件；返回判分结果（UI 渲染反馈态） */
+  /** 提交当前题：判分 + 记录待写流水事件；返回判分结果（UI 渲染反馈态）。
+   *  已答快照（含位置）与重排集合同步进 state（37-05），暂停/重载后可完整恢复 */
   submit(myAnswer: string | null, timeMs = 0): { q: Question; grade: GradeResult } | null {
     const q = this.current;
     if (!q || this.phase === "finished") return null;
     const g = grade(q, myAnswer);
     this.answered.push({ qid: q.id, grade: g, timeMs });
+    (this.state.answered ??= []).push({ qid: q.id, pos: this.state.cursor, verdict: g.verdict, myAnswer: g.myAnswer, timeMs });
     // 学习科学 re-review：答错且尚未重排过 → 排到队尾再来一次（每题至多一次，防死循环）
     if (g.verdict === "wrong" && !this.requeued.has(q.id)) {
       this.requeued.add(q.id);
+      (this.state.requeued ??= []).push(q.id);
       this.state.qids.push(q.id);
     }
     this.touch();
     return { q, grade: g };
+  }
+
+  /** 已作答的卷面位置集合（恢复推进用；重排队同 qid 多位置互不影响） */
+  answeredPositions(): Set<number> {
+    return new Set((this.state.answered ?? []).map((a) => a.pos));
+  }
+
+  /** 恢复推进（37-05）：光标跳到首个未答位置；返回跳过的已答数。防重复作答双计事件 */
+  advancePastAnswered(): number {
+    const done = this.answeredPositions();
+    let skipped = 0;
+    while (this.state.cursor < this.state.qids.length && done.has(this.state.cursor)) {
+      this.state.cursor++;
+      skipped++;
+    }
+    return skipped;
+  }
+
+  /** 全部位置均已作答（恢复后可直接进结算） */
+  allAnswered(): boolean {
+    const done = this.answeredPositions();
+    return this.state.qids.length > 0 && this.state.qids.every((_, i) => done.has(i));
   }
 
   next(): boolean {

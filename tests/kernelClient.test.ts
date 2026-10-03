@@ -87,3 +87,22 @@ describe("KernelApiClient 响应形状（3.8.5 预检定案）", () => {
     await expect(client.getBlockKramdown("blk-1")).resolves.toContain("SELECT 1");
   });
 });
+
+describe("createNotebook 三形态（3.8.6 漂移：perf-bank 脚本实测发现；② 为旧版 preflight/mock 形态）", () => {
+  it("① 3.8.6 嵌套对象 { notebook: { id } } → 取内层 id", async () => {
+    const { client } = makeClient(() => ({ notebook: { id: "nb-386", name: "x", closed: false } }));
+    await expect(client.createNotebook("x")).resolves.toBe("nb-386");
+  });
+  it("② 嵌套字符串 { notebook: \"id\" }（3.8.5 mock/preflight 形态）→ 取字符串", async () => {
+    const { client } = makeClient(() => ({ notebook: "nb-nested-str" }));
+    await expect(client.createNotebook("x")).resolves.toBe("nb-nested-str");
+  });
+  it("③ 裸 id 字符串 → 原样返回", async () => {
+    const { client } = makeClient(() => "nb-legacy");
+    await expect(client.createNotebook("x")).resolves.toBe("nb-legacy");
+  });
+  it("取不到 id → 显式失败，绝不带 [object Object] 下行（3.8.6 建库 P0）", async () => {
+    const { client } = makeClient(() => ({ unexpected: true }));
+    await expect(client.createNotebook("x")).rejects.toThrow(/notebook id/);
+  });
+});

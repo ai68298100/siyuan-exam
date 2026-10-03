@@ -6,6 +6,7 @@
 import type { AttemptEvent } from "./types";
 import { SCHEMA_VERSION } from "./types";
 import { newDeviceId, newEventId } from "./ids";
+import { DATA_SCHEMA_VERSION, migrateAttemptLog } from "./migrations";
 
 export interface StorageAdapter {
   load(key: string): Promise<unknown>;
@@ -40,6 +41,11 @@ export class AttemptLog {
   private seq = 0;
   private dirty = false;
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
+  /** 写入协调（37-03）：串行 flush + 代次检查——写入期间追加的事件不会被误标已保存 */
+  private flushing = false;
+  private generation = 0;
+  /** 最近一次后台落盘失败摘要（重试语义：dirty 保持，直到成功） */
+  lastFlushError = "";
   /** 时钟回拨检测：事件 ts 相对上一条倒退超过 60s 计为异常（保留事件，不丢弃） */
   clockAnomalies = 0;
 
@@ -51,13 +57,15 @@ export class AttemptLog {
     private readonly flushDelayMs = 30_000,
   ) {}
 
-  /** 启动加载：坏结构（非数组/元素缺 eid）行丢弃并计数 */
+  /** 启动加载：v1 裸数组 / v2 信封均接受（migrateAttemptLog 迁移）；坏结构行丢弃并计数 */
   async load(deviceId?: string): Promise<{ loaded: number; badLines: number }> {
     this.device = deviceId ?? this.readOrCreateDeviceId();
     let badLines = 0;
     const raw = await this.storage.load(this.key);
-    if (Array.isArray(raw)) {
-      for (const e of raw as AttemptEvent[]) {
+    const m = migrateAttemptLog(raw);
+    if (m.kind === "envelope") {
+      if (m.v > DATA_SCHEMA_VERSION) this.versionTooNew = true;   // 更高版本：不降级丢数据，仅标记告警
+      for (const e of m.events as AttemptEvent[]) {
         if (this.isValid(e)) {
           if (!this.seen.has(e.eid)) {
             this.detectClockAnomaly(e.ts);
@@ -67,9 +75,12 @@ export class AttemptLog {
           }
         } else badLines++;
       }
-    } else if (raw != null) badLines++;
+    } else if (m.kind === "invalid") badLines++;
     return { loaded: this.events.length, badLines };
   }
+
+  /** 载荷版本高于当前实现（新版插件写的数据被旧版读到）：数据完整保留，功能可能不识别新字段 */
+  versionTooNew = false;
 
   private isValid(e: unknown): e is AttemptEvent {
     const o = e as Record<string, unknown>;
@@ -115,18 +126,39 @@ export class AttemptLog {
     this.detectClockAnomaly(e.ts);
     this.seen.add(e.eid);
     this.events.push(e);
+    this.generation++;
     this.dirty = true;
-    if (this.events.length % this.flushLimit === 0) void this.flush();
-    else if (!this.flushTimer) this.flushTimer = setTimeout(() => void this.flush(), this.flushDelayMs);
+    if (this.events.length % this.flushLimit === 0) void this.flush().catch(() => { /* 后台节流失败：dirty 保持，由下次 flush 重试 */ });
+    else if (!this.flushTimer) this.flushTimer = setTimeout(() => void this.flush().catch(() => { /* 同上 */ }), this.flushDelayMs);
     return e;
   }
 
-  /** 立即落盘（会话结束/面板切走时调用） */
+  /** 立即落盘（会话结束/面板切走时调用）。37-03 在途协调：
+   * - 快照写入：保存的是触发时刻的事件副本，写入期间新增事件不受影响
+   * - 串行化：已在途时直接返回（新增事件由代次检查触发在途完成后的补写）
+   * - 失败：dirty 保持 true（待保存标记不清），可重试；后台调用失败静默等重试
+   * - 载荷为 v2 信封 { v, events }（0 组 schemaVersion；读回经 migrateAttemptLog 兼容 v1） */
   async flush(): Promise<void> {
     if (this.flushTimer) { clearTimeout(this.flushTimer); this.flushTimer = null; }
+    if (this.flushing) return;
     if (!this.dirty) return;
-    await this.storage.save(this.key, this.events);
-    this.dirty = false;
+    this.flushing = true;
+    const genAtStart = this.generation;
+    const snapshot = { v: DATA_SCHEMA_VERSION, events: this.events.slice() };
+    try {
+      await this.storage.save(this.key, snapshot);
+      this.lastFlushError = "";
+    } catch (e) {
+      this.lastFlushError = e instanceof Error ? e.message : String(e);
+      throw e;
+    } finally {
+      this.flushing = false;
+    }
+    if (this.generation === genAtStart) {
+      this.dirty = false;
+    } else if (this.dirty) {
+      await this.flush();   // 写入期间有新增 → 补写（快照里已含新事件引用之外的部分）
+    }
   }
 
   all(): readonly AttemptEvent[] { return this.events; }

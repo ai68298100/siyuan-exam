@@ -3,6 +3,7 @@
 // 纯状态机无 IO —— 计时由调用方喂数据（now()），UI 只读派生状态
 // ============================================================
 import type { Question } from "./types";
+import { SCHEMA_VERSION } from "./types";
 import { grade, type GradeResult } from "./answer";
 import { gradeIndefinite, guardLockout } from "./cbt";
 
@@ -120,6 +121,9 @@ export class MockSession {
   private readonly byId: Map<string, Question>;
   private readonly indefinite: Set<string>;
   private readonly sectionStart: Record<string, number> = {};   // section 名 → 进入时刻（相对 ms）
+  /** 逐题驻留计时（40-03）：导航切题时结算上一题，作答时刻取真实累计 */
+  private readonly dwell = new Map<string, number>();
+  private currentEnter: { qid: string; at: number } = { qid: "", at: 0 };
   /** 已提交（含自动交卷）标记 */
   submitted = false;
 
@@ -143,6 +147,7 @@ export class MockSession {
       const first = this.sectionOf.get(paper[0].id);
       if (first) this.sectionStart[first] = 0;
     }
+    if (paper[0]) this.currentEnter = { qid: paper[0].id, at: startedAt };
   }
 
   sectionOfQ(qid: string): string { return this.sectionOf.get(qid) ?? ""; }
@@ -170,7 +175,8 @@ export class MockSession {
     }
   }
 
-  /** 导航：lockout 蓝图下强制顺序作答（cbt.guardLockout）；普通蓝图自由跳题 */
+  /** 导航：lockout 蓝图下强制顺序作答（cbt.guardLockout）；普通蓝图自由跳题。
+   *  切题即结算上一题驻留（40-03 真实用时，替代固定 +500ms） */
   navigateTo(index: number, now: number): boolean {
     const last = this.state.qids.length - 1;
     if (this.bp.lockout) {
@@ -179,12 +185,30 @@ export class MockSession {
     } else {
       this.cursor = Math.max(0, Math.min(last, index));
     }
-    const secName = this.sectionOf.get(this.state.qids[this.cursor]);
+    const qid = this.state.qids[this.cursor];
+    if (qid) this.enterQuestion(qid, now);
+    const secName = this.sectionOf.get(qid ?? "");
     if (secName) this.enterSection(secName, now);
     return true;
   }
 
   cursorIndex(): number { return this.cursor; }
+
+  /** 进入某题：结算上一题驻留，开新计时；同题重复调用不重复结算 */
+  enterQuestion(qid: string, now: number) {
+    if (this.currentEnter.qid && this.currentEnter.qid !== qid) {
+      const prev = this.dwell.get(this.currentEnter.qid) ?? 0;
+      this.dwell.set(this.currentEnter.qid, prev + Math.max(0, now - this.currentEnter.at));
+    }
+    if (this.currentEnter.qid !== qid) this.currentEnter = { qid, at: now };
+  }
+
+  /** 某题到 now 为止的真实驻留毫秒 */
+  dwellOf(qid: string, now: number): number {
+    let ms = this.dwell.get(qid) ?? 0;
+    if (this.currentEnter.qid === qid) ms += Math.max(0, now - this.currentEnter.at);
+    return ms;
+  }
 
   setAnswer(qid: string, answer: string | null, now: number) {
     const prev = this.answers.get(qid);
@@ -201,7 +225,7 @@ export class MockSession {
       qid,
       answer,
       verdict: g.verdict,
-      timeMs: (prev?.timeMs ?? 0) + 500,
+      timeMs: this.dwellOf(qid, now),
       answeredAt: this.elapsed(now),
       changes: (prev?.changes ?? 0) + (prev?.answer != null ? 1 : 0),
       factor,
@@ -219,7 +243,15 @@ export class MockSession {
   }
 
   submit(now: number) {
-    if (!this.submitted) this.state.finishedAt = now;
+    if (!this.submitted) {
+      this.state.finishedAt = now;
+      // 交卷即结算当前题驻留（之后不再计时）
+      if (this.currentEnter.qid) {
+        const prev = this.dwell.get(this.currentEnter.qid) ?? 0;
+        this.dwell.set(this.currentEnter.qid, prev + Math.max(0, now - this.currentEnter.at));
+        this.currentEnter = { qid: "", at: 0 };
+      }
+    }
     this.submitted = true;
   }
 
@@ -269,6 +301,53 @@ export class MockSession {
     }
     return { attempted, correct };
   }
+
+  /** 导出运行快照（JSON 可序列化；runId 由调用方生成，一次考试固定） */
+  toSnapshot(runId: string, now: number = Date.now()): MockRunSnapshot {
+    return {
+      v: SCHEMA_VERSION,
+      runId,
+      bp: JSON.parse(JSON.stringify(this.bp)) as Blueprint,
+      qids: [...this.state.qids],
+      sectionOf: Object.fromEntries(this.sectionOf),
+      scoreOf: Object.fromEntries(this.scoreOf),
+      indefinite: [...this.indefinite],
+      startedAt: this.state.startedAt,
+      savedAt: now,
+      answers: [...this.answers.values()],
+      flags: [...this.flags],
+      cursor: this.cursor,
+      sectionStart: { ...this.sectionStart },
+      screenSwitches: this.screenSwitches,
+      dwell: Object.fromEntries(this.dwell),
+      currentEnter: { ...this.currentEnter },
+      finishedAt: this.state.finishedAt,
+    };
+  }
+
+  /** 从快照恢复同一 run：答案/标旗/游标/分段起始原样回填；
+   *  卷面缺失题（题库读不到）如实剔除并报告，不用其他题顶替。 */
+  static restore(snap: MockRunSnapshot, paper: Question[]): MockRestoreResult {
+    const byId = new Map(paper.map((q) => [q.id, q]));
+    const found = snap.qids.map((id) => byId.get(id)).filter((q): q is Question => !!q);
+    const missingQids = snap.qids.filter((id) => !byId.has(id));
+    const session = new MockSession(
+      snap.bp,
+      found,
+      { sectionOf: new Map(Object.entries(snap.sectionOf)), scoreOf: new Map(Object.entries(snap.scoreOf)) },
+      snap.startedAt,
+    );
+    for (const a of snap.answers) session.answers.set(a.qid, a);
+    for (const f of snap.flags) session.flags.add(f);
+    session.cursor = Math.max(0, Math.min(found.length - 1, snap.cursor));
+    for (const [k, v] of Object.entries(snap.sectionStart)) session.sectionStart[k] = v;
+    session.screenSwitches = snap.screenSwitches;
+    for (const [qid, ms] of Object.entries(snap.dwell ?? {})) session.dwell.set(qid, ms);
+    if (snap.currentEnter?.qid) session.currentEnter = { qid: snap.currentEnter.qid, at: snap.currentEnter.at };
+    session.submitted = !!snap.finishedAt;
+    if (snap.finishedAt) session.state.finishedAt = snap.finishedAt;
+    return { session, missingQids, alreadySubmitted: !!snap.finishedAt };
+  }
 }
 
 export interface MockScore {
@@ -281,4 +360,37 @@ export interface MockScore {
   changes: number;
   screenSwitches: number;
   last20min: { attempted: number; correct: number };
+}
+
+// ---------- 运行快照（v0.6；docs/19 Q4 / U18–U20 最小切片） ----------
+// runId 与蓝图 id 分离：同蓝图多次考试互不覆盖；startedAt 为 wall clock，
+// 恢复后剩余时间按真实流逝计算（休眠/关页不清零计时）。
+
+export interface MockRunSnapshot {
+  v: number;                          // SCHEMA_VERSION
+  runId: string;                      // 本次考试运行 id（r-…）
+  bp: Blueprint;                      // 开考时冻结的蓝图拷贝
+  qids: string[];                     // 冻结卷面顺序
+  sectionOf: Record<string, string>;  // qid → 段名
+  scoreOf: Record<string, number>;    // qid → 分值
+  indefinite: string[];               // 不定项 qids
+  startedAt: number;                  // wall clock 开考时刻
+  savedAt: number;                    // 快照保存时刻
+  answers: MockAnswer[];
+  flags: string[];
+  cursor: number;
+  sectionStart: Record<string, number>;
+  screenSwitches: number;
+  /** 逐题驻留毫秒（40-03；旧快照缺省 = 恢复后重新累计） */
+  dwell?: Record<string, number>;
+  currentEnter?: { qid: string; at: number };
+  finishedAt?: number;                // 已交卷（恢复时直接进报告，不重考）
+}
+
+/** 恢复报告：missingQids = 卷面有但题库已读不到的题（改题/删题后如实降级，不静默补题） */
+export interface MockRestoreResult {
+  session: MockSession;
+  missingQids: string[];
+  /** 快照里已交卷（恢复后只应看报告，不允许再次作答） */
+  alreadySubmitted: boolean;
 }

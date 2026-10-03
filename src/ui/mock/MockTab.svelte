@@ -8,8 +8,10 @@
     import type { ExamApp } from "../../app";
     import type { Question } from "../../core/types";
     import { showMessage } from "siyuan";
-    import { assemble, blueprintTotals, MockSession, type Blueprint, type BlueprintSection, type MockScore } from "../../core/mock";
+    import { assemble, blueprintTotals, MockSession, type Blueprint, type BlueprintSection, type MockRunSnapshot, type MockScore } from "../../core/mock";
+    import { newRunId } from "../../core/ids";
     import { estimateScore } from "../../core/estimate";
+    import SaveStatus from "../shared/SaveStatus.svelte";
     
     let { plugin, examApp: app }: { plugin: any; examApp: ExamApp } = $props();
     const i18n = $derived(plugin?.i18n ?? {});
@@ -28,7 +30,6 @@
     });
 
     let session: MockSession | null = $state(null);
-    void 0; // assembleInfo 由 session 内部持有
     let cursor = $state(0);
     let selected = $state("");
     let answeredMap = $state<Record<string, string>>({});
@@ -40,6 +41,22 @@
     let timer: ReturnType<typeof setInterval> | null = null;
     let startedAt = $state(0);
 
+    // ---------- 运行快照（U19/U20 最小）：runId 与蓝图分离；交卷防重 ----------
+    let runId = $state("");
+    let submitting = $state(false);
+    let resumable = $state<MockRunSnapshot | null>(null);
+    let restoreNote = $state("");
+    let lastSnapAt = 0;
+
+    /** 快照节流保存（3s）：关页/休眠后按 wall clock 恢复同一 run */
+    function persistRun() {
+      if (!session || session.submitted || !runId) return;
+      const now = Date.now();
+      if (now - lastSnapAt < 3000) return;
+      lastSnapAt = now;
+      void app.saveMockRun(session.toSnapshot(runId, now));
+    }
+
     onMount(async () => {
       if (!app) { loading = false; errorMsg = t("state.appNotReady"); return; }
       const banks = app.listBanks();
@@ -49,6 +66,12 @@
         questions = await app.listQuestions(banks[0].id);
         bp.sections = defaultSections(questions);
       } catch (e) { errorMsg = String(e instanceof Error ? e.message : e); }
+      // 恢复提示（兜底语义：读不到快照=无进行中考试，静默即可；题库不可读时不给恢复入口，避免空卷恢复）
+      try {
+        const snap = await app.loadMockRun();
+        if (snap?.finishedAt) await app.clearMockRun();   // 残留已交卷快照：清除不留陈旧入口
+        else if (snap && questions.length) resumable = snap;
+      } catch { /* 忽略 */ }
       loading = false;
     });
 
@@ -103,13 +126,21 @@
       const r = assemble(bp, questions);
       if (!r.paper.length) { errorMsg = t("state.emptyBank"); return; }
       startedAt = Date.now();
+      runId = newRunId();
       session = new MockSession(bp, r.paper, { sectionOf: r.sectionOf, scoreOf: r.scoreOf }, startedAt);
       cursor = 0; selected = ""; answeredMap = {}; score = null;
       session.enterSection(currentSection || (bp.sections[0]?.name ?? ""), startedAt);
+      lastSnapAt = 0;
+      persistRun();
       view = "exam";
+      startTimer();
+    }
+
+    function startTimer() {
+      if (timer) clearInterval(timer);
       timer = setInterval(() => {
         nowTick = Date.now();
-        if (session?.shouldAutoSubmit(nowTick)) { finishExam(true); return; }
+        if (session?.shouldAutoSubmit(nowTick)) { void finishExam(true); return; }
         // 分段计时归零自动跳段（docs/11 S6：段倒计时归零 → 下一模块首题）
         if (bp.sectionTimed && session && currentSection) {
           const sr = session.sectionRemaining(currentSection, nowTick);
@@ -125,11 +156,58 @@
       }, 1000);
     }
 
+    /** 恢复进行中的 run：答案/标旗/游标原样回填；已过期仅触发一次自动交卷（U19） */
+    async function resumeExam() {
+      if (!resumable) return;
+      const snap = resumable;
+      const r = MockSession.restore(snap, questions);
+      // 兜底：卷面题全部读不到（题库被删/离线）→ 不进入空考试，保留快照待题库可用
+      if (!r.session.state.qids.length) {
+        errorMsg = t("mock.restoreEmpty");
+        return;
+      }
+      session = r.session;
+      runId = snap.runId;
+      startedAt = snap.startedAt;
+      bp = snap.bp;
+      const am: Record<string, string> = {};
+      for (const a of session.answers.values()) if (a.answer != null) am[a.qid] = a.answer;
+      answeredMap = am;
+      restoreNote = r.missingQids.length ? t("mock.restoreMissing").replace("{n}", String(r.missingQids.length)) : "";
+      resumable = null;
+      if (r.alreadySubmitted) {
+        // 残留已交卷快照：只重放报告，不重写流水/成绩（U20 恢复不重复交卷）
+        score = session.score();
+        void app.clearMockRun();
+        view = "report";
+        return;
+      }
+      if (session.shouldAutoSubmit(Date.now())) {
+        // 已过期：恢复后唯一一次自动交卷，不重开考试
+        cursor = session.cursor;
+        await finishExam(true);
+        return;
+      }
+      cursor = session.cursor;
+      selected = answeredMap[session.state.qids[cursor]] ?? "";
+      lastSnapAt = 0;
+      persistRun();
+      view = "exam";
+      startTimer();
+    }
+
+    /** 放弃进行中的 run（快照清除；答案不写流水） */
+    async function discardRun() {
+      resumable = null;
+      await app.clearMockRun();
+    }
+
     function pickOption(letter: string) {
       if (!current || feedbackOn) return;
       selected = letter;
       session?.setAnswer(current, letter, Date.now());
       answeredMap = { ...answeredMap, [current]: letter };
+      persistRun();
     }
 
     function goto(i: number) {
@@ -138,38 +216,56 @@
       cursor = session.cursor;
       selected = answeredMap[session.state.qids[cursor]] ?? "";
       if (bp.sectionTimed && currentSection) session.enterSection(currentSection, Date.now());
+      persistRun();
     }
 
     async function finishExam(auto = false) {
+      if (submitting || !session || session.submitted) return;   // 双击/计时器竞态：只交一次（U20 幂等交卷）
       // 提前交卷二次确认（TODO 27：未答完且非自动交卷）
-      if (!auto && session && !session.shouldAutoSubmit(Date.now())) {
+      if (!auto && !session.shouldAutoSubmit(Date.now())) {
         const unanswered = session.state.qids.length - session.answers.size;
         if (unanswered > 0 && !confirm(t("mock.confirmHandIn").replace("{n}", String(unanswered)))) return;
       }
-      if (timer) { clearInterval(timer); timer = null; }
-      session?.submit(Date.now());
-      // 作答写流水（kind=mock；模考错题自动进错题本——replayer 收录）
-      if (session) {
+      submitting = true;
+      try {
+        if (timer) { clearInterval(timer); timer = null; }
+        session.submit(Date.now());
+        // 作答写流水（kind=mock；模考错题自动进错题本——replayer 收录）；examId=runId 与蓝图分离
+        const effectiveRunId = runId || "mock-" + bp.id;
         for (const a of session.answers.values()) {
           app.recordAttempt({
             qid: a.qid, kind: "mock", mode: "paper",
             verdict: a.verdict, myAnswer: a.answer,
-            sessionId: "mock-" + bp.id, examId: bp.id,
+            sessionId: effectiveRunId, examId: effectiveRunId,
             queue: "normal", changes: a.changes,
           });
         }
+        // 未答题落 not_attempted 审计轨（40-03：进考试分母但不冒充已答；replayer 跳过不计统计分母）
+        for (const qid of session.state.qids) {
+          if (!session.answers.has(qid)) {
+            app.recordAttempt({
+              qid, kind: "mock", mode: "paper",
+              verdict: "not_attempted", myAnswer: null,
+              sessionId: effectiveRunId, examId: effectiveRunId,
+              queue: "normal",
+            });
+          }
+        }
         await app.flush();
         plugin.refreshDock?.();
+        score = session.score();
+        if (score && app) {
+          await app.saveMockResult({
+            id: bp.id, runId: effectiveRunId, name: bp.name, startedAt, total: score.total, full: score.full, percent: score.percent, pass: score.pass,
+            sections: score.sections.map((s) => ({ name: s.name, score: s.score, full: s.full, correct: s.correct, total: s.total })),
+          });
+          history = await app.listMockResults();
+        }
+        await app.clearMockRun();   // 交卷回执落定后清除运行快照
+        view = "report";
+      } finally {
+        submitting = false;
       }
-      score = session?.score() ?? null;
-      if (score && app) {
-        await app.saveMockResult({
-          id: bp.id, name: bp.name, startedAt, total: score.total, full: score.full, percent: score.percent, pass: score.pass,
-          sections: score.sections.map((s) => ({ name: s.name, score: s.score, full: s.full, correct: s.correct, total: s.total })),
-        });
-        history = await app.listMockResults();
-      }
-      view = "report";
     }
 
     /** 成绩单导出 Markdown（本地下载） */
@@ -186,14 +282,54 @@
       });
     }
 
-    /** 错题回炉：本次模考错题开练习会话 */
+    /** 错题回炉：本次模考错题开练习会话（启动失败可见化，47-06 lite） */
     async function rewrongDrill() {
       if (!session) return;
       const wrongIds = [...session.answers.values()].filter((a) => a.verdict === "wrong").map((a) => a.qid);
       const wrongs = questions.filter((q) => wrongIds.includes(q.id));
       if (!wrongs.length) return;
-      await app.startSession(wrongs, "wrong");
+      try {
+        await app.startSession(wrongs, "wrong", activeBankId);
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
+        return;
+      }
       openPractice();
+    }
+
+    // ---------- 复盘（44-07 lite）：本次错题清单 + 加入下一步行动（U15 去重） ----------
+    const wrongList = $derived(score && session
+      ? [...session.answers.values()].filter((a) => a.verdict === "wrong").map((a) => ({
+          qid: a.qid,
+          stem: (questions.find((q) => q.id === a.qid)?.stem ?? a.qid).slice(0, 40),
+        }))
+      : []);
+    let mockActionNote = $state("");
+    let mockActionBusy = $state(false);
+
+    async function wrongsToActions() {
+      if (!wrongList.length || mockActionBusy) return;
+      mockActionBusy = true; mockActionNote = "";
+      try {
+        const r = await app.addActions(wrongList.map((w) => ({
+          kind: "redo" as const,
+          qid: w.qid,
+          sessionId: runId || "mock-" + bp.id,
+          detail: `${t("action.kind.redo")}：${w.stem}`,
+        })));
+        mockActionNote = t("action.added").replace("{n}", String(r.added)).replace("{d}", String(r.skipped));
+      } catch (e) {
+        mockActionNote = String(e instanceof Error ? e.message : e);
+      } finally { mockActionBusy = false; }
+    }
+
+    /** 批量错因标注（44-07 lite）：本次全部错题标记同一错因（逐题已有细粒度入口） */
+    async function bulkWrongReason(reason: "careless" | "unknown" | "trap") {
+      if (!wrongList.length) return;
+      for (const w of wrongList) {
+        try { await app.saveWrongReason(w.qid, reason); } catch { /* 单题失败不中断 */ }
+      }
+      showMessage(t("mock.bulkReasonDone").replace("{n}", String(wrongList.length)), 3000, "info");
     }
 
     function openPractice() {
@@ -272,6 +408,7 @@
       <svg class="block__logoicon"><use xlink:href="#iconMock"></use></svg>
       {t("tab.mock")}
     </div>
+    <SaveStatus gate={app.saves} {t} />
     <span class="fn__flex-1"></span>
     {#if view === "exam"}
       <span class="lv-chip num">⏱ {remainText()}</span>
@@ -283,6 +420,22 @@
   {:else if errorMsg}
     <div class="lv-error">{errorMsg}</div>
   {:else if view === "config"}
+    <!-- ===== 恢复进行中的模考（U19：关页/休眠后回到同一 run） ===== -->
+    {#if resumable}
+      <div class="lv-card" style="margin-bottom:14px;border-color:var(--lv-accent)">
+        <div class="lv-row" style="margin:0">
+          <b>{t("mock.resumeTitle")}</b>
+          <span class="lv-chip num">{resumable.bp.name} · {resumable.answers.length}/{resumable.qids.length}</span>
+          <span class="lv-chip num" class:lv-chip--red={resumable.startedAt + resumable.bp.durationS * 1000 < Date.now()}>
+            {t("mock.resumeLeft")} {Math.max(0, Math.round(((resumable.startedAt + resumable.bp.durationS * 1000 - Date.now()) / 60_000)))} min
+          </span>
+          <span class="fn__flex-1"></span>
+          <button class="lv-btn lv-btn--primary sm" onclick={resumeExam}>{t("mock.resumeGo")}</button>
+          <button class="lv-btn sm" onclick={discardRun}>{t("mock.resumeDrop")}</button>
+        </div>
+        <p class="lv-muted" style="margin:6px 0 0">{t("mock.resumeHint")}</p>
+      </div>
+    {/if}
     <!-- ===== S5 蓝图配置器 ===== -->
     <div class="lv-row">
       <input class="lv-input" bind:value={bp.name} style="max-width:220px" />
@@ -379,14 +532,15 @@
       {/if}
       <span class="lv-chip num">{cursor + 1}/{session.state.qids.length}</span>
       <span class="fn__flex-1"></span>
-      <button class="lv-btn sm" onclick={() => session?.toggleFlag(current)}>🚩 {session.flags.has(current) ? "✓" : ""}</button>
+      <button class="lv-btn sm" onclick={() => { session?.toggleFlag(current); persistRun(); }}>🚩 {session.flags.has(current) ? "✓" : ""}</button>
       <button class="lv-btn sm" title={t("mock.fullscreen")} onclick={(e) => {
         const el = (e.target as HTMLElement).closest(".lv-pad");
         if (!document.fullscreenElement) el?.requestFullscreen?.();
         else document.exitFullscreen?.();
       }}>⛶</button>
-      <button class="lv-btn lv-btn--primary sm" onclick={() => finishExam(false)}>{t("mock.handIn")}</button>
+      <button class="lv-btn lv-btn--primary sm" disabled={submitting} onclick={() => finishExam(false)}>{t("mock.handIn")}</button>
     </div>
+    {#if restoreNote}<div class="lv-error">{restoreNote}</div>{/if}
     <div class="lv-card lv-question">
       <div class="lv-stem">{currentQ.stem}</div>
       {#if currentQ.options.length}
@@ -397,14 +551,14 @@
         {/each}
       {:else}
         <textarea class="lv-input lv-textarea" value={answeredMap[current] ?? ""}
-          oninput={(e) => { session?.setAnswer(current, (e.target as HTMLTextAreaElement).value, Date.now()); answeredMap = { ...answeredMap, [current]: (e.target as HTMLTextAreaElement).value }; }}></textarea>
+          oninput={(e) => { session?.setAnswer(current, (e.target as HTMLTextAreaElement).value, Date.now()); answeredMap = { ...answeredMap, [current]: (e.target as HTMLTextAreaElement).value }; persistRun(); }}></textarea>
       {/if}
     </div>
     <!-- 答题卡 -->
     <div class="lv-sheet">
       {#each session.state.qids as qid, i}
         <button class="lv-cell" class:done={!!answeredMap[qid]} class:flag={session.flags.has(qid)}
-          class:cur={i === cursor} onclick={() => { session?.navigateTo(i, Date.now()); cursor = session.cursor; selected = answeredMap[session.state.qids[cursor]] ?? ""; }}>{i + 1}</button>
+          class:cur={i === cursor} onclick={() => goto(i)}>{i + 1}</button>
       {/each}
     </div>
     <div class="lv-row">
@@ -504,6 +658,25 @@
             {/if}
           </div>
         {/if}
+      </div>
+    {/if}
+    {#if wrongList.length}
+      <div class="lv-card" style="margin:12px 0">
+        <b style="font-size:13px">{t("mock.wrongList")}（{wrongList.length}）</b>
+        <div class="lv-row" style="margin:8px 0 0;gap:6px">
+          {#each wrongList.slice(0, 12) as w}
+            <span class="lv-chip num" title={w.stem}>{w.stem}</span>
+          {/each}
+          {#if wrongList.length > 12}<span class="lv-muted num">… +{wrongList.length - 12}</span>{/if}
+        </div>
+        <div class="lv-row" style="margin:8px 0 0">
+          <button class="lv-btn sm" disabled={mockActionBusy} onclick={wrongsToActions}>📌 {mockActionBusy ? "…" : t("action.addWrong")}</button>
+          <span class="lv-muted">{t("session.reason")}:</span>
+          {#each ["careless", "unknown", "trap"] as r}
+            <button class="lv-chip" onclick={() => bulkWrongReason(r as "careless" | "unknown" | "trap")}>{t("reason." + r)}</button>
+          {/each}
+          {#if mockActionNote}<span class="lv-muted num">{mockActionNote}</span>{/if}
+        </div>
       </div>
     {/if}
     <div class="lv-row">

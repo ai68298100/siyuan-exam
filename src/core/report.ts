@@ -88,3 +88,49 @@ export function hourly(events: readonly AttemptEvent[]): number[] {
   }
   return h;
 }
+
+// ---------- 置信度校准（U12 最小切片）：自评信心 × 客观对错 ----------
+
+export type ConfidenceLevel = "sure" | "fuzzy" | "guess";
+
+export interface CalibrationRow {
+  confidence: ConfidenceLevel;
+  attempts: number;
+  correct: number;
+  /** 实际正确率 0-100（分母=该档作答数；无分母不显示） */
+  accuracy: number;
+}
+
+export interface CalibrationReport {
+  rows: CalibrationRow[];
+  unreported: number;          // 未报信心的客观作答数（区分"没填"与"猜"）
+  /** 校准差：自评"确定"档正确率 − 自评"蒙"档正确率（正数越大区分度越好；样本不足为 null） */
+  spread: number | null;
+}
+
+const CONF_ORDER: ConfidenceLevel[] = ["sure", "fuzzy", "guess"];
+
+/** 校准聚合：只统计客观判分的 practice/mock 作答（recite 自评、card 不参与）；
+ *  同一事件流里 confidence 缺失 → unreported，不并入任何档。 */
+export function calibration(events: readonly AttemptEvent[]): CalibrationReport {
+  const buckets = new Map<ConfidenceLevel, { attempts: number; correct: number }>();
+  let unreported = 0;
+  for (const e of events) {
+    if (e.verdict === "not_attempted") continue;
+    if (e.kind !== "practice" && e.kind !== "mock") continue;
+    if (!e.confidence) { unreported++; continue; }
+    const b = buckets.get(e.confidence) ?? { attempts: 0, correct: 0 };
+    b.attempts++;
+    if (e.verdict === "correct") b.correct++;
+    buckets.set(e.confidence, b);
+  }
+  const rows: CalibrationRow[] = CONF_ORDER.filter((c) => buckets.has(c)).map((c) => {
+    const b = buckets.get(c)!;
+    return { confidence: c, attempts: b.attempts, correct: b.correct, accuracy: Math.round((b.correct / b.attempts) * 100) };
+  });
+  const sure = buckets.get("sure"), guess = buckets.get("guess");
+  const spread = sure && guess && sure.attempts >= 3 && guess.attempts >= 3
+    ? Math.round(((sure.correct / sure.attempts) - (guess.correct / guess.attempts)) * 100)
+    : null;
+  return { rows, unreported, spread };
+}

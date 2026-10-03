@@ -47,6 +47,9 @@ export function replay(events: readonly AttemptEvent[]): ReplayResult {
     days.set(day, d);
 
     // 错题状态机
+    // 挑战码（友谊赛）作答不入错题本（13 组审计）：对手题不属本人题库资产，
+    // 且 exam-id 不在库中永无消灭路径，只会成为永久 active 的孤儿条目
+    const entersWrongbook = e.mode !== "challenge";
     let w = wrongbook.get(e.qid);
     if (e.kind === "recite" || e.kind === "card") {
       // 形态分离：只更新背诵连击（≥4 毕业出清背诵池），不碰错题本
@@ -57,7 +60,7 @@ export function replay(events: readonly AttemptEvent[]): ReplayResult {
       }
       continue;
     }
-    if (e.verdict === "wrong") {
+    if (e.verdict === "wrong" && entersWrongbook) {
       if (!w) {
         w = { qid: e.qid, firstWrongAt: e.ts, lastWrongAt: e.ts, wrongCount: 1, streakCorrect: 0, myAnswer: e.myAnswer, status: "active" };
         wrongbook.set(e.qid, w);
@@ -69,7 +72,7 @@ export function replay(events: readonly AttemptEvent[]): ReplayResult {
         // 消灭后再错：重新收录（新一轮）
         w.status = "active"; w.wrongCount = 1; w.streakCorrect = 0; w.firstWrongAt = e.ts; w.lastWrongAt = e.ts; w.myAnswer = e.myAnswer;
       }
-    } else if (e.verdict === "correct") {
+    } else if (e.verdict === "correct" && entersWrongbook) {
       if (w && w.status === "active") {
         w.streakCorrect++;
         if (w.streakCorrect >= ELIMINATE_STREAK) w.status = "eliminated";

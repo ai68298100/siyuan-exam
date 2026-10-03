@@ -40,3 +40,21 @@ export function decodeCsv(buffer: ArrayBuffer): { text: string; encoding: string
   const r = decodeBuffer(buffer, ["utf-8", "gbk"]);
   return { text: r.text, encoding: r.encoding, garbled: !r.confident && r.text.includes("\uFFFD") };
 }
+
+// ---------- 分隔符自动探测（TODO 12 组）：逗号 / 分号 / Tab ----------
+
+/**
+ * 前 20 行样本内计数字符出现次数，取最多者；并列时按 , ; \t 优先级取先。
+ * 仅服务 CSV 文件导入路径（XLSX.read 的 FS 参数）；粘贴 Aiken 文本不走此探测。
+ */
+export function detectDelimiter(text: string): string {
+  const sample = text.split(/\r?\n/).slice(0, 20).join("\n");
+  let best = ",";
+  let bestN = -1;
+  for (const d of [",", ";", "\t"]) {
+    let n = 0;
+    for (let i = 0; i < sample.length; i++) if (sample[i] === d) n++;
+    if (n > bestN) { best = d; bestN = n; }
+  }
+  return best;
+}

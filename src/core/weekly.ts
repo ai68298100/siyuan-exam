@@ -45,6 +45,22 @@ export function weekCompare(weeks: WeekAgg[]): { thisWeek: WeekAgg; lastWeek: We
   return { thisWeek: weeks[weeks.length - 1], lastWeek: weeks[weeks.length - 2] };
 }
 
+export interface DayTrendPoint { date: string; attempts: number; correct: number }
+
+/** 最近 n 天（含今天）逐日做题量，旧→新（2.6 趋势线；本地日界，缺日补零） */
+export function dailyTrend(days: ReplayResult["days"], today: Date = new Date(), n = 30): DayTrendPoint[] {
+  const out: DayTrendPoint[] = [];
+  const cur = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  cur.setDate(cur.getDate() - (n - 1));
+  for (let i = 0; i < n; i++) {
+    const k = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, "0")}-${String(cur.getDate()).padStart(2, "0")}`;
+    const v = days.get(k);
+    out.push({ date: k, attempts: v?.attempts ?? 0, correct: v?.correct ?? 0 });
+    cur.setDate(cur.getDate() + 1);
+  }
+  return out;
+}
+
 /** 每日笔记文档路径（思源约定：conf.dailyNoteSavePath 模板含 {{now | date ...}}；
  *  我们按 "YYYY-MM-DD" 日粒度落 —— 与内核 createDailyNote 的当日文档一致） */
 export function dailyDocPath(savePathTpl: string, today: Date = new Date()): string {

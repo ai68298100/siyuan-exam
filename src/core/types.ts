@@ -74,12 +74,19 @@ export interface WrongItem {
 export interface SessionState {
   id: string;
   mode: string;
+  /** 题库身份（37-05）：恢复时校验会话归属，跨库不串 */
+  bankId?: string;
   qids: string[];
   cursor: number;
   drafts: Record<string, string>;
   startedAt: number;
   updatedAt: number;
   finishedAt?: number;
+  /** 已答结果快照（37-05）：pos=卷面位置（重排队可致同 qid 多位置，按位置判定已答）；
+   *  恢复后光标跳到首个未答位置，防止重复作答双计事件 */
+  answered?: { qid: string; pos: number; verdict: "correct" | "wrong" | "not_attempted"; myAnswer: string | null; timeMs: number }[];
+  /** 已重排题（答错排队尾再来一次，每题至多一次；恢复后不重复重排） */
+  requeued?: string[];
 }
 
 export interface DayStats {

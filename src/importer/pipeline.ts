@@ -29,6 +29,8 @@ export interface ImportReport {
   errors: ImportError[];
   duplicates: number;
   batch: string;
+  /** 已有题摘要回灌（TODO 2.3）：与题库/本批重复的行样本（上限 20；text 路径暂不收集） */
+  dupeSamples?: { row: number; stem: string }[];
 }
 
 const TYPE_ALIASES: Record<string, QuestionType> = {
@@ -142,6 +144,7 @@ export function parseExcelRows(rows: string[][], map: ExcelColumnMap, opt: Impor
   const seenHash = new Set(opt.existingHashes);
   const dedupe = opt.dedupe !== false;
   let duplicates = 0;
+  const dupeSamples: { row: number; stem: string }[] = [];
   const batch = newBatchId();
   let lastKp = "";              // 材料组内子题沿用材料的考点
 
@@ -183,13 +186,17 @@ export function parseExcelRows(rows: string[][], map: ExcelColumnMap, opt: Impor
       if (type === "material") lastKp = q.kp;
       const bad = type === "material" ? (foldText(stem) ? null : "材料题干为空") : validate(q);
       if (bad) throw new Error(bad);
-      if (dedupe && seenHash.has(q.hash)) duplicates++;
+      if (dedupe && seenHash.has(q.hash)) {
+        duplicates++;
+        // 已有题摘要回灌（TODO 2.3）：预览显示与题库重复的行，便于取消导入或删旧再导
+        if (dupeSamples.length < 20) dupeSamples.push({ row: rowNo, stem: stem.slice(0, 40) });
+      }
       else { seenHash.add(q.hash); ok.push(q); }
     } catch (e) {
       errors.push({ row: rowNo, reason: (e as Error).message, raw: row.filter(Boolean).join(" | ").slice(0, 120) });
     }
   });
-  return { ok, errors, duplicates, batch };
+  return { ok, errors, duplicates, batch, dupeSamples };
 }
 
 /** 官方 Excel 模板：自动列映射（按表头名识别，找不到的列报给上层） */

@@ -8,7 +8,6 @@ import type { KernelTransport } from "./kernel/client";
 import { ExamApp } from "./app";
 import type { ExamAppDeps } from "./app";
 import type { StorageAdapter } from "./core/attemptLog";
-import { SCHEMA_VERSION } from "./core/types";
 
 const KERNEL_TIMEOUT_MS = 12_000;
 
@@ -70,6 +69,5 @@ export async function createExamApp(plugin: Plugin): Promise<ExamApp> {
   };
   const app = new ExamApp(deps);
   await app.init(readOrCreateDeviceId());
-  void SCHEMA_VERSION;
   return app;
 }

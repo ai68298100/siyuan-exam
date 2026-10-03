@@ -9,12 +9,17 @@ import type { AttemptEvent, Question, ReplayResult, WrongItem, SessionState } fr
 import { replay, activeWrongItems } from "./core/replayer";
 import { PracticeSession, pickRandom, groupAdjacent } from "./core/session";
 import { deckNameForBank, selfRatingToRiffRating, pickSameKp, cramQueue, dailySet } from "./core/memory";
+import { SaveGate } from "./core/saveGate";
+import type { MockRunSnapshot } from "./core/mock";
+import { appendActions, completeAction, cancelAction, openActions, type ActionItem, type ActionKind } from "./core/actions";
 import type { ImportReport } from "./importer/pipeline";
 
 export interface BankInfo { id: string; name: string; createdAt: number }
 
 export interface MockRecord {
   id: string;               // 蓝图 id
+  /** 本次考试运行 id（r-…；与蓝图分离，同蓝图多次考试互不覆盖；旧记录无此字段） */
+  runId?: string;
   name: string;
   startedAt: number;
   total: number;
@@ -36,9 +41,24 @@ export interface ExamAppDeps {
 const BANK_REGISTRY_KEY = "banks";
 const SESSION_KEY = "session/active";
 const WRONG_REASON_KEY = "wrongbook/reasons";
+const MOCK_RUN_KEY = "mock/run";
+const ACTIONS_KEY = "actions/items";
+
+/** 过期草稿（TODO 2.4）：7 天隐藏不再续做入口，30 天清理（流水保留） */
+const DRAFT_HIDE_MS = 7 * 86_400_000;
+const DRAFT_DROP_MS = 30 * 86_400_000;
+
+/** 导入提交回执（U08）：读回确认只认真实读回的 qid；verified=false = 未能核实（离线/读回失败） */
+export interface ImportCommitResult {
+  written: number;
+  docs: string[];
+  readback: { confirmed: string[]; missing: string[]; verified: boolean };
+}
 
 export class ExamApp {
   readonly attempts: AttemptLog;
+  /** 对象级保存确认（Q2/U06）：每个持久化目标独立状态，顶栏可定位失败对象 */
+  readonly saves = new SaveGate();
   private replayCache: ReplayResult | null = null;
   private banks: BankInfo[] = [];
   private activeSession: PracticeSession | null = null;
@@ -95,9 +115,10 @@ export class ExamApp {
     return false;
   }
 
-  /** 导入提交：按考点落章节文档（无考点 → "导入/<批次>"），返回写入数 */
-  async commitImport(bankId: string, report: ImportReport): Promise<{ written: number; docs: string[] }> {
-    if (!report.ok.length) return { written: 0, docs: [] };
+  /** 导入提交：按考点落章节文档（无考点 → "导入/<批次>"），返回写入数与真实读回清单（U08） */
+  async commitImport(bankId: string, report: ImportReport): Promise<ImportCommitResult> {
+    if (!report.ok.length) return { written: 0, docs: [], readback: { confirmed: [], missing: [], verified: false } };
+    const expected = report.ok.map((q) => q.id);
     const baseline = this.kernelOnline ? await this.listQuestions(bankId).then((qs) => qs.length).catch(() => 0) : 0;
     const byDoc = new Map<string, typeof report.ok>();
     for (const q of report.ok) {
@@ -125,7 +146,20 @@ export class ExamApp {
         } catch { /* 索引未就绪，继续等 */ }
       }
     }
-    return { written, docs };
+    // 读回确认（U08）：完成页只认真实读回的 qid；读回失败如实报告"未核实"，不冒充成功
+    let readback: ImportCommitResult["readback"] = { confirmed: [], missing: [], verified: false };
+    if (this.kernelOnline) {
+      try {
+        const qs = await this.listQuestions(bankId);
+        const have = new Set(qs.map((q) => q.id));
+        readback = {
+          confirmed: expected.filter((id) => have.has(id)),
+          missing: expected.filter((id) => !have.has(id)),
+          verified: true,
+        };
+      } catch { readback = { confirmed: [], missing: [], verified: false }; }
+    }
+    return { written, docs, readback };
   }
 
   private async ensureDoc(bankId: string, hpath: string): Promise<string> {
@@ -139,6 +173,18 @@ export class ExamApp {
 
   async listQuestions(bankId: string): Promise<(Question & { blockId: string; rootId: string })[]> {
     return this.deps.client.listQuestions(bankId);
+  }
+
+  /** 块菜单直通（2.2）：按 blockId 在各题库定位题目；离线返回 null（调用方降级提示） */
+  async findQuestionByBlock(blockId: string): Promise<{ q: Question & { blockId: string; rootId: string }; bank: BankInfo } | null> {
+    if (!blockId || !this.kernelOnline) return null;
+    for (const bank of this.listBanks()) {
+      try {
+        const q = (await this.listQuestions(bank.id)).find((x) => x.blockId === blockId);
+        if (q) return { q, bank };
+      } catch { /* 该库读取失败 → 试下一个 */ }
+    }
+    return null;
   }
 
   // ---------- 流水与派生 ----------
@@ -217,29 +263,86 @@ export class ExamApp {
 
   async flush(): Promise<void> { await this.attempts.flush(); }
 
+  // ---------- 下一行动（U15 lite：持久化 + 去重 + 状态可回看） ----------
+  private async loadActions(): Promise<ActionItem[]> {
+    try {
+      const v = await this.deps.storage.load(ACTIONS_KEY);
+      return Array.isArray(v) ? (v as ActionItem[]) : [];
+    } catch { return []; }
+  }
+
+  private async saveActions(list: ActionItem[]): Promise<void> {
+    await this.saves.run(ACTIONS_KEY, () => this.deps.storage.save(ACTIONS_KEY, list));
+  }
+
+  /** 加入行动（同 kind+qid 去重）；返回实际新增与跳过数 */
+  async addActions(drafts: { kind: ActionKind; qid?: string; sessionId?: string; detail: string }[]): Promise<{ added: number; skipped: number }> {
+    const list = await this.loadActions();
+    const r = appendActions(list, drafts, this.deps.now?.() ?? Date.now());
+    if (r.added) await this.saveActions(r.list);
+    return { added: r.added, skipped: r.skipped };
+  }
+
+  async listOpenActions(): Promise<ActionItem[]> {
+    return openActions(await this.loadActions());
+  }
+
+  /** 完成（用户确认为最小证据）；幂等 */
+  async completeAction(id: string, evidence = "user-confirmed"): Promise<void> {
+    const list = await this.loadActions();
+    await this.saveActions(completeAction(list, id, evidence, this.deps.now?.() ?? Date.now()));
+  }
+
+  /** 取消/暂缓（保留记录）；幂等 */
+  async cancelAction(id: string): Promise<void> {
+    const list = await this.loadActions();
+    await this.saveActions(cancelAction(list, id, this.deps.now?.() ?? Date.now()));
+  }
+
   // ---------- 会话（单活动） ----------
   currentSession(): PracticeSession | null { return this.activeSession; }
 
-  async startSession(questions: Question[], mode: string): Promise<PracticeSession> {
+  async startSession(questions: Question[], mode: string, bankId?: string): Promise<PracticeSession> {
     if (this.activeSession && this.activeSession.phase === "running") {
       throw new Error("已有进行中的会话：请先继续或放弃");
     }
     // 材料组聚拢：所有入口统一生效（单点，替代各调用方自行排序）
     const ordered = groupAdjacent(questions);
     this.activeSession = new PracticeSession(ordered, mode, undefined, this.deps.now ?? (() => Date.now()));
+    if (bankId) this.activeSession.state.bankId = bankId;   // 37-05：会话归属题库
     await this.saveSession();
     return this.activeSession;
   }
 
-  /** 恢复（含启动时）：questionLoader 负责按 qids 补题面 */
-  async resumeSession(questionLoader: (qids: string[]) => Promise<Question[]>): Promise<PracticeSession | null> {
+  /** 最近一次 resume 剔除的缺失题（题库已删/读不到；UI 据此提示，37-05） */
+  lastResumeMissing: string[] = [];
+
+  /** 恢复（含启动时）：questionLoader 负责按 qids 补题面；
+   *  过期草稿（2.4）：>7 天隐藏（返回 null 但保留），>30 天清理存储；
+   *  37-05：bankId 不匹配不跨库恢复；缺题如实剔除并记入 lastResumeMissing */
+  async resumeSession(questionLoader: (qids: string[]) => Promise<Question[]>, expectedBankId?: string): Promise<PracticeSession | null> {
     if (this.activeSession?.phase === "running") return this.activeSession;
+    this.lastResumeMissing = [];
     try {
       const saved = await this.deps.storage.load(SESSION_KEY) as SessionState | undefined;
       if (!saved?.qids?.length || saved.finishedAt) return null;
-      const qs = await questionLoader(saved.qids);
-      if (!qs.length) return null;
-      this.activeSession = new PracticeSession(qs, saved.mode, saved, this.deps.now ?? (() => Date.now()));
+      if (saved.bankId && expectedBankId && saved.bankId !== expectedBankId) return null;   // 跨库不串
+      const now = this.deps.now ?? Date.now;
+      const age = now() - (saved.updatedAt || saved.startedAt);
+      if (age > DRAFT_DROP_MS) {
+        await this.deps.storage.save(SESSION_KEY, null);
+        return null;
+      }
+      if (age > DRAFT_HIDE_MS) return null;
+      const found = await questionLoader(saved.qids);
+      if (!found.length) return null;
+      // 缺题如实剔除（删题/读不到），不用其他题顶替
+      const foundIds = new Set(found.map((q) => q.id));
+      this.lastResumeMissing = saved.qids.filter((id) => !foundIds.has(id));
+      const sanitized: SessionState = this.lastResumeMissing.length
+        ? { ...saved, qids: saved.qids.filter((id) => foundIds.has(id)) }
+        : saved;
+      this.activeSession = new PracticeSession(found, saved.mode, sanitized, now);
       return this.activeSession;
     } catch {
       return null;
@@ -249,8 +352,8 @@ export class ExamApp {
   async saveSession(): Promise<void> {
     const s = this.activeSession;
     if (!s) return;
-    if (s.phase === "finished") await this.deps.storage.save(SESSION_KEY, null);
-    else await this.deps.storage.save(SESSION_KEY, s.state);
+    if (s.phase === "finished") await this.saves.run(SESSION_KEY, () => this.deps.storage.save(SESSION_KEY, null));
+    else await this.saves.run(SESSION_KEY, () => this.deps.storage.save(SESSION_KEY, s.state));
   }
 
   async discardSession(): Promise<void> {
@@ -289,6 +392,55 @@ export class ExamApp {
     }
     q.fav = next;
     return next;
+  }
+
+  /** 批量编辑应用（43-06）：逐题写 custom-exam-* 属性；返回 {ok, failed}。
+   *  单题失败不中断批次；离线直接拒绝（调用方已有在线守卫，此为兜底）。 */
+  async applyBatchEdit(changes: { blockId: string; field: "kp" | "difficulty"; to: string }[]): Promise<{ ok: number; failed: number }> {
+    if (!this.kernelOnline) throw new Error("离线：批量编辑需要内核可写");
+    let ok = 0, failed = 0;
+    for (const c of changes) {
+      try {
+        await this.saves.run(`batch-edit/${c.blockId}`, () =>
+          this.deps.client.setExamAttrs(c.blockId, { [c.field === "kp" ? "exam-kp" : "exam-difficulty"]: c.to }));
+        ok++;
+      } catch { failed++; }
+    }
+    return { ok, failed };
+  }
+
+  // ---------- 导入批次回滚（TODO 12 组） ----------
+  /** 题库内的导入批次清单（batch → 题数），新→旧（最近批次排在最前便于回滚） */
+  listBatches(questions: (Question & { batch?: string })[]): { batch: string; count: number }[] {
+    const counts = new Map<string, number>();
+    for (const q of questions) {
+      if (!q.batch || q.origin !== "imported") continue;
+      counts.set(q.batch, (counts.get(q.batch) ?? 0) + 1);
+    }
+    return [...counts.entries()].map(([batch, count]) => ({ batch, count })).reverse();
+  }
+
+  /** 撤销整批入库（12 组）：按 custom-exam-batch 定位块并逐块删除；只动题块不动流水。
+   *  返回 {deleted, failed}；离线拒绝。真实宿主 deleteBlock 行为待冒烟复核。 */
+  async rollbackBatch(bankId: string, batch: string): Promise<{ deleted: number; failed: number }> {
+    if (!this.kernelOnline) throw new Error("离线：批次回滚需要内核可写");
+    const escaped = batch.replace(/'/g, "''");
+    const rows = await this.deps.client.sql<{ id?: string }>(
+      `SELECT b.id AS id FROM blocks b
+       JOIN attributes a ON a.block_id = b.id
+       WHERE b.root_id IN (SELECT id FROM blocks WHERE box='${bankId.replace(/'/g, "''")}' AND type='d')
+         AND a.name='custom-exam-batch' AND a.value='${escaped}'`,
+    );
+    const ids = rows.map((r) => String(r.id ?? "")).filter(Boolean);
+    let deleted = 0, failed = 0;
+    for (const id of ids) {
+      try {
+        await this.saves.run(`rollback/${id}`, () => this.deps.client.removeBlock(id));
+        deleted++;
+      } catch { failed++; }
+    }
+    this.invalidate();
+    return { deleted, failed };
   }
 
   // ---------- 每日战报（联动小驴复盘预留） ----------
@@ -364,6 +516,23 @@ export class ExamApp {
   }
 
   // ---------- 导出与模考历史（v0.5） ----------
+  /** 模考运行快照（U19 最小）：同一 run 恢复答案/标旗/游标/真实剩余时间；交卷后清除 */
+  async saveMockRun(snap: MockRunSnapshot): Promise<void> {
+    await this.saves.run(MOCK_RUN_KEY, () => this.deps.storage.save(MOCK_RUN_KEY, snap));
+  }
+
+  async loadMockRun(): Promise<MockRunSnapshot | null> {
+    try {
+      const v = await this.deps.storage.load(MOCK_RUN_KEY) as MockRunSnapshot | null | undefined;
+      return v && Array.isArray(v.qids) && typeof v.startedAt === "number" ? v : null;
+    } catch { return null; }
+  }
+
+  async clearMockRun(): Promise<void> {
+    this.saves.clear(MOCK_RUN_KEY);
+    await this.deps.storage.save(MOCK_RUN_KEY, null);
+  }
+
   /** 模考成绩单写入题库"导出"文档（与错题册导出同通道） */
   async writeScoreDoc(bankId: string, md: string): Promise<string> {
     await this.ensureDoc(bankId, "/导出");
@@ -496,7 +665,8 @@ export class ExamApp {
       [...this.derived().reciteStreak.entries()].filter(([, s]) => s >= 4).map(([qid]) => qid),
     );
     const wrongs = this.wrongDrill(questions).filter((q) => !graduated.has(q.id));
-    const rest = questions.filter((q) => !graduated.has(q.id) && !wrongs.includes(q));
+    const wrongIds = new Set(wrongs.map((q) => q.id));
+    const rest = questions.filter((q) => !graduated.has(q.id) && !wrongIds.has(q.id));
     return wrongs.length ? wrongs : rest;
   }
 
