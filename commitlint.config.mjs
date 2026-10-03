@@ -8,6 +8,10 @@ export default {
     "scope-case": [2, "always", "lower-case"],
     "subject-max-length": [2, "always", 100],
     "subject-empty": [2, "never"],
-    "type-enum": [2, "always", ["feat", "fix", "docs", "test", "refactor", "chore", "perf", "style", "build", "ci", "revert"]],
+    "type-enum": [
+      2,
+      "always",
+      ["feat", "fix", "docs", "test", "refactor", "chore", "perf", "style", "build", "ci", "revert"],
+    ],
   },
 };
