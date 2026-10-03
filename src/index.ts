@@ -13,6 +13,7 @@ import { createExamApp } from "./app-runtime";
 import type { ExamApp } from "./app";
 import { streak } from "./core/replayer";
 import { emitExamEvent } from "./core/bus";
+import { registerExamDailySummary } from "./ecosystem/speedSwitch";
 
 const TAB_PRACTICE = "exam-practice";
 const TAB_MOCK = "exam-mock";
@@ -176,6 +177,17 @@ export default class LvExamPlugin extends Plugin {
     }
     this.refreshDock();
     this.refreshStatusBar();
+    // 48-05：雷切组件面板接入（有界重试；未安装安静降级）
+    if (this.examApp) {
+      this.speedSwitchHandle = registerExamDailySummary({
+        app: this.examApp,
+        t: (k, fb) => this.i18n[k] ?? fb ?? k,
+        open: () => this.openPractice(),
+        findPlugin: (name) => (this.app as any)?.plugins?.find?.((p: { name: string }) => p.name === name),
+      });
+    }
+    // 47-04/48-06 lite：window.siyuanExam 公开 API（稳定命令入口 + 按需脱敏统计快照）
+    this.exposePublicApi();
     // 版本更新引导 lite（TODO 23）：版本变化时提示查看 CHANGELOG
     const K = "lv-exam-last-version";
     const last = localStorage.getItem(K);
@@ -187,15 +199,45 @@ export default class LvExamPlugin extends Plugin {
     this.dispatchPublicStats();
   }
 
+  /** 47-04/48-06 lite：window.siyuanExam——open/practice/wrongbook 稳定入口 + stats.read 按需快照。
+   *  脱敏红线与 lv-exam:stats 相同（无题干/答案/key/路径）；stats 按需重算，迟到消费者不再依赖启动广播 */
+  private exposePublicApi() {
+    (window as any).siyuanExam = {
+      version: manifest.version,
+      open: () => this.openPractice(),
+      practice: () => this.openPractice(),
+      wrongbook: () => this.openPractice(),
+      mock: () => this.openMock(),
+      report: () => this.openReport(),
+      stats: () => {
+        if (!this.examApp) return null;
+        // 动态加载 publicStats（与广播同一脱敏构建器，单一定义源）
+        // 同步约束：构建器为纯函数，走 pending import 后回调返回不现实 → 缓存最近一次广播快照
+        return (this as any).lastPublicStats ?? null;
+      },
+      /** stats.read 异步形态（推荐）：Promise 脱敏快照 */
+      statsRead: async (): Promise<unknown> => {
+        if (!this.examApp) return null;
+        const m = await import("@/core/publicStats");
+        const d = this.examApp.derived();
+        return m.buildPublicStats(d, this.examApp.attempts.all(), streak(d));
+      },
+    };
+  }
+
+  private speedSwitchHandle: { dispose: () => void } | null = null;
+
   /** 对外只读数据接口（TODO 21/24 组）：lv-exam:stats 广播（脱敏聚合，无题目内容） */
   private dispatchPublicStats() {
     if (!this.examApp) return;
     try {
       import("@/core/publicStats").then((m) => {
         const d = this.examApp!.derived();
+        const snapshot = m.buildPublicStats(d, this.examApp!.attempts.all(), streak(d));
+        (this as any).lastPublicStats = snapshot; // window.siyuanExam.stats() 的同步缓存
         window.dispatchEvent(
           new CustomEvent("lv-exam:stats", {
-            detail: m.buildPublicStats(d, this.examApp!.attempts.all(), streak(d)),
+            detail: snapshot,
           }),
         );
       });
@@ -206,6 +248,10 @@ export default class LvExamPlugin extends Plugin {
 
   async onunload() {
     this.eventBus.off("click-blockicon", this.boundBlockIcon);
+    // 48-05：雷切组件注销（注册/注销配对；重试定时器一并清理）
+    this.speedSwitchHandle?.dispose();
+    this.speedSwitchHandle = null;
+    delete (window as any).siyuanExam; // 47-04/48-06：公开 API 随插件卸载（无孤儿全局）
     // 37-02 卸载顺序：先最终落盘（此时 dirty 仍在），再 dispose 清定时器——
     // 反过来 dispose 先清 dirty 会让随后的 flush 变成空操作，未落盘事件全部丢失
     try {

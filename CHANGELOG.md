@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased（0.6.x-dev：廿三~四十批，2026-10-03/04）
+## Unreleased（0.6.x-dev：廿三~四一批，2026-10-03/04）
 
-> guard 七门禁全绿（322 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、ESLint 0 告警）+ 生产构建通过；**真机验证（SiYuan 3.8.6）**：preflight 17/17、数据生命周期 6/6、CSV 往返冒烟 5/5（`scripts/smoke-csv.mjs`）、题目编辑 updateBlock / 章节树 docTree / listQuestions hpath 三项契约实测通过。docs/17 人工 UI 步骤剩 27/28/36-38。
+> guard 七门禁全绿（326 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、ESLint 0 告警）+ 生产构建通过；**真机验证（SiYuan 3.8.6）**：preflight 17/17、数据生命周期 6/6、CSV 往返冒烟 5/5（`scripts/smoke-csv.mjs`）、题目编辑 updateBlock / 章节树 docTree / listQuestions hpath 三项契约实测通过。docs/17 人工 UI 步骤剩 27/28/36-38。
 
 - **内核 429 限流处理**：HTTP 429 识别为可重试错误分类；perf-bank 真机基线发现 3.8.6 连续请求限流（32 组新待办）
 - **GIFT 解析器**（42-04 部分）：Moodle GIFT 单选/多选/判断/简答，`::标题::`→考点、`#反馈`→解析；行内选择式 `{=对~错}` 归一
@@ -59,6 +59,9 @@
 - **蓝图健康检查**（40-02 lite，四十批）：`validateBlueprint` 逐项检出重名段/零题段/空段名/分值≤0/时长≤0/及格线越界；开考前重名段自动改名（防统计合并）、零题段剔除提示
 - **多考期**（53-02 lite，四十批）：设置「多考期」textarea（每行名称:日期），计划锚定最近未来考期；入口页多考期并存 chips
 - **校准受助分栏**（44-02/63-02，四十批）：校准卡每档显示受助作答数（🫱 讲解/提示后同题再答），解读正确率时可甄别
+- **雷切组件面板接入**（48-05，四一批）：「小驴考试 · 今日练习」组件（protocol v2）——当日作答/正确率/错题在册三指标（derived 缓存重算满足 800ms、不全库扫描）；有界重试注册（宿主未装安静降级）；按协议核对真实契约（`小驴雷切/docs/widget-protocol.md`）
+- **window.siyuanExam 公开 API**（47-04/48-06 lite，四一批）：open/practice/wrongbook/mock/report 稳定入口 + `statsRead()` 按需脱敏快照（迟到消费者推荐路径）；随插件卸载自动移除
+- **生态契约总表**（48-01，四一批）：`docs/ecosystem-contracts.md`——已实现 5 类契约与拟议表（打卡/闪卡/拾遗/人脉桥均标注前置，不冒充已支持）
 
 ## 0.6.0 (2026-10-03)
 
