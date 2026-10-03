@@ -1486,6 +1486,9 @@ import { ttsSpeak } from "@/core/tts";
     let filterType = $state("");
     let filterSource = $state("");
     let filterWrong = $state(false);
+    /** 三七批补全：仅受助（本题作答前被讲解/提示过）/ 近 N 天有作答（0=不限） */
+    let filterHelp = $state(false);
+    let filterDays = $state(0);
     const sourceOptions = $derived(
       [...new Set(questions.map((q) => (q.source ?? "").trim()).filter(Boolean))].sort().slice(0, 30),
     );
@@ -1495,9 +1498,23 @@ import { ttsSpeak } from "@/core/tts";
       if (filterType) list = list.filter((q) => q.type === filterType);
       if (filterSource === "@@none") list = list.filter((q) => !(q.source ?? "").trim()); // 43-04：缺来源
       else if (filterSource) list = list.filter((q) => (q.source ?? "").trim() === filterSource);
-      if (filterWrong) {
-        const wb = app.derived().wrongbook;
-        list = list.filter((q) => (wb.get(q.id)?.wrongCount ?? 0) > 0);
+      if (filterWrong || filterHelp || filterDays) {
+        const events = app.attempts.all();
+        const cutoff = filterDays > 0 ? Date.now() - filterDays * 86_400_000 : 0;
+        // eslint-disable-next-line svelte/prefer-svelte-reactivity -- 函数内累加集（非组件状态），与 backlinkCache 惯用法一致
+        const helped = new Set<string>();
+        // eslint-disable-next-line svelte/prefer-svelte-reactivity -- 同上
+        const recent = new Set<string>();
+        for (const e of events) {
+          if (e.help) helped.add(e.qid);
+          if (!cutoff || e.ts >= cutoff) recent.add(e.qid);
+        }
+        if (filterWrong) {
+          const wb = app.derived().wrongbook;
+          list = list.filter((q) => (wb.get(q.id)?.wrongCount ?? 0) > 0);
+        }
+        if (filterHelp) list = list.filter((q) => helped.has(q.id));
+        if (filterDays) list = list.filter((q) => recent.has(q.id));
       }
       const kw = searchText.trim().toLowerCase();
       if (kw) {
@@ -2461,6 +2478,13 @@ import { ttsSpeak } from "@/core/tts";
           </select>
         {/if}
         <button class="lv-chip" class:acc={filterWrong} onclick={() => (filterWrong = !filterWrong)} title={t("browse.fWrongTip")}>✕ {t("browse.fWrong")}</button>
+        <button class="lv-chip" class:acc={filterHelp} onclick={() => (filterHelp = !filterHelp)} title={t("browse.fHelpTip")}>🫱 {t("browse.fHelp")}</button>
+        <select class="lv-select" style="max-width:110px" bind:value={filterDays} title={t("browse.fDaysTip")}>
+          <option value={0}>{t("browse.fAnyDay")}</option>
+          <option value={1}>{t("browse.fToday")}</option>
+          <option value={7}>{t("browse.f7")}</option>
+          <option value={30}>{t("browse.f30")}</option>
+        </select>
         {#if smartViews.length}
           <select class="lv-select" style="max-width:150px" bind:value={selectedView} onchange={() => void applyNamedView(selectedView)}>
             <option value="">{t("view.pick")}</option>

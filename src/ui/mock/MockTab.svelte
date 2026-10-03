@@ -12,6 +12,7 @@
     import { newRunId } from "../../core/ids";
     import { estimateScore } from "../../core/estimate";
     import SaveStatus from "../shared/SaveStatus.svelte";
+    import { mockSectionsToCsv, mockHistoryToCsv } from "../../core/exportMd";
     
     let { plugin, examApp: app }: { plugin: any; examApp: ExamApp } = $props();
     const i18n = $derived(plugin?.i18n ?? {});
@@ -449,6 +450,17 @@
     /** 55-07 lite：当前题库相对开考冻结题版已修订的题（成绩单如实标注，不重算历史） */
     const revisionDrift = $derived(session ? session.revisionDrift(questions) : []);
 
+    // 45-08 收口：成绩单分段/历史数据表 + CSV（与雷达/折线同一数据快照）
+    let mockTableOpen = $state(false);
+    function downloadMockCsv(csv: string, name: string) {
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `小驴考试-模考-${name}-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
     /** 40-06：模考键盘作答——A-J 选择/多选 toggle、←/→ 导航；
      *  守卫 textarea/input/select/contenteditable 与 IME 组合期/修饰键 */
     function onExamKey(e: KeyboardEvent) {
@@ -693,6 +705,26 @@
         <span class="num lv-muted">{sec.score}/{sec.full} · {t("mock.correct")} {sec.correct}/{sec.total} · {Math.round(sec.timeSpentMs / 1000)}s</span>
       </div>
     {/each}
+    <!-- 45-08 收口：分段/历史图表的文本等价物 + CSV（同一数据快照） -->
+    <div class="lv-row" style="margin:6px 0">
+      <button class="lv-btn sm lv-btn--ghost" onclick={() => mockTableOpen = !mockTableOpen}>📋 {t("data.table")}</button>
+      <button class="lv-btn sm lv-btn--ghost" onclick={() => downloadMockCsv(mockSectionsToCsv(score.sections), "sections")}>⬇️ CSV</button>
+      {#if history.length}
+        <button class="lv-btn sm lv-btn--ghost" onclick={() => downloadMockCsv(mockHistoryToCsv(history), "history")}>⬇️ CSV {t("mock.history")}</button>
+      {/if}
+    </div>
+    {#if mockTableOpen}
+      <div class="lv-card" style="margin:6px 0;overflow:auto">
+        <table class="lv-dtable">
+          <thead><tr><th>{t("mock.sec")}</th><th>{t("mock.each")}</th><th>{t("mock.correct")}</th><th>{t("report.accuracy")}</th></tr></thead>
+          <tbody>
+            {#each score.sections as sec, _si (_si)}
+              <tr><td class="num">{sec.name}</td><td class="num">{sec.score}/{sec.full}</td><td class="num">{sec.correct}/{sec.total}</td><td class="num">{sec.total ? Math.round((sec.correct / sec.total) * 100) : 0}%</td></tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {/if}
     {#if score.sections.length >= 3}
       <div class="lv-card" style="margin:12px 0">
         <b style="font-size:13px">{t("mock.radar")}</b>

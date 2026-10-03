@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { coverageStats } from "../src/core/bankHealth";
+import { mockSectionsToCsv, mockHistoryToCsv } from "../src/core/exportMd";
 import { AttemptLog, MemoryStorage } from "../src/core/attemptLog";
 import { replay } from "../src/core/replayer";
 import { makeQuestion } from "../src/core/blockTemplate";
@@ -45,5 +46,20 @@ describe("114-01 受助标记流水往返（三五批）", () => {
     expect((e3 as AttemptEvent).help).toBe("explain");
     const r = replay(log.all());
     expect(r.wrongbook.get("q1")!.status).toBe("eliminated"); // 错→对→对 消灭语义不受影响
+  });
+});
+
+describe("45-08 收口：模考成绩 CSV（三七批）", () => {
+  it("分段/历史 CSV 与雷达/折线同一数据快照", () => {
+    const sec = mockSectionsToCsv([
+      { name: "言语", score: 8, full: 10, correct: 8, total: 10 },
+      { name: "数量", score: 3, full: 10, correct: 3, total: 10 },
+    ]);
+    expect(sec).toContain("模块,得分,满分,答对,题数,正确率%");
+    expect(sec).toContain("言语,8,10,8,10,80");
+    expect(sec).toContain("数量,3,10,3,10,30");
+    const hist = mockHistoryToCsv([{ name: "模考一", percent: 62 }, { name: "模考二", percent: 71 }]);
+    expect(hist).toContain("考试,得分率%");
+    expect(hist).toContain("模考二,71");
   });
 });

@@ -62,3 +62,15 @@ export function hourlyToCsv(hours: number[]): string {
     hours.map((n, i) => [`${String(i).padStart(2, "0")}:00-${String(i).padStart(2, "0")}:59`, n]),
   );
 }
+
+/** 模考成绩单（45-08 收口）：分段得分/正确率与历史百分比曲线，与雷达图/折线图同一数据快照 */
+export function mockSectionsToCsv(sections: { name: string; score: number; full: number; correct: number; total: number }[]): string {
+  return csvJoin(
+    ["模块", "得分", "满分", "答对", "题数", "正确率%"],
+    sections.map((s) => [s.name, s.score, s.full, s.correct, s.total, s.total ? Math.round((s.correct / s.total) * 100) : 0]),
+  );
+}
+
+export function mockHistoryToCsv(history: { name: string; percent: number }[]): string {
+  return csvJoin(["考试", "得分率%"], history.map((h) => [h.name, h.percent]));
+}
