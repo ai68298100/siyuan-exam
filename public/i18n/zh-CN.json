@@ -296,6 +296,8 @@
     "import.progress": "写入中 {d}/{t}",
     "import.cancelCommit": "取消",
     "import.cancelledNote": "已取消：已写入 {w} 题（可用题库健康面板整批撤销），未写部分未入库",
+    "import.coexist": "重复时并存入库",
+    "import.coexistHint": "勾选后，与题库已有题干+选项完全相同的行不再跳过，而是作为独立题目并存入库（批内去重仍生效）；如需覆盖旧题请用题库健康面板定位后编辑",
     "ai.pastedMaterial": "粘贴材料",
     "entry.manual": "手工录题",
     "session.wrong": "答错",

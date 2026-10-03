@@ -25,7 +25,11 @@ function parseGiftBody(body: string): GiftParsed | null {
   const braceEnd = body.lastIndexOf("}");
   if (braceStart < 0 || braceEnd <= braceStart) return null;
   const stem = body.slice(0, braceStart).trim();
-  const inner = body.slice(braceStart + 1, braceEnd).trim();
+  // Moodle 常见行内选择式 {=对~错}：非转义 ~ 归一为换行，统一按多行解析
+  const inner = body
+    .slice(braceStart + 1, braceEnd)
+    .trim()
+    .replace(/(^|[^\\])~/g, "$1\n~");
 
   // 判断题：TRUE/FALSE
   if (/^(TRUE|FALSE|T|F)$/i.test(inner)) {

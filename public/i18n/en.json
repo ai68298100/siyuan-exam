@@ -280,6 +280,8 @@
     "import.progress": "Writing {d}/{t}",
     "import.cancelCommit": "Cancel",
     "import.cancelledNote": "Cancelled: {w} written (undo whole batch in bank health); the rest was NOT imported",
+    "import.coexist": "Keep duplicates",
+    "import.coexistHint": "When checked, rows whose stem+options exactly match existing questions are imported as independent copies instead of skipped (within-file dedupe still applies); to update an old question, locate it via bank health and edit",
     "ai.pastedMaterial": "Pasted material",
     "entry.manual": "Manual entry",
     "session.wrong": "Wrong",

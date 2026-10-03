@@ -12,6 +12,7 @@ import ReportTab from "@/ui/report/ReportTab.svelte";
 import { createExamApp } from "./app-runtime";
 import type { ExamApp } from "./app";
 import { streak } from "./core/replayer";
+import { emitExamEvent } from "./core/bus";
 
 const TAB_PRACTICE = "exam-practice";
 const TAB_MOCK = "exam-mock";
@@ -318,7 +319,7 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
         const qid = row.dataset.qid!;
         (this as any).pendingQuestionId = qid;
         (this as any).pendingPracticeSignal = true;
-        window.dispatchEvent(new CustomEvent("lv-exam:open-question", { detail: { qid } }));
+        emitExamEvent("open-question", { qid });
         this.openPractice();
       });
     });
@@ -503,7 +504,7 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
           }
           (this as any).pendingEditQid = hit.q.id;
           (this as any).pendingEditBank = hit.bank.id;
-          window.dispatchEvent(new CustomEvent("lv-exam:edit-question", { detail: { qid: hit.q.id, bank: hit.bank.id } }));
+          emitExamEvent("edit-question", { qid: hit.q.id, bank: hit.bank.id });
           this.openPractice();
         },
       });
@@ -518,7 +519,7 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
           }
           (this as any).pendingBrowseQid = hit.q.id;
           (this as any).pendingBrowseBank = hit.bank.id;
-          window.dispatchEvent(new CustomEvent("lv-exam:open-in-browse", { detail: { qid: hit.q.id, bank: hit.bank.id } }));
+          emitExamEvent("open-in-browse", { qid: hit.q.id, bank: hit.bank.id });
           this.openPractice();
         },
       });

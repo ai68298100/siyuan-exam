@@ -292,9 +292,35 @@ export function autoMapExcel(header: string[]): { map: ExcelColumnMap; missing: 
   return { map, missing };
 }
 
-/** 粘贴文本兜底（当前=Aiken；后续按内容特征分流 GIFT） */
-export function parseText(text: string, opt: ImportOptions = {}): ImportReport {
+/** 粘贴文本按内容特征分流：GIFT（::题::/答案区）→ TSV（#头/制表符/两列问答）→ Aiken（默认）。
+ *  gift/tsv 动态加载：二者复用本模块的 parseExcelRows/validate，静态依赖会成环 */
+export async function parseText(text: string, opt: ImportOptions = {}): Promise<ImportReport> {
+  if (isGiftText(text)) {
+    const { parseGift } = await import("./gift");
+    return parseGift(text, opt);
+  }
+  if (isTsvText(text)) {
+    const { parseTsv } = await import("./tsv");
+    return parseTsv(text, opt);
+  }
   return parseAiken(text, opt);
+}
+
+/** GIFT 特征：::标题:: 前缀，或 {…} 答案区配 =/~ 正误标记 */
+function isGiftText(text: string): boolean {
+  if (/^\s*::[^:]+::/m.test(text)) return true;
+  const zone = text.match(/\{([^}]*)\}/);
+  return !!zone && (zone[1].includes("=") || zone[1].includes("~"));
+}
+
+/** TSV 特征：Anki # 文件头，或 ≥半数非空行含制表符（单行多列≥3 列也认） */
+function isTsvText(text: string): boolean {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim());
+  if (!lines.length) return false;
+  if (lines.some((l) => /^#\w+:/.test(l.trim()))) return true;
+  const withTab = lines.filter((l) => l.includes("\t")).length;
+  if (withTab / lines.length >= 0.5) return true;
+  return withTab > 0 && lines.some((l) => l.split("\t").length >= 3);
 }
 
 /** 错误清单导出 CSV（BOM 头保证 Excel 中文不乱码） */

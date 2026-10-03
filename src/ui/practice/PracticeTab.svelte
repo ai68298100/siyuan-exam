@@ -15,6 +15,7 @@ import { ttsSpeak } from "@/core/tts";
     import { bankHealthReport, type BankHealthReport } from "../../core/bankHealth";
     import { planBatchEdit, invertPlan, describeChange } from "../../core/batchEdit";
     import { buildSectionTree, questionInSection } from "../../core/sectionTree";
+    import { onExamEvent } from "@/core/bus";
     import { questionFingerprint } from "@/ai/task";
     import SaveStatus from "../shared/SaveStatus.svelte";
 
@@ -66,6 +67,8 @@ import { ttsSpeak } from "@/core/tts";
     let importReport = $state<ImportReport | null>(null);
     let importError = $state("");
     let committing = $state(false);
+    /** 重复合并策略 lite（2.3）：并存=与题库已有题重复的行照常入库（批内去重仍生效）；覆盖策略挂 38-03 */
+    let coexistDupe = $state(false);
     let importResult = $state<null | { written: number; confirmed: number; missing: number; verified: boolean; cancelled?: boolean }>(null);
 
     /** 答前置信自评（U12 最小）：随本次 attempt 落流水；提交后不可改写最初记录 */
@@ -269,18 +272,18 @@ import { ttsSpeak } from "@/core/tts";
         expandedId = q.id;
         if (edit) openEditForm(q);
       }
-      // 40-05：已开 Tab 时 pending* 字段无人消费 → 用窗口事件补齐移交
-      const onOpenQ = (e: Event) => { const d = (e as CustomEvent).detail ?? {}; void startSingleById(String(d.qid ?? "")); };
-      const onBrowseQ = (e: Event) => { const d = (e as CustomEvent).detail ?? {}; void focusInBrowse(String(d.qid ?? ""), false, d.bank as string | undefined); };
-      const onEditQ = (e: Event) => { const d = (e as CustomEvent).detail ?? {}; void focusInBrowse(String(d.qid ?? ""), true, d.bank as string | undefined); };
-      window.addEventListener("lv-exam:open-question", onOpenQ);
-      window.addEventListener("lv-exam:open-in-browse", onBrowseQ);
-      window.addEventListener("lv-exam:edit-question", onEditQ);
-      onMountCleanup = () => {
-        window.removeEventListener("lv-exam:open-question", onOpenQ);
-        window.removeEventListener("lv-exam:open-in-browse", onBrowseQ);
-        window.removeEventListener("lv-exam:edit-question", onEditQ);
-      };
+      // 40-05：已开 Tab 时 pending* 字段无人消费 → 经 lv-exam:* 总线补齐移交（信封 v1，未知版本不投递）
+      const onOpenQ = (env: import("@/core/bus").BusEvent<{ qid: string }>) => void startSingleById(env.payload.qid);
+      const onBrowseQ = (env: import("@/core/bus").BusEvent<{ qid: string; bank?: string }>) =>
+        void focusInBrowse(env.payload.qid, false, env.payload.bank);
+      const onEditQ = (env: import("@/core/bus").BusEvent<{ qid: string; bank?: string }>) =>
+        void focusInBrowse(env.payload.qid, true, env.payload.bank);
+      const offs = [
+        onExamEvent("open-question", onOpenQ),
+        onExamEvent("open-in-browse", onBrowseQ),
+        onExamEvent("edit-question", onEditQ),
+      ];
+      onMountCleanup = () => offs.forEach((off) => off());
       // Dock 信号优先：按 qid 直达单题
       const pid = (plugin as any).pendingQuestionId as string | undefined;
       if (pid) {
@@ -1192,11 +1195,15 @@ import { ttsSpeak } from "@/core/tts";
     }
 
     // ---------- 导入 ----------
-    function doParseText() {
+    async function doParseText() {
       importError = ""; importResult = null; retryPool = []; trialConfirmed = []; trialNote = "";
       if (!importText.trim()) { importError = t("import.noInput"); return; }
       try {
-        importReport = parseText(importText, { existingHashes: new Set(questions.map((q) => q.hash)) });
+        // parseText 按内容特征分流（廿五批）：GIFT / TSV(Anki) / Aiken；
+        // 并存模式（2.3 重复合并策略 lite）：不回灌已有题 hash → 与题库重复的行照常入库（批内去重仍生效）
+        importReport = await parseText(importText, {
+          existingHashes: coexistDupe ? new Set<string>() : new Set(questions.map((q) => q.hash)),
+        });
       } catch (e) { importError = String(e); }
     }
 
@@ -1235,7 +1242,8 @@ import { ttsSpeak } from "@/core/tts";
       importError = "";
       const rows = sheetRowsCache.get(activeSheet);
       if (!rows?.length) { importError = t("import.emptyFile"); return; }
-      const existing = new Set(questions.map((q) => q.hash));   // 回灌去重（2.3）：与题库已有题比对
+      // 回灌去重（2.3）：与题库已有题比对；并存模式（重合并策略 lite）置空 → 重复行照常入库
+      const existing = coexistDupe ? new Set<string>() : new Set(questions.map((q) => q.hash));
       // 映射复用（2.3/38-02）：已保存映射优先；列越界守卫 → 提示并回退自动映射
       const saved = savedMappings.find((m) => m.name === selectedMapping);
       if (saved) {
@@ -1506,7 +1514,7 @@ import { ttsSpeak } from "@/core/tts";
       nextSheetCache.set(activeSheet, sheet);
       sheetRowsCache = nextSheetCache;
       const single = parseExcelRows([sheet[abs]], lastMap, {
-        existingHashes: new Set(questions.map((q) => q.hash)),
+        existingHashes: coexistDupe ? new Set<string>() : new Set(questions.map((q) => q.hash)),
       });
       if (single.ok.length === 1) {
         importReport = {
@@ -2310,6 +2318,10 @@ import { ttsSpeak } from "@/core/tts";
           <textarea class="lv-input lv-textarea" rows="8" placeholder={t("import.placeholder")} bind:value={importText}></textarea>
           <div class="lv-row">
             <button class="lv-btn lv-btn--primary" onclick={doParseText} disabled={!importText.trim()}>{t("import.parse")}</button>
+            <label class="lv-chip" for="lv-import-coexist" title={t("import.coexistHint")}>
+              <input id="lv-import-coexist" type="checkbox" bind:checked={coexistDupe} style="margin-right:4px" />
+              {t("import.coexist")}
+            </label>
             <span class="lv-muted">{t("import.excelNote")}</span>
           </div>
           {#if savedMappings.length}
