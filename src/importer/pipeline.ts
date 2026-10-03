@@ -323,6 +323,24 @@ function isTsvText(text: string): boolean {
   return withTab > 0 && lines.some((l) => l.split("\t").length >= 3);
 }
 
+/** 按行号提取 Aiken 题块原文（文本路径单行修复用；行号与 parseAiken 的 block.start 同一 1-based 口径） */
+export function extractAikenBlockAt(text: string, lineNo: number): string | null {
+  const lines = text.split(/\r?\n/);
+  let start = 0;
+  let rows: string[] = [];
+  for (let i = 0; i <= lines.length; i++) {
+    const blank = i === lines.length || !lines[i].trim();
+    if (!blank) {
+      if (!rows.length) start = i + 1;
+      rows.push(lines[i]);
+    } else if (rows.length) {
+      if (lineNo >= start && lineNo < start + rows.length) return rows.join("\n");
+      rows = [];
+    }
+  }
+  return null;
+}
+
 /** 错误清单导出 CSV（BOM 头保证 Excel 中文不乱码） */
 export function errorsToCsv(errors: ImportError[]): string {
   const esc = (s: string) => `"${String(s).replace(/"/g, '""')}"`;

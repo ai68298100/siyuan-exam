@@ -7,7 +7,7 @@ import { planToday } from "@/core/planner";
 import { ttsSpeak } from "@/core/tts";
     import type { ExamApp } from "../../app";
     import type { Question } from "../../core/types";
-    import { parseText, parseExcelRows, autoMapExcel, errorsToCsv, type ImportReport } from "../../importer/pipeline";
+    import { parseText, parseExcelRows, autoMapExcel, errorsToCsv, extractAikenBlockAt, type ImportReport } from "../../importer/pipeline";
     import { groupAdjacent } from "../../core/session";
     import { makeQuestion } from "../../core/blockTemplate";
     import { grade, normalizeAnswer, questionHash } from "../../core/answer";
@@ -1568,36 +1568,54 @@ import { ttsSpeak } from "@/core/tts";
       } finally { spotBusy = false; }
     }
 
-    // ---------- 错误单行修复（2.3/U07 后半；Excel 路径按单元格编辑，文本路径保持清单导出） ----------
+    // ---------- 错误单行修复（2.3/U07 后半）：Excel=单元格编辑；文本路径=Aiken 块编辑 ----------
     let fixRow = $state<number | null>(null); // err.row（1-based 数据行号，含表头偏移）
     let fixCells = $state<string[]>([]);
+    let fixText = $state(""); // 文本路径：Aiken 块原文
     let fixNote = $state("");
     function startRowFix(row: number) {
       const sheet = sheetRowsCache.get(activeSheet);
       // parseExcelRows 行号 = 绝对行号（首行表头=1）：err.row-1 即缓存数组下标
       const abs = row - 1;
-      if (!sheet?.[abs]) { fixNote = t("import.fixUnavailable"); return; }
+      if (sheet?.[abs]) {
+        fixNote = "";
+        fixRow = row;
+        fixCells = [...sheet[abs]];
+        fixText = "";
+        return;
+      }
+      // 文本路径（Aiken 粘贴）：err.raw 是 120 字截断预览不可编辑 → 按行号提取完整题块
+      const blk = extractAikenBlockAt(importText, row);
+      if (!blk) { fixNote = t("import.fixUnavailable"); return; }
       fixNote = "";
       fixRow = row;
-      fixCells = [...sheet[abs]];
+      fixCells = [];
+      fixText = blk;
     }
     function cancelRowFix() {
-      fixRow = null; fixCells = []; fixNote = "";
+      fixRow = null; fixCells = []; fixText = ""; fixNote = "";
     }
     async function applyRowFix(errRow: number) {
-      if (!importReport || !lastMap || fixRow == null) return;
+      if (!importReport || fixRow == null) return;
       const sheet = sheetRowsCache.get(activeSheet);
       const abs = errRow - 1;
-      if (!sheet?.[abs]) { fixNote = t("import.fixUnavailable"); return; }
-      // 修好的行写回缓存并单行重验（Alt+Enter 净化沿用 parseExcelRows 内部规则）
-      sheet[abs] = [...fixCells];
-      // eslint-disable-next-line svelte/prefer-svelte-reactivity -- 写时复制惯用法，与 backlinkCache 一致
-      const nextSheetCache = new Map(sheetRowsCache);
-      nextSheetCache.set(activeSheet, sheet);
-      sheetRowsCache = nextSheetCache;
-      const single = parseExcelRows([sheet[abs]], lastMap, {
-        existingHashes: coexistDupe ? new Set<string>() : new Set(questions.map((q) => q.hash)),
-      });
+      let single: ImportReport;
+      if (fixCells.length && sheet?.[abs]) {
+        // Excel：修好的行写回缓存并单行重验（Alt+Enter 净化沿用 parseExcelRows 内部规则）
+        sheet[abs] = [...fixCells];
+        // eslint-disable-next-line svelte/prefer-svelte-reactivity -- 写时复制惯用法，与 backlinkCache 一致
+        const nextSheetCache = new Map(sheetRowsCache);
+        nextSheetCache.set(activeSheet, sheet);
+        sheetRowsCache = nextSheetCache;
+        single = parseExcelRows([sheet[abs]], lastMap!, {
+          existingHashes: coexistDupe ? new Set<string>() : new Set(questions.map((q) => q.hash)),
+        });
+      } else {
+        // 文本路径：整块重验（GIFT/TSV 特征同样走 parseText 分流）
+        single = await parseText(fixText, {
+          existingHashes: coexistDupe ? new Set<string>() : new Set(questions.map((q) => q.hash)),
+        });
+      }
       if (single.ok.length === 1) {
         importReport = {
           ...importReport,
@@ -1820,15 +1838,17 @@ import { ttsSpeak } from "@/core/tts";
             {/if}
             {#if stemHtml}<div class="lv-stem lv-rich b3-typography">{@html stemHtml}</div>{:else}<div class="lv-stem">{q.stem}</div>{/if}
             {#if q.options.length}
-              <div role="radiogroup" aria-label={t("session.options")}>
+              <!-- 45-03：多选用 checkbox/group 语义而非 radio；读屏可感知选中态 -->
+              <div role={q.type === "multiple" ? "group" : "radiogroup"} aria-label={t("session.options")}>
                 {#each q.options as opt, i (i)}
-                  <button class="lv-opt" class:sel={selected.includes(String.fromCharCode(65 + i))}
-                    role="radio" aria-checked={selected === String.fromCharCode(65 + i)}
-                    class:right={feedback && feedback.verdict !== "not_attempted" && q.answer.includes(String.fromCharCode(65 + i)) && (q.type === "single" ? q.answer === String.fromCharCode(65 + i) : true)}
-                    class:wrong={feedback && feedback.myAnswer === String.fromCharCode(65 + i) && feedback.verdict === "wrong"}
+                  {@const L = String.fromCharCode(65 + i)}
+                  <button class="lv-opt" class:sel={selected.includes(L)}
+                    role={q.type === "multiple" ? "checkbox" : "radio"}
+                    aria-checked={q.type === "multiple" ? selected.includes(L) : selected === L}
+                    class:right={feedback && feedback.verdict !== "not_attempted" && q.answer.includes(L) && (q.type === "single" ? q.answer === L : true)}
+                    class:wrong={feedback && feedback.myAnswer === L && feedback.verdict === "wrong"}
                     onclick={() => {
                       if (feedback) return;
-                      const L = String.fromCharCode(65 + i);
                       if (q.type === "multiple") {
                         // 多选/不定项：点击切换
                         const arr = (selected || "").split("").filter(Boolean);
@@ -1839,7 +1859,7 @@ import { ttsSpeak } from "@/core/tts";
                         selected = L;
                       }
                     }}>
-                    <span class="key">{String.fromCharCode(65 + i)}</span>
+                    <span class="key">{L}</span>
                     <span>{opt}</span>
                   </button>
                 {/each}
@@ -2470,22 +2490,24 @@ import { ttsSpeak } from "@/core/tts";
             {#each importReport.errors.slice(0, 20) as err, _i (_i)}
               <div class="lv-error-row">
                 <b class="num">#{err.row}</b> {err.reason}<span class="lv-muted"> · {err.raw}</span>
-                {#if sheetRowsCache.get(activeSheet)?.length}
-                  <button class="lv-btn sm lv-btn--ghost" onclick={() => startRowFix(err.row)}>{t("import.rowFix")}</button>
-                {/if}
+                <button class="lv-btn sm lv-btn--ghost" onclick={() => startRowFix(err.row)}>{t("import.rowFix")}</button>
               </div>
-              {#if fixRow === err.row && fixCells.length}
-                <!-- 单行修复（U07 后半）：按单元格编辑 → 单行重验 → 合回预览 -->
+              {#if fixRow === err.row}
+                <!-- 单行修复（U07 后半）：Excel=按单元格编辑；文本=题块整块编辑 → 单行重验 → 合回预览 -->
                 <div class="lv-detail" style="margin:4px 0 8px">
-                  {#each fixCells as _c, ci (ci)}
-                    <div class="lv-row" style="margin:3px 0">
-                      <span class="lv-chip num">{ci}</span>
-                      <input class="lv-input" bind:value={fixCells[ci]} />
-                    </div>
-                  {/each}
+                  {#if fixCells.length}
+                    {#each fixCells as _c, ci (ci)}
+                      <div class="lv-row" style="margin:3px 0">
+                        <span class="lv-chip num">{ci}</span>
+                        <input class="lv-input" bind:value={fixCells[ci]} />
+                      </div>
+                    {/each}
+                  {:else}
+                    <textarea class="lv-input lv-textarea" rows="5" bind:value={fixText} aria-label={t("import.rowFixText")}></textarea>
+                  {/if}
                   {#if fixNote}<div class="lv-error">{fixNote}</div>{/if}
                   <div class="lv-row">
-                    <button class="lv-btn lv-btn--primary sm" onclick={() => void applyRowFix(err.row)}>{t("import.rowFixApply")}</button>
+                    <button class="lv-btn lv-btn--primary sm" disabled={fixCells.length ? false : !fixText.trim()} onclick={() => void applyRowFix(err.row)}>{t("import.rowFixApply")}</button>
                     <button class="lv-btn sm lv-btn--ghost" onclick={cancelRowFix}>{t("edit.cancel")}</button>
                   </div>
                 </div>

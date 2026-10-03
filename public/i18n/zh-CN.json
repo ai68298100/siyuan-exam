@@ -290,6 +290,7 @@
     "import.spotCheck": "抽查渲染",
     "import.rowFix": "修复",
     "import.rowFixApply": "保存该行",
+    "import.rowFixText": "题块原文（修正后保存重新校验）",
     "import.rowFixed": "该行已修复并合入预览",
     "import.rowDuped": "修复后与已有题重复：如需并存请先修改题干；重复行不入库",
     "import.fixUnavailable": "无法定位原始行（文件可能已更换），请重新选择文件后再修复",

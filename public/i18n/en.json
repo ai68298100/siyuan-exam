@@ -274,6 +274,7 @@
     "import.spotCheck": "Spot-check render",
     "import.rowFix": "Fix",
     "import.rowFixApply": "Save row",
+    "import.rowFixText": "Question block source (edit then save to re-validate)",
     "import.rowFixed": "Row fixed and merged into preview",
     "import.rowDuped": "Fixed row duplicates an existing question: edit the stem to keep both; duplicated rows are not imported",
     "import.fixUnavailable": "Cannot locate the original row (file may have changed); re-pick the file to fix",

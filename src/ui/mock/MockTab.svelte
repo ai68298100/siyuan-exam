@@ -413,9 +413,34 @@
       });
     }
     const secAccuracy = $derived(score ? score.sections.map((s) => (s.total ? s.correct / s.total : 0)) : []);
+
+    /** 40-06：模考键盘作答——A-J 选择/多选 toggle、←/→ 导航；
+     *  守卫 textarea/input/select/contenteditable 与 IME 组合期/修饰键 */
+    function onExamKey(e: KeyboardEvent) {
+      if (view !== "exam" || !session || !currentQ) return;
+      const tgt = e.target as HTMLElement | null;
+      if (tgt && (tgt.tagName === "TEXTAREA" || tgt.tagName === "INPUT" || tgt.tagName === "SELECT" || tgt.isContentEditable)) return;
+      if (e.isComposing || e.metaKey || e.ctrlKey || e.altKey) return;
+      const key = e.key.toUpperCase();
+      if (/^[A-J]$/.test(key)) {
+        const idx = key.charCodeAt(0) - 65;
+        if (idx < currentQ.options.length) {
+          e.preventDefault();
+          pickOption(key);
+        }
+        return;
+      }
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        goto(Math.min(session.state.qids.length - 1, cursor + 1));
+      } else if (e.key === "ArrowLeft" && !bp.lockout) {
+        e.preventDefault();
+        goto(Math.max(0, cursor - 1));
+      }
+    }
 </script>
 
-<svelte:window onblur={onBlur} />
+<svelte:window onblur={onBlur} onkeydown={onExamKey} />
 
 <div class="fn__flex-1 lv-pad">
   <div class="block__icons">
@@ -559,12 +584,18 @@
     <div class="lv-card lv-question">
       <div class="lv-stem">{currentQ.stem}</div>
       {#if currentQ.options.length}
-        {#each currentQ.options as opt, i (i)}
-          <button class="lv-opt" class:sel={currentQ.type === "multiple" ? (answeredMap[current] ?? "").includes(String.fromCharCode(65 + i)) : selected === String.fromCharCode(65 + i)}
-            onclick={() => pickOption(String.fromCharCode(65 + i))}>
-            <span class="key">{String.fromCharCode(65 + i)}</span><span>{opt}</span>
-          </button>
-        {/each}
+        <!-- 45-03：多选 checkbox/group 语义，单选/判断 radiogroup -->
+        <div role={currentQ.type === "multiple" ? "group" : "radiogroup"} aria-label={t("session.options")}>
+          {#each currentQ.options as opt, i (i)}
+            {@const L = String.fromCharCode(65 + i)}
+            <button class="lv-opt" class:sel={currentQ.type === "multiple" ? (answeredMap[current] ?? "").includes(L) : selected === L}
+              role={currentQ.type === "multiple" ? "checkbox" : "radio"}
+              aria-checked={currentQ.type === "multiple" ? (answeredMap[current] ?? "").includes(L) : selected === L}
+              onclick={() => pickOption(L)}>
+              <span class="key">{L}</span><span>{opt}</span>
+            </button>
+          {/each}
+        </div>
       {:else}
         <textarea class="lv-input lv-textarea" value={answeredMap[current] ?? ""}
           oninput={(e) => { session?.setAnswer(current, (e.target as HTMLTextAreaElement).value, Date.now()); answeredMap = { ...answeredMap, [current]: (e.target as HTMLTextAreaElement).value }; persistRun(); }}></textarea>
