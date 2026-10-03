@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased（0.6.x-dev：廿三~三三批，2026-10-03）
+## Unreleased（0.6.x-dev：廿三~三三批，2026-10-03/04）
 
-> guard 七门禁全绿（300 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、ESLint 0 告警）+ 生产构建通过；真机 smoke 因内核未运行未跑（栏 B 待办，恢复后重跑）。
+> guard 七门禁全绿（300 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、ESLint 0 告警）+ 生产构建通过；**真机验证（SiYuan 3.8.6）**：preflight 17/17、数据生命周期 6/6、题目编辑 updateBlock / 章节树 docTree / listQuestions hpath 三项契约实测通过。docs/17 人工 UI 步骤仍待执行。
 
 - **内核 429 限流处理**：HTTP 429 识别为可重试错误分类；perf-bank 真机基线发现 3.8.6 连续请求限流（32 组新待办）
 - **GIFT 解析器**（42-04 部分）：Moodle GIFT 单选/多选/判断/简答，`::标题::`→考点、`#反馈`→解析；行内选择式 `{=对~错}` 归一
