@@ -18,7 +18,7 @@ import { ttsSpeak } from "@/core/tts";
     import { upsertView, viewBankMismatch } from "@/core/smartViews";
     import { avgMsByType, estimatePlanMinutes } from "@/core/timeBudget";
     import { kpAudit, planKpMerge, planEmptyKpFill } from "@/core/kpGovernance";
-    import { probeCheckinApi, syncCheckin, localDateKeyOf } from "@/core/checkinBridge";
+    import { probeCheckinApi, syncCheckin, localDateKeyOf, bridgeEnabled, fetchStreak } from "@/core/checkinBridge";
     import { onExamEvent } from "@/core/bus";
     import { escapeHtml } from "../../libs/sanitize";
     import { questionFingerprint } from "@/ai/task";
@@ -332,6 +332,7 @@ import { ttsSpeak } from "@/core/tts";
         await loadBatchUndo();
         await loadAiTaskLog();
         void retryCheckinPending(); // 48-03：上次未写入的打卡事件原引用补写
+        void loadCheckinStreak(); // 48-04 lite：桥开启时读连续天数（只读投影）
         // 45-06：恢复未提交的录题草稿（切视图/重载不丢输入）
         try {
           const d = (await (app as any).deps.storage.load("draft/manual")) as
@@ -1008,6 +1009,14 @@ import { ttsSpeak } from "@/core/tts";
         const result = api.recordEvent?.(pending);
         if (result !== undefined) await (app as any).deps.storage.save(CHECKIN_PENDING_KEY, null);
       } catch { /* 保留待重试 */ }
+    }
+    /** 48-04 lite：打卡→考试只读投影——桥开启时读取连续天数（只读、失败安静、不自算 streak） */
+    let checkinStreak = $state<number | null>(null);
+    async function loadCheckinStreak() {
+      const cfg = checkinCfg();
+      if (!bridgeEnabled(cfg)) return;
+      const s = await fetchStreak(probeCheckinApi(window), cfg.itemId);
+      checkinStreak = s?.current ?? null;
     }
 
     /** 44-01：结算页错题回看展开态 */
@@ -1959,7 +1968,11 @@ import { ttsSpeak } from "@/core/tts";
         </span>
       {/if}
     {/if}
-    {#if hasBank}<span class="lv-chip">{t("bank.label")} {bankName}</span><button class="lv-chip" title={t("bank.removeTitle")} onclick={removeActiveBank}>✕</button>{/if}
+      {#if checkinStreak != null && checkinStreak > 0}
+        <!-- 48-04 lite：打卡→考试只读投影（连续数由打卡单一实现计算，考试侧不自算） -->
+        <span class="lv-chip num" title={t("entry.checkinStreakTip")}>🔥 {t("entry.checkinStreak").replace("{n}", String(checkinStreak))}</span>
+      {/if}
+      {#if hasBank}<span class="lv-chip">{t("bank.label")} {bankName}</span><button class="lv-chip" title={t("bank.removeTitle")} onclick={removeActiveBank}>✕</button>{/if}
   </div>
 
   {#if loading}

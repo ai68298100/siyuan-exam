@@ -249,8 +249,10 @@ export default class LvExamPlugin extends Plugin {
     try {
       import("@/core/publicStats").then((m) => {
         const d = this.examApp!.derived();
-        const snapshot = m.buildPublicStats(d, this.examApp!.attempts.all(), streak(d));
+        const snapshot = m.buildPublicStats(d, this.examApp!.attempts.all(), streak(d)) as unknown as Record<string, unknown>;
         (this as any).lastPublicStats = snapshot; // window.siyuanExam.stats() 的同步缓存
+        // 48-02 lite：总线形态（信封 v1，新消费者推荐）；legacy 裸 detail 同时保留（旧消费者兼容）
+        emitExamEvent("stats", snapshot);
         window.dispatchEvent(
           new CustomEvent("lv-exam:stats", {
             detail: snapshot,

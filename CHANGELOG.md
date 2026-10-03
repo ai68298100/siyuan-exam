@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased（0.6.x-dev：廿三~四二批，2026-10-03/04）
+## Unreleased（0.6.x-dev：廿三~四三批，2026-10-03/04）
 
-> guard 七门禁全绿（332 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、ESLint 0 告警）+ 生产构建通过；**真机验证（SiYuan 3.8.6）**：preflight 17/17、数据生命周期 6/6、CSV 往返冒烟 5/5（`scripts/smoke-csv.mjs`）、题目编辑 updateBlock / 章节树 docTree / listQuestions hpath 三项契约实测通过。docs/17 人工 UI 步骤剩 27/28/36-38。
+> guard 七门禁全绿（334 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、ESLint 0 告警）+ 生产构建通过；**真机验证（SiYuan 3.8.6）**：preflight 17/17、数据生命周期 6/6、CSV 往返冒烟 5/5（`scripts/smoke-csv.mjs`）、题目编辑 updateBlock / 章节树 docTree / listQuestions hpath 三项契约实测通过。docs/17 人工 UI 步骤剩 27/28/36-38。
 
 - **内核 429 限流处理**：HTTP 429 识别为可重试错误分类；perf-bank 真机基线发现 3.8.6 连续请求限流（32 组新待办）
 - **GIFT 解析器**（42-04 部分）：Moodle GIFT 单选/多选/判断/简答，`::标题::`→考点、`#反馈`→解析；行内选择式 `{=对~错}` 归一
@@ -63,6 +63,9 @@
 - **window.siyuanExam 公开 API**（47-04/48-06 lite，四一批）：open/practice/wrongbook/mock/report 稳定入口 + `statsRead()` 按需脱敏快照（迟到消费者推荐路径）；随插件卸载自动移除
 - **生态契约总表**（48-01，四一批）：`docs/ecosystem-contracts.md`——已实现 5 类契约与拟议表（打卡/闪卡/拾遗/人脉桥均标注前置，不冒充已支持）
 - **考试→打卡单向桥**（48-03 lite，四二批）：按打卡 api-v5 稳定契约实装——设置项目 ID/达标题数后，结算达标自动写一条打卡（`source:"api"`，`externalRef=exam:<itemId>:<日期>` 每日幂等）；写入失败原引用持久化待重试（重启/下次结算补写）；未配置=桥完全关闭；结算页状态 chip
+- **打卡连续投影**（48-04 lite，四三批）：桥开启时入口页显示「🔥 打卡连续 n 天」（metrics.read 能力协商 + getStreaks，不自算 streak；失败安静不显示）
+- **stats 并入事件总线**（48-02 lite，四三批）：`lv-exam:stats` 快照同时以信封 v1（`onExamEvent("stats")`）与 legacy 裸 detail 双发，新旧消费者共存
+- **诊断包扩展**（46-06，四三批）：诊断 JSON 新增存储占用合计（KB）与数据体检摘要（重复 eid/非法事件/时钟漂移计数）
 
 ## 0.6.0 (2026-10-03)
 

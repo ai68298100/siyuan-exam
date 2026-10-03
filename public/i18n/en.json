@@ -550,6 +550,8 @@
     "checkin.status.duplicate": "✓ Already checked in today (idempotent hit)",
     "checkin.status.pending": "⏳ Check-in write unfinished — original reference kept for retry (auto on restart or next summary)",
     "checkin.status.no-capability": "⚠ Check-in plugin did not grant the events.record capability",
+    "entry.checkinStreak": "{n}-day check-in streak",
+    "entry.checkinStreakTip": "From Check-in (read-only projection; streak computed by the check-in plugin)",
     "eco.moduleTitle": "Exam · Today",
     "eco.moduleDesc": "Today's attempts, accuracy and active wrongbook",
     "eco.todayAttempts": "Today",

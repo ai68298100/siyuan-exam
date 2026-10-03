@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   bridgeEnabled,
   buildCheckinEvent,
+  fetchStreak,
   localDateKeyOf,
   probeCheckinApi,
   shouldCheckin,
@@ -86,5 +87,39 @@ describe("打卡桥待重试持久化（ExamApp，四二批）", () => {
     expect((await app.getCheckinPending())?.externalRef).toBe(evt.externalRef);
     await app.setCheckinPending(null);
     expect(await app.getCheckinPending()).toBeNull();
+  });
+});
+
+describe("48-04 打卡只读投影：fetchStreak（四三批）", () => {
+  const itemId = "题库打卡";
+  const okApi = (streaks: unknown[] | (() => unknown[])) =>
+    ({
+      protocol: "siyuan-checkin",
+      whenReady: () => {},
+      hasCapability: (n: string) => n === "metrics.read",
+      getStreaks: typeof streaks === "function" ? (streaks as () => unknown[]) : () => streaks,
+    }) as unknown as CheckinApiV5;
+
+  it("能力齐备：返回配置项目的连续数", async () => {
+    const s = await fetchStreak(okApi([{ itemId, current: 7, longest: 21 }]), itemId);
+    expect(s).toEqual({ current: 7, longest: 21 });
+  });
+
+  it("能力缺失/异常/项目不匹配/未配置 → null（不影响刷题）", async () => {
+    expect(await fetchStreak(okApi([{ itemId, current: 7, longest: 21 }]), "  ")).toBeNull(); // 未配置
+    const noCap = {
+      protocol: "siyuan-checkin",
+      hasCapability: () => false,
+      getStreaks: () => [],
+    } as unknown as CheckinApiV5;
+    expect(await fetchStreak(noCap, itemId)).toBeNull();
+    const boom = {
+      protocol: "siyuan-checkin",
+      whenReady: () => {
+        throw new Error("boom");
+      },
+    } as unknown as CheckinApiV5;
+    expect(await fetchStreak(boom, itemId)).toBeNull();
+    expect(await fetchStreak(okApi([{ itemId: "其他项目", current: 9, longest: 9 }]), itemId)).toBeNull();
   });
 });

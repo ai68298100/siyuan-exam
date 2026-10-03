@@ -550,6 +550,8 @@
     "checkin.status.duplicate": "✓ 今日打卡已同步过（幂等命中）",
     "checkin.status.pending": "⏳ 打卡写入未完成，已保留原引用待重试（重启或下次结算自动补写）",
     "checkin.status.no-capability": "⚠ 打卡插件未开放写入能力（events.record）",
+    "entry.checkinStreak": "打卡连续 {n} 天",
+    "entry.checkinStreakTip": "来自小驴打卡（只读投影，连续数由打卡插件计算）",
     "eco.moduleTitle": "小驴考试 · 今日练习",
     "eco.moduleDesc": "今日作答量、正确率与错题在册",
     "eco.todayAttempts": "今日作答",

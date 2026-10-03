@@ -109,3 +109,29 @@ export async function syncCheckin(
     return { status: "pending", event: buildCheckinEvent(cfg, todayAttempts, nowMs) };
   }
 }
+
+// ---------- 打卡→考试只读投影（TODO 48-04 lite）：连续天数展示，只读、失败安静 ----------
+
+export interface CheckinStreakApiV5 extends CheckinApiV5 {
+  getStreaks?: (itemIds?: string[]) => Array<{ itemId: string; current: number; longest: number }>;
+}
+
+/** 读取配置项目的连续打卡（48-04 lite；metrics.read 能力缺失/异常 → null，不影响刷题）。
+ *  红线：连续数由打卡单一实现计算，考试侧不自算；仅用户配置了桥 itemId 时才读取 */
+export async function fetchStreak(
+  api: CheckinApiV5 | null,
+  itemId: string,
+): Promise<{ current: number; longest: number } | null> {
+  if (!api || !itemId.trim()) return null;
+  try {
+    await api.whenReady?.();
+    if (api.hasCapability && !api.hasCapability("metrics.read")) return null;
+    const api2 = api as CheckinStreakApiV5;
+    if (typeof api2.getStreaks !== "function") return null;
+    const list = api2.getStreaks([itemId.trim()]);
+    const s = list?.find((x) => x.itemId === itemId.trim());
+    return s ? { current: s.current, longest: s.longest } : null;
+  } catch {
+    return null;
+  }
+}

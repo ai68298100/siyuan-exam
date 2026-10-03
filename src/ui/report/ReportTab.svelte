@@ -171,6 +171,8 @@
       try {
         const d = app.derived();
         const usage = await app.aiUsage();
+        const storageRows = await app.storageUsage();
+        const audit = app.auditData(new Set()); // 无已知 qid 集 → 孤儿项跳过（诊断口径保守）
         const bundle = {
           app: "siyuan-exam",
           exportedAt: new Date().toISOString(),
@@ -185,6 +187,14 @@
           openActions: (await app.listOpenActions()).length,
           aiUsage: usage,
           saveStates: app.saves.all().map((r) => ({ key: r.key, state: r.state })),
+          // 46-06/69-06 扩展（四三批）：存储占用与数据体检摘要（脱敏，仅计数）
+          storageKB: Math.round(storageRows.reduce((s, r) => s + r.bytes, 0) / 1024),
+          dataAudit: {
+            events: audit.events,
+            duplicateEids: audit.duplicateEids,
+            badEvents: audit.badEvents,
+            futureEvents: audit.futureEvents,
+          },
         };
         await navigator.clipboard.writeText(JSON.stringify(bundle, null, 2));
         showMessage(t("diag.copied"), 3800, "info");
