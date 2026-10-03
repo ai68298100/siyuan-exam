@@ -116,6 +116,22 @@ export default class LvExamPlugin extends Plugin {
       direction: "column",
     });
     this.settingUtils.addItem({
+      title: this.i18n["setting.checkinItemId.title"],
+      description: this.i18n["setting.checkinItemId.desc"],
+      type: "textinput",
+      key: "checkinItemId",
+      value: "",
+      direction: "row",
+    });
+    this.settingUtils.addItem({
+      title: this.i18n["setting.checkinThreshold.title"],
+      description: this.i18n["setting.checkinThreshold.desc"],
+      type: "number",
+      key: "checkinThreshold",
+      value: 0,
+      direction: "row",
+    });
+    this.settingUtils.addItem({
       title: this.i18n["setting.retention.title"],
       description: this.i18n["setting.retention.desc"],
       type: "slider",

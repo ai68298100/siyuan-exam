@@ -18,6 +18,7 @@ import { ttsSpeak } from "@/core/tts";
     import { upsertView, viewBankMismatch } from "@/core/smartViews";
     import { avgMsByType, estimatePlanMinutes } from "@/core/timeBudget";
     import { kpAudit, planKpMerge, planEmptyKpFill } from "@/core/kpGovernance";
+    import { probeCheckinApi, syncCheckin, localDateKeyOf } from "@/core/checkinBridge";
     import { onExamEvent } from "@/core/bus";
     import { escapeHtml } from "../../libs/sanitize";
     import { questionFingerprint } from "@/ai/task";
@@ -330,6 +331,7 @@ import { ttsSpeak } from "@/core/tts";
         await loadSmartViews();
         await loadBatchUndo();
         await loadAiTaskLog();
+        void retryCheckinPending(); // 48-03：上次未写入的打卡事件原引用补写
         // 45-06：恢复未提交的录题草稿（切视图/重载不丢输入）
         try {
           const d = (await (app as any).deps.storage.load("draft/manual")) as
@@ -971,6 +973,43 @@ import { ttsSpeak } from "@/core/tts";
       }
     }
 
+    // ---------- 打卡桥（48-03 lite）：结算自动同步 + 待重试持久化 + 重载补写 ----------
+    let checkinStatus = $state<import("@/core/checkinBridge").CheckinSyncStatus | null>(null);
+    let checkinNote = $state("");
+    const CHECKIN_PENDING_KEY = "checkin/bridge/pending";
+    function checkinCfg() {
+      return {
+        itemId: String(plugin.settingUtils?.get?.("checkinItemId") ?? "").trim(),
+        threshold: Number(plugin.settingUtils?.get?.("checkinThreshold") ?? 0) || 0,
+      };
+    }
+    async function runCheckinBridge() {
+      const cfg = checkinCfg();
+      const api = probeCheckinApi(window);
+      const today = localDateKeyOf(Date.now());
+      const attempts = app.attempts.all().filter(
+        (e) => localDateKeyOf(e.ts) === today && e.verdict !== "not_attempted",
+      ).length;
+      const goal = Number(plugin.settingUtils?.get?.("dailyGoal") ?? 10) || 10;
+      const st = await syncCheckin(api, cfg, attempts, Date.now(), goal);
+      await (app as any).deps.storage.save(CHECKIN_PENDING_KEY, st.event ?? null); // pending 持久化（原引用）
+      checkinStatus = st.status;
+      if (st.status === "pending") checkinNote = String(st.event?.externalRef ?? "");
+    }
+    /** 重载补写：上次未写入的打卡事件以原 externalRef 重试（写入成功才清除） */
+    async function retryCheckinPending() {
+      const pending = await (app as any).deps.storage.load(CHECKIN_PENDING_KEY);
+      if (!pending) return;
+      const api = probeCheckinApi(window);
+      if (!api) return; // 打卡未装：保留待重试
+      try {
+        await api.whenReady?.();
+        if (api.hasCapability && !api.hasCapability("events.record")) return;
+        const result = api.recordEvent?.(pending);
+        if (result !== undefined) await (app as any).deps.storage.save(CHECKIN_PENDING_KEY, null);
+      } catch { /* 保留待重试 */ }
+    }
+
     /** 44-01：结算页错题回看展开态 */
     let reviewOpen = $state(false);
     /** 52-02 lite：先回忆模式（按题开关，切题重置）；recallDraft 与作答草稿分离、不入正式答案 */
@@ -1054,6 +1093,7 @@ import { ttsSpeak } from "@/core/tts";
       await app.flush();
       plugin.refreshDock?.();
       rebuildPlan();
+      void runCheckinBridge(); // 48-03 lite：结算自动同步打卡（幂等 externalRef，失败进待重试）
     }
 
     /** 结算页错题批量转卡（LeetFlash 零成本化）：一次点击入 FSRS 队列（按块幂等，重复转卡自动跳过） */
@@ -2060,6 +2100,12 @@ import { ttsSpeak } from "@/core/tts";
         <div class="lv-card lv-guard">
           <div class="lv-guard-title">🏁 {t("session.done")}</div>
           <p class="num">{t("session.total")} {sessionDone.total} · <span class="lv-green">{t("session.correct")} {sessionDone.correct}</span> · <span class="lv-red">{t("session.wrong")} {sessionDone.wrong}</span></p>
+          {#if checkinStatus && checkinStatus !== "disabled" && checkinStatus !== "below-threshold" && checkinStatus !== "no-api"}
+            <!-- 48-03 lite：打卡桥状态（未配置/未达标/打卡未装时安静不显） -->
+            <p class="lv-muted" style="margin:2px 0" role="status">
+              📅 {t("checkin.status." + checkinStatus)}{#if checkinStatus === "pending" && checkinNote}<span class="num">（{checkinNote}）</span>{/if}
+            </p>
+          {/if}
           {#if session.state.order}
             <!-- 44-03：结算显示本次排序策略（同队列可重放，不能以单次正确率下学习结论） -->
             <p class="lv-muted" style="margin:2px 0">{t("session.orderLabel")}：{session.state.order === "interleaved" ? t("session.orderInter") : t("session.orderAdj")}</p>

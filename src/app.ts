@@ -15,6 +15,7 @@ import { normalizeAnswer, questionHash } from "./core/answer";
 import { questionToMarkdown } from "./core/blockTemplate";
 import { BATCH_FIELD_ATTR, type BatchField } from "./core/batchEdit";
 import { auditAttemptEvents, type DataAuditReport } from "./core/dataAudit";
+import type { CheckinEventInput } from "./core/checkinBridge";
 import type { MockRunSnapshot } from "./core/mock";
 import {
   appendActions,
@@ -742,6 +743,16 @@ export class ExamApp {
     this.banks = [];
     this.invalidate();
     return receipts;
+  }
+
+  // ---------- 打卡桥待重试（48-03：失败保留原 externalRef，不换新引用） ----------
+  async getCheckinPending(): Promise<CheckinEventInput | null> {
+    const v = (await this.deps.storage.load("checkin/bridge/pending")) as CheckinEventInput | null;
+    return v ?? null;
+  }
+
+  async setCheckinPending(p: CheckinEventInput | null): Promise<void> {
+    await this.deps.storage.save("checkin/bridge/pending", p);
   }
 
   // ---------- 每日战报（联动小驴复盘预留） ----------

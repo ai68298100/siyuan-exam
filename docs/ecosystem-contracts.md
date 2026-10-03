@@ -58,7 +58,16 @@
 - `open`：跳转练习台。卸载时 `unregister()` 配对调用（`onunload`）。
 - 诊断：注册是否最终成功见 `settled()`（内部句柄）；放弃时控制台留 `[lv-exam]` 日志。
 
-### 5. 交付物边界（导出/出库）
+### 5. 小驴打卡 · 单向打卡桥（48-03 lite）
+
+- 契约来源：`小驴打卡/docs/api-v5.md`（稳定版）；探测三步 `window.siyuanCheckin` → `protocol === "siyuan-checkin"` → `whenReady()` → `hasCapability("events.record")`。
+- 写入：`recordEvent({ itemId, value: 当日作答数, unit: "题", source: "api", externalRef, note, occurredAt })`。
+- 幂等身份：`externalRef = exam:<itemId>:<localDate>`（同日永远同一引用；**`exam:` 前缀尚未在打卡侧 identity-and-merge.md 正式登记**——治理步骤待办）。
+- 失败语义：`recordEvent` 返回 `undefined` 一律=未写入 → 事件原引用持久化（`checkin/bridge/pending`），重启/下次结算自动补写，不换新引用。
+- 用户配置：设置「打卡桥·项目 ID / 达标题数」；未配置 itemId 时桥完全关闭（不探测不写入）。
+- 状态呈现：结算页 chip（已同步 / 幂等命中 / 待重试 / 无写入能力）。
+
+### 6. 交付物边界（导出/出库）
 
 - CSV 导出：官方模板表头（`core/bankCsv.ts`），不含流水/个人笔记。
 - 数据出库 JSON：`lv-exam.export/1` 信封（流水/题库注册表/错题处置/错因/行动），无题干、无密钥。
@@ -70,9 +79,9 @@
 
 | 计划 | 状态 | 前置 |
 | --- | --- | --- |
-| 考试→打卡最小单向桥（48-03，`window.siyuanCheckin` API v5，`source:"api"` + externalRef 前缀） | 拟议 | 打卡 API 核实 + externalRef 前缀登记契约 |
-| 打卡→考试只读投影（48-04） | 拟议 | 48-03 |
+| 打卡→考试只读投影（48-04，`getStreaks` 连续天数展示） | 拟议 | 48-03 真机走查 |
 | `lv-exam:stats` 版本化并入总线 + 请求/响应契约（47-04 完整形态） | 拟议 | 48-02 事件 schema 定稿 |
+| `exam:` externalRef 前缀在打卡侧正式登记 | 待协作 | 打卡 identity-and-merge.md 治理流程 |
 | 小驴闪卡共存与迁移助手（48-07） | 拟议（需协议 spike） | 闪卡跨插件事件验证 |
 | 小驴拾遗联动（`window.siyuanGlean`） | 拟议（接口本身仍未定稿） | 拾遗协议定稿 |
 | 人脉 LvContacts protocol v1 桥 | 拟议 | 需求验证（48 组排期最低） |
@@ -83,3 +92,4 @@
 
 - 2026-10-04：初版——登记事件总线 v1、`lv-exam:stats`（兼容态）、`window.siyuanExam`、
   雷切 `exam-daily-summary` 组件（48-05）、交付物边界；拟议表立此存照（48-01）。
+- 2026-10-04（同日增补）：小驴打卡单向桥（48-03 lite）转已实现——`exam:` 前缀登记待跨仓库协作，其余契约按 api-v5 稳定版实装。
