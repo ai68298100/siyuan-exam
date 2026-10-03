@@ -55,6 +55,40 @@ export function nearestUpcoming(profiles: ExamProfile[]): ExamProfile | null {
   return profiles.find((p) => p.days != null && p.days >= 0) ?? null;
 }
 
+// ---------- 昨日计划回看（TODO 44-05 lite）：缺席可见、不指数爆量（本引擎配额恒定，本就无爆量） ----------
+
+export interface PlanTrace {
+  date: string; // 该计划对应的自然日 YYYY-MM-DD
+  planned: number; // 当日计划题数
+  done: number; // 当日实际完成（按流水）
+  /** 连续缺席天数（有计划但零完成；链断即归零） */
+  absentStreak: number;
+}
+
+/** 生成今日计划轨迹（昨日轨迹 + 昨日完成数 + 今日计划数；纯函数）。
+ *  44-05 口径：缺席=有计划但零完成（完成数以调用方传入的 doneYesterday 为准）；
+ *  prev 非昨日（链断/首日）→ absentStreak 归零重新计 */
+export function nextPlanTrace(
+  prev: PlanTrace | null,
+  today: string,
+  plannedToday: number,
+  doneYesterday: number,
+): PlanTrace {
+  let absentStreak = 0;
+  if (prev && prev.planned > 0 && prev.date === yesterdayOf(today)) {
+    absentStreak = doneYesterday === 0 ? prev.absentStreak + 1 : 0;
+  }
+  return { date: today, planned: plannedToday, done: doneYesterday, absentStreak };
+}
+
+function yesterdayOf(today: string): string {
+  const parts = today.split("-").map((s) => parseInt(s, 10));
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return "";
+  const d = new Date(parts[0], parts[1] - 1, parts[2]);
+  d.setDate(d.getDate() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export interface PlanInput {
   examDate?: string; // YYYY-MM-DD（未设 = 常规模式）
   sprintDays?: number; // 冲刺姿态阈值，默认 14

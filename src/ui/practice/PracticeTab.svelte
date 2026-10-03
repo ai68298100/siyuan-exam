@@ -3,7 +3,7 @@
     // 状态设计（docs/11）：loading/empty(守卫)/error/normal 四态可达
     import { onMount } from "svelte";
 import { showMessage } from "siyuan";
-    import { planToday, parseExamProfiles, nearestUpcoming } from "@/core/planner";
+    import { planToday, parseExamProfiles, nearestUpcoming, nextPlanTrace } from "@/core/planner";
 import { ttsSpeak } from "@/core/tts";
     import type { ExamApp } from "../../app";
     import type { Question } from "../../core/types";
@@ -19,7 +19,7 @@ import { ttsSpeak } from "@/core/tts";
     import { avgMsByType, estimatePlanMinutes } from "@/core/timeBudget";
     import { kpAudit, planKpMerge, planEmptyKpFill } from "@/core/kpGovernance";
     import { probeCheckinApi, syncCheckin, localDateKeyOf, bridgeEnabled, fetchStreak } from "@/core/checkinBridge";
-    import { onExamEvent } from "@/core/bus";
+    import { onExamEvent, emitExamEvent } from "@/core/bus";
     import { escapeHtml } from "../../libs/sanitize";
     import { questionFingerprint } from "@/ai/task";
     import SaveStatus from "../shared/SaveStatus.svelte";
@@ -574,6 +574,8 @@ import { ttsSpeak } from "@/core/tts";
     let planTime = $state<import("@/core/timeBudget").TimeEstimate | null>(null);
     /** 53-02 lite：多考期清单（按剩余天数升序；入口页展示全部未来考期 chips） */
     let examProfileList = $state<import("@/core/planner").ExamProfile[]>([]);
+    /** 44-05 lite：昨日计划轨迹（缺席连续计数；入口页 chip） */
+    let planTrace = $state<import("@/core/planner").PlanTrace | null>(null);
 
     function rebuildPlan(dueFirst?: Question[]) {
       if (!app) { plan = null; return; }
@@ -600,6 +602,18 @@ import { ttsSpeak } from "@/core/tts";
       // 53-01 lite：今日计划分钟预算（按题型历史用时中位；缺历史题型如实标注默认值）
       const typeOf = new Map(questions.map((q) => [q.id, q.type] as const));
       planTime = estimatePlanMinutes(plan.queue, avgMsByType(app.attempts.all(), (qid) => typeOf.get(qid)));
+      // 44-05 lite：昨日计划回看轨迹（缺席连续计数持久化；入口页 chip 提示）
+      void (async () => {
+        const prev = ((await (app as any).deps.storage.load("plan/trace")) as import("@/core/planner").PlanTrace | null) ?? null;
+        const yesterday = new Date(Date.now() - 86_400_000);
+        const yKey = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, "0")}-${String(yesterday.getDate()).padStart(2, "0")}`;
+        const doneY = app.attempts
+          .all()
+          .filter((e) => e.verdict !== "not_attempted" && localDateKeyOf(e.ts) === yKey).length;
+        const trace = nextPlanTrace(prev, localDateKeyOf(Date.now()), plan!.queue.length, doneY);
+        planTrace = trace;
+        void (app as any).deps.storage.save("plan/trace", trace);
+      })();
     }
 
     /** 每日任务直接使用计划队列（零决策入口） */
@@ -1098,6 +1112,14 @@ import { ttsSpeak } from "@/core/tts";
 
     async function finishSession() {
       sessionDone = session.finish();
+      // 48-02 lite：会话结束事件（仅计数，无题干；生态消费者按需重读明细）
+      emitExamEvent("session-ended", {
+        sessionId: session.id,
+        mode: session.state.mode,
+        total: sessionDone.total,
+        correct: sessionDone.correct,
+        wrong: sessionDone.wrong,
+      });
       await app.saveSession();
       await app.flush();
       plugin.refreshDock?.();
@@ -1960,6 +1982,12 @@ import { ttsSpeak } from "@/core/tts";
         {#each examProfileList.filter((p) => p.days != null && p.days >= 0) as p, _pi (_pi)}
           <span class="lv-chip num" title={t("entry.profileTip")}>📌 {p.name} D-{p.days}</span>
         {/each}
+      {/if}
+      {#if planTrace && planTrace.absentStreak >= 2}
+        <!-- 44-05 lite：连续缺席提醒（配额恒定不爆量，仅可见性） -->
+        <span class="lv-chip lv-chip--amb num" title={t("entry.absentTip")}>⚠ {t("entry.absent").replace("{n}", String(planTrace.absentStreak))}</span>
+      {:else if planTrace && planTrace.planned > 0 && planTrace.done >= 0}
+        <span class="lv-chip num" title={t("entry.yesterdayTip")}>📅 {t("entry.yesterday").replace("{p}", String(planTrace.planned)).replace("{d}", String(planTrace.done))}</span>
       {/if}
       {#if planTime}
         <!-- 53-01 lite：今日计划分钟预算；缺历史题型如实标注默认值口径 -->

@@ -15,6 +15,7 @@ import { normalizeAnswer, questionHash } from "./core/answer";
 import { questionToMarkdown } from "./core/blockTemplate";
 import { BATCH_FIELD_ATTR, type BatchField } from "./core/batchEdit";
 import { auditAttemptEvents, type DataAuditReport } from "./core/dataAudit";
+import { emitExamEvent } from "./core/bus";
 import type { CheckinEventInput } from "./core/checkinBridge";
 import type { MockRunSnapshot } from "./core/mock";
 import {
@@ -382,6 +383,7 @@ export class ExamApp {
     await this.deps.storage.save(key, map);
     this.wrongOverlay = new Map(Object.entries(map));
     this.invalidate();
+    emitExamEvent("wrongbook-changed", { qid, status }); // 48-02 lite：生态消费者按需重读
   }
 
   /** 顽固题暂缓（52-06 lite）：days 天内不进错题重练/每日计划，到期自动回册；期间再错立即回册 */
@@ -396,6 +398,7 @@ export class ExamApp {
     await this.deps.storage.save(key, map);
     this.wrongOverlay = new Map(Object.entries(map));
     this.invalidate();
+    emitExamEvent("wrongbook-changed", { qid, status: "snoozed" });
   }
 
   // ---------- 错题自诊断（52-04 lite）：个人复盘短模板，与官方解析分离存储 ----------

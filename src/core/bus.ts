@@ -22,7 +22,9 @@ export type BusEventType =
   | "open-question" // {qid} Dock/错题本 → 练习台单题会话
   | "open-in-browse" // {qid, bank} 块菜单 → 浏览视图聚焦
   | "edit-question" // {qid, bank} 块菜单 → 浏览视图编辑
-  | "stats"; // {…} publicStats 快照（47-04 版本化前的兼容位）
+  | "session-ended" // {sessionId, mode, total, correct, wrong} 会话结算（仅计数，无题干）
+  | "wrongbook-changed" // {qid, status} 错题处置/暂缓/再错（生态消费者按需重读）
+  | "stats"; // {…} publicStats 快照（48-02 lite：信封双发；legacy 裸 detail 兼容保留）
 
 export function busEventName(type: BusEventType): string {
   return BUS_PREFIX + type;

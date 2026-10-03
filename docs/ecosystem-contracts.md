@@ -20,6 +20,9 @@
 | `lv-exam:open-question` | `{ qid: string }` | Dock 行点击 | 练习台（单题会话） |
 | `lv-exam:open-in-browse` | `{ qid, bank }` | 块菜单「在练习台打开」 | 练习台（浏览聚焦） |
 | `lv-exam:edit-question` | `{ qid, bank }` | 块菜单「编辑题目」 | 练习台（浏览编辑） |
+| `lv-exam:session-ended` | `{ sessionId, mode, total, correct, wrong }` | 会话结算 | 生态消费者（仅计数，无题干） |
+| `lv-exam:wrongbook-changed` | `{ qid, status }` | 错题处置（mastered/removed/active/snoozed） | 生态消费者（按需重读） |
+| `lv-exam:stats` | publicStats 脱敏快照 | 数据变更后 | 生态消费者（legacy 裸 detail 与信封 v1 双发） |
 
 - 载体：`window` CustomEvent，`detail = { v: 1, type, eventId, at, payload }`。
 - 幂等：每次发射 `eventId` 唯一（`e-<base36 时间>-<序号>`），重放去重以此为锚。
