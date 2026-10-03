@@ -328,6 +328,19 @@ import { ttsSpeak } from "@/core/tts";
         await loadSmartViews();
         await loadBatchUndo();
         await loadAiTaskLog();
+        // 45-06：恢复未提交的录题草稿（切视图/重载不丢输入）
+        try {
+          const d = (await (app as any).deps.storage.load("draft/manual")) as
+            | { type: string; stem: string; options: string[]; answer: string; analysis: string; kp: string; source: string; group: string }
+            | undefined;
+          if (d?.stem?.trim()) {
+            mType = (d.type as typeof mType) ?? "single";
+            mStem = d.stem; mOptions = d.options?.length ? d.options : ["", ""];
+            mAnswer = d.answer ?? ""; mAnalysis = d.analysis ?? "";
+            mKp = d.kp ?? ""; mSource = d.source ?? ""; mGroup = d.group ?? "";
+            draftRestored = true;
+          }
+        } catch { /* 草稿读取失败静默 */ }
       })();
       banks = app.listBanks();
       if (banks.length) activeBankId = banks[0].id;
@@ -337,8 +350,8 @@ import { ttsSpeak } from "@/core/tts";
         const all = questions.length ? questions : await loadQuestions();
         const q = all.find((x) => x.id === pid);
         if (!q) { showMessage(t("query.empty"), 3200, "info"); return true; }
-        const s = await app.startSession([q], "wrong", activeBankId);
-        session = s; feedback = null; selected = ""; confidenceSel = ""; sessionDone = null; view = "session";
+        if (!(await negotiateStart([q], "wrong"))) return true;
+        feedback = null; selected = ""; confidenceSel = ""; sessionDone = null; view = "session";
         return true;
       }
       /** 块菜单「在练习台打开/编辑」→ 浏览视图按 qid 聚焦（题目在其它库时自动切库） */
@@ -448,17 +461,42 @@ import { ttsSpeak } from "@/core/tts";
       showMessage(t("bank.removed"), 2800, "info");
     }
 
-    /** 会话启动失败可见化（47-06 lite）：单活动冲突/离线等不再静默吞掉 */
-    async function safeStart(qs: Question[], mode: string, follow: () => void): Promise<boolean> {
+    /** 44-03 lite：材料组排序策略（设置项）——false=分块连排（默认）/ true=交错打散 */
+    const materialInterleave = $derived(
+      plugin.settingUtils?.get?.("materialInterleave") === true || plugin.settingUtils?.get?.("materialInterleave") === "true",
+    );
+
+    /** 会话启动失败可见化（47-06 lite）：单活动冲突/离线等不再静默吞掉。
+     *  40-05 活动会话协商：冲突时提供「放弃当前并新开」（旧会话有 checkpoint，可恢复） */
+    async function negotiateStart(qs: Question[], mode: string): Promise<boolean> {
       try {
-        session = await app.startSession(qs, mode, activeBankId);
-        follow();
+        session = await app.startSession(qs, mode, activeBankId, { interleave: materialInterleave });
         return true;
       } catch (e) {
-        errorMsg = offline ? t("state.offlineHint") : String(e instanceof Error ? e.message : e);
-        showMessage(errorMsg, 4200, "error");
-        return false;
+        const msg = String(e instanceof Error ? e.message : e);
+        if (!msg.includes("已有进行中的会话")) {
+          errorMsg = offline ? t("state.offlineHint") : msg;
+          showMessage(errorMsg, 4200, "error");
+          return false;
+        }
+        const { confirmDialogSync } = await import("../../libs/dialog");
+        if (!(await confirmDialogSync({ title: t("session.conflictTitle"), content: t("session.conflictBody") }))) return false;
+        await app.discardSession();
+        try {
+          session = await app.startSession(qs, mode, activeBankId, { interleave: materialInterleave });
+          return true;
+        } catch (e2) {
+          errorMsg = offline ? t("state.offlineHint") : String(e2 instanceof Error ? e2.message : e2);
+          showMessage(errorMsg, 4200, "error");
+          return false;
+        }
       }
+    }
+
+    async function safeStart(qs: Question[], mode: string, follow: () => void): Promise<boolean> {
+      if (!(await negotiateStart(qs, mode))) return false;
+      follow();
+      return true;
     }
 
     async function startDrill(mode: string) {
@@ -1038,6 +1076,24 @@ import { ttsSpeak } from "@/core/tts";
         : L;
     }
 
+    // ---------- 录题草稿保护（45-06 lite）：输入防抖自动保存 → 重载/切视图恢复 → 提交成功清理 ----------
+    const MANUAL_DRAFT_KEY = "draft/manual";
+    let draftRestored = $state(false);
+    let draftTimer: ReturnType<typeof setTimeout> | null = null;
+    $effect(() => {
+      // 读取全部草稿字段建立依赖；防抖 800ms 落盘（切视图/崩溃后可恢复）
+      const snap = {
+        type: mType, stem: mStem, options: [...mOptions], answer: mAnswer,
+        analysis: mAnalysis, kp: mKp, source: mSource, group: mGroup, savedAt: Date.now(),
+      };
+      if (draftTimer) clearTimeout(draftTimer);
+      if (!snap.stem.trim() && !snap.answer.trim() && !snap.analysis.trim()) return; // 空草稿不写
+      draftTimer = setTimeout(() => {
+        void (app as any)?.deps?.storage?.save(MANUAL_DRAFT_KEY, snap);
+      }, 800);
+      return () => { if (draftTimer) clearTimeout(draftTimer); };
+    });
+
     async function saveManual() {
       if (mSaving || !mStem.trim()) return;
       mSaving = true; mSaved = ""; errorMsg = "";
@@ -1052,6 +1108,8 @@ import { ttsSpeak } from "@/core/tts";
         await app.writeManualQuestion(activeBankId, q);
         mSaved = q.id;
         mStem = ""; mOptions = ["", ""]; mAnswer = ""; mAnalysis = "";
+        draftRestored = false;
+        void (app as any).deps.storage.save(MANUAL_DRAFT_KEY, null); // 45-06：提交成功清理草稿
       } catch (e) {
         errorMsg = offline ? t("state.offlineHint") : String(e instanceof Error ? e.message : e);
       } finally { mSaving = false; }
@@ -1893,6 +1951,10 @@ import { ttsSpeak } from "@/core/tts";
         <div class="lv-card lv-guard">
           <div class="lv-guard-title">🏁 {t("session.done")}</div>
           <p class="num">{t("session.total")} {sessionDone.total} · <span class="lv-green">{t("session.correct")} {sessionDone.correct}</span> · <span class="lv-red">{t("session.wrong")} {sessionDone.wrong}</span></p>
+          {#if session.state.order}
+            <!-- 44-03：结算显示本次排序策略（同队列可重放，不能以单次正确率下学习结论） -->
+            <p class="lv-muted" style="margin:2px 0">{t("session.orderLabel")}：{session.state.order === "interleaved" ? t("session.orderInter") : t("session.orderAdj")}</p>
+          {/if}
           {#if session.answered.length}
             <div class="lv-row" style="flex-wrap:wrap;gap:4px;margin:8px 0">
               {#each session.answered as a, ai (ai)}
@@ -2133,6 +2195,7 @@ import { ttsSpeak } from "@/core/tts";
       <div class="lv-row">
         <button class="lv-btn lv-btn--ghost" onclick={() => view = "entry"}>← {t("mode.practice")}</button>
         <span class="lv-chip">{t("manual.title")}</span>
+        {#if draftRestored}<span class="lv-chip lv-chip--amb">{t("manual.draftRestored")}</span>{/if}
         {#if mSaved}<span class="lv-chip lv-chip--grn num">✓ {mSaved}</span>{/if}
       </div>
       <div class="lv-card lv-pad-card">

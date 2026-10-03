@@ -8,6 +8,7 @@ import { AttemptLog } from "./core/attemptLog";
 import type { AttemptEvent, Question, ReplayResult, WrongItem, SessionState } from "./core/types";
 import { replay, activeWrongItems } from "./core/replayer";
 import { PracticeSession, pickRandom, groupAdjacent } from "./core/session";
+import { interleaveGroups } from "./core/interleave";
 import { deckNameForBank, selfRatingToRiffRating, pickSameKp, cramQueue, dailySet } from "./core/memory";
 import { SaveGate } from "./core/saveGate";
 import { normalizeAnswer, questionHash } from "./core/answer";
@@ -484,14 +485,21 @@ export class ExamApp {
     return this.activeSession;
   }
 
-  async startSession(questions: Question[], mode: string, bankId?: string): Promise<PracticeSession> {
+  async startSession(
+    questions: Question[],
+    mode: string,
+    bankId?: string,
+    opts?: { interleave?: boolean },
+  ): Promise<PracticeSession> {
     if (this.activeSession && this.activeSession.phase === "running") {
       throw new Error("已有进行中的会话：请先继续或放弃");
     }
-    // 材料组聚拢：所有入口统一生效（单点，替代各调用方自行排序）
-    const ordered = groupAdjacent(questions);
+    // 材料组排序（44-03 lite）：分块连排（默认，groupAdjacent）/ 交错打散（interleaveGroups，
+    // 防同材料组连续出现）；策略写入会话状态，结算页如实显示
+    const ordered = opts?.interleave ? interleaveGroups(questions) : groupAdjacent(questions);
     this.activeSession = new PracticeSession(ordered, mode, undefined, this.deps.now ?? (() => Date.now()));
     if (bankId) this.activeSession.state.bankId = bankId; // 37-05：会话归属题库
+    this.activeSession.state.order = opts?.interleave ? "interleaved" : "adjacent";
     await this.saveSession();
     return this.activeSession;
   }

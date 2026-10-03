@@ -99,6 +99,14 @@ export default class LvExamPlugin extends Plugin {
       direction: "row",
     });
     this.settingUtils.addItem({
+      title: this.i18n["setting.materialInterleave.title"],
+      description: this.i18n["setting.materialInterleave.desc"],
+      type: "checkbox",
+      key: "materialInterleave",
+      value: false,
+      direction: "row",
+    });
+    this.settingUtils.addItem({
       title: this.i18n["setting.retention.title"],
       description: this.i18n["setting.retention.desc"],
       type: "slider",

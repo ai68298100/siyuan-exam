@@ -76,6 +76,8 @@ export interface SessionState {
   mode: string;
   /** 题库身份（37-05）：恢复时校验会话归属，跨库不串 */
   bankId?: string;
+  /** 材料组排序策略（44-03 lite）：adjacent=分块连排（默认）/ interleaved=交错打散；旧快照缺省 */
+  order?: "adjacent" | "interleaved";
   qids: string[];
   cursor: number;
   drafts: Record<string, string>;
