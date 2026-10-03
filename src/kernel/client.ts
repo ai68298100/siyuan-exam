@@ -73,7 +73,11 @@ export class HttpTransport implements KernelTransport {
         });
         clearTimeout(timer);
         const text = await res.text();
-        if (!res.ok) throw new KernelError("fatal", endpoint, `HTTP ${res.status}`);
+        if (!res.ok) {
+          // 429 限流（3.8.6 真机发现）：归 retryable 走退避重试；Retry-After 提示带回
+          if (res.status === 429) throw new KernelError("retryable", endpoint, "HTTP 429 限流，稍后重试");
+          throw new KernelError("fatal", endpoint, `HTTP ${res.status}`);
+        }
         let body: { code: number; msg: string; data: unknown };
         try {
           body = JSON.parse(text);
@@ -91,7 +95,8 @@ export class HttpTransport implements KernelTransport {
             ? e
             : new KernelError(kind, endpoint, e instanceof Error ? e.message : String(e), e);
         }
-        await sleep(300 * (attempt + 1));
+        const retryAfter = /429/.test(String(lastErr)) ? 1000 : 300;
+        await sleep(retryAfter * (attempt + 1));
       }
     }
     throw lastErr;

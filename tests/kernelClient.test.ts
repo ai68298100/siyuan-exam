@@ -1,7 +1,7 @@
 // 内核客户端响应形状回归测试（2026-10-02 活内核 3.8.5 预检定案的形状锁定；
 // 内核再漂移时此处先红，避免静默失效）
 import { describe, it, expect } from "vitest";
-import { KernelApiClient, type KernelTransport } from "../src/kernel/client";
+import { KernelApiClient, HttpTransport, type KernelTransport } from "../src/kernel/client";
 
 type Call = { endpoint: string; payload: Record<string, unknown> };
 
@@ -95,9 +95,39 @@ describe("KernelApiClient 响应形状（3.8.5 预检定案）", () => {
     const c = calls.find((x) => x.endpoint === "/api/attr/setBlockAttrs")!;
     expect((c.payload.attrs as Record<string, string>)["custom-exam-fav"]).toBe("1");
   });
+  it("setExamAttrs 裸 exam-* 名 → custom- 全名写入", async () => {
+    const { client, calls } = makeClient(() => ({}));
+    await client.setExamAttrs("blk-9", { "exam-kp": "言语", "exam-difficulty": "3" });
+    const c = calls.find((x) => x.endpoint === "/api/attr/setBlockAttrs")!;
+    expect(c.payload.attrs).toEqual({ "custom-exam-kp": "言语", "custom-exam-difficulty": "3" });
+  });
   it("query_embed：getBlockKramdown 返回 kramdown 字段", async () => {
     const { client } = makeClient(() => ({ kramdown: '{{SELECT 1}}\n{: id="x"}' }));
     await expect(client.getBlockKramdown("blk-1")).resolves.toContain("SELECT 1");
+  });
+});
+
+describe("HttpTransport 429 限流处理（3.8.6 真机发现）", () => {
+  const okRes = { ok: true, status: 200, text: async () => JSON.stringify({ code: 0, msg: "", data: {} }) };
+
+  it("429 归类 retryable：重试一次后成功则不抛", async () => {
+    let calls = 0;
+    const t = new HttpTransport("http://x", "tok", (async () => {
+      calls++;
+      return calls === 1 ? { ok: false, status: 429, text: async () => "" } : okRes;
+    }) as never, 100, 1);
+    await expect(t.post("/api/x", {})).resolves.toBeDefined();
+    expect(calls).toBe(2);
+  });
+
+  it("429 持续 → 重试耗尽后抛出（消息含 429）", async () => {
+    let calls = 0;
+    const t = new HttpTransport("http://x", "tok", (async () => {
+      calls++;
+      return { ok: false, status: 429, text: async () => "" };
+    }) as never, 100, 1);
+    await expect(t.post("/api/x", {})).rejects.toThrow(/429/);
+    expect(calls).toBe(2);   // 首次 + 1 次重试
   });
 });
 

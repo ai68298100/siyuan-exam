@@ -75,11 +75,12 @@ describe("G8 相同事实跨入口一致性", () => {
   it("错题事实：重算/activeWrong/公开统计 三处一致；challenge 隔离；streak 同源", () => {
     const actives = activeWrongItems(d);
     expect(actives.map((w) => w.qid)).toEqual([qs[0].id]); // 只有练习答错的 Q1 在册
-    const publicStats = buildPublicStats(d, events, streak(d), NOW);
+    const now = new Date(NOW);                              // 固定日期：跨午夜不漂移
+    const publicStats = buildPublicStats(d, events, streak(d, now), now);
     expect(publicStats.activeWrong).toBe(actives.length);
     expect(publicStats.eliminated).toBe([...d.wrongbook.values()].filter((w) => w.status === "eliminated").length);
     expect(publicStats.attempts).toBe([...d.byQuestion.values()].reduce((n, s) => n + s.attempts, 0));
-    expect(publicStats.streak).toBe(streak(d));
+    expect(publicStats.streak).toBe(streak(d, now));
     expect(publicStats.streak).toBe(1);
   });
 
