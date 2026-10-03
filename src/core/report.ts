@@ -118,6 +118,8 @@ export interface CalibrationRow {
   correct: number;
   /** 实际正确率 0-100（分母=该档作答数；无分母不显示） */
   accuracy: number;
+  /** 受助作答数（63-02：讲解/提示后同题再答；帮助解读该档正确率时需甄别） */
+  assisted: number;
 }
 
 export interface CalibrationReport {
@@ -133,6 +135,7 @@ const CONF_ORDER: ConfidenceLevel[] = ["sure", "fuzzy", "guess"];
  *  同一事件流里 confidence 缺失 → unreported，不并入任何档。 */
 export function calibration(events: readonly AttemptEvent[]): CalibrationReport {
   const buckets = new Map<ConfidenceLevel, { attempts: number; correct: number }>();
+  const assisted = new Map<ConfidenceLevel, number>();
   let unreported = 0;
   for (const e of events) {
     if (e.verdict === "not_attempted") continue;
@@ -145,6 +148,7 @@ export function calibration(events: readonly AttemptEvent[]): CalibrationReport 
     b.attempts++;
     if (e.verdict === "correct") b.correct++;
     buckets.set(e.confidence, b);
+    if (e.help) assisted.set(e.confidence, (assisted.get(e.confidence) ?? 0) + 1); // 63-02：受助单列
   }
   const rows: CalibrationRow[] = CONF_ORDER.filter((c) => buckets.has(c)).map((c) => {
     const b = buckets.get(c)!;
@@ -153,6 +157,7 @@ export function calibration(events: readonly AttemptEvent[]): CalibrationReport 
       attempts: b.attempts,
       correct: b.correct,
       accuracy: Math.round((b.correct / b.attempts) * 100),
+      assisted: assisted.get(c) ?? 0,
     };
   });
   const sure = buckets.get("sure"),

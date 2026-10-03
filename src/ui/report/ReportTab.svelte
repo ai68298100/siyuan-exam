@@ -423,6 +423,9 @@
             <span class="lv-chip num">{t("confidence." + r.confidence)}</span>
             <div class="progress" style="flex:1"><i class:ok={r.accuracy >= 80} class:mid={r.accuracy >= 50 && r.accuracy < 80} class:low={r.accuracy < 50} style="width:{r.accuracy}%"></i></div>
             <span class="num lv-muted" style="width:90px">{r.accuracy}% · {r.attempts} {t("browse.count")}</span>
+            {#if r.assisted}
+              <span class="lv-chip lv-chip--amb num" title={t("report.assistedTip")}>🫱 {r.assisted}</span>
+            {/if}
           </div>
         {/each}
         {#if calib.rows.some((r) => r.confidence === "sure" && r.accuracy < 80 && r.attempts > 0)}

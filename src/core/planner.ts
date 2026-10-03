@@ -28,6 +28,33 @@ export function daysUntil(examDate: string, now: Date = new Date()): number | nu
   return Math.round(diffMs / DAY_MS);
 }
 
+// ---------- 多考期（TODO 53-02 lite）：多科考生的多个考期并存，计划锚定最近未来考期 ----------
+
+export interface ExamProfile {
+  name: string;
+  date: string; // YYYY-MM-DD
+  days: number | null; // 自然日差（null=日期非法）
+}
+
+/** 解析多考期文本（每行「名称:YYYY-MM-DD」，全角冒号兼容；非法行跳过不报错） */
+export function parseExamProfiles(text: string, now: Date = new Date()): ExamProfile[] {
+  const out: ExamProfile[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const m = line.match(/^\s*(.+?)\s*[:：]\s*(\d{4}-\d{1,2}-\d{1,2})\s*$/);
+    if (!m) continue;
+    const date = m[2];
+    const days = daysUntil(date, now);
+    if (days == null) continue;
+    out.push({ name: m[1], date, days });
+  }
+  return out.sort((a, b) => (a.days ?? 9e9) - (b.days ?? 9e9));
+}
+
+/** 最近未来考期（含今天；已过期的不锚定计划），无未来考期返回 null */
+export function nearestUpcoming(profiles: ExamProfile[]): ExamProfile | null {
+  return profiles.find((p) => p.days != null && p.days >= 0) ?? null;
+}
+
 export interface PlanInput {
   examDate?: string; // YYYY-MM-DD（未设 = 常规模式）
   sprintDays?: number; // 冲刺姿态阈值，默认 14

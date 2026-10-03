@@ -3,7 +3,7 @@
     // 状态设计（docs/11）：loading/empty(守卫)/error/normal 四态可达
     import { onMount } from "svelte";
 import { showMessage } from "siyuan";
-import { planToday } from "@/core/planner";
+    import { planToday, parseExamProfiles, nearestUpcoming } from "@/core/planner";
 import { ttsSpeak } from "@/core/tts";
     import type { ExamApp } from "../../app";
     import type { Question } from "../../core/types";
@@ -569,19 +569,25 @@ import { ttsSpeak } from "@/core/tts";
     let plan = $state<ReturnType<typeof import("@/core/planner").planToday> | null>(null);
     /** 53-01 lite：今日计划分钟预算（与 plan 同步重算） */
     let planTime = $state<import("@/core/timeBudget").TimeEstimate | null>(null);
+    /** 53-02 lite：多考期清单（按剩余天数升序；入口页展示全部未来考期 chips） */
+    let examProfileList = $state<import("@/core/planner").ExamProfile[]>([]);
 
     function rebuildPlan(dueFirst?: Question[]) {
       if (!app) { plan = null; return; }
       const examDate = String(plugin.settingUtils?.get?.("examDate") ?? "").trim();
       const sprintDays = Number(plugin.settingUtils?.get?.("sprintDays") ?? 14);
       const goal = Number(plugin.settingUtils?.get?.("dailyGoal") ?? 10);
+      // 53-02 lite：多考期（设置 textarea「名称:日期」逐行）——计划锚定最近未来考期，无则回退单考期设置
+      examProfileList = parseExamProfiles(String(plugin.settingUtils?.get?.("examProfiles") ?? ""));
+      const nearest = nearestUpcoming(examProfileList);
+      const effectiveExamDate = nearest?.date ?? (examDate || undefined);
       // rebuildPlan 函数内累加器（非组件状态），不转 SvelteMap/SvelteSet
       // eslint-disable-next-line svelte/prefer-svelte-reactivity
       const wrongCounts = new Map<string, number>();
       for (const w of app.derived().wrongbook.values()) wrongCounts.set(w.qid, w.wrongCount);
       const activeWrongIds = new Set(app.wrongItems().map((w) => w.qid));
       plan = planToday({
-        examDate: examDate || undefined,
+        examDate: effectiveExamDate,
         sprintDays: Number.isFinite(sprintDays) && sprintDays > 0 ? sprintDays : 14,
         dailyGoal: Number.isFinite(goal) && goal > 0 ? goal : 10,
         all: questions, wrongCounts, activeWrongIds,
@@ -1900,6 +1906,12 @@ import { ttsSpeak } from "@/core/tts";
     {#if plan}
       {#if plan.mode === "sprint"}<span class="lv-chip lv-chip--red num">🔥 {t("entry.sprint")} D-{plan.daysToExam}</span>
       {:else if plan.daysToExam != null}<span class="lv-chip amb num">⏱ {t("entry.examIn")} {plan.daysToExam} {t("entry.days")}</span>{/if}
+      {#if examProfileList.filter((p) => p.days != null && p.days >= 0).length > 1}
+        <!-- 53-02 lite：多考期并存展示（计划锚定最近，其余一目了然） -->
+        {#each examProfileList.filter((p) => p.days != null && p.days >= 0) as p, _pi (_pi)}
+          <span class="lv-chip num" title={t("entry.profileTip")}>📌 {p.name} D-{p.days}</span>
+        {/each}
+      {/if}
       {#if planTime}
         <!-- 53-01 lite：今日计划分钟预算；缺历史题型如实标注默认值口径 -->
         <span class="lv-chip num" title={planTime.sourced ? t("entry.timeSourced") : t("entry.timeDefault")}>

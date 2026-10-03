@@ -32,6 +32,40 @@ export interface Blueprint {
   sections: BlueprintSection[];
 }
 
+/** 蓝图健康检查（40-02 lite）：返回人类可读问题清单（空数组=健康）。
+ *  重名段必须处理——sectionOf/成绩按段名聚合，重名会把两段统计挤成一团 */
+export function validateBlueprint(bp: Blueprint): string[] {
+  const issues: string[] = [];
+  const seen = new Map<string, number>();
+  for (const s of bp.sections) {
+    const name = s.name.trim();
+    if (!name) issues.push(`存在未命名段（段名不能为空）`);
+    else seen.set(name, (seen.get(name) ?? 0) + 1);
+    if (s.count === 0) issues.push(`段「${name || "未命名"}」题数为 0（将不参与组卷）`);
+    if (s.scoreEach <= 0) issues.push(`段「${name || "未命名"}」每题分值 ≤ 0`);
+  }
+  for (const [name, n] of seen) {
+    if (n > 1) issues.push(`段名「${name}」重复 ${n} 次（统计将按段名合并）`);
+  }
+  if (bp.durationS <= 0) issues.push("总时长 ≤ 0");
+  if (bp.passLine < 0 || bp.passLine > 100) issues.push(`及格线 ${bp.passLine} 超出 0-100`);
+  return issues;
+}
+
+/** 重名段自动改名（40-02 lite）：加 -2/-3 后缀去重；返回新蓝图（不改原对象） */
+export function dedupeSectionNames(bp: Blueprint): Blueprint {
+  const seen = new Map<string, number>();
+  return {
+    ...bp,
+    sections: bp.sections.map((s) => {
+      const name = s.name.trim() || "未命名";
+      const n = (seen.get(name) ?? 0) + 1;
+      seen.set(name, n);
+      return n === 1 ? { ...s, name } : { ...s, name: `${name}-${n}` };
+    }),
+  };
+}
+
 export interface AssembleReport {
   paper: Question[]; // 顺序：按 section 依次拼接
   sectionOf: Map<string, string>; // qid → section name

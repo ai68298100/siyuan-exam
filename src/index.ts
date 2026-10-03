@@ -107,6 +107,14 @@ export default class LvExamPlugin extends Plugin {
       direction: "row",
     });
     this.settingUtils.addItem({
+      title: this.i18n["setting.examProfiles.title"],
+      description: this.i18n["setting.examProfiles.desc"],
+      type: "textarea",
+      key: "examProfiles",
+      value: "",
+      direction: "column",
+    });
+    this.settingUtils.addItem({
       title: this.i18n["setting.retention.title"],
       description: this.i18n["setting.retention.desc"],
       type: "slider",

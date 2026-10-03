@@ -8,7 +8,7 @@
     import type { ExamApp } from "../../app";
     import type { Question } from "../../core/types";
     import { showMessage } from "siyuan";
-    import { assemble, blueprintTotals, MockSession, type Blueprint, type BlueprintSection, type MockRunSnapshot, type MockScore } from "../../core/mock";
+    import { assemble, blueprintTotals, dedupeSectionNames, MockSession, validateBlueprint, type Blueprint, type BlueprintSection, type MockRunSnapshot, type MockScore } from "../../core/mock";
     import { newRunId } from "../../core/ids";
     import { estimateScore } from "../../core/estimate";
     import SaveStatus from "../shared/SaveStatus.svelte";
@@ -142,10 +142,20 @@
     async function startExam() {
       errorMsg = "";
       if (!questions.length) { errorMsg = t("state.emptyBank"); return; }
-      const r = assemble(bp, questions);
+      // 40-02 lite：蓝图健康检查——重名段自动改名（防统计合并）、零题段剔除、其余问题阻断并明示
+      const issues = validateBlueprint(bp);
+      const blocking = issues.filter((x) => !x.includes("题数为 0"));
+      if (blocking.length) { errorMsg = blocking.join("；"); return; }
+      let workingBp = dedupeSectionNames(bp);
+      const zeroSections = workingBp.sections.filter((s) => s.count === 0);
+      if (zeroSections.length) {
+        workingBp = { ...workingBp, sections: workingBp.sections.filter((s) => s.count > 0) };
+        showMessage(t("mock.zeroSectionDropped").replace("{n}", String(zeroSections.length)), 4200, "info");
+      }
+      const r = assemble(workingBp, questions);
       if (!r.paper.length) { errorMsg = t("state.emptyBank"); return; }
       // 40-02：蓝图短缺不阻断开考，但实际题数/实际满分必须在开考前明示（不由其他题偷偷补齐）
-      const requested = bp.sections.reduce((n, s) => n + s.count, 0);
+      const requested = workingBp.sections.reduce((n, s) => n + s.count, 0);
       if (r.paper.length < requested) {
         const actualFull = [...r.scoreOf.values()].reduce((a, b) => a + b, 0);
         const { confirmDialogSync } = await import("../../libs/dialog");
@@ -160,6 +170,7 @@
       }
       startedAt = Date.now();
       runId = newRunId();
+      bp = workingBp; // 本次考试使用去重/剔除后的蓝图（保存蓝图仍由用户显式操作）
       session = new MockSession(bp, r.paper, { sectionOf: r.sectionOf, scoreOf: r.scoreOf }, startedAt);
       cursor = 0; selected = ""; answeredMap = {}; score = null;
       session.enterSection(currentSection || (bp.sections[0]?.name ?? ""), startedAt);
