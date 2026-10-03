@@ -19,6 +19,7 @@ import { ttsSpeak } from "@/core/tts";
     import { avgMsByType, estimatePlanMinutes } from "@/core/timeBudget";
     import { kpAudit, planKpMerge, planEmptyKpFill } from "@/core/kpGovernance";
     import { onExamEvent } from "@/core/bus";
+    import { escapeHtml } from "../../libs/sanitize";
     import { questionFingerprint } from "@/ai/task";
     import SaveStatus from "../shared/SaveStatus.svelte";
 
@@ -103,7 +104,12 @@ import { ttsSpeak } from "@/core/tts";
 
     async function undoBatch(batch: string) {
       const n = questions.filter((q) => q.batch === batch).length;
-      if (!confirm(t("import.rollbackConfirm").replace("{n}", String(n)).replace("{b}", batch.slice(0, 16)))) return;
+      // 45-04 lite：原生 confirm → 可访问确认对话框（键盘/Esc 可取消）
+      const { confirmDialogSync } = await import("../../libs/dialog");
+      if (!(await confirmDialogSync({
+        title: t("import.rollback"),
+        content: t("import.rollbackConfirm").replace("{n}", String(n)).replace("{b}", batch.slice(0, 16)),
+      }))) return;
       rollbackBusy = batch;
       try {
         const r = await app.rollbackBatch(activeBankId, batch);
@@ -434,7 +440,8 @@ import { ttsSpeak } from "@/core/tts";
     /** 移出题库管理（app.removeBank）：仅移出注册表，笔记本本体保留可手动删 */
     async function removeActiveBank() {
       if (!activeBankId) return;
-      if (!confirm(t("bank.removeConfirm").replace("{name}", bankName))) return;
+      const { confirmDialogSync } = await import("../../libs/dialog");
+      if (!(await confirmDialogSync({ title: t("bank.removeTitle"), content: t("bank.removeConfirm").replace("{name}", bankName) }))) return;
       (app as any).removeBank(activeBankId);
       banks = app.listBanks();
       activeBankId = banks[0]?.id ?? "";
@@ -1001,7 +1008,10 @@ import { ttsSpeak } from "@/core/tts";
 
     async function exitSession() {
       if (!session) { view = "entry"; return; }
-      if (!sessionDone && session.answered.length && !confirm(t("session.exitConfirm"))) return;
+      if (!sessionDone && session.answered.length) {
+        const { confirmDialogSync } = await import("../../libs/dialog");
+        if (!(await confirmDialogSync({ title: t("session.exit"), content: t("session.exitConfirm") }))) return;
+      }
       await app.saveSession();
       await app.flush();
       session = null; feedback = null; selected = ""; confidenceSel = ""; sessionDone = null;
@@ -1080,14 +1090,18 @@ import { ttsSpeak } from "@/core/tts";
     async function runAiGenerate() {
       if (aiBusy || !aiSource.trim()) return;
       // 未审旧队列守卫（41-04）：重新生成会替换队列，旧候选需用户显式确认放弃
-      if (aiQueue.length && !confirm(t("ai.regenerateConfirm").replace("{n}", String(aiQueue.length)))) return;
+      const { confirmDialogSync } = await import("../../libs/dialog");
+      if (aiQueue.length && !(await confirmDialogSync({
+        title: t("ai.regenerate"),
+        content: t("ai.regenerateConfirm").replace("{n}", String(aiQueue.length)),
+      }))) return;
       // 首次调用数据流确认（26.2 P0）：端点/范围/取消入口
       if (!localStorage.getItem("lv-exam-ai-consent")) {
         const ep = String(plugin.settingUtils?.get?.("aiEndpoint") ?? "").trim();
         const msg = ep
-          ? `${t("ai.consentTitle")}\n${t("ai.consentCustom")} ${ep}`
-          : `${t("ai.consentTitle")}\n${t("ai.consentSiyuan")}`;
-        if (!confirm(`${msg}\n\n${t("ai.consentScope")}`)) return;
+          ? `${t("ai.consentTitle")}<br>${t("ai.consentCustom")} ${escapeHtml(ep)}`
+          : `${t("ai.consentTitle")}<br>${t("ai.consentSiyuan")}`;
+        if (!(await confirmDialogSync({ title: t("ai.consentTitle"), content: `${msg}<br><br>${t("ai.consentScope")}` }))) return;
         localStorage.setItem("lv-exam-ai-consent", "1");
       }
       aiCancel = { aborted: false };
@@ -1199,7 +1213,7 @@ import { ttsSpeak } from "@/core/tts";
       return false;
     }
 
-    async function approveAi(q: Question) {
+    async function approveAi(q: Question, silent = false) {
       if (approving.has(q.id) || queueBankMismatch()) return;   // 双击/在途/切库：恰好入库一次且不误写
       approving.add(q.id);
       // 乐观出队：按钮即消失，不依赖写入往返；计数只加一次
@@ -1211,7 +1225,7 @@ import { ttsSpeak } from "@/core/tts";
       } catch (e) {
         aiQueue = [...aiQueue, q];                           // 写入失败：退回队列（保住候选与计数一致）
         aiSaved--;
-        showMessage(offline ? t("state.offlineHint") : String(e instanceof Error ? e.message : e), 4200, "error");
+        if (!silent) showMessage(offline ? t("state.offlineHint") : String(e instanceof Error ? e.message : e), 4200, "error");
       } finally {
         approving.delete(q.id);
       }
@@ -1225,8 +1239,18 @@ import { ttsSpeak } from "@/core/tts";
 
     async function approveAllAi() {
       if (queueBankMismatch()) return;
-      for (const q of [...aiQueue]) await approveAi(q);      // 失败项已被 approveAi 退回队列
+      const total = aiQueue.length;
+      for (const q of [...aiQueue]) await approveAi(q, true); // 批量时抑制逐题 toast（41-04：统一汇总）
       void persistAiQueue();
+      // 41-04 批量部分失败汇总：仍在队列的 = 写入失败退回的候选
+      const failed = aiQueue.length;
+      if (total > 0) {
+        showMessage(
+          failed ? t("ai.batchPartial").replace("{f}", String(failed)).replace("{t}", String(total)) : t("ai.batchAllOk").replace("{n}", String(total)),
+          4600,
+          failed ? "error" : "info",
+        );
+      }
     }
 
     // ---------- 候选编辑 + 单题重生成（41-04 剩余收口） ----------
@@ -1439,9 +1463,12 @@ import { ttsSpeak } from "@/core/tts";
       selectedView = name;
       const v = smartViews.find((x) => x.name === name);
       if (!v) return;
-      if (viewBankMismatch(v, activeBankId) && !confirm(t("view.bankMismatch").replace("{name}", v.name))) {
-        selectedView = "";
-        return;
+      if (viewBankMismatch(v, activeBankId)) {
+        const { confirmDialogSync } = await import("../../libs/dialog");
+        if (!(await confirmDialogSync({ title: t("view.pick"), content: t("view.bankMismatch").replace("{name}", escapeHtml(v.name)) }))) {
+          selectedView = "";
+          return;
+        }
       }
       searchText = v.search ?? "";
       favOnly = !!v.favOnly;

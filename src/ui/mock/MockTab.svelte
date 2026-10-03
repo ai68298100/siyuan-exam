@@ -122,11 +122,25 @@
       } catch { /* 忽略 */ }
     }
 
-    function startExam() {
+    async function startExam() {
       errorMsg = "";
       if (!questions.length) { errorMsg = t("state.emptyBank"); return; }
       const r = assemble(bp, questions);
       if (!r.paper.length) { errorMsg = t("state.emptyBank"); return; }
+      // 40-02：蓝图短缺不阻断开考，但实际题数/实际满分必须在开考前明示（不由其他题偷偷补齐）
+      const requested = bp.sections.reduce((n, s) => n + s.count, 0);
+      if (r.paper.length < requested) {
+        const actualFull = [...r.scoreOf.values()].reduce((a, b) => a + b, 0);
+        const { confirmDialogSync } = await import("../../libs/dialog");
+        const ok = await confirmDialogSync({
+          title: t("mock.shortTitle"),
+          content: t("mock.shortBody")
+            .replace("{want}", String(requested))
+            .replace("{actual}", String(r.paper.length))
+            .replace("{full}", String(actualFull)),
+        });
+        if (!ok) return;
+      }
       startedAt = Date.now();
       runId = newRunId();
       session = new MockSession(bp, r.paper, { sectionOf: r.sectionOf, scoreOf: r.scoreOf }, startedAt);
@@ -236,10 +250,13 @@
 
     async function finishExam(auto = false) {
       if (submitting || !session || session.submitted) return;   // 双击/计时器竞态：只交一次（U20 幂等交卷）
-      // 提前交卷二次确认（TODO 27：未答完且非自动交卷）
+      // 提前交卷二次确认（TODO 27：未答完且非自动交卷；45-04 lite 可访问对话框）
       if (!auto && !session.shouldAutoSubmit(Date.now())) {
         const unanswered = session.state.qids.length - session.answers.size;
-        if (unanswered > 0 && !confirm(t("mock.confirmHandIn").replace("{n}", String(unanswered)))) return;
+        if (unanswered > 0) {
+          const { confirmDialogSync } = await import("../../libs/dialog");
+          if (!(await confirmDialogSync({ title: t("mock.handIn"), content: t("mock.confirmHandIn").replace("{n}", String(unanswered)) }))) return;
+        }
       }
       submitting = true;
       try {

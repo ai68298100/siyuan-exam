@@ -117,14 +117,15 @@ export const confirmDialog = (args: IConfirmDialogArgs) => {
 };
 
 export const confirmDialogSync = async (args: IConfirmDialogArgs) => {
-  return new Promise<HTMLElement>((resolve) => {
+  // 返回布尔：confirm=true / cancel=false（原实现两路都 resolve 元素，调用方无法区分）
+  return new Promise<boolean>((resolve) => {
     const newargs = {
       ...args,
-      confirm: (ele: HTMLElement) => {
-        resolve(ele);
+      confirm: () => {
+        resolve(true);
       },
-      cancel: (ele: HTMLElement) => {
-        resolve(ele);
+      cancel: () => {
+        resolve(false);
       },
     };
     confirmDialog(newargs);
