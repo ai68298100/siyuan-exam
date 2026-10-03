@@ -207,7 +207,8 @@ export function parseExcelRows(rows: string[][], map: ExcelColumnMap, opt: Impor
 
   rows.forEach((row, i) => {
     const rowNo = i + 2; // 首行表头
-    const cell = (n?: number) => (n == null ? "" : String(row[n] ?? "").trim());
+    // Alt+Enter 净化：Excel 单元格内 \r\n 换行 → 空格（选项/答案不含换行符）
+    const cell = (n?: number) => (n == null ? "" : String(row[n] ?? "").replace(/\r\n?/g, " ").replace(/\n/g, " ").trim());
     try {
       const type = parseType(cell(map.type));
       if (!type) throw new Error(`题型无法识别："${cell(map.type)}"`);

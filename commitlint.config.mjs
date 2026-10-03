@@ -8,6 +8,7 @@ export default {
     "scope-case": [2, "always", "lower-case"],
     "subject-max-length": [2, "always", 100],
     "subject-empty": [2, "never"],
+    "subject-case": [0], // 中文 subject 无大小写概念，关闭
     "type-enum": [
       2,
       "always",
