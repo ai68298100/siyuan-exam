@@ -205,10 +205,23 @@
     }
 
     function pickOption(letter: string) {
-      if (!current || feedbackOn) return;
-      selected = letter;
-      session?.setAnswer(current, letter, Date.now());
-      answeredMap = { ...answeredMap, [current]: letter };
+      if (!current || !currentQ || feedbackOn) return;
+      if (currentQ.type === "multiple") {
+        // 40-01：多选 toggle 组合答案（同一字母再点=取消；grade 侧 normalizeAnswer 排序去重同一规范）
+        // eslint-disable-next-line svelte/prefer-svelte-reactivity -- 局部临时 Set，非响应式状态
+        const cur = new Set((answeredMap[current] ?? "").split(""));
+        if (cur.has(letter)) cur.delete(letter);
+        else cur.add(letter);
+        const combo = [...cur].sort().join("");
+        selected = combo;
+        session?.setAnswer(current, combo, Date.now());
+        answeredMap = { ...answeredMap, [current]: combo };
+      } else {
+        // 单选/判断互斥
+        selected = letter;
+        session?.setAnswer(current, letter, Date.now());
+        answeredMap = { ...answeredMap, [current]: letter };
+      }
       persistRun();
     }
 
@@ -547,7 +560,8 @@
       <div class="lv-stem">{currentQ.stem}</div>
       {#if currentQ.options.length}
         {#each currentQ.options as opt, i (i)}
-          <button class="lv-opt" class:sel={selected === String.fromCharCode(65 + i)} onclick={() => pickOption(String.fromCharCode(65 + i))}>
+          <button class="lv-opt" class:sel={currentQ.type === "multiple" ? (answeredMap[current] ?? "").includes(String.fromCharCode(65 + i)) : selected === String.fromCharCode(65 + i)}
+            onclick={() => pickOption(String.fromCharCode(65 + i))}>
             <span class="key">{String.fromCharCode(65 + i)}</span><span>{opt}</span>
           </button>
         {/each}

@@ -419,6 +419,8 @@
     "edit.saved": "✓ 题目已更新（块内容重写 + 身份读回核验通过）",
     "edit.needStem": "题干不能为空",
     "edit.needAnswer": "答案不能为空",
+    "browse.usage": "作答 {a} 次 · 正确率 {c}%",
+    "browse.wrongCount": "累计错 {n} 次",
     "view.pick": "📌 智能视图…",
     "view.save": "存为视图",
     "view.saveTitle": "把当前过滤条件存为智能视图",

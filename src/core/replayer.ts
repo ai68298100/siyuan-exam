@@ -83,6 +83,7 @@ export function replay(events: readonly AttemptEvent[]): ReplayResult {
         w.wrongCount++;
         w.lastWrongAt = e.ts;
         w.myAnswer = e.myAnswer;
+        w.streakCorrect = 0; // 39-05：active 期再答错 → 连续正确数归零（错→对→错→对仍在册，错→对→对才消灭）
       } else if (w.status === "eliminated" || w.status === "mastered") {
         // 消灭后再错：重新收录（新一轮）
         w.status = "active";

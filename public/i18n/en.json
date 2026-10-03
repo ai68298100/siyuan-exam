@@ -419,6 +419,8 @@
     "edit.saved": "✓ Question updated (block rewritten; identity readback passed)",
     "edit.needStem": "Stem cannot be empty",
     "edit.needAnswer": "Answer cannot be empty",
+    "browse.usage": "{a} attempts · {c}% correct",
+    "browse.wrongCount": "wrong {n}× total",
     "view.pick": "📌 Smart views…",
     "view.save": "Save view",
     "view.saveTitle": "Save current filters as a smart view",

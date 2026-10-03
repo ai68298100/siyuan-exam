@@ -66,6 +66,27 @@ describe("AttemptLog + replay：错题状态机", () => {
     const r = replay((await run()).all());
     expect(r.wrongbook.size).toBe(0);
   });
+  it("39-05：active 期再答错重置连续正确数（错→对→错→对仍在册，不消灭）", async () => {
+    const { run } = makeLog([
+      { qid: "q1", kind: "practice", mode: "single", verdict: "wrong", myAnswer: "A", sessionId: "s1" },
+      { qid: "q1", kind: "practice", mode: "wrong", verdict: "correct", myAnswer: "B", sessionId: "s1" }, // streak 1
+      { qid: "q1", kind: "practice", mode: "wrong", verdict: "wrong", myAnswer: "C", sessionId: "s1" },   // 重置为 0
+      { qid: "q1", kind: "practice", mode: "wrong", verdict: "correct", myAnswer: "B", sessionId: "s1" }, // streak 1
+    ]);
+    const r = replay((await run()).all());
+    const w = r.wrongbook.get("q1")!;
+    expect(w.status).toBe("active");       // 修复前：streak 未重置 → 第 4 题后误判 eliminated
+    expect(w.streakCorrect).toBe(1);
+    expect(w.wrongCount).toBe(2);
+    // 错→对→对（中间无再错）才消灭
+    const { run: run2 } = makeLog([
+      { qid: "q2", kind: "practice", mode: "single", verdict: "wrong", myAnswer: "A", sessionId: "s2" },
+      { qid: "q2", kind: "practice", mode: "wrong", verdict: "correct", myAnswer: "B", sessionId: "s2" },
+      { qid: "q2", kind: "practice", mode: "wrong", verdict: "correct", myAnswer: "B", sessionId: "s2" },
+    ]);
+    const r2 = replay((await run2()).all());
+    expect(r2.wrongbook.get("q2")!.status).toBe("eliminated");
+  });
   it("幂等：同 eid 重复事件只计一次", async () => {
     const clock = stepClock();
     const log = new AttemptLog(new MemoryStorage(), "k", clock);

@@ -2371,7 +2371,13 @@ import { ttsSpeak } from "@/core/tts";
                     {#if offline}<span class="lv-chip lv-chip--amb">{t("state.offlineHint")}</span>{/if}
                   </div>
                 {:else}
+                  {@const st = app.derived().byQuestion.get(q.id)}
+                  {@const wr = app.derived().wrongbook.get(q.id)}
                   <div class="lv-muted"><b>{t("browse.answer")}:</b> {q.answer}{#if q.analysis} · {q.analysis}{/if}</div>
+                  {#if st && st.attempts}
+                    <!-- 43-02 lite：题目使用分析（作答次数/正确率/最近作答/错次），数据不足如实不显示 -->
+                    <div class="lv-muted num" role="status">📊 {t("browse.usage").replace("{a}", String(st.attempts)).replace("{c}", String(Math.round((st.correct / st.attempts) * 100)))}{#if wr} · {t("browse.wrongCount").replace("{n}", String(wr.wrongCount))}{/if} · {new Date(st.lastAt).toLocaleDateString()}</div>
+                  {/if}
                   <div class="lv-row">
                     <button class="lv-btn sm" onclick={() => openEditForm(q)}>✎ {t("edit.open")}</button>
                     <button class="lv-btn sm" onclick={() => openInSiYuan((q as any).rootId)}>📍 {t("browse.openDoc")}</button>
