@@ -5,7 +5,7 @@
     import { showMessage } from "siyuan";
     import { weeklyAggregates, weekCompare, dailyTrend } from "@/core/weekly";
     import type { ExamApp } from "../../app";
-    import { heatmap, masteryByKp, weakTop, hourly, calibration, confidentWrongList, uncertainCorrectList, type CalibrationReport } from "@/core/report";
+    import { heatmap, masteryByKp, weakTop, hourly, calibration, confidentWrongList, uncertainCorrectList, delayedRecall, type CalibrationReport } from "@/core/report";
     import { trendToCsv, heatmapToCsv, hourlyToCsv } from "@/core/exportMd";
     import type { ActionItem } from "@/core/actions";
     import SaveStatus from "../shared/SaveStatus.svelte";
@@ -268,6 +268,8 @@
     // 44-02 lite 对偶：不确定-对 下钻
     let ucOpen = $state(false);
     const ucList = $derived(ucOpen && app ? uncertainCorrectList(app.attempts.all()) : []);
+    // 39-08 lite：延迟独立回忆（错后隔日首次作答；随日期范围联动）
+    const recall = $derived(app ? delayedRecall(app.attempts.all().filter((e) => !rangeDays || e.ts >= Date.now() - rangeDays * 86_400_000)) : null);
 
     // 45-08：图表数据表展开态（单选一个卡）+ CSV 下载（与 SVG 同一数据快照）
     let tableOpen = $state<"trend" | "heat" | "hourly" | "">("");
@@ -471,6 +473,21 @@
         {#if calib.unreported}
           <p class="lv-muted num" style="margin:6px 0 0">{t("report.calibUnreported").replace("{n}", String(calib.unreported))}</p>
         {/if}
+      </div>
+    {/if}
+
+    {#if recall && recall.pairs > 0}
+      <!-- 39-08 lite：延迟独立回忆（错后隔日首次作答口径；受助单列防虚增留存） -->
+      <div class="lv-card lv-section">
+        <b>{t("report.recallTitle")}</b>
+        <p class="lv-muted" style="margin:0 0 8px;font-size:11.5px">{t("report.recallHint")}</p>
+        <div class="lv-row" style="margin:4px 0">
+          <span class="lv-chip num">{t("report.recallPairs").replace("{n}", String(recall.pairs))}</span>
+          <span class="lv-chip acc num">{t("report.recallIndependent").replace("{n}", String(recall.independentRecall))}</span>
+          {#if recall.assistedCorrect}<span class="lv-chip lv-chip--amb num">{t("report.recallAssisted").replace("{n}", String(recall.assistedCorrect))}</span>{/if}
+          {#if recall.stillWrong}<span class="lv-chip lv-chip--red num">{t("report.recallWrong").replace("{n}", String(recall.stillWrong))}</span>{/if}
+          <span class="lv-chip num">{t("report.recallRate").replace("{n}", String(recall.rate ?? 0))}</span>
+        </div>
       </div>
     {/if}
 

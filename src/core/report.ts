@@ -193,3 +193,61 @@ export function uncertainCorrectList(
   }
   return [...byQid.values()].sort((a, b) => b.ts - a.ts).slice(0, limit);
 }
+
+export interface DelayedRecallReport {
+  /** 有资格的配对数（错题之后隔日 ≥1 的首次作答） */
+  pairs: number;
+  /** 隔日首次作答答对且未受助（无提示独立回忆 = 39-08 的目标口径） */
+  independentRecall: number;
+  /** 答对但受助（讲解/提示后）——不计入独立回忆，单列防虚增 */
+  assistedCorrect: number;
+  /** 隔日仍错 */
+  stillWrong: number;
+  /** 独立回忆通过率（pairs=0 时为 null，不输出虚假比率） */
+  rate: number | null;
+}
+
+/** 延迟独立回忆（39-08 lite）：对每道错题的每个错误周期，取「隔日 ≥1 天」的首次同题作答为一次延迟复测——
+ *  同日反复刷不计（防虚增留存）；复测本身再错开启新周期；受助作答（AttemptEvent.help）单列不冒充无提示回忆。 */
+export function delayedRecall(events: readonly AttemptEvent[], now = Date.now()): DelayedRecallReport {
+  const DAY = 86_400_000;
+  const byQid = new Map<string, AttemptEvent[]>();
+  for (const e of events) {
+    if (e.kind !== "practice" && e.kind !== "mock") continue;
+    if (e.verdict === "not_attempted") continue;
+    const arr = byQid.get(e.qid) ?? [];
+    arr.push(e);
+    byQid.set(e.qid, arr);
+  }
+  let independentRecall = 0;
+  let assistedCorrect = 0;
+  let stillWrong = 0;
+  for (const [, arr] of byQid) {
+    arr.sort((a, b) => a.ts - b.ts);
+    let lastWrongTs: number | null = null;
+    let counted = false; // 本错误周期已计过复测（其后同日/连续作答不重复计）
+    for (const e of arr) {
+      if (e.verdict === "wrong") {
+        // 错误：若距上次错已隔日（复测资格成立）计一次仍错；任何错误都开启新周期
+        if (lastWrongTs != null && !counted && e.ts - lastWrongTs >= DAY) stillWrong++;
+        lastWrongTs = e.ts;
+        counted = false;
+        continue;
+      }
+      if (lastWrongTs != null && !counted && e.ts - lastWrongTs >= DAY) {
+        if (e.help) assistedCorrect++;
+        else independentRecall++;
+        counted = true;
+      }
+    }
+  }
+  void now;
+  const pairs = independentRecall + assistedCorrect + stillWrong;
+  return {
+    pairs,
+    independentRecall,
+    assistedCorrect,
+    stillWrong,
+    rate: pairs ? Math.round((independentRecall / pairs) * 100) : null,
+  };
+}

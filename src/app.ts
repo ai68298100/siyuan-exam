@@ -135,6 +135,11 @@ export class ExamApp {
     } catch {
       this.wrongReasons = new Map();
     }
+    try {
+      await this.loadWrongReflections();
+    } catch {
+      this.wrongReflections = {};
+    }
     this.invalidate();
     try {
       const banks = await this.deps.storage.load(BANK_REGISTRY_KEY);
@@ -390,6 +395,33 @@ export class ExamApp {
     await this.deps.storage.save(key, map);
     this.wrongOverlay = new Map(Object.entries(map));
     this.invalidate();
+  }
+
+  // ---------- 错题自诊断（52-04 lite）：个人复盘短模板，与官方解析分离存储 ----------
+  /** 保存自诊断复盘（覆盖式：一次一份当前检查点；官方解析与作答流水不受影响） */
+  async saveWrongReflection(qid: string, text: string): Promise<void> {
+    const key = "wrongbook/reflections";
+    const v = (await this.deps.storage.load(key)) as Record<string, { text: string; at: number }> | undefined;
+    const map = v ?? {};
+    const trimmed = text.trim();
+    if (!trimmed) delete map[qid];
+    else map[qid] = { text: trimmed, at: this.deps.now?.() ?? Date.now() };
+    await this.deps.storage.save(key, map);
+    this.wrongReflections = map;
+  }
+
+  /** 读取自诊断复盘（52-04 验收：复习能回看上次检查点） */
+  async loadWrongReflection(qid: string): Promise<{ text: string; at: number } | null> {
+    const v = (this.wrongReflections[qid] ?? null) as { text: string; at: number } | null;
+    return v;
+  }
+
+  private wrongReflections: Record<string, { text: string; at: number }> = {};
+
+  private async loadWrongReflections(): Promise<void> {
+    const v = (await this.deps.storage.load("wrongbook/reflections")) as
+      Record<string, { text: string; at: number }> | undefined;
+    this.wrongReflections = v ?? {};
   }
 
   private wrongOverlay = new Map<string, { status: string; at: number; wrongCount: number; until?: number }>();

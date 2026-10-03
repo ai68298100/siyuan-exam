@@ -967,6 +967,39 @@ import { ttsSpeak } from "@/core/tts";
 
     /** 44-01：结算页错题回看展开态 */
     let reviewOpen = $state(false);
+    /** 52-02 lite：先回忆模式（按题开关，切题重置）；recallDraft 与作答草稿分离、不入正式答案 */
+    let hideOptions = $state(false);
+    let recallDraft = $state("");
+    /** 52-04 lite：自诊断复盘缓存（qid → {text, at}；结算页回看与编辑） */
+    let reflections = $state<Record<string, { text: string; at: number }>>({});
+    async function editReflection(qid: string) {
+      const cur = await app.loadWrongReflection(qid);
+      const { inputDialogSync } = await import("../../libs/dialog");
+      const text = await inputDialogSync({
+        title: t("reflection.title"),
+        placeholder: t("reflection.placeholder"),
+        defaultText: cur?.text ?? "",
+      });
+      if (text == null) return; // 取消不改现有复盘
+      await app.saveWrongReflection(qid, text);
+      if (text.trim()) reflections = { ...reflections, [qid]: { text: text.trim(), at: Date.now() } };
+      else {
+        const next = { ...reflections };
+        delete next[qid];
+        reflections = next;
+      }
+      showMessage(t("reflection.saved"), 2400, "info");
+    }
+    /** 打开回看时批量载入上次检查点（52-04：复习能回看） */
+    async function loadReflections() {
+      const next: Record<string, { text: string; at: number }> = {};
+      for (const a of session?.answered ?? []) {
+        if (a.grade.verdict === "correct") continue;
+        const r = await app.loadWrongReflection(a.qid);
+        if (r) next[a.qid] = r;
+      }
+      reflections = next;
+    }
     /** 114-01 lite：本会话受助标记（qid → 讲解模式）；同题再答时随 attempt 落 help 字段 */
     // eslint-disable-next-line svelte/prefer-svelte-reactivity -- 函数内累加 Map（非组件遍历状态）
     const helpShown = new Map<string, "explain" | "hint" | "socratic">();
@@ -1004,6 +1037,7 @@ import { ttsSpeak } from "@/core/tts";
 
     function nextQuestion() {
       feedback = null; selected = ""; confidenceSel = ""; materialExpanded = false; answerStart = Date.now();
+      hideOptions = false; recallDraft = ""; // 52-02：切题重置先回忆态（揭示/草稿不沿用上一题，U02 口径）
       if (!session.next()) { void finishSession(); return; }
       void app.saveSession();   // 游标推进随答随存
     }
@@ -2034,7 +2068,7 @@ import { ttsSpeak } from "@/core/tts";
             </button>
             {#if actionNote}<p class="lv-muted num" style="margin:6px 0 0">{actionNote}</p>{/if}
             <!-- 44-01 end 模式/回看：错题逐题展开（题干+我的答案+正确答案+解析） -->
-            <button class="lv-btn lv-btn--ghost" style="width:100%;margin-top:6px" onclick={() => reviewOpen = !reviewOpen}>
+            <button class="lv-btn lv-btn--ghost" style="width:100%;margin-top:6px" onclick={() => { reviewOpen = !reviewOpen; if (reviewOpen) void loadReflections(); }}>
               {reviewOpen ? "▾" : "▸"} {t("session.reviewWrongs")}
             </button>
             {#if reviewOpen}
@@ -2044,6 +2078,13 @@ import { ttsSpeak } from "@/core/tts";
                   <div class="lv-error-row" style="white-space:normal">
                     <b class="num">✕</b> {aq?.stem.slice(0, 80) ?? a.qid}
                     <div class="lv-muted num">{t("browse.answer")}: {aq?.answer ?? "—"}{#if a.grade.myAnswer} · {t("session.myAnswer")}: {a.grade.myAnswer}{/if}{#if aq?.analysis} · {aq.analysis}{/if}</div>
+                    {#if reflections[a.qid]}
+                      <!-- 52-04：上次检查点回显 -->
+                      <div class="lv-muted" style="font-size:11.5px">📝 {t("reflection.last").replace("{d}", new Date(reflections[a.qid].at).toLocaleDateString())}：{reflections[a.qid].text}</div>
+                    {/if}
+                    <button class="lv-btn sm lv-btn--ghost" onclick={() => void editReflection(a.qid)}>
+                      📝 {reflections[a.qid] ? t("reflection.edit") : t("reflection.add")}
+                    </button>
                   </div>
                 {/each}
               </div>
@@ -2085,6 +2126,20 @@ import { ttsSpeak } from "@/core/tts";
             {/if}
             {#if stemHtml}<div class="lv-stem lv-rich b3-typography">{@html stemHtml}</div>{:else}<div class="lv-stem">{q.stem}</div>{/if}
             {#if q.options.length}
+              <!-- 52-02 lite：先回忆后显示选项——藏选项 + 独立回忆草稿（与作答草稿分离，不入正式答案） -->
+              <div class="lv-row" style="margin:0 0 4px">
+                <button class="lv-chip" class:acc={hideOptions} onclick={() => { hideOptions = !hideOptions; if (hideOptions) recallDraft = ""; }}>
+                  {hideOptions ? "🙈 " + t("session.recallOn") : "👁 " + t("session.recallOff")}
+                </button>
+                {#if hideOptions}<span class="lv-muted" style="font-size:11.5px">{t("session.recallHint")}</span>{/if}
+              </div>
+              {#if hideOptions}
+                <textarea class="lv-input lv-textarea" rows="2" bind:value={recallDraft}
+                  placeholder={t("session.recallPlaceholder")} aria-label={t("session.recallPlaceholder")}></textarea>
+                <div class="lv-row" style="margin:6px 0">
+                  <button class="lv-btn lv-btn--primary sm" onclick={() => { hideOptions = false; }}>{t("session.revealOptions")}</button>
+                </div>
+              {:else}
               <!-- 45-03：多选用 checkbox/group 语义而非 radio；读屏可感知选中态 -->
               <div role={q.type === "multiple" ? "group" : "radiogroup"} aria-label={t("session.options")}>
                 {#each q.options as opt, i (i)}
@@ -2111,6 +2166,7 @@ import { ttsSpeak } from "@/core/tts";
                   </button>
                 {/each}
               </div>
+              {/if}
             {:else}
               <textarea class="lv-input lv-textarea" placeholder={t("session.answerPlaceholder")}
                 value={session.getDraft(q.id)}
