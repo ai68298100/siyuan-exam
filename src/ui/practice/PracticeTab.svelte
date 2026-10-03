@@ -16,6 +16,8 @@ import { ttsSpeak } from "@/core/tts";
     import { planBatchEdit, invertPlan, describeChange } from "../../core/batchEdit";
     import { buildSectionTree, questionInSection } from "../../core/sectionTree";
     import { upsertView, viewBankMismatch } from "@/core/smartViews";
+    import { avgMsByType, estimatePlanMinutes } from "@/core/timeBudget";
+    import { kpAudit, planKpMerge, planEmptyKpFill } from "@/core/kpGovernance";
     import { onExamEvent } from "@/core/bus";
     import { questionFingerprint } from "@/ai/task";
     import SaveStatus from "../shared/SaveStatus.svelte";
@@ -177,6 +179,47 @@ import { ttsSpeak } from "@/core/tts";
     }
     async function saveBatchUndo() {
       try { await (app as any).deps.storage.save("batchedit/last", batchUndo); } catch { /* 静默 */ }
+    }
+
+    // ---------- 考点治理（51-02 lite）：kp 概览/同义名合并/空考点填充（复用批量编辑 dry-run+撤销） ----------
+    let kpOpen = $state(false);
+    let kpMergeFrom = $state("");
+    let kpMergeTo = $state("");
+    let kpMergePlan = $state<import("@/core/batchEdit").BatchPlan | null>(null);
+    let kpFillKp = $state("");
+    let kpFillPlan = $state<import("@/core/batchEdit").BatchPlan | null>(null);
+    let kpBusy = $state(false);
+    let kpNote = $state("");
+    const kpData = $derived(kpOpen && questions.length ? kpAudit(questions) : null);
+
+    function previewKpMerge() {
+      kpNote = "";
+      const from = kpMergeFrom.trim();
+      const to = kpMergeTo.trim();
+      if (!from || !to) { kpNote = t("kp.needBoth"); return; }
+      if (from === to) { kpNote = t("kp.sameValue"); return; }
+      kpMergePlan = planKpMerge(questions, from, to).plan;
+    }
+    function previewKpFill() {
+      kpNote = "";
+      if (!kpFillKp.trim()) { kpNote = t("kp.needBoth"); return; }
+      kpFillPlan = planEmptyKpFill(questions, kpFillKp.trim()).plan;
+    }
+    /** 应用治理变更：与批量编辑共用 SaveGate 闸与撤销基线（撤销走同一 batchedit/last） */
+    async function applyKpPlan(plan: import("@/core/batchEdit").BatchPlan) {
+      if (kpBusy || !app.kernelOnline) { kpNote = t("state.offlineHint"); return; }
+      if (!plan.changes.length) return;
+      kpBusy = true; kpNote = "";
+      try {
+        const r = await app.applyBatchEdit(plan.changes);
+        kpNote = t("batch.applied").replace("{n}", String(r.ok)).replace("{f}", String(r.failed));
+        batchUndo = { changes: plan.changes, bankId: activeBankId, at: Date.now() };
+        await saveBatchUndo();
+        kpMergePlan = null; kpFillPlan = null;
+        await loadQuestions();
+      } catch (e) {
+        kpNote = String(e instanceof Error ? e.message : e);
+      } finally { kpBusy = false; }
     }
 
     const bankName = $derived(banks.find((b) => b.id === activeBankId)?.name ?? "");
@@ -464,6 +507,8 @@ import { ttsSpeak } from "@/core/tts";
     // 可练习题过滤在 loadQuestions 后各入口处执行（材料母块只作上下文）
 
     let plan = $state<ReturnType<typeof import("@/core/planner").planToday> | null>(null);
+    /** 53-01 lite：今日计划分钟预算（与 plan 同步重算） */
+    let planTime = $state<import("@/core/timeBudget").TimeEstimate | null>(null);
 
     function rebuildPlan(dueFirst?: Question[]) {
       if (!app) { plan = null; return; }
@@ -483,6 +528,9 @@ import { ttsSpeak } from "@/core/tts";
         wrongReasons: (app as any).wrongReasonMap?.() ?? undefined,
         dueFirst: dueFirst ?? [],
       });
+      // 53-01 lite：今日计划分钟预算（按题型历史用时中位；缺历史题型如实标注默认值）
+      const typeOf = new Map(questions.map((q) => [q.id, q.type] as const));
+      planTime = estimatePlanMinutes(plan.queue, avgMsByType(app.attempts.all(), (qid) => typeOf.get(qid)));
     }
 
     /** 每日任务直接使用计划队列（零决策入口） */
@@ -1328,7 +1376,8 @@ import { ttsSpeak } from "@/core/tts";
           q.id.toLowerCase().includes(kw) ||
           q.stem.toLowerCase().includes(kw) ||
           q.options.some((o) => o.toLowerCase().includes(kw)) ||
-          (q.analysis ?? "").toLowerCase().includes(kw));
+          (q.analysis ?? "").toLowerCase().includes(kw) ||
+          (q.kp ?? "").toLowerCase().includes(kw)); // 51-02：考点可检索（治理面板点击直达）
       }
       return list;
     });
@@ -1670,6 +1719,12 @@ import { ttsSpeak } from "@/core/tts";
     {#if plan}
       {#if plan.mode === "sprint"}<span class="lv-chip lv-chip--red num">🔥 {t("entry.sprint")} D-{plan.daysToExam}</span>
       {:else if plan.daysToExam != null}<span class="lv-chip amb num">⏱ {t("entry.examIn")} {plan.daysToExam} {t("entry.days")}</span>{/if}
+      {#if planTime}
+        <!-- 53-01 lite：今日计划分钟预算；缺历史题型如实标注默认值口径 -->
+        <span class="lv-chip num" title={planTime.sourced ? t("entry.timeSourced") : t("entry.timeDefault")}>
+          ⏳ ~{planTime.minutes} {t("entry.minutes")}（{planTime.low}-{planTime.high}）
+        </span>
+      {/if}
     {/if}
     {#if hasBank}<span class="lv-chip">{t("bank.label")} {bankName}</span><button class="lv-chip" title={t("bank.removeTitle")} onclick={removeActiveBank}>✕</button>{/if}
   </div>
@@ -2215,6 +2270,7 @@ import { ttsSpeak } from "@/core/tts";
         <span class="lv-chip num">{shownQuestions.length}/{questions.length} {t("browse.count")}</span>
         <button class="lv-chip" class:acc={favOnly} onclick={() => favOnly = !favOnly}>⭐ {t("browse.favOnly")}</button>
         <button class="lv-chip" class:acc={sectionOpen} onclick={() => void toggleSectionTree()}>📑 {t("browse.sectionTree")}</button>
+        <button class="lv-chip" class:acc={kpOpen} onclick={() => { kpOpen = !kpOpen; }}>🧭 {t("kp.title")}</button>
         <button class="lv-chip" class:acc={healthOpen} onclick={() => healthOpen = !healthOpen}>🩺 {t("health.title")}</button>
         <button class="lv-chip" class:acc={batchMode} onclick={() => { batchMode = !batchMode; if (!batchMode) selectedIds = {}; }}>{t("batch.mode")}</button>
         <button class="lv-chip" title={t("browse.exportCsvTitle")} onclick={exportBankCsv}>⬇️ CSV</button>
@@ -2257,6 +2313,62 @@ import { ttsSpeak } from "@/core/tts";
               </div>
             {/each}
           {/each}
+        </div>
+      {/if}
+      {#if kpOpen}
+        <!-- 51-02 lite：考点治理——概览/同义名合并/空考点填充；变更走批量编辑 dry-run+撤销 -->
+        <div class="lv-card lv-pad-card" style="padding:12px 16px;max-height:320px;overflow:auto">
+          <b style="font-size:13px">{t("kp.title")}</b>
+          {#if !kpData}
+            <div class="lv-muted" style="margin-top:6px">{t("browse.empty")}</div>
+          {:else}
+            <div class="lv-row" style="margin:6px 0 0">
+              <span class="lv-chip num">{t("kp.distinct").replace("{n}", String(kpData.entries.length))}</span>
+              {#if kpData.emptyCount}<span class="lv-chip lv-chip--amb num">{t("kp.empty").replace("{n}", String(kpData.emptyCount))}</span>{/if}
+            </div>
+            <div class="lv-row" style="margin:4px 0 0">
+              {#each kpData.entries.slice(0, 24) as e, _i (_i)}
+                <button class="lv-chip" class:lv-chip--red={e.suspect} class:acc={kpMergeFrom === e.kp}
+                  title={e.suspect ? t("kp.suspect") : t("kp.filterTip")}
+                  onclick={() => { kpMergeFrom = e.kp; kpMergeTo = ""; kpMergePlan = null; searchText = e.kp; }}>
+                  {e.kp || "（空）"} · {e.count}
+                </button>
+              {/each}
+              {#if kpData.entries.length > 24}<span class="lv-muted num">… +{kpData.entries.length - 24}</span>{/if}
+            </div>
+            <div class="lv-row" style="margin:8px 0 0">
+              <b style="font-size:12.5px">{t("kp.merge")}</b>
+              <input class="lv-input" style="max-width:160px" bind:value={kpMergeFrom} placeholder={t("kp.fromPlaceholder")} />
+              <span class="lv-muted">→</span>
+              <input class="lv-input" style="max-width:160px" bind:value={kpMergeTo} placeholder={t("kp.toPlaceholder")} />
+              <button class="lv-btn sm" onclick={previewKpMerge}>🔍 {t("batch.preview")}</button>
+            </div>
+            {#if kpData.emptyCount}
+              <div class="lv-row" style="margin:4px 0 0">
+                <b style="font-size:12.5px">{t("kp.fill").replace("{n}", String(kpData.emptyCount))}</b>
+                <input class="lv-input" style="max-width:160px" bind:value={kpFillKp} placeholder={t("kp.toPlaceholder")} />
+                <button class="lv-btn sm" onclick={previewKpFill}>🔍 {t("batch.preview")}</button>
+              </div>
+            {/if}
+            {#if kpMergePlan}
+              <div class="lv-row" style="margin:6px 0 0">
+                <span class="lv-chip num">{t("batch.planCount").replace("{n}", String(kpMergePlan.changes.length))}</span>
+                <button class="lv-btn lv-btn--primary sm" disabled={kpBusy || !app.kernelOnline || !kpMergePlan.changes.length} onclick={() => void applyKpPlan(kpMergePlan!)}>
+                  {kpBusy ? "…" : t("batch.apply").replace("{n}", String(kpMergePlan.changes.length))}
+                </button>
+                {#if !app.kernelOnline}<span class="lv-chip lv-chip--amb">{t("state.offlineHint")}</span>{/if}
+              </div>
+            {/if}
+            {#if kpFillPlan}
+              <div class="lv-row" style="margin:6px 0 0">
+                <span class="lv-chip num">{t("batch.planCount").replace("{n}", String(kpFillPlan.changes.length))}</span>
+                <button class="lv-btn lv-btn--primary sm" disabled={kpBusy || !app.kernelOnline || !kpFillPlan.changes.length} onclick={() => void applyKpPlan(kpFillPlan!)}>
+                  {kpBusy ? "…" : t("batch.apply").replace("{n}", String(kpFillPlan.changes.length))}
+                </button>
+              </div>
+            {/if}
+            {#if kpNote}<div class="lv-row"><span class="lv-muted num">{kpNote}</span></div>{/if}
+          {/if}
         </div>
       {/if}
       {#if batchMode}

@@ -89,4 +89,21 @@ describe("模考运行快照（U18/U19/U20 最小切片）", () => {
     expect(back.session.shouldAutoSubmit(now + 1000)).toBe(false);
     expect(back.session.score().total).toBe(1); // 答案保留
   });
+
+  it("55-07 lite：快照携带开考冻结题版；restore 以快照为准；revisionDrift 检出修订", () => {
+    const { s } = newSession();
+    const snap = s.toSnapshot("r-v1", 1_000_500);
+    expect(Object.keys(snap.qVersions ?? {})).toHaveLength(4); // 冻结卷面全部题版
+    // 恢复时题库中 a2 已被改写（hash 变化）→ 漂移检出 a2；快照冻结版不被现场覆盖
+    const edited = bank.map((x) => (x.id === "a2" ? { ...x, stem: "改后的题干", hash: "changed-hash" } : x));
+    const back = MockSession.restore(snap, edited);
+    expect(back.session.qVersions.get("a2")).toEqual(snap.qVersions!["a2"]); // 快照版未被覆盖
+    expect(back.session.revisionDrift(edited)).toEqual(["a2"]);
+    // 未改动的库 → 无漂移
+    expect(back.session.revisionDrift(bank)).toHaveLength(0);
+    // 旧快照（无 qVersions 字段）→ drift 不可知，如实返回空
+    const oldSnap = { ...snap, qVersions: undefined };
+    const legacy = MockSession.restore(oldSnap, edited);
+    expect(legacy.session.revisionDrift(edited)).toHaveLength(0);
+  });
 });

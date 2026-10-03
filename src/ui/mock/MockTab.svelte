@@ -413,6 +413,8 @@
       });
     }
     const secAccuracy = $derived(score ? score.sections.map((s) => (s.total ? s.correct / s.total : 0)) : []);
+    /** 55-07 lite：当前题库相对开考冻结题版已修订的题（成绩单如实标注，不重算历史） */
+    const revisionDrift = $derived(session ? session.revisionDrift(questions) : []);
 
     /** 40-06：模考键盘作答——A-J 选择/多选 toggle、←/→ 导航；
      *  守卫 textarea/input/select/contenteditable 与 IME 组合期/修饰键 */
@@ -617,6 +619,10 @@
     <div class="lv-row">
       <b style="font-size:16px">{bp.name}</b>
       <span class="lv-chip num">{new Date(startedAt).toLocaleString()}</span>
+      {#if session && revisionDrift.length}
+        <!-- 55-07 lite：改题后成绩仍按开考冻结版本记录，历史不静默重算 -->
+        <span class="lv-chip lv-chip--amb num" title={t("mock.revisedTip")}>✏️ {t("mock.revisedNote").replace("{n}", String(revisionDrift.length))}</span>
+      {/if}
     </div>
     <div class="lv-card" style="margin-bottom:14px">
       <div class="lv-row" style="align-items:center;padding:6px 4px">

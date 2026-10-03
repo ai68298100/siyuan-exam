@@ -123,6 +123,8 @@ export class MockSession {
   private currentEnter: { qid: string; at: number } = { qid: "", at: 0 };
   /** 已提交（含自动交卷）标记 */
   submitted = false;
+  /** 开考冻结题版（55-07 lite）：hash+answer 逐题指纹，改题后成绩可对照开考版本 */
+  readonly qVersions: Map<string, { hash: string; answer: string }>;
 
   constructor(
     readonly bp: Blueprint,
@@ -134,6 +136,7 @@ export class MockSession {
     this.sectionOf = assembleInfo.sectionOf;
     this.scoreOf = assembleInfo.scoreOf;
     this.byId = new Map(paper.map((q) => [q.id, q]));
+    this.qVersions = new Map(paper.map((q) => [q.id, { hash: q.hash, answer: q.answer }]));
     this.indefinite = new Set();
     for (const q of paper) {
       const secName = assembleInfo.sectionOf.get(q.id);
@@ -352,7 +355,21 @@ export class MockSession {
       dwell: Object.fromEntries(this.dwell),
       currentEnter: { ...this.currentEnter },
       finishedAt: this.state.finishedAt,
+      /** 55-07 lite：开考冻结题版（旧快照无此字段 → 恢复后 drift 不可知，如实不标注） */
+      qVersions: Object.fromEntries(this.qVersions),
     };
+  }
+
+  /** 修订漂移（55-07 lite）：当前题库相对开考冻结版本已变化的题（删除另由 missingQids 报告）。
+   *  用途：成绩单标注"题目已修订，成绩按开考版本记录"，历史不静默重算。 */
+  revisionDrift(live: Question[]): string[] {
+    if (!this.qVersions.size) return [];
+    const byId = new Map(live.map((q) => [q.id, q]));
+    return this.state.qids.filter((qid) => {
+      const frozen = this.qVersions.get(qid);
+      const q = byId.get(qid);
+      return !!frozen && !!q && q.hash !== frozen.hash;
+    });
   }
 
   /** 从快照恢复同一 run：答案/标旗/游标/分段起始原样回填；
@@ -376,6 +393,11 @@ export class MockSession {
     if (snap.currentEnter?.qid) session.currentEnter = { qid: snap.currentEnter.qid, at: snap.currentEnter.at };
     session.submitted = !!snap.finishedAt;
     if (snap.finishedAt) session.state.finishedAt = snap.finishedAt;
+    // 55-07 lite：冻结题版以快照为准（构造时按当前题库重冻结会掩盖 drift）
+    if (snap.qVersions) {
+      session.qVersions.clear();
+      for (const [qid, ver] of Object.entries(snap.qVersions)) session.qVersions.set(qid, ver);
+    }
     return { session, missingQids, alreadySubmitted: !!snap.finishedAt };
   }
 }
@@ -423,6 +445,8 @@ export interface MockRunSnapshot {
   dwell?: Record<string, number>;
   currentEnter?: { qid: string; at: number };
   finishedAt?: number; // 已交卷（恢复时直接进报告，不重考）
+  /** 55-07 lite：开考冻结题版（qid → hash+answer）；旧快照缺省 */
+  qVersions?: Record<string, { hash: string; answer: string }>;
 }
 
 /** 恢复报告：missingQids = 卷面有但题库已读不到的题（改题/删题后如实降级，不静默补题） */
