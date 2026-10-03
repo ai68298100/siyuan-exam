@@ -7,7 +7,7 @@ import { planToday } from "@/core/planner";
 import { ttsSpeak } from "@/core/tts";
     import type { ExamApp } from "../../app";
     import type { Question } from "../../core/types";
-    import { parseText, parseExcelRows, autoMapExcel, errorsToCsv, extractAikenBlockAt, type ImportReport } from "../../importer/pipeline";
+    import { parseText, parseExcelRows, autoMapExcel, errorsToCsv, extractTextRowAt, type ImportReport } from "../../importer/pipeline";
     import { groupAdjacent } from "../../core/session";
     import { makeQuestion } from "../../core/blockTemplate";
     import { grade, normalizeAnswer, questionHash } from "../../core/answer";
@@ -1584,13 +1584,19 @@ import { ttsSpeak } from "@/core/tts";
         fixText = "";
         return;
       }
-      // 文本路径（Aiken 粘贴）：err.raw 是 120 字截断预览不可编辑 → 按行号提取完整题块
-      const blk = extractAikenBlockAt(importText, row);
-      if (!blk) { fixNote = t("import.fixUnavailable"); return; }
-      fixNote = "";
+      // 文本路径（粘贴）：err.raw 是 120 字截断预览不可编辑 → 按产生错误的解析器口径提取原文
       fixRow = row;
       fixCells = [];
-      fixText = blk;
+      fixText = "";
+      void (async () => {
+        const blk = await extractTextRowAt(importText, row);
+        if (!blk) {
+          fixNote = t("import.fixUnavailable");
+          fixRow = null;
+          return;
+        }
+        fixText = blk;
+      })();
     }
     function cancelRowFix() {
       fixRow = null; fixCells = []; fixText = ""; fixNote = "";

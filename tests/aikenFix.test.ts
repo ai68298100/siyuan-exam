@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractAikenBlockAt, parseText, parseAiken } from "../src/importer/pipeline";
+import { extractAikenBlockAt, extractTextRowAt, parseText, parseAiken } from "../src/importer/pipeline";
 
 const TEXT = [
   "第一题题干",
@@ -35,5 +35,22 @@ describe("Aiken 块提取（文本路径单行修复，廿八批）", () => {
     const fixed = await parseText(blk.replace("ANSWER: Z", "ANSWER: B"));
     expect(fixed.ok).toHaveLength(1);
     expect(fixed.errors).toHaveLength(0);
+  });
+
+  it("extractTextRowAt：GIFT 块序口径与 Aiken 行号口径互不串（兜底审计发现）", async () => {
+    // GIFT：第 2 块缺答案区 → 错误 row=2（块序）；Aiken 行号 2 处于第 1 块内部
+    const giftBad = "::甲:: 1+1=? {=2/~3}\n\n::乙:: 无答案区";
+    const giftReport = parseAiken(giftBad);
+    void giftReport;
+    const { parseGift } = await import("../src/importer/gift");
+    expect(parseGift(giftBad).errors[0].row).toBe(2);
+    const blk = await extractTextRowAt(giftBad, 2);
+    expect(blk).toBe("::乙:: 无答案区"); // 盲用 Aiken 行号会取到第 1 块内部行
+  });
+
+  it("extractTextRowAt：TSV 表头模式数据行口径", async () => {
+    const tsvBad = "#separator:tab\n题型\t题干\t选项A\t选项B\t答案\n单选\t题1\t甲\t乙\tZ"; // 第 2 数据行（row=2）答案非法
+    const blk = await extractTextRowAt(tsvBad, 2);
+    expect(blk).toBe("单选\t题1\t甲\t乙\tZ");
   });
 });

@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased（0.6.x-dev：廿三~廿八批，2026-10-03）
+
+> guard 七门禁全绿（279 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、ESLint 0 告警）+ 生产构建通过；真机 smoke 因内核未运行本轮未跑（栏 B 待办）。
+
+- **内核 429 限流处理**：HTTP 429 识别为可重试错误分类；perf-bank 真机基线发现 3.8.6 连续请求限流（32 组新待办）
+- **GIFT 解析器**（42-04 部分）：Moodle GIFT 单选/多选/判断/简答，`::标题::`→考点、`#反馈`→解析；行内选择式 `{=对~错}` 归一
+- **粘贴解析内容分流**：parseText 按内容特征分派 GIFT / TSV / Aiken；**TSV 三模式**（官方表头映射 / Anki front-back 两列问答（#separator/#html 头、HTML 剥除）/ 缺表头可行动报错）；英文表头别名（option a-f）+ 真实 Anki 导出样例 fixture
+- **块菜单五项全通**（2.2）：标记考点（预填/清除/SaveGate）、编辑题目（浏览视图内联表单 → updateBlock 整块重写 + exam-id kramdown 读回核验）、在练习台打开（qid 聚焦+跨库切换）；已开 Tab 经 `lv-exam:*` 窗口事件移交（40-05 部分收口）
+- **章节树**（2.2）：`client.docTree`（notebook→doc→heading）+ `core/sectionTree` 栈式嵌套纯函数 + 浏览视图章节过滤（文档 rootId/标题 hpath 前缀双模式）；listQuestions 带 hpath
+- **导入预览增强**（2.3/U07 全收口）：抽查渲染（随机 3 题 md2html 真实管线）；错误单行修复双路径——Excel 按单元格编辑、文本按 Aiken 题块编辑（`extractAikenBlockAt` 与错误行同口径），单行重验合回预览；**试导失效收口**（重解析清 trialConfirmed，修复旧 qid 残留导致已试导行被整批重导的双导入 bug）
+- **新建题库一键流程**（2.2 P0）：笔记本+首页+示例题文档（3 题真实入库），骨架失败不阻断
+- **重复合并「并存」开关**（2.3）：导入页 checkbox，粘贴/Excel/单行修复统一；批内去重仍生效
+- **commitImport 进度/取消**（46-03）：逐文档 onProgress + 文档间取消；取消只读回已写部分（未处理≠missing）
+- **导入写净化**：Alt+Enter 单元格换行专门处理
+- **题目编辑**（43-01 lite）：stem/options/answer/analysis/kp/difficulty 内联编辑，SaveGate + 身份读回核验
+- **批量编辑 5 维**（43-06）：+出处/年份/分值（BATCH_FIELD_ATTR 共用映射）；**撤销基线持久化**（`batchedit/last`，重载后可撤最近一次）
+- **命名智能视图**（43-05 lite）：浏览过滤（搜索/收藏/章节）保存/复用/删除，题库身份绑定、跨库显式确认、未知版本不过滤
+- **事件总线雏形**（2.1/47-04 地基）：`core/bus.ts` 信封 v1+事件白名单+幂等 eventId；三移交事件接线
+- **39-05 错题状态机修复**：active 期再答错重置连续正确数（此前错→对→错→对被误判消灭）
+- **40-01 模考多选作答**：toggle 组合答案（字母序与 grade 同规范），单选/判断互斥
+- **40-06 模考键盘作答**：A-J 选择/多选 toggle、←/→ 导航（lockout 一致）、输入框/IME/修饰键守卫
+- **45-03 选项语义**：练习台+模考统一 role=group/checkbox（多选）与 radiogroup/radio（单选/判断）
+- **43-02 lite**：浏览详情单题作答统计（次数/正确率/累计错次/最近作答日）
+- **45-02 报告中心保存状态**：每日写回过 SaveGate + 顶栏 SaveStatus 徽标
+- **lint 基建**（0 组）：ESLint 9 flat config + Prettier，guard 第七检，250→0 告警；commitlint 生效（中文 subject-case 豁免）
+
 ## 0.6.0 (2026-10-03)
 
 > **验证状态**：guard 六门禁全绿（232 项单测、svelte 0 错 0 警、i18n 396 键、架构 37 项）+ 生产构建/打包校验通过；真机套件 `pnpm smoke` 在 SiYuan 3.8.6 实跑全绿（preflight 17/17、数据生命周期 6/6、性能基线入库）。**docs/17 的 UI 旅程人工步骤仍待执行**——本版按 docs/19「按已收敛旅程与真实开放入口发布」策略发行，集市上架继续暂缓。

@@ -341,6 +341,24 @@ export function extractAikenBlockAt(text: string, lineNo: number): string | null
   return null;
 }
 
+/** 文本路径单行修复：按「产生该错误的解析器」口径提取原文（兜底审计：
+ *  Aiken 行号 / TSV 数据行 / GIFT 块序三种行号口径不同，盲取会修错块） */
+export async function extractTextRowAt(text: string, row: number): Promise<string | null> {
+  if (parseAiken(text).errors.some((e) => e.row === row)) return extractAikenBlockAt(text, row);
+  const { parseTsv } = await import("./tsv");
+  if (isTsvText(text) && parseTsv(text).errors.some((e) => e.row === row)) {
+    const dataLines = text.split(/\r?\n/).filter((l) => l.trim() && !l.trim().startsWith("#"));
+    // 表头模式（dataLines[0]=表头，行号=i+2）与两列问答（行号=i+1）统一为 dataLines[row-1]
+    return dataLines[row - 1] ?? null;
+  }
+  const { parseGift } = await import("./gift");
+  if (parseGift(text).errors.some((e) => e.row === row)) {
+    const blocks = text.split(/\n\s*\n/).map((b) => b.replace(/\r/g, "").trim()).filter(Boolean);
+    return blocks[row - 1] ?? null;
+  }
+  return null;
+}
+
 /** 错误清单导出 CSV（BOM 头保证 Excel 中文不乱码） */
 export function errorsToCsv(errors: ImportError[]): string {
   const esc = (s: string) => `"${String(s).replace(/"/g, '""')}"`;
