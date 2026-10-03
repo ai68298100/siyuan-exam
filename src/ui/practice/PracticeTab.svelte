@@ -1039,6 +1039,9 @@ import { ttsSpeak } from "@/core/tts";
     /** 52-02 lite：先回忆模式（按题开关，切题重置）；recallDraft 与作答草稿分离、不入正式答案 */
     let hideOptions = $state(false);
     let recallDraft = $state("");
+    /** 52-02 收口：先回忆使用集（qid → 揭示可追溯；随 attempt 落 recall 字段） */
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- 函数内累加 Set（非组件遍历状态）
+    const recallUsed = new Set<string>();
     /** 52-04 lite：自诊断复盘缓存（qid → {text, at}；结算页回看与编辑） */
     let reflections = $state<Record<string, { text: string; at: number }>>({});
     async function editReflection(qid: string) {
@@ -1079,6 +1082,7 @@ import { ttsSpeak } from "@/core/tts";
       const timeMs = Date.now() - answerStart;
       // 选择题/判断用 selected；填空/简答用 draft
       const ans = q.options.length ? selected : session.getDraft(q.id);
+      if (hideOptions) recallUsed.add(q.id); // 未揭示就提交也算先回忆作答（52-02 可追溯）
       const r = session.submit(ans || null, timeMs);
       if (!r) {
         // 已答位置守卫（session.submit 拒绝重计）：K 回退误入已答位 → 静默前进，不重复写流水
@@ -1092,6 +1096,7 @@ import { ttsSpeak } from "@/core/tts";
         queue: session.state.mode === "wrong" ? "wrong" : "normal", timeMs,
         confidence: confidenceSel || undefined,   // U12：答前快照随 attempt；未选=如实缺省
         help: helpShown.get(q.id),               // 114-01：本题曾被讲解/提示 → 受助作答如实标记
+        recall: recallUsed.has(q.id) || undefined, // 52-02：先回忆模式揭示可追溯
       });
       plugin.refreshDock?.();
       void app.saveSession();   // 37-05 checkpoint：作答即存（SaveGate 同键合并，重载不重复作答）
@@ -2253,7 +2258,7 @@ import { ttsSpeak } from "@/core/tts";
                 <textarea class="lv-input lv-textarea" rows="2" bind:value={recallDraft}
                   placeholder={t("session.recallPlaceholder")} aria-label={t("session.recallPlaceholder")}></textarea>
                 <div class="lv-row" style="margin:6px 0">
-                  <button class="lv-btn lv-btn--primary sm" onclick={() => { hideOptions = false; }}>{t("session.revealOptions")}</button>
+                  <button class="lv-btn lv-btn--primary sm" onclick={() => { if (q) recallUsed.add(q.id); hideOptions = false; }}>{t("session.revealOptions")}</button>
                 </div>
               {:else}
               <!-- 45-03：多选用 checkbox/group 语义而非 radio；读屏可感知选中态 -->
@@ -3114,7 +3119,7 @@ import { ttsSpeak } from "@/core/tts";
   .lv-btn { display: inline-flex; align-items: center; gap: 7px; padding: 9px 18px; border-radius: 10px; font-size: 14px; font-weight: 600; border: 1px solid var(--lv-border); background: var(--lv-surface); color: var(--lv-text); cursor: pointer; transition: all var(--lv-dur-micro) ease; }
   .lv-btn:hover:not(:disabled) { border-color: var(--lv-border); box-shadow: var(--lv-sh-1); transform: translateY(-1px); }
   .lv-btn:disabled { opacity: .5; cursor: not-allowed; }
-  .lv-btn--primary { background: var(--lv-accent-grad); border-color: transparent; color: #fff; box-shadow: var(--lv-glow, none); }
+  .lv-btn--primary { background: var(--lv-accent-grad); border-color: transparent; color: var(--b3-theme-on-primary, #fff); box-shadow: var(--lv-glow, none); }
   .lv-btn--ghost { border-color: transparent; color: var(--lv-text-2); background: transparent; }
   .lv-btn--ghost.acc-btn { color: var(--lv-accent); background: var(--lv-accent-soft); }
   .lv-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 550; color: var(--lv-text-2); background: var(--lv-surface-2); border: 1px solid var(--lv-border); }
@@ -3140,11 +3145,11 @@ import { ttsSpeak } from "@/core/tts";
   .lv-opt:hover:not([disabled]) { border-color: var(--lv-accent); background: var(--lv-accent-soft); }
   .lv-opt .key { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; flex: none; font-size: 12.5px; font-weight: 700; background: var(--lv-surface-2); color: var(--lv-text-2); border: 1px solid var(--lv-border); }
   .lv-opt.sel { border-color: var(--lv-accent); background: var(--lv-accent-soft); }
-  .lv-opt.sel .key { background: var(--lv-accent); border-color: var(--lv-accent); color: #fff; }
+  .lv-opt.sel .key { background: var(--lv-accent); border-color: var(--lv-accent); color: var(--b3-theme-on-primary, #fff); }
   .lv-opt.right { border-color: var(--lv-green); background: var(--lv-green-soft); }
-  .lv-opt.right .key { background: var(--lv-green); border-color: var(--lv-green); color: #fff; }
+  .lv-opt.right .key { background: var(--lv-green); border-color: var(--lv-green); color: var(--b3-theme-on-primary, #fff); }
   .lv-opt.wrong { border-color: var(--lv-red); background: var(--lv-red-soft); }
-  .lv-opt.wrong .key { background: var(--lv-red); border-color: var(--lv-red); color: #fff; }
+  .lv-opt.wrong .key { background: var(--lv-red); border-color: var(--lv-red); color: var(--b3-theme-on-primary, #fff); }
   .lv-feedback { margin: 12px 0; padding: 10px 14px; border-radius: var(--lv-r-2); font-weight: 650; font-size: 14px; background: var(--lv-red-soft); color: var(--lv-red); }
   .lv-feedback.good { background: var(--lv-green-soft); color: var(--lv-green); }
   .lv-analysis { border-left: 3px solid var(--lv-accent); background: var(--lv-surface-2); border-radius: 0 var(--lv-r-2) var(--lv-r-2) 0; padding: 10px 14px; font-size: 13.5px; color: var(--lv-text-2); margin-bottom: 10px; white-space: pre-wrap; }

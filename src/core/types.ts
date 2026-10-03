@@ -58,6 +58,8 @@ export interface AttemptEvent {
   confidence?: "sure" | "fuzzy" | "guess"; // 置信度自评
   /** 受助标记（114-01 lite）：本次作答前该题已被讲解/提示过（同会话内）；受助表现与独立正确分开统计的依据 */
   help?: "explain" | "hint" | "socratic";
+  /** 先回忆标记（52-02 lite）：本次作答使用了「藏选项先回忆」模式；揭示可追溯，无选项回忆与选择题正确率分开报告的地基 */
+  recall?: boolean;
 }
 
 /** 错题派生条目（可随时从流水重建的物化视图） */

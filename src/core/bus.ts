@@ -10,6 +10,8 @@ export const BUS_PREFIX = "lv-exam:";
 export interface BusEvent<T extends Record<string, unknown> = Record<string, unknown>> {
   /** schema 版本：消费者按版本容错（忽略未知字段） */
   v: 1;
+  /** 来源标识（48-02：生态消费者可按来源过滤/甄别） */
+  source: "siyuan-exam";
   type: string;
   /** 幂等 id：重放/去重依据（同窗口多 Tab 不重复写入的锚点） */
   eventId: string;
@@ -39,7 +41,7 @@ function newEventId(): string {
 /** 发射（信封封装 + 白名单校验）；SSR/无窗口环境静默跳过 */
 export function emitExamEvent<T extends Record<string, unknown>>(type: BusEventType, payload: T): BusEvent<T> | null {
   if (typeof window === "undefined" || !window.dispatchEvent) return null;
-  const env: BusEvent<T> = { v: 1, type, eventId: newEventId(), at: Date.now(), payload };
+  const env: BusEvent<T> = { v: 1, source: "siyuan-exam", type, eventId: newEventId(), at: Date.now(), payload };
   window.dispatchEvent(new CustomEvent(busEventName(type), { detail: env }));
   return env;
 }
