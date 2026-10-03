@@ -178,3 +178,18 @@ export function confidentWrongList(
   }
   return [...byQid.values()].sort((a, b) => b.ts - a.ts).slice(0, limit);
 }
+
+/** uncertain-correct 下钻清单（44-02 lite 对偶）：自评"模糊/蒙"却答对的题——
+ *  可能是运气或直觉，值得复核真实掌握；按 qid 去重保留最近一次。 */
+export function uncertainCorrectList(
+  events: readonly AttemptEvent[],
+  limit = 50,
+): { qid: string; confidence: ConfidenceLevel; myAnswer: string | null; ts: number }[] {
+  const byQid = new Map<string, { qid: string; confidence: ConfidenceLevel; myAnswer: string | null; ts: number }>();
+  for (const e of events) {
+    if (e.verdict !== "correct" || (e.confidence !== "fuzzy" && e.confidence !== "guess")) continue;
+    if (e.kind !== "practice" && e.kind !== "mock") continue;
+    byQid.set(e.qid, { qid: e.qid, confidence: e.confidence!, myAnswer: e.myAnswer, ts: e.ts });
+  }
+  return [...byQid.values()].sort((a, b) => b.ts - a.ts).slice(0, limit);
+}

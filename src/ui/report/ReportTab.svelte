@@ -5,7 +5,7 @@
     import { showMessage } from "siyuan";
     import { weeklyAggregates, weekCompare, dailyTrend } from "@/core/weekly";
     import type { ExamApp } from "../../app";
-    import { heatmap, masteryByKp, weakTop, hourly, calibration, confidentWrongList, type CalibrationReport } from "@/core/report";
+    import { heatmap, masteryByKp, weakTop, hourly, calibration, confidentWrongList, uncertainCorrectList, type CalibrationReport } from "@/core/report";
     import { trendToCsv, heatmapToCsv, hourlyToCsv } from "@/core/exportMd";
     import type { ActionItem } from "@/core/actions";
     import SaveStatus from "../shared/SaveStatus.svelte";
@@ -236,6 +236,27 @@
       }
     }
 
+    /** 清除插件数据（58-03 lite）：双确认 → 逐键置空 → 逐对象回执。
+     *  范围：题库注册表/流水/错题处置/错因/行动/模考记录/AI 队列/映射/视图/草稿等插件存储；
+     *  不动：思源笔记本与题目块本体、AI Key（宿主密钥库）、已外发数据（无法撤回）。 */
+    let purgeReceipts = $state<{ key: string; ok: boolean }[]>([]);
+    let purgeBusy = $state(false);
+    async function purgeAllData() {
+      if (!app || purgeBusy) return;
+      const { confirmDialogSync } = await import("../../libs/dialog");
+      if (!(await confirmDialogSync({ title: t("data.purgeTitle"), content: t("data.purgeScope") }))) return;
+      // 第二次确认：不可撤销（建议先「数据出库」备份）
+      if (!(await confirmDialogSync({ title: t("data.purgeTitle"), content: t("data.purgeFinal") }))) return;
+      purgeBusy = true;
+      try {
+        purgeReceipts = await app.purgeAllData();
+        const failed = purgeReceipts.filter((r) => !r.ok).length;
+        showMessage(failed ? t("data.purgePartial").replace("{f}", String(failed)) : t("data.purgeDone"), 5600, failed ? "error" : "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
+      } finally { purgeBusy = false; }
+    }
+
     const heatColor = (n: number) => n === 0 ? "var(--lv-surface-2)" : n < 5 ? "l1" : n < 15 ? "l2" : n < 30 ? "l3" : "l4";
     const maxHour = $derived(Math.max(1, ...hours));
     const hoursSvg = $derived(hours.map((n, i) => `${(i / 23) * 300},${40 - Math.round((n / maxHour) * 36)}`).join(" "));
@@ -244,6 +265,9 @@
     // 44-02 lite：确定-错 下钻（展开时从流水实时取，随报告数据同源）
     let cwOpen = $state(false);
     const cwList = $derived(cwOpen && app ? confidentWrongList(app.attempts.all()) : []);
+    // 44-02 lite 对偶：不确定-对 下钻
+    let ucOpen = $state(false);
+    const ucList = $derived(ucOpen && app ? uncertainCorrectList(app.attempts.all()) : []);
 
     // 45-08：图表数据表展开态（单选一个卡）+ CSV 下载（与 SVG 同一数据快照）
     let tableOpen = $state<"trend" | "heat" | "hourly" | "">("");
@@ -419,6 +443,26 @@
             </div>
           {/if}
         {/if}
+        {#if calib.rows.some((r) => (r.confidence === "fuzzy" || r.confidence === "guess") && r.accuracy > 0 && r.attempts > 0)}
+          <!-- 44-02 lite 对偶：不确定-对 下钻（运气/直觉 vs 真实掌握） -->
+          <button class="lv-btn sm lv-btn--ghost" style="margin-top:4px" onclick={() => ucOpen = !ucOpen}>
+            {ucOpen ? "▾" : "▸"} {t("report.ucDrill")}
+          </button>
+          {#if ucOpen}
+            <div class="lv-row" style="margin:6px 0 0;flex-direction:column;align-items:stretch;gap:4px">
+              {#each ucList as u, _ui (_ui)}
+                {@const stem = questions.find((x) => x.id === u.qid)?.stem}
+                <div class="lv-row" style="margin:0;white-space:normal" title={stem ?? u.qid}>
+                  <span class="lv-chip num">{t("confidence." + u.confidence)}</span>
+                  <span style="font-size:12.5px">{stem ? stem.slice(0, 70) : u.qid}</span>
+                  <span class="lv-muted num"> · {new Date(u.ts).toLocaleDateString()}</span>
+                </div>
+              {:else}
+                <span class="lv-muted num">{t("report.ucEmpty")}</span>
+              {/each}
+            </div>
+          {/if}
+        {/if}
         {#if calib.spread != null}
           <div class="lv-row" style="margin:6px 0 0">
             <span class="lv-chip num" class:acc={calib.spread >= 20}>Δ {t("report.calibSpread")} {calib.spread}%</span>
@@ -511,6 +555,18 @@
       <button class="lv-btn sm lv-btn--ghost" style="margin-top:8px" onclick={() => void exportAllData()}>
         ⬇️ {t("data.export")}
       </button>
+      <button class="lv-btn sm" style="margin-top:8px" disabled={purgeBusy} onclick={() => void purgeAllData()}>
+        {purgeBusy ? "…" : `🗑 ${t("data.purge")}`}
+      </button>
+      {#if purgeReceipts.length}
+        <!-- 58-03/U30：逐对象回执（不冒充全部删除）；重载思源后内存态归零 -->
+        <div class="lv-row" style="margin:6px 0 0" role="status">
+          {#each purgeReceipts as r, _i (_i)}
+            <span class="lv-chip num" class:lv-chip--red={!r.ok} title={r.key}>{r.key} {r.ok ? "✓" : "✕"}</span>
+          {/each}
+        </div>
+        <div class="lv-muted" style="margin-top:4px;font-size:11.5px">{t("data.purgeNote")}</div>
+      {/if}
     </div>
   {/if}
 </div>

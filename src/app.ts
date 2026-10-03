@@ -695,6 +695,23 @@ export class ExamApp {
     );
   }
 
+  /** 清除插件数据（58-03 lite）：逐键置空并返回逐对象回执（不冒充全部删除）。
+   *  边界：思源笔记本/题块本体不动；内存态重载后归零；已外发 AI 数据无法撤回（UI 说明）。 */
+  async purgeAllData(): Promise<{ key: string; ok: boolean }[]> {
+    const receipts: { key: string; ok: boolean }[] = [];
+    for (const key of KNOWN_STORAGE_KEYS) {
+      try {
+        await this.deps.storage.save(key, null);
+        receipts.push({ key, ok: true });
+      } catch {
+        receipts.push({ key, ok: false });
+      }
+    }
+    this.banks = [];
+    this.invalidate();
+    return receipts;
+  }
+
   // ---------- 每日战报（联动小驴复盘预留） ----------
   /** 把当日战报写入思源日记（首个开启"每日笔记"的笔记本），返回日记文档 id */
   async writeDailyReport(bankId: string, bankName: string): Promise<string> {

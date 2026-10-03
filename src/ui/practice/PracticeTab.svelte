@@ -468,6 +468,13 @@ import { ttsSpeak } from "@/core/tts";
       plugin.settingUtils?.get?.("materialInterleave") === true || plugin.settingUtils?.get?.("materialInterleave") === "true",
     );
 
+    /** 47-02 lite：首用引导（有题库 + 零作答记录 + 未跳过时显示；产生首个作答后自动消失） */
+    let onboardingDismissed = $state(false);
+    try { onboardingDismissed = localStorage.getItem("lv-exam-onboarded") === "1"; } catch { /* 忽略 */ }
+    const onboarding = $derived(
+      hasBank && !onboardingDismissed && view === "entry" && !!app && app.attempts.all().length === 0,
+    );
+
     /** 会话启动失败可见化（47-06 lite）：单活动冲突/离线等不再静默吞掉。
      *  40-05 活动会话协商：冲突时提供「放弃当前并新开」（旧会话有 checkpoint，可恢复） */
     async function negotiateStart(qs: Question[], mode: string): Promise<boolean> {
@@ -1889,6 +1896,26 @@ import { ttsSpeak } from "@/core/tts";
             </div>
             <button class="lv-btn lv-btn--primary" onclick={resume}>{t("resume.continue")}</button>
             <button class="lv-btn lv-btn--ghost" onclick={async () => { await app.discardSession(); session = null; }}>{t("resume.discard")}</button>
+          </div>
+        </div>
+      {/if}
+      {#if onboarding}
+        <!-- 47-02 lite：首次五分钟任务引导（无作答记录时显示；可跳过，有作答自动消失） -->
+        <div class="lv-pad">
+          <div class="lv-card lv-resume">
+            <div>
+              <b>🧭 {t("onboard.title")}</b>
+              <div class="lv-muted">{t("onboard.desc")}</div>
+            </div>
+            <div class="lv-row" style="margin:6px 0 0">
+              <button class="lv-btn sm" onclick={() => { view = "import"; }}>① {t("onboard.step1")}</button>
+              <button class="lv-btn sm" onclick={() => { view = "manual"; }}>① {t("onboard.step1b")}</button>
+              <button class="lv-btn sm" onclick={() => { view = "ai"; }}>① {t("onboard.step1c")}</button>
+              <button class="lv-btn lv-btn--primary sm" onclick={() => void startDrill("quick")}>② {t("onboard.step2")}</button>
+              <button class="lv-btn sm" onclick={() => plugin.openReport?.()}>③ {t("onboard.step3")}</button>
+              <span class="fn__flex-1"></span>
+              <button class="lv-btn sm lv-btn--ghost" onclick={() => { onboardingDismissed = true; try { localStorage.setItem("lv-exam-onboarded", "1"); } catch { /* 忽略 */ } }}>{t("onboard.skip")}</button>
+            </div>
           </div>
         </div>
       {/if}
