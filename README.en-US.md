@@ -2,9 +2,9 @@
 
 # 🐴 Lv Exam (小驴考试)
 
-**Local-first exam question bank learning for SiYuan** — import · practice · mock exams · wrongbook · FSRS flashcards · AI
+**An AI-assisted, local-first exam preparation workspace for SiYuan** — import · practice · mock exams · wrongbook · FSRS flashcards · AI
 
-> **Fenbi-style practice UX × Anki-grade memory science × SiYuan knowledge base**
+> **Your materials → independent answers → next actions → retesting and personal notes**
 > Your questions live in your own knowledge base — every question is a searchable, linkable, syncable **SiYuan block**, not rows in someone else's cloud.
 
 [![Release](https://img.shields.io/github/v/release/ai68298100/siyuan-exam?logo=github)](https://github.com/ai68298100/siyuan-exam/releases)
@@ -30,7 +30,9 @@
 | AI explanations behind a paywall | **Bring your own AI**: generation, per-option explanations, Socratic follow-ups — via SiYuan's built-in AI or your own OpenAI-compatible endpoint, with explicit data-flow consent |
 | Half-baked mock exams | **CBT engine**: blueprint assembly, section timing, answer-sheet flags, indefinite-question partial credit, answer lockout, post-exam scoring |
 
-## 📦 Feature overview (implemented in v0.5.0)
+## 📦 Feature overview (v0.5.1 source capabilities; journey checks pending)
+
+This table describes existing source capabilities. Known gaps in saving, XLSX input, riff ratings, native-package import and multiple-choice mock answers remain in [TODO groups36–42](TODO.md). The [consolidated plan](docs/19-待办融合与分阶段执行规划.md) assigns 620 candidates to 27 work packages; it is planning only.
 
 | Module | Capabilities |
 |---|---|
@@ -39,9 +41,9 @@
 | 🖥️ **Practice** | Quick/wrong/favorites/daily drills · practice & recite modes · **keyboard flow** (A-J choose / Enter submit / J-K navigate / E fav / Esc exit) · material context card · search filter · resumable sessions |
 | 🧠 **Wrongbook** | 3-way reason tags (careless/unknown/trap, with echo) · auto-eliminate after 2-in-a-row · manual disposition overlay · dock inline actions · Markdown export |
 | 📅 **Daily plan** | Exam countdown · sprint posture · **stubborn-wrong weighted reflow** (wrong count × reason weight) · FSRS due cards first |
-| 🔁 **Memory engine** | SiYuan kernel FSRS (riff) · wrong-to-card (single & one-tap batch at settle) · 4-level self-rating mapping · cram queue · jump back to source note from recite |
+| 🔁 **Memory engine** | SiYuan kernel FSRS (riff) · wrong-to-card (single & one-tap batch at settle) · 4-level self-rating (riff contract correction pending) · cram queue (writeback validation pending) · jump back to source note from recite |
 | 📝 **Mock exam** | Blueprint configurator (shortage warnings, persistence) · CBT lockout · indefinite partial credit · section timing with auto-switch · answer-sheet flags · score report (radar/history/week compare) · post-exam scoring (bank-sourced answer keys + source filter) · challenge codes |
-| 📊 **Reports** | KPIs · week compare · 53-week heatmap · KP mastery (FSRS retention) · weak Top5 re-drill · hourly distribution |
+| 📊 **Reports** | KPIs · week compare · 53-week heatmap · Heuristic KP mastery (sample/coverage validation pending) · weak Top5 re-drill · hourly distribution |
 | 🤖 **AI** | Dual channel (SiYuan built-in / BYO key) · generation pipeline (overshoot + Haladyna distractor rules + quality gate + **second-pass adversarial review** + review queue + **reject-retry repair**) · paste **or current-document** source · per-option explain + Socratic + multi-turn follow-up · cost tracking |
 | 🔗 **SiYuan integration** | Block attribute contract (`custom-exam-*`) · query-embed drill (circle a query, practice its results) · wrongbook dock · status bar · `lv-exam:stats` public event · bank sharing via `.sy.zip` |
 | 🔊 **Listen & learn** | TTS read-aloud · pure-listening mode · progressive hint chain · cover-answer 4-level self-rating |
@@ -53,6 +55,8 @@
 - Topic-tree browsing, full-paper view
 - SiYuan database (av) management view
 - AI block-reference citation deepening
+- AI across the learning journey, SiYuan agent integration, module entry points and task/exam prompt templates (planning only; see the [AI template specification](docs/18-AI智能体与提示词模板规范.md))
+- Purchased PDFs/videos and local/cloud files: minimum viewing and personal-note editing, plus SiReader, media-player, cloud and desktop-tool integration (planning only; see [material research](research/17-付费资料与本地网盘媒体联动调研.md))
 - Mobile polish, marketplace listing (gated on beta feedback)
 
 </details>
@@ -68,6 +72,7 @@
 
 ## 🔒 Data & privacy
 
+- **Tools and content are separate**: the plugin provides import, practice and review tools, not Fenbi, Offcn or Zhonghe question banks. Users upload their own content. Material they are permitted to retain locally may live in SiYuan; restricted online sources should retain only links, personal notes and learning evidence. Free access or purchase does not imply permission to copy or redistribute. Access and rights governance remain research candidates; see [research/15](research/15-考试软件竞品与用户题源接入调研.md).
 - **Local first**: questions, attempt logs and the wrongbook all live in your own SiYuan workspace. No telemetry.
 - **Explicit AI data flow**: only when you trigger generation/explanation does the selected material leave for your configured AI endpoint (SiYuan built-in or your own key); unconfigured, AI stays fully silent.
 - Deletion: your bank is just a notebook — SiYuan's trash and sync history apply as usual.
@@ -82,13 +87,16 @@
 
 | Doc | Content |
 |---|---|
-| [TODO.md](TODO.md) | Master backlog (36 groups, 446 items, with retro audits) |
+| [TODO.md](TODO.md) | Stable backlog: 620 candidates with IDs and status preserved, grouped into 27 work packages; planning only |
+| [docs/19 Consolidated plan](docs/19-待办融合与分阶段执行规划.md) · [docs/20 Full mapping](docs/20-全量待办归并索引.md) | Merge decisions, dependency corrections, S0–S4 stages, 8 proposed slices and unique ownership for all 620 IDs |
 | [docs/01 PRD](docs/01-功能全景PRD.md) · [docs/02 data model](docs/02-数据模型设计.md) · [docs/03 architecture](docs/03-技术架构.md) | Product / data / architecture (03 includes the live-verified kernel API table) — in Chinese |
 | [docs/04 roadmap](docs/04-版本路线图.md) · [CHANGELOG](CHANGELOG.md) | Version plan and changelog |
 | [docs/11 UI spec](docs/11-UI原型与交互规范.md) · [design/prototype](design/prototype/index.html) | 14-screen hi-fi prototype (open in a browser) |
-| [docs/17 smoke checklist](docs/17-真机冒烟清单.md) | 26-step acceptance list + preflight guide |
-| [docs/adr](docs/adr) | 8 architecture decision records |
-| [research](research) | 8 competitive research reports (40+ products) |
+| [docs/17 smoke checklist](docs/17-真机冒烟清单.md) | 40-step acceptance list (A–E for v0.5.x, +F for v0.6-dev); automatable steps covered by `pnpm smoke` |
+| [docs/18 AI agent and prompt specification](docs/18-AI智能体与提示词模板规范.md) | 13 task template bodies, 19 task entries, exam/subject/media overlays and permission/evidence contracts; runtime prompts and agent capabilities have not been updated |
+| [docs/adr](docs/adr) | 11 architecture decision records |
+| [FAQ](docs/FAQ.md) · [CONTRIBUTING](CONTRIBUTING.md) | Where data lives / zero-telemetry & AI data flow / FSRS; local dev, gates and commit conventions |
+| [research](research) · [research/16 AI and SiYuan agents](research/16-AI全流程与思源智能体融合调研.md) | 17 reports covering competitive products, implementation/API review, UX/ecosystem flows, content lifecycle, learning evidence, product positioning, exams/sources, intellectual property and AI across the learning journey; agent integration still requires capability and version checks |
 
 ## 🧑‍💻 Development
 
@@ -116,3 +124,5 @@ Stack: Vite 8 · Svelte 5 · TypeScript strict · SiYuan kernel API (no backend 
 ## 📄 License
 
 [MIT](LICENSE)
+
+MIT covers the plugin code. It grants no permission to use or distribute third-party questions, explanations, audio, video, images or books; user materials remain subject to their original rights and permissions.
