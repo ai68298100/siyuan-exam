@@ -66,10 +66,12 @@ export class PracticeSession {
   }
 
   /** 提交当前题：判分 + 记录待写流水事件；返回判分结果（UI 渲染反馈态）。
-   *  已答快照（含位置）与重排集合同步进 state（37-05），暂停/重载后可完整恢复 */
+   *  已答快照（含位置）与重排集合同步进 state（37-05），暂停/重载后可完整恢复。
+   *  已答位置守卫（兜底审计）：K 回退到已答位置再提交返回 null 不重计；重排队错题在新位置可重答 */
   submit(myAnswer: string | null, timeMs = 0): { q: Question; grade: GradeResult } | null {
     const q = this.current;
     if (!q || this.phase === "finished") return null;
+    if ((this.state.answered ?? []).some((a) => a.pos === this.state.cursor)) return null;
     const g = grade(q, myAnswer);
     this.answered.push({ qid: q.id, grade: g, timeMs });
     (this.state.answered ??= []).push({

@@ -91,6 +91,14 @@ export default class LvExamPlugin extends Plugin {
       direction: "row",
     });
     this.settingUtils.addItem({
+      title: this.i18n["setting.feedbackTiming.title"],
+      description: this.i18n["setting.feedbackTiming.desc"],
+      type: "checkbox",
+      key: "feedbackEndReview",
+      value: false,
+      direction: "row",
+    });
+    this.settingUtils.addItem({
       title: this.i18n["setting.retention.title"],
       description: this.i18n["setting.retention.desc"],
       type: "slider",

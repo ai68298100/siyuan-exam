@@ -42,3 +42,23 @@ function typeLabel(t: Question["type"]): string {
 function reasonLabel(r: string): string {
   return { careless: "粗心", unknown: "知识不会", trap: "陷阱" }[r] ?? r;
 }
+
+// ---------- 图表文本等价物（45-08）：CSV 与 SVG 图表取同一数据快照，数字与报告一致 ----------
+
+const csvJoin = (head: string[], rows: (string | number)[][]) =>
+  "\uFEFF" + [head.join(","), ...rows.map((r) => r.map((v) => String(v))).map((r) => r.join(","))].join("\r\n");
+
+export function trendToCsv(trend: { date: string; attempts: number }[]): string {
+  return csvJoin(["日期", "作答题数"], trend.map((p) => [p.date, p.attempts]));
+}
+
+export function heatmapToCsv(heat: { date: string; count: number }[]): string {
+  return csvJoin(["日期", "活动量"], heat.map((p) => [p.date, p.count]));
+}
+
+export function hourlyToCsv(hours: number[]): string {
+  return csvJoin(
+    ["时段", "作答题数"],
+    hours.map((n, i) => [`${String(i).padStart(2, "0")}:00-${String(i).padStart(2, "0")}:59`, n]),
+  );
+}

@@ -10,7 +10,7 @@ import { ttsSpeak } from "@/core/tts";
     import { parseText, parseExcelRows, autoMapExcel, errorsToCsv, extractTextRowAt, type ImportReport } from "../../importer/pipeline";
     import { groupAdjacent } from "../../core/session";
     import { makeQuestion } from "../../core/blockTemplate";
-    import { grade, normalizeAnswer, questionHash } from "../../core/answer";
+    import { normalizeAnswer, questionHash } from "../../core/answer";
     import { validate } from "../../importer/pipeline";
     import { bankHealthReport, type BankHealthReport } from "../../core/bankHealth";
     import { planBatchEdit, invertPlan, describeChange } from "../../core/batchEdit";
@@ -90,6 +90,12 @@ import { ttsSpeak } from "@/core/tts";
     });
     const qElapsedS = $derived.by(() => { void qTick; return Math.max(0, Math.floor((Date.now() - answerStart) / 1000)); });
     const qTimeoutS = $derived(Math.max(0, Number(plugin.settingUtils?.get?.("perQuestionTimeoutS") ?? 0) || 0));
+    /** 44-01：反馈时机策略（默认逐题即时；勾选=会话末复盘。作答事件两种模式完全一致） */
+    const feedbackMode = $derived(
+      plugin.settingUtils?.get?.("feedbackEndReview") === true || plugin.settingUtils?.get?.("feedbackEndReview") === "true"
+        ? "end"
+        : "immediate",
+    );
 
     // 导入批次回滚（TODO 12 组）：按 custom-exam-batch 定位块逐块删除；只动题块不动流水
     const batchList = $derived(healthOpen && questions.length ? app.listBatches(questions) : []);
@@ -906,6 +912,8 @@ import { ttsSpeak } from "@/core/tts";
       }
     }
 
+    /** 44-01：结算页错题回看展开态 */
+    let reviewOpen = $state(false);
     function submitAnswer() {
       if (!session || feedback) return;
       const q = session.current;
@@ -913,17 +921,28 @@ import { ttsSpeak } from "@/core/tts";
       const timeMs = Date.now() - answerStart;
       // 选择题/判断用 selected；填空/简答用 draft
       const ans = q.options.length ? selected : session.getDraft(q.id);
-      const g = grade(q, ans || null);
-      session.submit(ans || null, timeMs);
+      const r = session.submit(ans || null, timeMs);
+      if (!r) {
+        // 已答位置守卫（session.submit 拒绝重计）：K 回退误入已答位 → 静默前进，不重复写流水
+        nextQuestion();
+        return;
+      }
+      const g = r.grade;
       app.recordAttempt({
         qid: q.id, kind: "practice", mode: session.state.mode,
         verdict: g.verdict, myAnswer: g.myAnswer, sessionId: session.id,
         queue: session.state.mode === "wrong" ? "wrong" : "normal", timeMs,
         confidence: confidenceSel || undefined,   // U12：答前快照随 attempt；未选=如实缺省
       });
-      feedback = { verdict: g.verdict, myAnswer: g.myAnswer };
       plugin.refreshDock?.();
       void app.saveSession();   // 37-05 checkpoint：作答即存（SaveGate 同键合并，重载不重复作答）
+      if (feedbackMode === "end") {
+        // 44-01：会话末复盘——作答事件完全一致，仅对错不在逐题显示，结算页统一回看
+        showMessage(t("session.recordedSilent"), 1500, "info");
+        nextQuestion();
+        return;
+      }
+      feedback = { verdict: g.verdict, myAnswer: g.myAnswer };
     }
 
     function nextQuestion() {
@@ -1862,6 +1881,21 @@ import { ttsSpeak } from "@/core/tts";
               📌 {actionBusy ? "…" : t("action.addWrong")}
             </button>
             {#if actionNote}<p class="lv-muted num" style="margin:6px 0 0">{actionNote}</p>{/if}
+            <!-- 44-01 end 模式/回看：错题逐题展开（题干+我的答案+正确答案+解析） -->
+            <button class="lv-btn lv-btn--ghost" style="width:100%;margin-top:6px" onclick={() => reviewOpen = !reviewOpen}>
+              {reviewOpen ? "▾" : "▸"} {t("session.reviewWrongs")}
+            </button>
+            {#if reviewOpen}
+              <div class="lv-detail" style="text-align:left;max-height:260px;overflow:auto">
+                {#each session.answered.filter((a) => a.grade.verdict !== "correct") as a, _ri (_ri)}
+                  {@const aq = questions.find((x) => x.id === a.qid)}
+                  <div class="lv-error-row" style="white-space:normal">
+                    <b class="num">✕</b> {aq?.stem.slice(0, 80) ?? a.qid}
+                    <div class="lv-muted num">{t("browse.answer")}: {aq?.answer ?? "—"}{#if a.grade.myAnswer} · {t("session.myAnswer")}: {a.grade.myAnswer}{/if}{#if aq?.analysis} · {aq.analysis}{/if}</div>
+                  </div>
+                {/each}
+              </div>
+            {/if}
           {/if}
           <button class="lv-btn lv-btn--primary" style="width:100%;margin-top:8px" onclick={exitSession}>{t("session.back")}</button>
         </div>

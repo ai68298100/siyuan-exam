@@ -5,7 +5,8 @@
     import { showMessage } from "siyuan";
     import { weeklyAggregates, weekCompare, dailyTrend } from "@/core/weekly";
     import type { ExamApp } from "../../app";
-    import { heatmap, masteryByKp, weakTop, hourly, calibration, type CalibrationReport } from "@/core/report";
+    import { heatmap, masteryByKp, weakTop, hourly, calibration, confidentWrongList, type CalibrationReport } from "@/core/report";
+    import { trendToCsv, heatmapToCsv, hourlyToCsv } from "@/core/exportMd";
     import type { ActionItem } from "@/core/actions";
     import SaveStatus from "../shared/SaveStatus.svelte";
 
@@ -222,6 +223,21 @@
     const maxHour = $derived(Math.max(1, ...hours));
     const hoursSvg = $derived(hours.map((n, i) => `${(i / 23) * 300},${40 - Math.round((n / maxHour) * 36)}`).join(" "));
     const maxTrend = $derived(Math.max(1, ...trend30.map((p) => p.attempts)));
+
+    // 44-02 lite：确定-错 下钻（展开时从流水实时取，随报告数据同源）
+    let cwOpen = $state(false);
+    const cwList = $derived(cwOpen && app ? confidentWrongList(app.attempts.all()) : []);
+
+    // 45-08：图表数据表展开态（单选一个卡）+ CSV 下载（与 SVG 同一数据快照）
+    let tableOpen = $state<"trend" | "heat" | "hourly" | "">("");
+    function downloadChartCsv(csv: string, name: string) {
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `小驴考试-报告-${name}-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
 </script>
 
 <div class="fn__flex-1 lv-pad">
@@ -278,7 +294,20 @@
         <div class="lv-row" style="margin:4px 0 0">
           <span class="lv-chip num">{t("report.trendMax")} {maxTrend}</span>
           <span class="lv-chip num">{t("report.trendSum")} {trend30.reduce((n, p) => n + p.attempts, 0)}</span>
+          <!-- 45-08：SVG 图表的文本等价物 + CSV（同一数据快照，读屏/打印/导出数字一致） -->
+          <button class="lv-btn sm lv-btn--ghost" onclick={() => tableOpen = tableOpen === "trend" ? "" : "trend"}>📋 {t("data.table")}</button>
+          <button class="lv-btn sm lv-btn--ghost" onclick={() => downloadChartCsv(trendToCsv(trend30), "trend30")}>⬇️ CSV</button>
         </div>
+        {#if tableOpen === "trend"}
+          <table class="lv-dtable">
+            <thead><tr><th>{t("report.trendDay")}</th><th>{t("report.attempts")}</th></tr></thead>
+            <tbody>
+              {#each trend30.filter((p) => p.attempts > 0) as p, _i (_i)}
+                <tr><td class="num">{p.date}</td><td class="num">{p.attempts}</td></tr>
+              {/each}
+            </tbody>
+          </table>
+        {/if}
       </div>
     {/if}
 
@@ -289,6 +318,17 @@
           <i class={heatColor(c.count)} title="{c.date} · {c.count}"></i>
         {/each}
       </div>
+      <div class="lv-row" style="margin:6px 0 0">
+        <button class="lv-btn sm lv-btn--ghost" onclick={() => tableOpen = tableOpen === "heat" ? "" : "heat"}>📋 {t("data.table")}</button>
+        <button class="lv-btn sm lv-btn--ghost" onclick={() => downloadChartCsv(heatmapToCsv(heat), "heatmap")}>⬇️ CSV</button>
+      </div>
+      {#if tableOpen === "heat"}
+        <div class="lv-row" style="margin:6px 0 0;flex-direction:column;align-items:stretch;gap:2px;max-height:180px;overflow:auto">
+          {#each heat.filter((c) => c.count > 0) as c, _i (_i)}
+            <span class="lv-muted num">{c.date} · {c.count}</span>
+          {/each}
+        </div>
+      {/if}
     </div>
 
     <div class="lv-card lv-section">
@@ -335,6 +375,26 @@
             <span class="num lv-muted" style="width:90px">{r.accuracy}% · {r.attempts} {t("browse.count")}</span>
           </div>
         {/each}
+        {#if calib.rows.some((r) => r.confidence === "sure" && r.accuracy < 80 && r.attempts > 0)}
+          <!-- 44-02 lite：确定-错 下钻（低样本不误导，样本门槛沿用校准卡口径） -->
+          <button class="lv-btn sm lv-btn--ghost" style="margin-top:4px" onclick={() => cwOpen = !cwOpen}>
+            {cwOpen ? "▾" : "▸"} {t("report.cwDrill")}
+          </button>
+          {#if cwOpen}
+            <div class="lv-row" style="margin:6px 0 0;flex-direction:column;align-items:stretch;gap:4px">
+              {#each cwList as c, _ci (_ci)}
+                {@const stem = questions.find((x) => x.id === c.qid)?.stem}
+                <div class="lv-error-row" style="white-space:normal" title={stem ?? c.qid}>
+                  <b class="num">✕</b> {stem ? stem.slice(0, 70) : c.qid}
+                  {#if c.myAnswer}<span class="lv-muted"> · {t("session.myAnswer")}: {c.myAnswer}</span>{/if}
+                  <span class="lv-muted num"> · {new Date(c.ts).toLocaleDateString()}</span>
+                </div>
+              {:else}
+                <span class="lv-muted num">{t("report.cwEmpty")}</span>
+              {/each}
+            </div>
+          {/if}
+        {/if}
         {#if calib.spread != null}
           <div class="lv-row" style="margin:6px 0 0">
             <span class="lv-chip num" class:acc={calib.spread >= 20}>Δ {t("report.calibSpread")} {calib.spread}%</span>
@@ -379,6 +439,17 @@
       <svg viewBox="0 0 300 46" style="width:100%;max-width:420px;display:block">
         <polyline points={hoursSvg} fill="none" stroke="var(--lv-accent)" stroke-width="2" />
       </svg>
+      <div class="lv-row" style="margin:4px 0 0">
+        <button class="lv-btn sm lv-btn--ghost" onclick={() => tableOpen = tableOpen === "hourly" ? "" : "hourly"}>📋 {t("data.table")}</button>
+        <button class="lv-btn sm lv-btn--ghost" onclick={() => downloadChartCsv(hourlyToCsv(hours), "hourly")}>⬇️ CSV</button>
+      </div>
+      {#if tableOpen === "hourly"}
+        <div class="lv-row" style="margin:6px 0 0;flex-direction:column;align-items:stretch;gap:2px;max-height:180px;overflow:auto">
+          {#each hours.map((n, i) => [i, n] as const).filter(([, n]) => n > 0) as [h, n], _i (_i)}
+            <span class="lv-muted num">{String(h).padStart(2, "0")}:00 · {n}</span>
+          {/each}
+        </div>
+      {/if}
       <button class="lv-btn sm" style="margin-top:8px" disabled={reportBusy} onclick={writeDaily}>
         📄 {reportBusy ? "…" : t("report.writeDaily")}
       </button>

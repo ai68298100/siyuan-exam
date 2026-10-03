@@ -163,3 +163,18 @@ export function calibration(events: readonly AttemptEvent[]): CalibrationReport 
       : null;
   return { rows, unreported, spread };
 }
+
+/** confident-wrong 下钻清单（44-02 lite）：自评"确定"却答错的题（按 qid 去重保留最近一次）。
+ *  U12：题目/考点维度下钻的依据；样本即真实事件，不合并会话内重复刷题。 */
+export function confidentWrongList(
+  events: readonly AttemptEvent[],
+  limit = 50,
+): { qid: string; myAnswer: string | null; ts: number }[] {
+  const byQid = new Map<string, { qid: string; myAnswer: string | null; ts: number }>();
+  for (const e of events) {
+    if (e.verdict !== "wrong" || e.confidence !== "sure") continue;
+    if (e.kind !== "practice" && e.kind !== "mock") continue;
+    byQid.set(e.qid, { qid: e.qid, myAnswer: e.myAnswer, ts: e.ts }); // 后写覆盖 = 最近一次
+  }
+  return [...byQid.values()].sort((a, b) => b.ts - a.ts).slice(0, limit);
+}
