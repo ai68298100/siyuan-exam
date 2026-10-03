@@ -43,4 +43,28 @@ describe("批量编辑 dry-run（43-06 lite）", () => {
     const empty = planBatchEdit([q("e", { blockId: "be" })], "kp", "新考点");
     expect(describeChange(empty.changes[0], "某题")).toContain("（空） → 新考点");
   });
+
+  it("新维度（廿四批）：出处/年份/分值计划、字段标签与撤销互换", () => {
+    const qs = [
+      q("a", { source: "2022 国考", year: "2022", score: 1, blockId: "b1" }),
+      q("b", { blockId: "b2" }),
+    ];
+    const src = planBatchEdit(qs, "source", "2023 国考");
+    expect(src.changes.map((c) => c.qid)).toEqual(["a", "b"]);
+    expect(describeChange(src.changes[0], "某题")).toContain("出处：2022 国考 → 2023 国考");
+
+    const year = planBatchEdit(qs, "year", "2023");
+    expect(year.changes[0]).toMatchObject({ from: "2022", to: "2023" });
+    expect(describeChange(year.changes[1], "某题")).toContain("年份：（空） → 2023");
+
+    const score = planBatchEdit(qs, "score", "0.5");
+    expect(score.changes[0]).toMatchObject({ field: "score", from: "1", to: "0.5" });
+    // 分值不变 → 跳过
+    const sameScore = planBatchEdit([qs[0]], "score", "1");
+    expect(sameScore.changes).toHaveLength(0);
+    expect(sameScore.skipped).toBe(1);
+    // 撤销：逆向计划写回原值（app.applyBatchEdit 经 BATCH_FIELD_ATTR 映射 custom-exam-*）
+    const inv = invertPlan(score.changes);
+    expect(inv[0]).toMatchObject({ from: "0.5", to: "1" });
+  });
 });

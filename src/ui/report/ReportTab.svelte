@@ -7,6 +7,7 @@
     import type { ExamApp } from "../../app";
     import { heatmap, masteryByKp, weakTop, hourly, calibration, type CalibrationReport } from "@/core/report";
     import type { ActionItem } from "@/core/actions";
+    import SaveStatus from "../shared/SaveStatus.svelte";
 
     let { plugin, examApp: app }: { plugin: any; examApp: ExamApp | null } = $props();
     const i18n = $derived(plugin?.i18n ?? {});
@@ -186,6 +187,7 @@
       <svg class="block__logoicon"><use xlink:href="#iconReport"></use></svg>
       {t("tab.report")}
     </div>
+    {#if app}<SaveStatus gate={app.saves} {t} />{/if}
     {#if bankOptions.length > 1}
       <select class="lv-select" style="max-width:200px" bind:value={bankId} disabled={scopeLoading} onchange={onBankChange}>
         {#each bankOptions as b, _i (_i)}<option value={b.id}>{b.name}</option>{/each}

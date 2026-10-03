@@ -93,4 +93,41 @@ describe("commitImport 应用层（U08：写入+读回确认）", () => {
     expect(r).toEqual({ written: 0, docs: [], readback: { confirmed: [], missing: [], verified: false } });
     expect(createdDocs).toHaveLength(0);
   }, 15_000);
+
+  it("46-03 取消：文档间停止写入，cancelled=true，读回只对已写部分（未处理≠missing）", async () => {
+    const { client, written } = stubClient();
+    const app = mkApp(client, true);
+    // 两个考点 → 两个文档；第 1 个文档写完后取消
+    const rep = report(4);
+    rep.ok = rep.ok.map((q, i) => ({ ...q, kp: i < 2 ? "言语" : "数量" }));
+    const progress: [number, number][] = [];
+    let calls = 0;
+    const r = await app.commitImport("bank1", rep, {
+      onProgress: (done, total) => progress.push([done, total]),
+      isCancelled: () => ++calls > 1, // 第 2 个文档前取消
+    });
+    expect(r.cancelled).toBe(true);
+    expect(r.written).toBe(2);
+    expect(written).toHaveLength(2);
+    expect(progress).toEqual([[2, 4]]);
+    // 读回范围=已写 2 题：全部确认，未写的 2 题不冒充 missing
+    expect(r.readback.verified).toBe(true);
+    expect(r.readback.confirmed).toHaveLength(2);
+    expect(r.readback.missing).toHaveLength(0);
+  }, 15_000);
+
+  it("46-03 进度：不取消时逐文档推进至 (total,total)", async () => {
+    const { client } = stubClient();
+    const app = mkApp(client, true);
+    const rep = report(6);
+    rep.ok = rep.ok.map((q, i) => ({ ...q, kp: i < 2 ? "言语" : i < 4 ? "数量" : "判断" }));
+    const progress: [number, number][] = [];
+    const r = await app.commitImport("bank1", rep, {
+      onProgress: (done, total) => progress.push([done, total]),
+      isCancelled: () => false,
+    });
+    expect(r.cancelled).toBeUndefined();
+    expect(progress).toEqual([[2, 6], [4, 6], [6, 6]]);
+    expect(r.readback.confirmed).toHaveLength(6);
+  }, 15_000);
 });

@@ -241,27 +241,52 @@ export class KernelApiClient {
     return out;
   }
 
-  /** 题库内检索：custom-exam-* 属性驱动（2026-10-02 实测前缀约定）；带 root_id 供文档跳转 */
-  async listQuestions(notebook: string): Promise<(Question & { blockId: string; rootId: string })[]> {
+  /** 题库内检索：custom-exam-* 属性驱动（2026-10-02 实测前缀约定）；带 root_id 供文档跳转、hpath 供章节树过滤 */
+  async listQuestions(notebook: string): Promise<(Question & { blockId: string; rootId: string; hpath: string })[]> {
     const rows = await this.sql<Record<string, string>>(
-      `SELECT b.id AS blockId, b.root_id AS rootId, b.content AS content,
+      `SELECT b.id AS blockId, b.root_id AS rootId, b.content AS content, b.hpath AS hpath,
               a.name AS attrName, a.value AS attrValue
        FROM attributes a JOIN blocks b ON a.block_id = b.id
        WHERE b.root_id IN (SELECT id FROM blocks WHERE box='${escapeSql(notebook)}' AND type='d')
          AND a.name LIKE 'custom-exam-%'`,
     );
-    const byBlock = new Map<string, { attrs: Record<string, string>; content: string; rootId: string }>();
+    const byBlock = new Map<string, { attrs: Record<string, string>; content: string; rootId: string; hpath: string }>();
     for (const row of rows) {
-      const e = byBlock.get(row.blockId) ?? { attrs: {}, content: row.content ?? "", rootId: row.rootId ?? "" };
+      const e =
+        byBlock.get(row.blockId) ??
+        { attrs: {}, content: row.content ?? "", rootId: row.rootId ?? "", hpath: row.hpath ?? "" };
       e.attrs[row.attrName] = row.attrValue ?? "";
       byBlock.set(row.blockId, e);
     }
-    const out: (Question & { blockId: string; rootId: string })[] = [];
+    const out: (Question & { blockId: string; rootId: string; hpath: string })[] = [];
     for (const [blockId, e] of byBlock) {
       const q = questionFromBlock({ attrs: e.attrs, text: e.content });
-      if (q) out.push({ ...q, blockId, rootId: e.rootId });
+      if (q) out.push({ ...q, blockId, rootId: e.rootId, hpath: e.hpath });
     }
     return out;
+  }
+
+  /** 章节树数据源（TODO 2.2）：notebook → 文档 → 标题层级；块 hpath 含标题祖先路径，供按章节过滤题目 */
+  async docTree(notebook: string): Promise<{
+    docs: { id: string; title: string; hpath: string }[];
+    headings: { id: string; text: string; hpath: string; level: number }[];
+  }> {
+    const box = escapeSql(notebook);
+    const docRows = await this.sql<Record<string, string>>(
+      `SELECT id, content, hpath FROM blocks WHERE box='${box}' AND type='d' ORDER BY hpath`,
+    );
+    const hRows = await this.sql<Record<string, string>>(
+      `SELECT id, content, hpath, subtype FROM blocks WHERE box='${box}' AND type='h' ORDER BY hpath`,
+    );
+    return {
+      docs: docRows.map((r) => ({ id: String(r.id ?? ""), title: String(r.content ?? ""), hpath: String(r.hpath ?? "") })),
+      headings: hRows.map((r) => ({
+        id: String(r.id ?? ""),
+        text: String(r.content ?? ""),
+        hpath: String(r.hpath ?? ""),
+        level: parseInt(String(r.subtype ?? "h1").replace("h", ""), 10) || 1,
+      })),
+    };
   }
 
   /** 反链聚合：引用了某题块的笔记（refs 表 2026-10-02 实测：block_id=容器块, def_block_id=被引块, root_id=文档） */
@@ -302,6 +327,12 @@ export class KernelApiClient {
   /** 删除单个块（12 组批次回滚用；真实宿主行为待 preflight/冒烟复核） */
   async removeBlock(blockId: string): Promise<void> {
     await this.t.post("/api/block/deleteBlock", { id: blockId });
+  }
+
+  /** 整块替换（题目编辑 43-01 lite）：超级块 markdown 全量重写，exam-id IAL 不变即身份不变；
+   *  写后读回核验由调用方（app.updateQuestionContent）负责 */
+  async updateBlock(blockId: string, markdown: string): Promise<void> {
+    await this.t.post("/api/block/updateBlock", { dataType: "markdown", data: markdown, id: blockId });
   }
 
   async getDueCards(deckId: string): Promise<unknown[]> {

@@ -10,6 +10,9 @@ import { replay, activeWrongItems } from "./core/replayer";
 import { PracticeSession, pickRandom, groupAdjacent } from "./core/session";
 import { deckNameForBank, selfRatingToRiffRating, pickSameKp, cramQueue, dailySet } from "./core/memory";
 import { SaveGate } from "./core/saveGate";
+import { normalizeAnswer, questionHash } from "./core/answer";
+import { questionToMarkdown } from "./core/blockTemplate";
+import { BATCH_FIELD_ATTR, type BatchField } from "./core/batchEdit";
 import type { MockRunSnapshot } from "./core/mock";
 import {
   appendActions,
@@ -64,6 +67,8 @@ export interface ImportCommitResult {
   written: number;
   docs: string[];
   readback: { confirmed: string[]; missing: string[]; verified: boolean };
+  /** 46-03：用户取消 → 已写文档保留，未写部分不计入 missing（如实区分"未处理"与"写失败"） */
+  cancelled?: boolean;
 }
 
 export class ExamApp {
@@ -146,8 +151,14 @@ export class ExamApp {
     return false;
   }
 
-  /** 导入提交：按考点落章节文档（无考点 → "导入/<批次>"），返回写入数与真实读回清单（U08） */
-  async commitImport(bankId: string, report: ImportReport): Promise<ImportCommitResult> {
+  /** 导入提交：按考点落章节文档（无考点 → "导入/<批次>"），返回写入数与真实读回清单（U08）。
+   *  46-03：onProgress 逐文档回传 (已写, 总数)；isCancelled 在文档间检查，取消时如实返回 partial。
+   *  取消不回滚已写文档（batch 可在题库健康面板整批撤销），written 只计真实写出的题。 */
+  async commitImport(
+    bankId: string,
+    report: ImportReport,
+    opts?: { onProgress?: (done: number, total: number) => void; isCancelled?: () => boolean },
+  ): Promise<ImportCommitResult> {
     if (!report.ok.length) return { written: 0, docs: [], readback: { confirmed: [], missing: [], verified: false } };
     const expected = report.ok.map((q) => q.id);
     const baseline = this.kernelOnline
@@ -161,13 +172,22 @@ export class ExamApp {
       if (!byDoc.has(doc)) byDoc.set(doc, []);
       byDoc.get(doc)!.push(q);
     }
+    const total = report.ok.length;
     let written = 0;
+    let cancelled = false;
+    const writtenIds: string[] = [];
     const docs: string[] = [];
     for (const [doc, qs] of byDoc) {
+      if (opts?.isCancelled?.()) {
+        cancelled = true;
+        break;
+      }
       const docId = await this.ensureDoc(bankId, doc);
       await this.deps.client.appendQuestions(docId, qs);
       written += qs.length;
+      for (const q of qs) writtenIds.push(q.id);
       docs.push(doc);
+      opts?.onProgress?.(written, total);
     }
     this.invalidate();
     // 3.8.5 实测：IAL 属性入 attributes 表有 1-3s 异步索引滞后，
@@ -183,22 +203,24 @@ export class ExamApp {
         }
       }
     }
-    // 读回确认（U08）：完成页只认真实读回的 qid；读回失败如实报告"未核实"，不冒充成功
+    // 读回确认（U08）：完成页只认真实读回的 qid；读回失败如实报告"未核实"，不冒充成功。
+    // 取消时只对已写文档的题做读回（未处理 ≠ 写失败，missing 不掺入未处理部分）
+    const readbackScope = cancelled ? writtenIds : expected;
     let readback: ImportCommitResult["readback"] = { confirmed: [], missing: [], verified: false };
     if (this.kernelOnline) {
       try {
         const qs = await this.listQuestions(bankId);
         const have = new Set(qs.map((q) => q.id));
         readback = {
-          confirmed: expected.filter((id) => have.has(id)),
-          missing: expected.filter((id) => !have.has(id)),
+          confirmed: readbackScope.filter((id) => have.has(id)),
+          missing: readbackScope.filter((id) => !have.has(id)),
           verified: true,
         };
       } catch {
         readback = { confirmed: [], missing: [], verified: false };
       }
     }
-    return { written, docs, readback };
+    return cancelled ? { written, docs, readback, cancelled } : { written, docs, readback };
   }
 
   private async ensureDoc(bankId: string, hpath: string): Promise<string> {
@@ -210,14 +232,14 @@ export class ExamApp {
     return this.deps.client.createDocWithMd(bankId, hpath, `# ${hpath.split("/").pop()}\n\n`);
   }
 
-  async listQuestions(bankId: string): Promise<(Question & { blockId: string; rootId: string })[]> {
+  async listQuestions(bankId: string): Promise<(Question & { blockId: string; rootId: string; hpath: string })[]> {
     return this.deps.client.listQuestions(bankId);
   }
 
   /** 块菜单直通（2.2）：按 blockId 在各题库定位题目；离线返回 null（调用方降级提示） */
   async findQuestionByBlock(
     blockId: string,
-  ): Promise<{ q: Question & { blockId: string; rootId: string }; bank: BankInfo } | null> {
+  ): Promise<{ q: Question & { blockId: string; rootId: string; hpath: string }; bank: BankInfo } | null> {
     if (!blockId || !this.kernelOnline) return null;
     for (const bank of this.listBanks()) {
       try {
@@ -228,6 +250,48 @@ export class ExamApp {
       }
     }
     return null;
+  }
+
+  // ---------- 章节树（TODO 2.2：notebook→doc→heading 数据源） ----------
+  async docTree(bankId: string) {
+    return this.deps.client.docTree(bankId);
+  }
+
+  // ---------- 题目编辑（43-01 lite：块菜单「编辑」→ 浏览视图内联表单 → updateBlock 整块重写） ----------
+  /** 标记考点（块菜单直通）：写 custom-exam-kp 并同步本地缓存对象 */
+  async markQuestionKp(q: Question & { blockId?: string }, kp: string): Promise<void> {
+    if (q.blockId && this.kernelOnline) {
+      await this.saves.run(`mark-kp/${q.blockId}`, () => this.deps.client.setExamAttrs(q.blockId!, { "exam-kp": kp }));
+    }
+    q.kp = kp || undefined;
+  }
+
+  /** 题目内容编辑（stem/options/answer/analysis/kp/difficulty）：updateBlock 全量重写超级块，
+   *  exam-id IAL 不变即身份不变；写后 kramdown 读回核验 exam-id 仍在（丢失则抛错，不冒充成功） */
+  async updateQuestionContent(
+    q: Question & { blockId: string },
+    draft: { stem: string; options: string[]; answer: string; analysis: string; kp: string; difficulty?: number },
+  ): Promise<Question> {
+    if (!this.kernelOnline) throw new Error("离线：题目编辑需要内核可写");
+    const answer = q.type === "material" ? "" : normalizeAnswer(q.type, draft.answer) ?? draft.answer;
+    const next: Question = {
+      ...q,
+      stem: draft.stem,
+      options: draft.options.map((o) => o.trim()).filter(Boolean),
+      answer,
+      analysis: draft.analysis || undefined,
+      kp: draft.kp || undefined,
+      difficulty: draft.difficulty,
+      hash: questionHash(draft.stem, draft.options),
+    };
+    await this.saves.run(`edit-q/${q.blockId}`, () =>
+      this.deps.client.updateBlock(q.blockId, questionToMarkdown(next)),
+    );
+    const kd = await this.deps.client.getBlockKramdown(q.blockId);
+    if (!kd.includes(`exam-id="${q.id}"`) && !kd.includes(`exam-id='${q.id}'`)) {
+      throw new Error("编辑读回异常：题目身份（exam-id）丢失，请勿关闭窗口并反馈诊断");
+    }
+    return next;
   }
 
   // ---------- 流水与派生 ----------
@@ -466,7 +530,7 @@ export class ExamApp {
   /** 批量编辑应用（43-06）：逐题写 custom-exam-* 属性；返回 {ok, failed}。
    *  单题失败不中断批次；离线直接拒绝（调用方已有在线守卫，此为兜底）。 */
   async applyBatchEdit(
-    changes: { blockId: string; field: "kp" | "difficulty"; to: string }[],
+    changes: { blockId: string; field: BatchField; to: string }[],
   ): Promise<{ ok: number; failed: number }> {
     if (!this.kernelOnline) throw new Error("离线：批量编辑需要内核可写");
     let ok = 0,
@@ -474,7 +538,7 @@ export class ExamApp {
     for (const c of changes) {
       try {
         await this.saves.run(`batch-edit/${c.blockId}`, () =>
-          this.deps.client.setExamAttrs(c.blockId, { [c.field === "kp" ? "exam-kp" : "exam-difficulty"]: c.to }),
+          this.deps.client.setExamAttrs(c.blockId, { [BATCH_FIELD_ATTR[c.field]]: c.to }),
         );
         ok++;
       } catch {
@@ -555,7 +619,8 @@ export class ExamApp {
           )
           .then((rows) => String(rows[0]?.id ?? ""));
         if (!docId) throw new Error("日记文档未找到");
-        await this.deps.client.appendBlock(docId, md);
+        // 45-02：每日写回过 SaveGate（对象级状态进报告中心顶栏 SaveStatus 矩阵，不再只有 toast 单点）
+        await this.saves.run(`daily-report/${ymd}`, () => this.deps.client.appendBlock(docId, md));
         return docId;
       }
     }

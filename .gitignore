@@ -11,5 +11,8 @@ dist
 build
 tmp
 
+# e2e 产物（playwright 痕迹/截图）
+output/
+
 # 本机扫描历史
 .mimosa/

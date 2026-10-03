@@ -412,7 +412,7 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
       });
       return;
     }
-    // 块菜单直通（TODO 2.2 真实化）：题目块 → 加入练习集 / 转卡；离线或非题目块降级提示
+    // 块菜单直通（TODO 2.2 真实化）：题目块 → 加入练习集 / 转卡 / 标记考点 / 编辑 / 在练习台打开
     const blockId = el?.getAttribute?.("data-node-id") || el?.dataset?.nodeId || "";
     if (blockId && this.examApp) {
       const exam = this.examApp;
@@ -460,6 +460,66 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
           } catch (e) {
             showMessage(String(e instanceof Error ? e.message : e), 4800, "error");
           }
+        },
+      });
+      // 标记考点（2.2）：输入框直通 setExamAttrs（SaveGate 过闸），空值=清除
+      detail.menu.addItem({
+        iconHTML: "<svg><use xlink:href='#iconExam'></use></svg>",
+        label: this.i18n["blockMenu.markKp"],
+        click: async () => {
+          try {
+            const hit = await exam.findQuestionByBlock(blockId);
+            if (!hit) {
+              showMessage(
+                this.examApp!.kernelOnline ? this.i18n["query.empty"] : this.i18n["state.offlineHint"],
+                3600,
+                "info",
+              );
+              return;
+            }
+            const { inputDialogSync } = await import("./libs/dialog");
+            const kp = (await inputDialogSync({
+              title: this.i18n["blockMenu.markKp"],
+              placeholder: this.i18n["blockMenu.markKpPlaceholder"],
+              defaultText: hit.q.kp ?? "",
+            }))?.trim();
+            if (kp == null) return; // 用户取消
+            await exam.markQuestionKp(hit.q, kp);
+            showMessage(kp ? `${this.i18n["blockMenu.markKpDone"]} ${kp}` : this.i18n["blockMenu.markKpCleared"], 2800, "info");
+          } catch (e) {
+            showMessage(String(e instanceof Error ? e.message : e), 4800, "error");
+          }
+        },
+      });
+      // 编辑 / 在练习台打开（2.2）：移交练习台浏览视图聚焦（qid+bankId；已开 Tab 经窗口事件补齐）
+      detail.menu.addItem({
+        iconHTML: "<svg><use xlink:href='#iconExam'></use></svg>",
+        label: this.i18n["blockMenu.edit"],
+        click: async () => {
+          const hit = await exam.findQuestionByBlock(blockId).catch(() => null);
+          if (!hit) {
+            showMessage(this.examApp!.kernelOnline ? this.i18n["query.empty"] : this.i18n["state.offlineHint"], 3600, "info");
+            return;
+          }
+          (this as any).pendingEditQid = hit.q.id;
+          (this as any).pendingEditBank = hit.bank.id;
+          window.dispatchEvent(new CustomEvent("lv-exam:edit-question", { detail: { qid: hit.q.id, bank: hit.bank.id } }));
+          this.openPractice();
+        },
+      });
+      detail.menu.addItem({
+        iconHTML: "<svg><use xlink:href='#iconExam'></use></svg>",
+        label: this.i18n["blockMenu.openInBrowse"],
+        click: async () => {
+          const hit = await exam.findQuestionByBlock(blockId).catch(() => null);
+          if (!hit) {
+            showMessage(this.examApp!.kernelOnline ? this.i18n["query.empty"] : this.i18n["state.offlineHint"], 3600, "info");
+            return;
+          }
+          (this as any).pendingBrowseQid = hit.q.id;
+          (this as any).pendingBrowseBank = hit.bank.id;
+          window.dispatchEvent(new CustomEvent("lv-exam:open-in-browse", { detail: { qid: hit.q.id, bank: hit.bank.id } }));
+          this.openPractice();
         },
       });
       return;
