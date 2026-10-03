@@ -4,7 +4,6 @@
   "type": "module",
   "description": "小驴考试 (Lv Exam) — SiYuan exam question bank learning: import, practice, mock exam, wrongbook, FSRS flashcards, AI. 思源笔记本地题库学习管理插件",
   "repository": "https://github.com/ai68298100/siyuan-exam",
-  "homepage": "https://github.com/ai68298100/siyuan-exam",
   "homepage": "",
   "author": "ai68298100",
   "license": "MIT",
@@ -18,6 +17,10 @@
     "check": "run-s check:types check:svelte check:i18n check:arch",
     "guard": "run-s check:types check:svelte check:i18n check:arch test",
     "preflight": "node ./scripts/smoke-preflight.mjs",
+    "smoke": "run-s preflight smoke:data perf:bank",
+    "smoke:data": "node ./scripts/smoke-data.mjs",
+    "perf:bank": "node ./scripts/perf-bank.mjs",
+    "commit:check": "commitlint",
     "check:i18n": "node ./scripts/check-i18n.mjs",
     "check:arch": "node ./scripts/check-arch.mjs",
     "test": "vitest run",
@@ -34,6 +37,8 @@
     "make-install": "pnpm run build && node --no-warnings ./scripts/make_install.js"
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.2.3",
+    "@commitlint/config-conventional": "^21.2.3",
     "@sveltejs/vite-plugin-svelte": "^7.3.0",
     "@tsconfig/svelte": "^5.0.8",
     "@types/livereload": "^0.9.5",
@@ -58,6 +63,6 @@
     "vitest": "^5.0.3"
   },
   "dependencies": {
-    "xlsx": "^0.18.5"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   }
 }

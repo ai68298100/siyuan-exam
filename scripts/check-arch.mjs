@@ -12,6 +12,10 @@ for (const f of [
   "src/core/memory.ts", "src/core/blockTemplate.ts", "src/core/planner.ts",
   "src/core/mock.ts", "src/kernel/client.ts", "src/importer/pipeline.ts",
   "src/ai/client.ts", "src/ai/gen.ts",
+  // v0.6-dev 新增契约模块（2026-10-03 与 docs/03 实际模块清单同步）
+  "src/core/saveGate.ts", "src/core/migrations.ts", "src/core/logger.ts",
+  "src/core/bankHealth.ts", "src/core/bankCsv.ts", "src/core/batchEdit.ts",
+  "src/core/actions.ts", "src/ai/task.ts", "src/ui/shared/SaveStatus.svelte",
 ]) must(`存在 ${f}`, existsSync(f));
 
 // 2. 构建入口与 plugin.json 声明一致（无 kernel.js：docs/03 决策 #9）

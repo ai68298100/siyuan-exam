@@ -35,7 +35,7 @@ for (const file of walk("src")) {
   }
 }
 // 动态前缀（代码中 t("xxx." + ...) 的形式，人工登记前缀）
-const DYNAMIC_PREFIXES = ["qtype.", "reason.", "rate.", "ai.diff.", "ai.quality.", "setting."];
+const DYNAMIC_PREFIXES = ["qtype.", "reason.", "rate.", "ai.diff.", "ai.quality.", "setting.", "confidence.", "health.field.", "action.kind."];
 const missingUsed = [...used].filter((k) => !zk.has(k) && !DYNAMIC_PREFIXES.some((p) => k.startsWith(p)));
 if (missingUsed.length) { console.error("✗ 代码使用了但 i18n 未定义:\n" + missingUsed.map((k) => "  - " + k).join("\n")); fail = true; }
 

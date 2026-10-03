@@ -1,0 +1,23 @@
+name: 功能建议
+description: 提出新功能或改进想法（会按 docs/19 的选入规则评估）
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: journey
+    attributes:
+      label: 想完成的备考动作
+      description: 用一句话描述你想达成什么（而非怎么做）；与现有"题源→证据→行动→复测→沉淀"旅程的关系
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: 现在怎么绕过的
+      description: 当前版本里你如何用现有功能（或手工）达成
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: 范围确认
+      options:
+        - label: 我理解本地优先/无遥测边界不变，AI 相关提案只在主动调用时发送所选内容
+        - label: 我理解选入按 docs/19 的阶段与证据规则评估，不代表立即排期

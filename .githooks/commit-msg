@@ -1,0 +1,9 @@
+#!/bin/sh
+# commit-msg 门禁（TODO 0 组 commitlint）：Conventional Commits 校验
+# 依赖 @commitlint/cli（pnpm add -D @commitlint/cli @commitlint/config-conventional）；
+# 依赖未安装时静默跳过（不阻塞无网络环境）。
+if [ ! -d "node_modules/@commitlint" ]; then
+  echo "[lv-exam] commitlint 依赖未安装，跳过 commit-msg 校验"
+  exit 0
+fi
+npx --no-install commitlint --edit "$1"
