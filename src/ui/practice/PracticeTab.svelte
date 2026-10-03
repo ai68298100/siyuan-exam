@@ -2592,7 +2592,7 @@ import { ttsSpeak } from "@/core/tts";
                 <button class="lv-chip num" class:acc={filterType === t2.type} title={t("coverage.typeTip")}
                   onclick={() => { filterType = filterType === t2.type ? "" : t2.type; }}>{t("qtype." + t2.type)} {t2.count}</button>
               {/each}
-              <span class="lv-chip num" title={t("coverage.sourceTip")}>{t("coverage.sources").replace("{n}", String(coverage.sources))}</span>
+              <span class="lv-chip num">{t("coverage.sources").replace("{n}", String(coverage.sources))}</span>
               {#if coverage.sourceMissing}<button class="lv-chip lv-chip--amb num" onclick={() => { filterSource = "@@none"; }} title={t("coverage.sourceMissTip")}>{t("coverage.sourceMissing").replace("{n}", String(coverage.sourceMissing))}</button>{/if}
               {#if coverage.kpMissing}<button class="lv-chip lv-chip--amb num" onclick={() => { kpOpen = true; }}>{t("kp.empty").replace("{n}", String(coverage.kpMissing))}</button>{/if}
               {#if coverage.shortAnalysis}<span class="lv-chip lv-chip--amb num" title={t("coverage.shortTip")}>{t("coverage.shortAnalysis").replace("{n}", String(coverage.shortAnalysis))}</span>{/if}
