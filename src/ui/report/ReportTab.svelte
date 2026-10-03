@@ -175,6 +175,49 @@
       }
     }
 
+    // ---------- 存储占用 / 数据体检 / 数据出库（69-01/69-06/58-01 lite，三十批） ----------
+    let storageRows = $state<{ key: string; bytes: number; present: boolean }[]>([]);
+    let storageOpen = $state(false);
+    const storageTotalKb = $derived(Math.round(storageRows.reduce((s, r) => s + r.bytes, 0) / 1024));
+    async function toggleStorage() {
+      storageOpen = !storageOpen;
+      if (storageOpen && app) storageRows = await app.storageUsage();
+    }
+
+    let auditResult = $state<import("@/core/dataAudit").DataAuditReport | null>(null);
+    let auditBusy = $state(false);
+    async function runDataAudit() {
+      if (!app || auditBusy) return;
+      auditBusy = true;
+      try {
+        // 孤儿检测口径：当前所有已加载题库的题目 id（跨库扫描；空题库=跳过孤儿项）
+        // eslint-disable-next-line svelte/prefer-svelte-reactivity -- 函数内累加器（非组件状态）
+        const known = new Set<string>();
+        for (const b of app.listBanks()) {
+          try {
+            for (const q of await app.listQuestions(b.id)) known.add(q.id);
+          } catch { /* 单库读取失败跳过 */ }
+        }
+        auditResult = app.auditData(known);
+      } finally { auditBusy = false; }
+    }
+
+    async function exportAllData() {
+      if (!app) return;
+      try {
+        const json = await app.exportAllData();
+        const blob = new Blob([json], { type: "application/json;charset=utf-8" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `小驴考试-数据出库 ${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        showMessage(t("data.exportDone"), 3200, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
+      }
+    }
+
     const heatColor = (n: number) => n === 0 ? "var(--lv-surface-2)" : n < 5 ? "l1" : n < 15 ? "l2" : n < 30 ? "l3" : "l4";
     const maxHour = $derived(Math.max(1, ...hours));
     const hoursSvg = $derived(hours.map((n, i) => `${(i / 23) * 300},${40 - Math.round((n / maxHour) * 36)}`).join(" "));
@@ -341,6 +384,37 @@
       </button>
       <button class="lv-btn sm lv-btn--ghost" style="margin-top:8px" onclick={exportDiagnostics}>
         🩰 {t("diag.export")}
+      </button>
+      <!-- 69-01/69-06/58-01 lite：存储占用 / 数据体检 / 数据出库 -->
+      <button class="lv-btn sm lv-btn--ghost" style="margin-top:8px" onclick={() => void toggleStorage()}>
+        💾 {storageOpen ? t("data.hideStorage") : t("data.showStorage")}{#if storageRows.length}&nbsp;· {storageTotalKb} KB{/if}
+      </button>
+      {#if storageOpen}
+        <div class="lv-row" style="margin:6px 0 0">
+          {#each storageRows as r, _i (_i)}
+            <span class="lv-chip num" class:lv-chip--amb={!r.present} title={r.key}>{r.key} · {Math.round(r.bytes / 1024 * 10) / 10}K</span>
+          {/each}
+        </div>
+        <div class="lv-muted" style="margin-top:4px;font-size:11.5px">{t("data.storageNote")}</div>
+      {/if}
+      <button class="lv-btn sm lv-btn--ghost" style="margin-top:8px" disabled={auditBusy} onclick={() => void runDataAudit()}>
+        {auditBusy ? "…" : `🔍 ${t("data.audit")}`}
+      </button>
+      {#if auditResult}
+        <div class="lv-row" style="margin:6px 0 0" role="status">
+          <span class="lv-chip num">{t("data.auditEvents").replace("{n}", String(auditResult.events))}</span>
+          {#if auditResult.problemCount === 0}
+            <span class="lv-chip acc">✓ {t("data.auditClean")}</span>
+          {:else}
+            {#if auditResult.duplicateEids}<span class="lv-chip lv-chip--red num">{t("data.auditDup").replace("{n}", String(auditResult.duplicateEids))}</span>{/if}
+            {#if auditResult.badEvents}<span class="lv-chip lv-chip--red num">{t("data.auditBad").replace("{n}", String(auditResult.badEvents))}</span>{/if}
+            {#if auditResult.futureEvents}<span class="lv-chip lv-chip--amb num">{t("data.auditFuture").replace("{n}", String(auditResult.futureEvents))}</span>{/if}
+          {/if}
+          {#if auditResult.orphanEvents}<span class="lv-chip num" title={t("data.auditOrphanTip")}>{t("data.auditOrphan").replace("{n}", String(auditResult.orphanEvents))}</span>{/if}
+        </div>
+      {/if}
+      <button class="lv-btn sm lv-btn--ghost" style="margin-top:8px" onclick={() => void exportAllData()}>
+        ⬇️ {t("data.export")}
       </button>
     </div>
   {/if}

@@ -13,6 +13,7 @@ import { SaveGate } from "./core/saveGate";
 import { normalizeAnswer, questionHash } from "./core/answer";
 import { questionToMarkdown } from "./core/blockTemplate";
 import { BATCH_FIELD_ATTR, type BatchField } from "./core/batchEdit";
+import { auditAttemptEvents, type DataAuditReport } from "./core/dataAudit";
 import type { MockRunSnapshot } from "./core/mock";
 import {
   appendActions,
@@ -45,6 +46,27 @@ export interface MockRecord {
 }
 
 const MOCK_RESULTS_KEY = "mock/results";
+
+/** 已知插件存储键（69-01 lite 盘点口径；docs/02 附录 B 的运行时子集） */
+const KNOWN_STORAGE_KEYS = [
+  "banks",
+  "attempts/log",
+  "wrongbook/overlays",
+  "wrongbook/reasons",
+  "actions/items",
+  "mock/blueprint",
+  "mock/results",
+  "mock/run",
+  "session/active",
+  "ai/usage",
+  "ai/review-queue",
+  "ai/task-log",
+  "ai/explain-history",
+  "estimate/history",
+  "import/mappings",
+  "browse/smartViews",
+  "batchedit/last",
+];
 
 export interface ExamAppDeps {
   client: KernelApiClient;
@@ -602,6 +624,49 @@ export class ExamApp {
     }
     this.invalidate();
     return { deleted, failed };
+  }
+
+  // ---------- 存储占用 / 数据体检 / 数据出库（69-01 / 69-06 / 58-01 lite，三十批） ----------
+  /** 插件存储占用盘点（69-01 lite）：枚举已知键逐个量大小；额度本体不可知 → 只报占用与缺失，不猜额度 */
+  async storageUsage(): Promise<{ key: string; bytes: number; present: boolean }[]> {
+    const rows: { key: string; bytes: number; present: boolean }[] = [];
+    for (const key of KNOWN_STORAGE_KEYS) {
+      try {
+        const v = await this.deps.storage.load(key);
+        rows.push({ key, bytes: v === undefined ? 0 : JSON.stringify(v).length, present: v !== undefined });
+      } catch {
+        rows.push({ key, bytes: 0, present: false });
+      }
+    }
+    return rows;
+  }
+
+  /** 数据体检（69-06 lite，只读）：knownQids = 各已加载题库的题目 id（空集则跳过孤儿检测） */
+  auditData(knownQids: Set<string>): DataAuditReport {
+    return auditAttemptEvents(this.attempts.all(), knownQids);
+  }
+
+  /** 数据出库（58-01 lite）：核心学习资产 JSON（流水/题库注册表/错题处置/错因/行动）。
+   *  红线：不含 AI Key（存宿主 getSecret，不在插件 storage）；题干不入包（流水只含 qid）。 */
+  async exportAllData(): Promise<string> {
+    const [overlays, reasons, actions] = await Promise.all([
+      this.deps.storage.load("wrongbook/overlays"),
+      this.deps.storage.load("wrongbook/reasons"),
+      this.deps.storage.load(ACTIONS_KEY),
+    ]);
+    return JSON.stringify(
+      {
+        schema: "lv-exam.export/1",
+        exportedAt: new Date().toISOString(),
+        banks: this.banks,
+        attempts: { v: 2, events: this.attempts.all() },
+        wrongbookOverlays: overlays ?? {},
+        wrongReasons: reasons ?? {},
+        actions: actions ?? [],
+      },
+      null,
+      2,
+    );
   }
 
   // ---------- 每日战报（联动小驴复盘预留） ----------
