@@ -19,6 +19,7 @@ import { ttsSpeak } from "@/core/tts";
     import { avgMsByType, estimatePlanMinutes } from "@/core/timeBudget";
     import { kpAudit, planKpMerge, planEmptyKpFill } from "@/core/kpGovernance";
     import { probeCheckinApi, syncCheckin, localDateKeyOf, bridgeEnabled, fetchStreak } from "@/core/checkinBridge";
+    import { probeGlean, listLaterClips, formatClipsForSource } from "@/core/gleanBridge";
     import { onExamEvent, emitExamEvent } from "@/core/bus";
     import { escapeHtml } from "../../libs/sanitize";
     import { questionFingerprint } from "@/ai/task";
@@ -1240,6 +1241,22 @@ import { ttsSpeak } from "@/core/tts";
 
     // ---------- AI 出题（v0.4：双通道 + 待审核队列，Inbox 式永不直接入库） ----------
     let aiSource = $state("");
+    /** 60-01 lite：拾遗桥可用性（apiVersion===1 才显示入口） */
+    const gleanAvailable = $derived(!!probeGlean(window));
+    let gleanBusy = $state(false);
+    async function importGleanClips() {
+      if (gleanBusy) return;
+      gleanBusy = true;
+      try {
+        const g = probeGlean(window);
+        if (!g) return;
+        const clips = await listLaterClips(g, 10);
+        if (!clips.length) { showMessage(t("ai.gleanEmpty"), 3200, "info"); return; }
+        const block = formatClipsForSource(clips);
+        aiSource = aiSource.trim() ? `${aiSource.trim()}\n\n${block}` : block;
+        showMessage(t("ai.gleanImported").replace("{n}", String(clips.length)), 3200, "info");
+      } finally { gleanBusy = false; }
+    }
     let aiCount = $state(5);
     let aiDifficulty = $state<"easy" | "medium" | "hard" | "mixed">("mixed");
     let aiKp = $state("");
@@ -2481,6 +2498,15 @@ import { ttsSpeak } from "@/core/tts";
         <div class="lv-field"><span class="lv-muted">{t("ai.source")}</span>
           <button class="lv-chip" title={t("ai.fromDocTitle")} onclick={aiSourceFromCurrentDoc}>📄 {t("ai.fromDoc")}</button>
           <textarea class="lv-input lv-textarea" rows="7" bind:value={aiSource} placeholder={t("ai.sourcePlaceholder")} aria-label={t("ai.source")}></textarea>
+          {#if gleanAvailable}
+            <!-- 60-01 lite：拾遗稍后读 → 出题素材（只读；不写拾遗状态） -->
+            <div class="lv-row" style="margin:4px 0 0">
+              <button class="lv-btn sm lv-btn--ghost" disabled={gleanBusy} onclick={() => void importGleanClips()}>
+                📚 {gleanBusy ? "…" : t("ai.gleanLater")}
+              </button>
+              <span class="lv-muted" style="font-size:11.5px">{t("ai.gleanHint")}</span>
+            </div>
+          {/if}
         </div>
         <div class="lv-row">
           <span class="lv-chip">{t("ai.count")}</span>

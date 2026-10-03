@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased（0.6.x-dev：廿三~四四批，2026-10-03/04）
+## Unreleased（0.6.x-dev：廿三~四五批，2026-10-03/04）
 
-> guard 七门禁全绿（338 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、ESLint 0 告警）+ 生产构建通过；**真机验证（SiYuan 3.8.6）**：preflight 17/17、数据生命周期 6/6、CSV 往返冒烟 5/5（`scripts/smoke-csv.mjs`）、题目编辑 updateBlock / 章节树 docTree / listQuestions hpath 三项契约实测通过。docs/17 人工 UI 步骤剩 27/28/36-38。
+> guard 七门禁全绿（341 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、ESLint 0 告警）+ 生产构建通过；**真机验证（SiYuan 3.8.6）**：preflight 17/17、数据生命周期 6/6、CSV 往返冒烟 5/5（`scripts/smoke-csv.mjs`）、题目编辑 updateBlock / 章节树 docTree / listQuestions hpath 三项契约实测通过。docs/17 人工 UI 步骤剩 27/28/36-38。
 
 - **内核 429 限流处理**：HTTP 429 识别为可重试错误分类；perf-bank 真机基线发现 3.8.6 连续请求限流（32 组新待办）
 - **GIFT 解析器**（42-04 部分）：Moodle GIFT 单选/多选/判断/简答，`::标题::`→考点、`#反馈`→解析；行内选择式 `{=对~错}` 归一
@@ -66,6 +66,8 @@
 - **打卡连续投影**（48-04 lite，四三批）：桥开启时入口页显示「🔥 打卡连续 n 天」（metrics.read 能力协商 + getStreaks，不自算 streak；失败安静不显示）
 - **stats 并入事件总线**（48-02 lite，四三批）：`lv-exam:stats` 快照同时以信封 v1（`onExamEvent("stats")`）与 legacy 裸 detail 双发，新旧消费者共存
 - **诊断包扩展**（46-06，四三批）：诊断 JSON 新增存储占用合计（KB）与数据体检摘要（重复 eid/非法事件/时钟漂移计数）
+- **拾遗稍后读→出题素材**（60-01 lite，四五批）：AI 出题视图「📚 拾遗稍后读」——按拾遗对外桥接 v1（`window.siyuanGlean`）只读拉取稍后读清单注入素材（自带出处核对提示，不写拾遗状态）
+- **闪卡协议 spike 结论**（48-07，四五批）：核查闪卡全量文档——无公开跨插件 API（事件留在私有 eventBus），桥接不可实现降级为长期拟议；共存走内核 riff 天然隔离
 - **会话/错题事件**（48-02 lite 收口，四四批）：`lv-exam:session-ended`（结算计数，无题干）与 `lv-exam:wrongbook-changed`（处置/暂缓）接入总线
 - **昨日计划回看**（44-05 lite，四四批）：入口 chip 显示昨日计划完成 x/y；连续缺席 ≥2 天 ⚠ 提醒（配额恒定不爆量，随时从今天继续）
 
