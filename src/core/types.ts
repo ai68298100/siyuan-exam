@@ -56,6 +56,8 @@ export interface AttemptEvent {
   seq: number; // 设备内单调序号（乱序回放排序键）
   changes?: number; // 改答次数
   confidence?: "sure" | "fuzzy" | "guess"; // 置信度自评
+  /** 受助标记（114-01 lite）：本次作答前该题已被讲解/提示过（同会话内）；受助表现与独立正确分开统计的依据 */
+  help?: "explain" | "hint" | "socratic";
 }
 
 /** 错题派生条目（可随时从流水重建的物化视图） */

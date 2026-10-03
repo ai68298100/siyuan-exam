@@ -140,3 +140,47 @@ export function bankHealthReport(qs: Question[]): BankHealthReport {
     missing: missingFields(qs),
   };
 }
+
+// ---------- 生产者覆盖概览（TODO 43-04 lite）：题型/来源/考点覆盖 + 内容缺陷，UI 逐项可跳过滤列表 ----------
+
+export interface CoverageStats {
+  byType: { type: string; count: number }[];
+  /** distinct 来源数 / 缺来源题数 */
+  sources: number;
+  sourceMissing: number;
+  /** 考点顶层覆盖（/ 分层首段） */
+  kpTops: { top: string; count: number }[];
+  kpMissing: number;
+  /** 内容缺陷：短解析（有解析但 <10 字）题数 */
+  shortAnalysis: number;
+}
+
+export function coverageStats(qs: Question[]): CoverageStats {
+  const byType = new Map<string, number>();
+  const sources = new Set<string>();
+  let sourceMissing = 0;
+  const kpTops = new Map<string, number>();
+  let kpMissing = 0;
+  let shortAnalysis = 0;
+  for (const q of qs) {
+    byType.set(q.type, (byType.get(q.type) ?? 0) + 1);
+    const src = (q.source ?? "").trim();
+    if (src) sources.add(src);
+    else sourceMissing++;
+    const kp = (q.kp ?? "").trim();
+    if (kp) {
+      const top = kp.split("/")[0].trim();
+      kpTops.set(top, (kpTops.get(top) ?? 0) + 1);
+    } else kpMissing++;
+    const analysis = (q.analysis ?? "").trim();
+    if (analysis.length > 0 && analysis.length < 10) shortAnalysis++;
+  }
+  return {
+    byType: [...byType.entries()].map(([type, count]) => ({ type, count })).sort((a, b) => b.count - a.count),
+    sources: sources.size,
+    sourceMissing,
+    kpTops: [...kpTops.entries()].map(([top, count]) => ({ top, count })).sort((a, b) => b.count - a.count),
+    kpMissing,
+    shortAnalysis,
+  };
+}

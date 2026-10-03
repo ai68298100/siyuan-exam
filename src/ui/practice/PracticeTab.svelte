@@ -12,7 +12,7 @@ import { ttsSpeak } from "@/core/tts";
     import { makeQuestion } from "../../core/blockTemplate";
     import { normalizeAnswer, questionHash } from "../../core/answer";
     import { validate } from "../../importer/pipeline";
-    import { bankHealthReport, type BankHealthReport } from "../../core/bankHealth";
+    import { bankHealthReport, coverageStats, type BankHealthReport } from "../../core/bankHealth";
     import { planBatchEdit, invertPlan, describeChange } from "../../core/batchEdit";
     import { buildSectionTree, questionInSection } from "../../core/sectionTree";
     import { upsertView, viewBankMismatch } from "@/core/smartViews";
@@ -81,6 +81,8 @@ import { ttsSpeak } from "@/core/tts";
     // 题库健康（TODO 2.2）：重复聚类 + 缺字段清单（纯函数，浏览视图按需展开）
     let healthOpen = $state(false);
     const health = $derived<BankHealthReport | null>(healthOpen && questions.length ? bankHealthReport(questions) : null);
+    /** 43-04 lite：生产者覆盖概览（与健康面板同开） */
+    const coverage = $derived(healthOpen && questions.length ? coverageStats(questions) : null);
 
     // 每题用时显示 + 超时提示（TODO 13 组 lite）：会话作答期 1s tick；超时阈值取设置（0=关）
     let qTick = $state(0);
@@ -833,6 +835,7 @@ import { ttsSpeak } from "@/core/tts";
           explainHistory[q.id] = [...messages, { role: "assistant", content: env.data.text }];
           void persistExplainHistory();
           void app.recordAiUsage(ch.id, env.tokens, 1);
+          helpShown.set(q.id, mode); // 114-01：受助标记——同题再答（重排队）时随 attempt 落 help 字段
         } else {
           // 有类型失败（G6 闸门/预算/通道错误）：显示信封摘要，不裸抛异常栈
           explainText = `⚠ ${env.summary}${env.error ? "：" + env.error : ""}`;
@@ -959,6 +962,9 @@ import { ttsSpeak } from "@/core/tts";
 
     /** 44-01：结算页错题回看展开态 */
     let reviewOpen = $state(false);
+    /** 114-01 lite：本会话受助标记（qid → 讲解模式）；同题再答时随 attempt 落 help 字段 */
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- 函数内累加 Map（非组件遍历状态）
+    const helpShown = new Map<string, "explain" | "hint" | "socratic">();
     function submitAnswer() {
       if (!session || feedback) return;
       const q = session.current;
@@ -978,6 +984,7 @@ import { ttsSpeak } from "@/core/tts";
         verdict: g.verdict, myAnswer: g.myAnswer, sessionId: session.id,
         queue: session.state.mode === "wrong" ? "wrong" : "normal", timeMs,
         confidence: confidenceSel || undefined,   // U12：答前快照随 attempt；未选=如实缺省
+        help: helpShown.get(q.id),               // 114-01：本题曾被讲解/提示 → 受助作答如实标记
       });
       plugin.refreshDock?.();
       void app.saveSession();   // 37-05 checkpoint：作答即存（SaveGate 同键合并，重载不重复作答）
@@ -1468,9 +1475,23 @@ import { ttsSpeak } from "@/core/tts";
     let favOnly = $state(false);
     let browseLimit = $state(200);
     let searchText = $state("");
+    /** 65-01 lite：结构化筛选——题型/来源/仅错题（与搜索词叠加；命中数在工具栏实时可见） */
+    let filterType = $state("");
+    let filterSource = $state("");
+    let filterWrong = $state(false);
+    const sourceOptions = $derived(
+      [...new Set(questions.map((q) => (q.source ?? "").trim()).filter(Boolean))].sort().slice(0, 30),
+    );
     const filteredQuestions = $derived.by(() => {
       let list = favOnly ? questions.filter((q) => q.fav) : questions;
       if (sectionSel) list = list.filter((q) => questionInSection(q, sectionSel!));
+      if (filterType) list = list.filter((q) => q.type === filterType);
+      if (filterSource === "@@none") list = list.filter((q) => !(q.source ?? "").trim()); // 43-04：缺来源
+      else if (filterSource) list = list.filter((q) => (q.source ?? "").trim() === filterSource);
+      if (filterWrong) {
+        const wb = app.derived().wrongbook;
+        list = list.filter((q) => (wb.get(q.id)?.wrongCount ?? 0) > 0);
+      }
       const kw = searchText.trim().toLowerCase();
       if (kw) {
         list = list.filter((q) =>
@@ -2399,6 +2420,20 @@ import { ttsSpeak } from "@/core/tts";
         <button class="lv-chip" class:acc={batchMode} onclick={() => { batchMode = !batchMode; if (!batchMode) selectedIds = {}; }}>{t("batch.mode")}</button>
         <button class="lv-chip" title={t("browse.exportCsvTitle")} onclick={exportBankCsv}>⬇️ CSV</button>
         <input class="lv-input" style="flex:1;min-width:160px" placeholder={t("browse.searchPlaceholder")} bind:value={searchText} />
+        <!-- 65-01 lite：结构化筛选（题型/来源/仅错题），与搜索词叠加 -->
+        <select class="lv-select" style="max-width:110px" bind:value={filterType} onchange={() => (browseLimit = 200)}>
+          <option value="">{t("browse.fAnyType")}</option>
+          {#each ["single", "multiple", "judge", "fill", "short", "material"] as tp, _i (_i)}
+            <option value={tp}>{t("qtype." + tp)}</option>
+          {/each}
+        </select>
+        {#if sourceOptions.length}
+          <select class="lv-select" style="max-width:130px" bind:value={filterSource} onchange={() => (browseLimit = 200)} title={t("browse.fSource")}>
+            <option value="">{t("browse.fAnySource")}</option>
+            {#each sourceOptions as src, _i (_i)}<option value={src}>{src}</option>{/each}
+          </select>
+        {/if}
+        <button class="lv-chip" class:acc={filterWrong} onclick={() => (filterWrong = !filterWrong)} title={t("browse.fWrongTip")}>✕ {t("browse.fWrong")}</button>
         {#if smartViews.length}
           <select class="lv-select" style="max-width:150px" bind:value={selectedView} onchange={() => void applyNamedView(selectedView)}>
             <option value="">{t("view.pick")}</option>
@@ -2550,6 +2585,19 @@ import { ttsSpeak } from "@/core/tts";
         <div class="lv-card lv-pad-card" style="padding:12px 16px">
           <b style="font-size:13px">{t("health.title")}</b>
           <span class="lv-chip num" style="margin-left:8px">{t("health.total")} {health.total}</span>
+          {#if coverage}
+            <!-- 43-04 lite：生产者覆盖概览（点击 chip 直达对应过滤列表） -->
+            <div class="lv-row" style="margin:6px 0 0">
+              {#each coverage.byType as t2, _ti (_ti)}
+                <button class="lv-chip num" class:acc={filterType === t2.type} title={t("coverage.typeTip")}
+                  onclick={() => { filterType = filterType === t2.type ? "" : t2.type; }}>{t("qtype." + t2.type)} {t2.count}</button>
+              {/each}
+              <span class="lv-chip num" title={t("coverage.sourceTip")}>{t("coverage.sources").replace("{n}", String(coverage.sources))}</span>
+              {#if coverage.sourceMissing}<button class="lv-chip lv-chip--amb num" onclick={() => { filterSource = "@@none"; }} title={t("coverage.sourceMissTip")}>{t("coverage.sourceMissing").replace("{n}", String(coverage.sourceMissing))}</button>{/if}
+              {#if coverage.kpMissing}<button class="lv-chip lv-chip--amb num" onclick={() => { kpOpen = true; }}>{t("kp.empty").replace("{n}", String(coverage.kpMissing))}</button>{/if}
+              {#if coverage.shortAnalysis}<span class="lv-chip lv-chip--amb num" title={t("coverage.shortTip")}>{t("coverage.shortAnalysis").replace("{n}", String(coverage.shortAnalysis))}</span>{/if}
+            </div>
+          {/if}
           {#if !health.clusters.length && !health.missing.length}
             <span class="lv-chip lv-chip--grn">✓ {t("health.clean")}</span>
           {:else}
