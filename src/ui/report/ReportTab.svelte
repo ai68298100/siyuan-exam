@@ -65,19 +65,36 @@
       }
     });
 
+    /** 39-06 lite：统计日期范围（0=全部）。口径：作答量/正确率/时段/校准按范围过滤；
+     *  消灭错题与连续天数为状态类指标保持全局；掌握度按题库范围（reloadBankScope） */
+    let rangeDays = $state(0);
+    function computeReport() {
+      if (!app) return;
+      const d = app.derived();
+      const cutoff = rangeDays > 0 ? Date.now() - rangeDays * 86_400_000 : 0;
+      const events = app.attempts.all().filter((e) => !cutoff || e.ts >= cutoff);
+      let attempts = 0, correct = 0;
+      for (const e of events) {
+        if (e.verdict === "not_attempted") continue;
+        attempts++;
+        if (e.verdict === "correct") correct++;
+      }
+      kpi = { ...kpi, attempts, accuracy: attempts ? Math.round((correct / attempts) * 100) : 0 };
+      hours = hourly(events);
+      calib = calibration(events);
+      const cutoffDate = cutoff ? new Date(cutoff).toISOString().slice(0, 10) : "";
+      trend30 = cutoff ? dailyTrend(d.days).filter((p) => p.date >= cutoffDate) : dailyTrend(d.days);
+    }
+
     onMount(async () => {
       if (!app) { loading = false; errorMsg = t("state.appNotReady"); return; }
       try {
         const d = app.derived();
         weekCmp = weekCompare(weeklyAggregates(d.days, new Date(), 2));
-        let attempts = 0, correct = 0;
-        for (const s of d.byQuestion.values()) { attempts += s.attempts; correct += s.correct; }
         const { streak } = await import("@/core/replayer");
-        kpi = { attempts, accuracy: attempts ? Math.round((correct / attempts) * 100) : 0, eliminated: [...d.wrongbook.values()].filter((w) => w.status === "eliminated").length, streak: streak(d) };
+        kpi = { attempts: 0, accuracy: 0, eliminated: [...d.wrongbook.values()].filter((w) => w.status === "eliminated").length, streak: streak(d) };
+        computeReport();
         heat = heatmap(d.days);
-        hours = hourly(app.attempts.all());
-        calib = calibration(app.attempts.all());
-        trend30 = dailyTrend(d.days);
         openActionList = await app.listOpenActions();
         bankOptions = app.listBanks();
         bankId = bankOptions[0]?.id ?? "";
@@ -247,6 +264,13 @@
       {t("tab.report")}
     </div>
     {#if app}<SaveStatus gate={app.saves} {t} />{/if}
+    <!-- 39-06 lite：统计日期范围（消灭错题/连续天数为状态类指标保持全局） -->
+    <select class="lv-select" bind:value={rangeDays} onchange={computeReport} title={t("report.rangeTip")}>
+      <option value={0}>{t("report.rangeAll")}</option>
+      <option value={1}>{t("report.rangeToday")}</option>
+      <option value={7}>{t("report.range7")}</option>
+      <option value={30}>{t("report.range30")}</option>
+    </select>
     {#if bankOptions.length > 1}
       <select class="lv-select" style="max-width:200px" bind:value={bankId} disabled={scopeLoading} onchange={onBankChange}>
         {#each bankOptions as b, _i (_i)}<option value={b.id}>{b.name}</option>{/each}

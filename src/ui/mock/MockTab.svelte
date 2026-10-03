@@ -111,6 +111,22 @@
       bp.sections = bp.sections.map((s, j) => (j === i ? { ...s, ...patch } : s));
     }
 
+    /** 55-02 lite：配额满足度实时预览（来源/题型/考点配额下的可出题数），缺口显式提示 */
+    const quotaShort = $derived.by(() => {
+      if (!bp.sections.length || !questions.length) return [];
+      return bp.sections
+        .map((s) => {
+          const have = questions.filter(
+            (q) =>
+              (s.source === "mixed" || (q.sourceKind ?? "mock") === s.source) &&
+              (!s.types.length || s.types.includes(q.type)) &&
+              (!s.kp || q.kp === s.kp || (q.kp?.startsWith(s.kp + "/") ?? false)),
+          ).length;
+          return { name: s.name, need: s.count, have };
+        })
+        .filter((x) => x.have < x.need);
+    });
+
     /** 蓝图持久化（TODO 27 P2）：保存/恢复命名蓝图 */
     async function saveBlueprint() {
       try { await (app as any).deps.storage.save("mock/blueprint", JSON.parse(JSON.stringify(bp))); showMessage(t("mock.bpSaved"), 3000, "info"); } catch { /* 忽略 */ }
@@ -501,9 +517,12 @@
       <span class="lv-chip num">{t("mock.totalQ")} {totals.questions}</span>
       <span class="lv-chip num">{t("mock.totalScore")} {totals.score}</span>
       <span class="lv-chip num"><svg class="ic" width="12" height="12"><use xlink:href="#iconMock" /></svg>{Math.round(bp.durationS / 60)} min</span>
+      {#each quotaShort as qs, _i (_i)}
+        <span class="lv-chip lv-chip--red num" title={t("mock.quotaShortTip")}>⚠ {qs.name} {t("mock.quotaShort").replace("{have}", String(qs.have)).replace("{need}", String(qs.need))}</span>
+      {/each}
     </div>
     <div class="lv-bp-table">
-      <div class="lv-bp-row head"><span>{t("mock.sec")}</span><span>{t("mock.count")}</span><span>{t("mock.each")}</span><span>{t("mock.source")}</span><span></span></div>
+      <div class="lv-bp-row head"><span>{t("mock.sec")}</span><span>{t("mock.count")}</span><span>{t("mock.each")}</span><span>{t("mock.source")}</span><span>{t("mock.secKp")}</span><span></span></div>
       {#each bp.sections as s, i (i)}
         <div class="lv-bp-row">
           <input class="lv-input" bind:value={s.name} oninput={() => updateSection(i, { name: s.name })} />
@@ -512,6 +531,9 @@
           <select class="lv-select" value={s.source} onchange={(e) => updateSection(i, { source: (e.target as HTMLSelectElement).value as any })}>
             <option value="mixed">mixed</option><option value="real">真题</option><option value="mock">模拟</option>
           </select>
+          <!-- 55-02 lite：考点配额（前缀匹配；缺口显式计入短缺，不用其他考点补齐） -->
+          <input class="lv-input" value={s.kp ?? ""} placeholder={t("mock.secKpHint")}
+            oninput={(e) => updateSection(i, { kp: (e.target as HTMLInputElement).value.trim() || undefined })} />
           <button class="lv-btn lv-btn--ghost sm" onclick={() => removeSection(i)}>✕</button>
         </div>
       {/each}
@@ -792,7 +814,7 @@
   .lv-opt.sel { border-color: var(--lv-accent); background: var(--lv-accent-soft); }
   .lv-opt.sel .key { background: var(--lv-accent); border-color: var(--lv-accent); color: #fff; }
   .lv-bp-table { border: 1px solid var(--lv-border); border-radius: 12px; overflow: hidden; margin: 10px 0; }
-  .lv-bp-row { display: grid; grid-template-columns: 1.2fr .6fr .6fr .9fr 36px; gap: 8px; padding: 8px 12px; border-bottom: 1px dashed var(--lv-border); align-items: center; }
+  .lv-bp-row { display: grid; grid-template-columns: 1.1fr .5fr .5fr .8fr 1fr 36px; gap: 8px; padding: 8px 12px; border-bottom: 1px dashed var(--lv-border); align-items: center; }
   .lv-bp-row:last-child { border-bottom: none; }
   .lv-bp-row.head { background: var(--lv-surface-2); font-size: 11.5px; font-weight: 700; color: var(--lv-text-3); border-bottom: 1px solid var(--lv-border); }
   .lv-sheet { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }

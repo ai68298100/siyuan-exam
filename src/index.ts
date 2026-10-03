@@ -297,6 +297,7 @@ export default class LvExamPlugin extends Plugin {
                 <span>${this.i18n["dock.wrongTag"]} ${w.wrongCount}</span>
                 <button class="lv-dock-act" data-act="mastered" data-qid="${escapeHtml(w.qid)}" title="${escapeHtml(this.i18n["dock.actMastered"])}">✓</button>
                 <button class="lv-dock-act" data-act="removed" data-qid="${escapeHtml(w.qid)}" title="${escapeHtml(this.i18n["dock.actRemoved"])}">✕</button>
+                <button class="lv-dock-act" data-act="snooze" data-qid="${escapeHtml(w.qid)}" title="${escapeHtml(this.i18n["dock.actSnooze"])}">⏸</button>
             </div>`,
       )
       .join("");
@@ -311,12 +312,13 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
 </div>`;
     // 空态按钮：打开练习台
     dockEl.querySelector<HTMLButtonElement>(".lv-dock-go")?.addEventListener("click", () => this.openPractice());
-    // 事件委托：手动处置（覆盖层由 examApp.setWrongStatus 持久化）
+    // 事件委托：手动处置（覆盖层由 examApp.setWrongStatus 持久化）；snooze=暂缓 7 天（52-06）
     dockEl.querySelectorAll<HTMLButtonElement>(".lv-dock-act").forEach((btn) => {
       btn.addEventListener("click", async (ev) => {
         ev.stopPropagation();
         const qid = btn.dataset.qid!;
-        await this.examApp?.setWrongStatus(qid, btn.dataset.act as "mastered" | "removed");
+        if (btn.dataset.act === "snooze") await this.examApp?.snoozeWrong(qid, 7);
+        else await this.examApp?.setWrongStatus(qid, btn.dataset.act as "mastered" | "removed");
         this.refreshDock();
         this.refreshStatusBar();
       });

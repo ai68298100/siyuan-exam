@@ -349,13 +349,17 @@ export class ExamApp {
 
   wrongItems(): WrongItem[] {
     const overlay = this.wrongOverlay;
+    const now = this.deps.now?.() ?? Date.now();
     const items = activeWrongItems(this.derived());
     if (!overlay.size) return items;
-    // 手动处置覆盖层：按错次计数判断时效——处置后发生更新的错误（wrongCount 增长）自动清除覆盖
+    // 手动处置覆盖层：按错次计数判断时效——处置后发生更新的错误（wrongCount 增长）自动清除覆盖；
+    // 暂缓（52-06 lite）：until 未到期在册隐藏，到期或期间再错自动回册
     return items.filter((w) => {
       const o = overlay.get(w.qid);
       if (!o) return true;
-      return w.wrongCount > o.wrongCount;
+      if (w.wrongCount > o.wrongCount) return true; // 处置后再错 → 覆盖失效
+      if (o.status === "snoozed") return (o.until ?? 0) <= now; // 暂缓：到期回册
+      return false; // mastered/removed 覆盖生效
     });
   }
 
@@ -364,8 +368,8 @@ export class ExamApp {
     const current = this.derived().wrongbook.get(qid);
     const key = "wrongbook/overlays";
     const v = (await this.deps.storage.load(key)) as
-      Record<string, { status: string; at: number; wrongCount: number }> | undefined;
-    const map: Record<string, { status: string; at: number; wrongCount: number }> = v ?? {};
+      Record<string, { status: string; at: number; wrongCount: number; until?: number }> | undefined;
+    const map: Record<string, { status: string; at: number; wrongCount: number; until?: number }> = v ?? {};
     if (status === "active") delete map[qid];
     else map[qid] = { status, at: Date.now(), wrongCount: current?.wrongCount ?? 0 };
     await this.deps.storage.save(key, map);
@@ -373,11 +377,25 @@ export class ExamApp {
     this.invalidate();
   }
 
-  private wrongOverlay = new Map<string, { status: string; at: number; wrongCount: number }>();
+  /** 顽固题暂缓（52-06 lite）：days 天内不进错题重练/每日计划，到期自动回册；期间再错立即回册 */
+  async snoozeWrong(qid: string, days = 7): Promise<void> {
+    const current = this.derived().wrongbook.get(qid);
+    const key = "wrongbook/overlays";
+    const v = (await this.deps.storage.load(key)) as
+      Record<string, { status: string; at: number; wrongCount: number; until?: number }> | undefined;
+    const map: Record<string, { status: string; at: number; wrongCount: number; until?: number }> = v ?? {};
+    const at = this.deps.now?.() ?? Date.now();
+    map[qid] = { status: "snoozed", at, wrongCount: current?.wrongCount ?? 0, until: at + days * 86_400_000 };
+    await this.deps.storage.save(key, map);
+    this.wrongOverlay = new Map(Object.entries(map));
+    this.invalidate();
+  }
+
+  private wrongOverlay = new Map<string, { status: string; at: number; wrongCount: number; until?: number }>();
 
   private async loadWrongOverlay(): Promise<void> {
     const v = (await this.deps.storage.load("wrongbook/overlays")) as
-      Record<string, { status: string; at: number; wrongCount: number }> | undefined;
+      Record<string, { status: string; at: number; wrongCount: number; until?: number }> | undefined;
     this.wrongOverlay = new Map(Object.entries(v ?? {}));
   }
 

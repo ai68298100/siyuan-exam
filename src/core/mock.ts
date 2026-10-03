@@ -16,6 +16,8 @@ export interface BlueprintSection {
   scoreEach: number;
   source: SectionSource;
   types: Question["type"][]; // 允许的题型（空 = 不限）
+  /** 55-02 lite：考点配额（前缀匹配，"资料" 命中 "资料/比重"）；缺口显式计入 shortages，不用其他考点偷偷补齐 */
+  kp?: string;
   indefinite?: boolean; // 不定项：少选按比例部分分、错选全扣（cbt.gradeIndefinite）
 }
 
@@ -52,13 +54,17 @@ export function assemble(
   const matchesSource = (q: Question, s: BlueprintSection) =>
     s.source === "mixed" || (q.sourceKind ?? "mock") === s.source;
   const matchesTypes = (q: Question, s: BlueprintSection) => !s.types.length || s.types.includes(q.type);
+  // 55-02 lite：考点配额按前缀命中（"资料" 命中 "资料/比重"）；即使 source=mixed 补齐也必须满足考点——
+  // 配额缺口宁可短缺显式报告，不用其他考点偷偷补齐（55-02 验收口径）
+  const matchesKp = (q: Question, s: BlueprintSection) =>
+    !s.kp || q.kp === s.kp || (q.kp?.startsWith(s.kp + "/") ?? false);
 
   for (const s of bp.sections) {
-    let pool = bank.filter((q) => !used.has(q.id) && matchesSource(q, s) && matchesTypes(q, s));
+    let pool = bank.filter((q) => !used.has(q.id) && matchesSource(q, s) && matchesTypes(q, s) && matchesKp(q, s));
     const strictCount = pool.length;
-    // strict 不够且允许 mixed → 用其他来源补齐（显式计数，蓝图配置器出警告）
+    // strict 不够且允许 mixed → 用其他来源补齐（考点配额仍生效；显式计数，蓝图配置器出警告）
     if (strictCount < s.count && s.source !== "mixed") {
-      const extra = bank.filter((q) => !used.has(q.id) && !pool.includes(q) && matchesTypes(q, s));
+      const extra = bank.filter((q) => !used.has(q.id) && !pool.includes(q) && matchesTypes(q, s) && matchesKp(q, s));
       pool = pool.concat(extra);
     }
     const picked: Question[] = [];
