@@ -15,8 +15,12 @@ export interface StorageAdapter {
 
 export class MemoryStorage implements StorageAdapter {
   readonly map = new Map<string, unknown>();
-  async load(key: string) { return this.map.get(key); }
-  async save(key: string, value: unknown) { this.map.set(key, value); }
+  async load(key: string) {
+    return this.map.get(key);
+  }
+  async save(key: string, value: unknown) {
+    this.map.set(key, value);
+  }
 }
 
 export interface AppendInput {
@@ -64,7 +68,7 @@ export class AttemptLog {
     const raw = await this.storage.load(this.key);
     const m = migrateAttemptLog(raw);
     if (m.kind === "envelope") {
-      if (m.v > DATA_SCHEMA_VERSION) this.versionTooNew = true;   // 更高版本：不降级丢数据，仅标记告警
+      if (m.v > DATA_SCHEMA_VERSION) this.versionTooNew = true; // 更高版本：不降级丢数据，仅标记告警
       for (const e of m.events as AttemptEvent[]) {
         if (this.isValid(e)) {
           if (!this.seen.has(e.eid)) {
@@ -97,9 +101,13 @@ export class AttemptLog {
     return this.device || newDeviceId();
   }
 
-  get deviceId() { return this.device; }
+  get deviceId() {
+    return this.device;
+  }
 
-  get size() { return this.events.length; }
+  get size() {
+    return this.events.length;
+  }
 
   /** 追加一条作答事件（同 eid 幂等）；触发节流落盘 */
   append(input: AppendInput): AttemptEvent {
@@ -128,8 +136,18 @@ export class AttemptLog {
     this.events.push(e);
     this.generation++;
     this.dirty = true;
-    if (this.events.length % this.flushLimit === 0) void this.flush().catch(() => { /* 后台节流失败：dirty 保持，由下次 flush 重试 */ });
-    else if (!this.flushTimer) this.flushTimer = setTimeout(() => void this.flush().catch(() => { /* 同上 */ }), this.flushDelayMs);
+    if (this.events.length % this.flushLimit === 0)
+      void this.flush().catch(() => {
+        /* 后台节流失败：dirty 保持，由下次 flush 重试 */
+      });
+    else if (!this.flushTimer)
+      this.flushTimer = setTimeout(
+        () =>
+          void this.flush().catch(() => {
+            /* 同上 */
+          }),
+        this.flushDelayMs,
+      );
     return e;
   }
 
@@ -139,7 +157,10 @@ export class AttemptLog {
    * - 失败：dirty 保持 true（待保存标记不清），可重试；后台调用失败静默等重试
    * - 载荷为 v2 信封 { v, events }（0 组 schemaVersion；读回经 migrateAttemptLog 兼容 v1） */
   async flush(): Promise<void> {
-    if (this.flushTimer) { clearTimeout(this.flushTimer); this.flushTimer = null; }
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
     if (this.flushing) return;
     if (!this.dirty) return;
     this.flushing = true;
@@ -157,15 +178,20 @@ export class AttemptLog {
     if (this.generation === genAtStart) {
       this.dirty = false;
     } else if (this.dirty) {
-      await this.flush();   // 写入期间有新增 → 补写（快照里已含新事件引用之外的部分）
+      await this.flush(); // 写入期间有新增 → 补写（快照里已含新事件引用之外的部分）
     }
   }
 
-  all(): readonly AttemptEvent[] { return this.events; }
+  all(): readonly AttemptEvent[] {
+    return this.events;
+  }
 
   /** 卸载栅栏（27 组）：清掉节流定时器，防 unload 后仍触发 saveData */
   dispose(): void {
-    if (this.flushTimer) { clearTimeout(this.flushTimer); this.flushTimer = null; }
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
     this.dirty = false;
   }
 }

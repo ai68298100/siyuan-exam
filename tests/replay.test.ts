@@ -9,13 +9,24 @@ import type { KernelTransport } from "../src/kernel/client";
 import type { Question } from "../src/core/types";
 
 const T0 = 1_700_000_000_000;
-const stepClock = () => { let t = T0; return () => (t += 1_000); };
+const stepClock = () => {
+  let t = T0;
+  return () => (t += 1_000);
+};
 
 function makeLog(events: Parameters<AttemptLog["append"]>[0][]) {
   const clock = stepClock();
   const log = new AttemptLog(new MemoryStorage(), "attempts/log", clock);
   // load 需要一次以设定 device
-  return { log, clock, run: async () => { await log.load("d-test-01"); events.forEach((e) => log.append(e)); return log; } };
+  return {
+    log,
+    clock,
+    run: async () => {
+      await log.load("d-test-01");
+      events.forEach((e) => log.append(e));
+      return log;
+    },
+  };
 }
 
 describe("AttemptLog + replay：错题状态机", () => {
@@ -59,7 +70,14 @@ describe("AttemptLog + replay：错题状态机", () => {
     const clock = stepClock();
     const log = new AttemptLog(new MemoryStorage(), "k", clock);
     await log.load("d1");
-    const e1 = log.append({ qid: "q1", kind: "practice", mode: "single", verdict: "wrong", myAnswer: "A", sessionId: "s1" });
+    const e1 = log.append({
+      qid: "q1",
+      kind: "practice",
+      mode: "single",
+      verdict: "wrong",
+      myAnswer: "A",
+      sessionId: "s1",
+    });
     // 模拟重复回放：手工再次注入同 eid
     const dup = { ...e1 };
     const r = replay([e1, dup, e1]);
@@ -70,9 +88,36 @@ describe("AttemptLog + replay：错题状态机", () => {
     const clock = stepClock();
     const log = new AttemptLog(new MemoryStorage(), "k", clock);
     await log.load("d1");
-    const a = log.append({ qid: "q1", kind: "practice", mode: "single", verdict: "correct", myAnswer: "A", sessionId: "s" });
-    const b = log.append({ qid: "q1", kind: "practice", mode: "single", verdict: "correct", myAnswer: "A", sessionId: "s" });
-    const bad = { eid: "", ts: 1, qid: "x", kind: "practice", mode: "", verdict: "wrong", myAnswer: null, sessionId: "", queue: "normal", device: "d", seq: 0, v: 1 } as never;
+    const a = log.append({
+      qid: "q1",
+      kind: "practice",
+      mode: "single",
+      verdict: "correct",
+      myAnswer: "A",
+      sessionId: "s",
+    });
+    const b = log.append({
+      qid: "q1",
+      kind: "practice",
+      mode: "single",
+      verdict: "correct",
+      myAnswer: "A",
+      sessionId: "s",
+    });
+    const bad = {
+      eid: "",
+      ts: 1,
+      qid: "x",
+      kind: "practice",
+      mode: "",
+      verdict: "wrong",
+      myAnswer: null,
+      sessionId: "",
+      queue: "normal",
+      device: "d",
+      seq: 0,
+      v: 1,
+    } as never;
     const r = replay([b, bad, a]); // 故意乱序 + 坏事件
     expect(r.byQuestion.get("q1")!.attempts).toBe(2);
     expect(r.skipped).toBe(1);
@@ -82,10 +127,34 @@ describe("AttemptLog + replay：错题状态机", () => {
     const log = new AttemptLog(new MemoryStorage(), "k", clock);
     await log.load("d1");
     for (let i = 0; i < 4; i++) {
-      log.append({ qid: "qg", kind: "recite", mode: "recite", verdict: "correct", myAnswer: null, sessionId: "s", selfRating: 3 });
+      log.append({
+        qid: "qg",
+        kind: "recite",
+        mode: "recite",
+        verdict: "correct",
+        myAnswer: null,
+        sessionId: "s",
+        selfRating: 3,
+      });
     }
-    log.append({ qid: "qg", kind: "recite", mode: "recite", verdict: "wrong", myAnswer: null, sessionId: "s", selfRating: 1 });
-    log.append({ qid: "qg", kind: "recite", mode: "recite", verdict: "correct", myAnswer: null, sessionId: "s", selfRating: 3 });
+    log.append({
+      qid: "qg",
+      kind: "recite",
+      mode: "recite",
+      verdict: "wrong",
+      myAnswer: null,
+      sessionId: "s",
+      selfRating: 1,
+    });
+    log.append({
+      qid: "qg",
+      kind: "recite",
+      mode: "recite",
+      verdict: "correct",
+      myAnswer: null,
+      sessionId: "s",
+      selfRating: 3,
+    });
     const r = replay(log.all());
     expect(r.reciteStreak.get("qg")).toBe(1);
   });
@@ -132,7 +201,15 @@ describe("PracticeSession", () => {
     expect(s.getDraft(qs[0].id)).toBe("A");
   });
   it("恢复模式保留游标", () => {
-    const saved = { id: "s-x", mode: "single", qids: qs.map((q) => q.id), cursor: 2, drafts: {}, startedAt: T0, updatedAt: T0 };
+    const saved = {
+      id: "s-x",
+      mode: "single",
+      qids: qs.map((q) => q.id),
+      cursor: 2,
+      drafts: {},
+      startedAt: T0,
+      updatedAt: T0,
+    };
     const s = new PracticeSession(qs, "single", saved, stepClock());
     expect(s.current!.id).toBe(qs[2].id);
     expect(s.progress).toEqual({ done: 2, total: 3 });
@@ -156,7 +233,8 @@ describe("ExamApp 集成（mock 内核 + 内存存储）", () => {
         if (endpoint === "/api/riff/getRiffDecks") return { code: 0, msg: "", data: [] };
         if (endpoint === "/api/notebook/createNotebook") return { code: 0, msg: "", data: { notebook: "nb-1" } };
         if (endpoint === "/api/filetree/createDocWithMd") return { code: 0, msg: "", data: "doc-1" };
-        if (endpoint === "/api/block/insertBlock") return { code: 0, msg: "", data: [{ doOperations: [{ id: "blk-1" }] }] };
+        if (endpoint === "/api/block/insertBlock")
+          return { code: 0, msg: "", data: [{ doOperations: [{ id: "blk-1" }] }] };
         return { code: -1, msg: "not mocked: " + endpoint, data: null };
       },
     };
@@ -183,7 +261,11 @@ describe("ExamApp 集成（mock 内核 + 内存存储）", () => {
   });
 
   it("离线降级：探测失败不阻塞 init", async () => {
-    const offline: KernelTransport = { async post() { throw new Error("ECONNREFUSED"); } };
+    const offline: KernelTransport = {
+      async post() {
+        throw new Error("ECONNREFUSED");
+      },
+    };
     const app = new ExamApp({ client: new KernelApiClient(offline), storage: new MemoryStorage() });
     await app.init();
     expect(app.kernelOnline).toBe(false);
@@ -208,19 +290,47 @@ describe("ExamApp 集成（mock 内核 + 内存存储）", () => {
     expect(app.wrongItems().map((w) => w.qid)).toContain("q1");
   });
 
-  it("流水→错题：recordAttempt 后 wrongItems 可见，重练消灭", async () => {    const { app } = await setup();
-    app.recordAttempt({ qid: "q9", kind: "practice", mode: "single", verdict: "wrong", myAnswer: "A", sessionId: "s1" });
+  it("流水→错题：recordAttempt 后 wrongItems 可见，重练消灭", async () => {
+    const { app } = await setup();
+    app.recordAttempt({
+      qid: "q9",
+      kind: "practice",
+      mode: "single",
+      verdict: "wrong",
+      myAnswer: "A",
+      sessionId: "s1",
+    });
     expect(app.wrongItems().map((w) => w.qid)).toContain("q9");
-    app.recordAttempt({ qid: "q9", kind: "practice", mode: "wrong", verdict: "correct", myAnswer: "B", sessionId: "s1" });
-    app.recordAttempt({ qid: "q9", kind: "practice", mode: "wrong", verdict: "correct", myAnswer: "B", sessionId: "s1" });
+    app.recordAttempt({
+      qid: "q9",
+      kind: "practice",
+      mode: "wrong",
+      verdict: "correct",
+      myAnswer: "B",
+      sessionId: "s1",
+    });
+    app.recordAttempt({
+      qid: "q9",
+      kind: "practice",
+      mode: "wrong",
+      verdict: "correct",
+      myAnswer: "B",
+      sessionId: "s1",
+    });
     expect(app.wrongItems().map((w) => w.qid)).not.toContain("q9");
     const r = app.derived();
     expect(r.byQuestion.get("q9")!.attempts).toBe(3);
   });
 
   it("HttpTransport 错误分类：fatal 不重试直接抛 KernelError", async () => {
-    let calls = 0;
-    const transport = new HttpTransport("http://x", "t", async () => ({ ok: false, status: 404, text: async () => "nf" }), 50, 2);
+    const calls = 0;
+    const transport = new HttpTransport(
+      "http://x",
+      "t",
+      async () => ({ ok: false, status: 404, text: async () => "nf" }),
+      50,
+      2,
+    );
     const client = new KernelApiClient(transport);
     await expect(client.renderMarkdown("x")).rejects.toThrow();
     void calls;

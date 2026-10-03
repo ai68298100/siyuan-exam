@@ -4,9 +4,19 @@ import type { AttemptEvent, ReplayResult } from "../src/core/types";
 
 const NOW = new Date(2026, 9, 2, 14, 30).getTime();
 const ev = (i: number, qid: string, verdict: "correct" | "wrong", hour: number): AttemptEvent => ({
-  v: 1, eid: "e" + i, ts: new Date(2026, 9, 2 - (i % 3), hour).getTime(), qid,
-  kind: "practice", mode: "single", verdict, myAnswer: null,
-  sessionId: "s", examId: null, queue: "normal", device: "d", seq: i,
+  v: 1,
+  eid: "e" + i,
+  ts: new Date(2026, 9, 2 - (i % 3), hour).getTime(),
+  qid,
+  kind: "practice",
+  mode: "single",
+  verdict,
+  myAnswer: null,
+  sessionId: "s",
+  examId: null,
+  queue: "normal",
+  device: "d",
+  seq: i,
 });
 
 function derived(events: AttemptEvent[]): ReplayResult {
@@ -17,10 +27,14 @@ function derived(events: AttemptEvent[]): ReplayResult {
     const d = new Date(e.ts);
     const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     const v = days.get(k) ?? { date: k, attempts: 0, correct: 0 };
-    if (e.verdict !== "not_attempted") { v.attempts++; if (e.verdict === "correct") v.correct++; }
+    if (e.verdict !== "not_attempted") {
+      v.attempts++;
+      if (e.verdict === "correct") v.correct++;
+    }
     days.set(k, v);
     const s = byQuestion.get(e.qid) ?? { attempts: 0, correct: 0, lastAt: 0 };
-    s.attempts++; if (e.verdict === "correct") s.correct++;
+    s.attempts++;
+    if (e.verdict === "correct") s.correct++;
     byQuestion.set(e.qid, s);
   }
   return { wrongbook, byQuestion, days, reciteStreak: new Map(), skipped: 0, clockAnomalies: 0 };
@@ -28,10 +42,7 @@ function derived(events: AttemptEvent[]): ReplayResult {
 
 describe("公开只读数据接口（脱敏契约）", () => {
   it("聚合字段齐全且不含题目内容/路径/key", () => {
-    const events = [
-      ev(0, "q1", "correct", 8),
-      ev(1, "q2", "wrong", 21),
-    ];
+    const events = [ev(0, "q1", "correct", 8), ev(1, "q2", "wrong", 21)];
     const stats = buildPublicStats(derived(events), events, 5, NOW);
     expect(stats.version).toBe(1);
     expect(stats.attempts).toBe(2);

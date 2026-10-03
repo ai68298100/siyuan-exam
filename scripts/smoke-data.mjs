@@ -37,7 +37,10 @@ function synthQ(batch, i) {
 
 async function insertQuestions(docId, questions) {
   for (let i = 0; i < questions.length; i += 20) {
-    const md = questions.slice(i, i + 20).map((q) => q.md).join("\n");
+    const md = questions
+      .slice(i, i + 20)
+      .map((q) => q.md)
+      .join("\n");
     await api("/api/block/insertBlock", { dataType: "markdown", data: md, parentID: docId });
   }
 }
@@ -65,7 +68,11 @@ async function readback(notebookId, expectedIds) {
        AND a.name = 'custom-exam-id'`,
   );
   const have = new Set(rows.map((r) => r.qid));
-  return { confirmed: expectedIds.filter((id) => have.has(id)), missing: expectedIds.filter((id) => !have.has(id)), attempts: 5 };
+  return {
+    confirmed: expectedIds.filter((id) => have.has(id)),
+    missing: expectedIds.filter((id) => !have.has(id)),
+    attempts: 5,
+  };
 }
 
 async function main() {
@@ -78,6 +85,7 @@ async function main() {
   }
 
   // ---------- 1. 建临时库 ----------
+  // eslint-disable-next-line no-useless-assignment
   let notebookId = "";
   try {
     const nb = await api("/api/notebook/createNotebook", { name: `小驴考试-数据冒烟-${Date.now().toString(36)}` });
@@ -91,15 +99,24 @@ async function main() {
 
   try {
     // ---------- 2. 分两批导入 + 读回确认（步 30/31） ----------
-    const docId = String((await api("/api/filetree/createDocWithMd", { notebook: notebookId, path: "/冒烟", markdown: "# 冒烟\n\n" })).data ?? "");
+    const docId = String(
+      (await api("/api/filetree/createDocWithMd", { notebook: notebookId, path: "/冒烟", markdown: "# 冒烟\n\n" }))
+        .data ?? "",
+    );
     const batch1 = Array.from({ length: 5 }, (_, i) => synthQ("b-smoke-1", i));
     const batch2 = Array.from({ length: 4 }, (_, i) => synthQ("b-smoke-2", i));
     await insertQuestions(docId, batch1);
-    const rb1 = await readback(notebookId, batch1.map((q) => q.id));
+    const rb1 = await readback(
+      notebookId,
+      batch1.map((q) => q.id),
+    );
     record("批1 导入读回（5/5 确认）", rb1.missing.length === 0, `重试 ${rb1.attempts} 次`);
 
     await insertQuestions(docId, batch2);
-    const rb2 = await readback(notebookId, batch2.map((q) => q.id));
+    const rb2 = await readback(
+      notebookId,
+      batch2.map((q) => q.id),
+    );
     record("批2 导入读回（4/4 确认）", rb2.missing.length === 0, `重试 ${rb2.attempts} 次`);
 
     // ---------- 3. 先导语义：已确认的批1题在"完整导入"中被跳过（步 31 的去重判定） ----------
@@ -144,7 +161,8 @@ async function main() {
       deleted++;
     }
     // 回滚验证（轮询式，与读回/改属性一致）：批量删除后索引清理是异步事务，单次等待会偶发误报
-    let left1 = [{ n: -1 }], left2 = [{ n: -1 }];
+    let left1 = [{ n: -1 }],
+      left2 = [{ n: -1 }];
     for (let attempt = 1; attempt <= 5; attempt++) {
       await new Promise((r) => setTimeout(r, 1500));
       left1 = await sql(
@@ -158,20 +176,29 @@ async function main() {
       if ((left1[0]?.n ?? 0) === 0) break;
       console.log(`  回滚索引清理重试 ${attempt}/5（批1 仍可见 ${left1[0]?.n ?? 0}）`);
     }
-    record("批次回滚（批1 全删 / 批2 完整保留）", deleted === 5 && (left1[0]?.n ?? 0) === 0 && (left2[0]?.n ?? 0) === 4,
-      `删除 ${deleted}，批1 剩 ${left1[0]?.n ?? 0}，批2 剩 ${left2[0]?.n ?? 0}`);
+    record(
+      "批次回滚（批1 全删 / 批2 完整保留）",
+      deleted === 5 && (left1[0]?.n ?? 0) === 0 && (left2[0]?.n ?? 0) === 4,
+      `删除 ${deleted}，批1 剩 ${left1[0]?.n ?? 0}，批2 剩 ${left2[0]?.n ?? 0}`,
+    );
   } catch (e) {
     record("数据生命周期流程", false, String(e).slice(0, 140));
   } finally {
     // ---------- 6. 自清理 ----------
     if (notebookId) {
-      try { await api("/api/notebook/removeNotebook", { notebook: notebookId }); } catch { /* 清理失败不掩盖结果 */ }
+      try {
+        await api("/api/notebook/removeNotebook", { notebook: notebookId });
+      } catch {
+        /* 清理失败不掩盖结果 */
+      }
     }
   }
 
   const pass = results.filter(Boolean).length;
   const total = results.length;
-  console.log(`\n结论：${pass}/${total} 步通过${pass === total ? "（数据生命周期在当前内核版本验证通过）" : "（存在失败项，见上）"}`);
+  console.log(
+    `\n结论：${pass}/${total} 步通过${pass === total ? "（数据生命周期在当前内核版本验证通过）" : "（存在失败项，见上）"}`,
+  );
   return pass === total ? 0 : 1;
 }
 

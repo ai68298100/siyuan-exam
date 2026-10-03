@@ -13,24 +13,24 @@ export interface GenOptions {
   types: Question["type"][];
   count: number;
   difficulty: "easy" | "medium" | "hard" | "mixed";
-  kp?: string;                  // 考点提示（写入题目 kp）
-  sourceTitle?: string;         // 来源材料标题（写入 source；引用=待 v0.4.x 块引用）
+  kp?: string; // 考点提示（写入题目 kp）
+  sourceTitle?: string; // 来源材料标题（写入 source；引用=待 v0.4.x 块引用）
   preset?: keyof typeof PROMPT_PRESETS;
-  customHint?: string;          // 用户自定义命题要求（追加到系统提示）
-  quality?: "standard" | "economy";  // 标准=二遍换角色核验（默认）；经济=单遍
+  customHint?: string; // 用户自定义命题要求（追加到系统提示）
+  quality?: "standard" | "economy"; // 标准=二遍换角色核验（默认）；经济=单遍
   existingHashes?: Set<string>;
   /** 取消信号：每个分片完成后检查，中止后续分片（已完成分片保留） */
   signal?: { aborted: boolean };
 }
 
 export interface GenIssue {
-  index: number;                // 原始序号（1-based）
+  index: number; // 原始序号（1-based）
   reason: string;
   raw: string;
 }
 
 export interface GenResult {
-  pending: Question[];          // 通过质量门槛，进待审核队列（review=pending）
+  pending: Question[]; // 通过质量门槛，进待审核队列（review=pending）
   rejected: GenIssue[];
   duplicates: number;
   batch: string;
@@ -38,13 +38,18 @@ export interface GenResult {
 
 /** 长材料切片（段落聚合，maxChars 上限） */
 export function sliceText(text: string, maxChars = 6000): string[] {
-  const paras = text.split(/\n{2,}/).map((s) => s.trim()).filter(Boolean);
+  const paras = text
+    .split(/\n{2,}/)
+    .map((s) => s.trim())
+    .filter(Boolean);
   if (!paras.length) return text.trim() ? [text.trim()] : [];
   const chunks: string[] = [];
   let cur = "";
   for (const p of paras) {
-    if ((cur + "\n\n" + p).length > maxChars && cur) { chunks.push(cur); cur = p; }
-    else cur = cur ? cur + "\n\n" + p : p;
+    if ((cur + "\n\n" + p).length > maxChars && cur) {
+      chunks.push(cur);
+      cur = p;
+    } else cur = cur ? cur + "\n\n" + p : p;
   }
   if (cur) chunks.push(cur);
   return chunks;
@@ -53,9 +58,18 @@ export function sliceText(text: string, maxChars = 6000): string[] {
 /** Prompt 预设（Prompt Settings lite；用户自定义模板编辑待 v0.4.x） */
 export const PROMPT_PRESETS: Record<string, { label: string; hint: string }> = {
   default: { label: "通用", hint: "" },
-  gongkao: { label: "公考行测", hint: "命题风格贴近公务员考试行测：言语理解与表达、数量关系、判断推理、资料分析、常识判断；干扰项设为常见速算/逻辑误区。" },
-  kaoyan: { label: "考研政治", hint: "命题风格贴近考研政治：马原/毛中特/史纲/思修法基/时政；重视概念辨析与内涵外延；干扰项为相近表述偷换。" },
-  yixue: { label: "医学执业", hint: "命题风格贴近医学执业资格考试：临床情景题干、A1/A2 型表述；干扰项为相似症状/体征/用药误区。" },
+  gongkao: {
+    label: "公考行测",
+    hint: "命题风格贴近公务员考试行测：言语理解与表达、数量关系、判断推理、资料分析、常识判断；干扰项设为常见速算/逻辑误区。",
+  },
+  kaoyan: {
+    label: "考研政治",
+    hint: "命题风格贴近考研政治：马原/毛中特/史纲/思修法基/时政；重视概念辨析与内涵外延；干扰项为相近表述偷换。",
+  },
+  yixue: {
+    label: "医学执业",
+    hint: "命题风格贴近医学执业资格考试：临床情景题干、A1/A2 型表述；干扰项为相似症状/体征/用药误区。",
+  },
   jiakao: { label: "驾考", hint: "命题风格贴近驾考科目一/四：交规条款、标志标线、安全文明驾驶；题干简短直白。" },
 };
 
@@ -67,26 +81,40 @@ export const HALADYNA_RULES = [
   "干扰项彼此同质（同类概念/同类量纲/同类表述长度，禁止唯一长选项或唯一精确表述）；",
   "每个干扰项对应一个可诊断的常见误解（算错/偷换概念/张冠李戴），并在解析中点名该误区；",
   "禁止绝对化词面（都/最/必然/一定）与题干词面重复造成的提示性线索；",
-  "选项避免\"以上都对/都不是/全部/都不\"及组合式兜底；",
+  '选项避免"以上都对/都不是/全部/都不"及组合式兜底；',
   "选项相互独立不重叠（单项只有一个可辩护正确答案，多选各正确项有独立依据）；",
   "正确项位置/长度不形成规律性偏好。",
 ].join("\n");
 
 export function buildPrompt(chunk: string, opt: GenOptions): AiMessage[] {
   const types = opt.types.length ? opt.types : ["single"];
-  const typeLine = types.map((t) => ({ single: "单选", multiple: "多选", judge: "判断", fill: "填空", short: "简答" }[t])).join("、");
+  const typeLine = types
+    .map((t) => ({ single: "单选", multiple: "多选", judge: "判断", fill: "填空", short: "简答" })[t])
+    .join("、");
   const presetHint = opt.preset && PROMPT_PRESETS[opt.preset] ? PROMPT_PRESETS[opt.preset].hint : "";
   const customHint = opt.customHint?.trim() ? `\n用户额外要求：${opt.customHint.trim()}` : "";
   const hasChoice = types.some((t) => t === "single" || t === "multiple");
-  const system = [
-    "你是严谨的命题专家。根据给定材料出题，禁止编造材料中不存在的事实。",
-    presetHint ? `命题风格：${presetHint}` : "",
-    "硬性规则：",    "1) 只输出一个 JSON 数组，不要任何解释文字或代码围栏；",
-    "2) 每题字段：type(stem 的题型：single/multiple/judge/fill/short)、stem(题干，禁止\"以下说法正确的是\"式空泛句)、options(字符串数组，judge/fill/short 为空数组)、answer(单选=字母；多选=字母连写如 ABD；判断=对/错；填空/简答=文本)、analysis(解析 ≥30 字，必须含因果解释)、kp(知识点标签，可为空)；",
-    "3) 干扰项应为常见误解；禁止\"以上都对/都不是\"类选项；",
-    "4) 难度目标：" + (opt.difficulty === "mixed" ? "易中难混合" : opt.difficulty === "easy" ? "基础" : opt.difficulty === "hard" ? "较难" : "中等") + "。",
-    hasChoice ? "5) 干扰项构建规范（逐题自查）：\n" + HALADYNA_RULES : "",
-  ].filter(Boolean).join("\n") + customHint;
+  const system =
+    [
+      "你是严谨的命题专家。根据给定材料出题，禁止编造材料中不存在的事实。",
+      presetHint ? `命题风格：${presetHint}` : "",
+      "硬性规则：",
+      "1) 只输出一个 JSON 数组，不要任何解释文字或代码围栏；",
+      '2) 每题字段：type(stem 的题型：single/multiple/judge/fill/short)、stem(题干，禁止"以下说法正确的是"式空泛句)、options(字符串数组，judge/fill/short 为空数组)、answer(单选=字母；多选=字母连写如 ABD；判断=对/错；填空/简答=文本)、analysis(解析 ≥30 字，必须含因果解释)、kp(知识点标签，可为空)；',
+      '3) 干扰项应为常见误解；禁止"以上都对/都不是"类选项；',
+      "4) 难度目标：" +
+        (opt.difficulty === "mixed"
+          ? "易中难混合"
+          : opt.difficulty === "easy"
+            ? "基础"
+            : opt.difficulty === "hard"
+              ? "较难"
+              : "中等") +
+        "。",
+      hasChoice ? "5) 干扰项构建规范（逐题自查）：\n" + HALADYNA_RULES : "",
+    ]
+      .filter(Boolean)
+      .join("\n") + customHint;
   const user = `【材料】\n${chunk}\n\n【要求】出 ${opt.count} 道题（题型：${typeLine}）。${opt.kp ? `考点方向：${opt.kp}。` : ""}只输出 JSON 数组。`;
   return [
     { role: "system", content: system },
@@ -100,15 +128,30 @@ export function extractJsonArray(raw: string): unknown[] | null {
   s = s.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "");
   const start = s.indexOf("[");
   if (start < 0) return null;
-  let depth = 0, inStr = false, esc = false, end = -1;
+  let depth = 0,
+    inStr = false,
+    esc = false,
+    end = -1;
   for (let i = start; i < s.length; i++) {
     const ch = s[i];
-    if (esc) { esc = false; continue; }
-    if (ch === "\\") { esc = true; continue; }
+    if (esc) {
+      esc = false;
+      continue;
+    }
+    if (ch === "\\") {
+      esc = true;
+      continue;
+    }
     if (ch === '"') inStr = !inStr;
     if (inStr) continue;
     if (ch === "[") depth++;
-    else if (ch === "]") { depth--; if (depth === 0) { end = i; break; } }
+    else if (ch === "]") {
+      depth--;
+      if (depth === 0) {
+        end = i;
+        break;
+      }
+    }
   }
   if (end < 0) return null;
   try {
@@ -130,10 +173,13 @@ function toQuestion(o: Record<string, unknown>, opt: GenOptions, batch: string):
   if (!answer) return { reason: `答案无法识别：${String(o.answer ?? "")}` };
   const analysis = String(o.analysis ?? "").trim();
   if (foldText(analysis).length < MIN_ANALYSIS) return { reason: "解析过短（缺少因果解释）" };
-  if (/以上都[是对]|以上选项都/.test(stem + options.join(""))) return { reason: "含\"以上都对\"类禁用选项" };
+  if (/以上都[是对]|以上选项都/.test(stem + options.join(""))) return { reason: '含"以上都对"类禁用选项' };
   const q: Question = {
     id: newQuestionId(),
-    type, stem, options, answer,
+    type,
+    stem,
+    options,
+    answer,
     analysis,
     difficulty: opt.difficulty === "mixed" ? undefined : { easy: 2, medium: 3, hard: 4 }[opt.difficulty],
     score: 1,
@@ -152,21 +198,41 @@ function toQuestion(o: Record<string, unknown>, opt: GenOptions, batch: string):
 
 /** Question → 可重试的完整 JSON（repairIssues 的修复输入；不截断） */
 function rawOf(q: Question): string {
-  return JSON.stringify({ type: q.type, stem: q.stem, options: q.options, answer: q.answer, analysis: q.analysis, kp: q.kp });
+  return JSON.stringify({
+    type: q.type,
+    stem: q.stem,
+    options: q.options,
+    answer: q.answer,
+    analysis: q.analysis,
+    kp: q.kp,
+  });
 }
 
 /** 二遍核验（换角色）：严格审题人对每题打置信度；<0.85 或 pass=false 淘汰（research/08 Quanta+QuizAPI 范式） */
 export const REVIEW_CONFIDENCE_MIN = 0.85;
 
-export async function reviewQuestions(channel: AiChannel, questions: Question[], sourceChunk: string): Promise<Map<string, { confidence: number; pass: boolean; reason?: string }>> {
+export async function reviewQuestions(
+  channel: AiChannel,
+  questions: Question[],
+  sourceChunk: string,
+): Promise<Map<string, { confidence: number; pass: boolean; reason?: string }>> {
   const out = new Map<string, { confidence: number; pass: boolean; reason?: string }>();
   if (!questions.length) return out;
   const compact = questions.map((q, i) => ({
-    index: i + 1, id: q.id, type: q.type, stem: q.stem,
-    options: q.options, answer: q.answer, analysis: q.analysis,
+    index: i + 1,
+    id: q.id,
+    type: q.type,
+    stem: q.stem,
+    options: q.options,
+    answer: q.answer,
+    analysis: q.analysis,
   }));
   const messages: AiMessage[] = [
-    { role: "system", content: "你是苛刻的审题人。对照材料逐题核查：答案是否唯一正确、解析是否因果成立、干扰项是否合理。只输出 JSON 数组：[{\"id\":题目id,\"confidence\":0到1,\"pass\":布尔,\"reason\":一句否决理由（pass 时省略）}]。" },
+    {
+      role: "system",
+      content:
+        '你是苛刻的审题人。对照材料逐题核查：答案是否唯一正确、解析是否因果成立、干扰项是否合理。只输出 JSON 数组：[{"id":题目id,"confidence":0到1,"pass":布尔,"reason":一句否决理由（pass 时省略）}]。',
+    },
     { role: "user", content: `【材料】\n${sourceChunk.slice(0, 3000)}\n\n【待核题目】\n${JSON.stringify(compact)}` },
   ];
   const raw = await channel.chat(messages);
@@ -187,7 +253,8 @@ export async function reviewQuestions(channel: AiChannel, questions: Question[],
     }
   }
   // 缺失的题按未核验处理
-  for (const q of questions) if (!out.has(q.id)) out.set(q.id, { confidence: 0, pass: false, reason: "审题人未返回该题" });
+  for (const q of questions)
+    if (!out.has(q.id)) out.set(q.id, { confidence: 0, pass: false, reason: "审题人未返回该题" });
   return out;
 }
 
@@ -216,10 +283,19 @@ export async function generate(channel: AiChannel, sourceText: string, opt: GenO
     const candidates: Question[] = [];
     for (const item of arr) {
       idx++;
-      if (!(item && typeof item === "object")) { rejected.push({ index: idx, reason: "非对象", raw: JSON.stringify(item).slice(0, 80) }); continue; }
+      if (!(item && typeof item === "object")) {
+        rejected.push({ index: idx, reason: "非对象", raw: JSON.stringify(item).slice(0, 80) });
+        continue;
+      }
       const r = toQuestion(item as Record<string, unknown>, opt, batch);
-      if (r.reason || !r.q) { rejected.push({ index: idx, reason: r.reason ?? "未知", raw: JSON.stringify(item).slice(0, 80) }); continue; }
-      if (dedupe && seenHash.has(r.q.hash)) { duplicates++; continue; }
+      if (r.reason || !r.q) {
+        rejected.push({ index: idx, reason: r.reason ?? "未知", raw: JSON.stringify(item).slice(0, 80) });
+        continue;
+      }
+      if (dedupe && seenHash.has(r.q.hash)) {
+        duplicates++;
+        continue;
+      }
       candidates.push(r.q);
     }
     // 标准档：二遍换角色核验
@@ -228,18 +304,28 @@ export async function generate(channel: AiChannel, sourceText: string, opt: GenO
       for (const q of candidates) {
         const v = verdicts.get(q.id) ?? { confidence: 0, pass: false, reason: "未核验" };
         if (!v.pass || v.confidence < REVIEW_CONFIDENCE_MIN) {
-          rejected.push({ index: idx, reason: `二遍核验淘汰：置信 ${v.confidence.toFixed(2)}${v.reason ? " · " + v.reason : ""}`, raw: rawOf(q) });
+          rejected.push({
+            index: idx,
+            reason: `二遍核验淘汰：置信 ${v.confidence.toFixed(2)}${v.reason ? " · " + v.reason : ""}`,
+            raw: rawOf(q),
+          });
           continue;
         }
         q.confidence = v.confidence;
-        if (seenHash.has(q.hash)) { duplicates++; continue; }
+        if (seenHash.has(q.hash)) {
+          duplicates++;
+          continue;
+        }
         seenHash.add(q.hash);
         pending.push(q);
         if (pending.length >= opt.count) break;
       }
     } else {
       for (const q of candidates) {
-        if (seenHash.has(q.hash)) { duplicates++; continue; }
+        if (seenHash.has(q.hash)) {
+          duplicates++;
+          continue;
+        }
         seenHash.add(q.hash);
         pending.push(q);
         if (pending.length >= opt.count) break;
@@ -251,7 +337,12 @@ export async function generate(channel: AiChannel, sourceText: string, opt: GenO
 }
 
 /** 拒绝项重试（AI Inbox 范式的"重试"腿）：带否决原因让 AI 逐题修复 → 再过一遍门槛+二遍核验 */
-export async function repairIssues(channel: AiChannel, issues: GenIssue[], sourceText: string, opt: GenOptions): Promise<GenResult> {
+export async function repairIssues(
+  channel: AiChannel,
+  issues: GenIssue[],
+  sourceText: string,
+  opt: GenOptions,
+): Promise<GenResult> {
   const batch = newBatchId();
   const seenHash = new Set(opt.existingHashes);
   const pending: Question[] = [];
@@ -265,13 +356,22 @@ export async function repairIssues(channel: AiChannel, issues: GenIssue[], sourc
 
   const chunks: string[] = [];
   for (let i = 0; i < fixable.length; i += 5) {
-    chunks.push(fixable.slice(i, i + 5).map((f) => `【否决原因】${f.reason}\n【原题 JSON】${f.raw}`).join("\n\n"));
+    chunks.push(
+      fixable
+        .slice(i, i + 5)
+        .map((f) => `【否决原因】${f.reason}\n【原题 JSON】${f.raw}`)
+        .join("\n\n"),
+    );
   }
   for (let ci = 0; ci < chunks.length; ci++) {
     if (opt.signal?.aborted) break;
     const group = fixable.slice(ci * 5, ci * 5 + 5);
     const messages: AiMessage[] = [
-      { role: "system", content: "你是严谨的命题修订人。针对每道被否决的题，按否决原因修复（改干扰项/补解析/修答案），保持题型与考点不变。只输出修复后的 JSON 数组，元素结构：{\"type\":\"single|multiple|judge|fill|short\",\"stem\":\"...\",\"options\":[...],\"answer\":\"...\",\"analysis\":\"...\",\"kp\":\"...\"}。" },
+      {
+        role: "system",
+        content:
+          '你是严谨的命题修订人。针对每道被否决的题，按否决原因修复（改干扰项/补解析/修答案），保持题型与考点不变。只输出修复后的 JSON 数组，元素结构：{"type":"single|multiple|judge|fill|short","stem":"...","options":[...],"answer":"...","analysis":"...","kp":"..."}。',
+      },
       { role: "user", content: `【材料】\n${sourceText.slice(0, 3000)}\n\n【待修复题目】\n${chunks[ci]}` },
     ];
     const raw = await channel.chat(messages);
@@ -284,8 +384,14 @@ export async function repairIssues(channel: AiChannel, issues: GenIssue[], sourc
     for (const item of arr) {
       if (!(item && typeof item === "object")) continue;
       const r = toQuestion(item as Record<string, unknown>, opt, batch);
-      if (r.reason || !r.q) { rejected.push({ index: 0, reason: r.reason ?? "未知", raw: JSON.stringify(item).slice(0, 120) }); continue; }
-      if (seenHash.has(r.q.hash)) { duplicates++; continue; }
+      if (r.reason || !r.q) {
+        rejected.push({ index: 0, reason: r.reason ?? "未知", raw: JSON.stringify(item).slice(0, 120) });
+        continue;
+      }
+      if (seenHash.has(r.q.hash)) {
+        duplicates++;
+        continue;
+      }
       candidates.push(r.q);
     }
     if (quality === "standard" && candidates.length) {
@@ -293,17 +399,27 @@ export async function repairIssues(channel: AiChannel, issues: GenIssue[], sourc
       for (const q of candidates) {
         const v = verdicts.get(q.id) ?? { confidence: 0, pass: false, reason: "未核验" };
         if (!v.pass || v.confidence < REVIEW_CONFIDENCE_MIN) {
-          rejected.push({ index: 0, reason: `修复后核验仍淘汰：置信 ${v.confidence.toFixed(2)}${v.reason ? " · " + v.reason : ""}`, raw: rawOf(q) });
+          rejected.push({
+            index: 0,
+            reason: `修复后核验仍淘汰：置信 ${v.confidence.toFixed(2)}${v.reason ? " · " + v.reason : ""}`,
+            raw: rawOf(q),
+          });
           continue;
         }
         q.confidence = v.confidence;
-        if (seenHash.has(q.hash)) { duplicates++; continue; }
+        if (seenHash.has(q.hash)) {
+          duplicates++;
+          continue;
+        }
         seenHash.add(q.hash);
         pending.push(q);
       }
     } else {
       for (const q of candidates) {
-        if (seenHash.has(q.hash)) { duplicates++; continue; }
+        if (seenHash.has(q.hash)) {
+          duplicates++;
+          continue;
+        }
         seenHash.add(q.hash);
         pending.push(q);
       }

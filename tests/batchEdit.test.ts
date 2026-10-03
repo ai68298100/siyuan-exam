@@ -3,8 +3,11 @@ import { planBatchEdit, invertPlan, describeChange } from "../src/core/batchEdit
 import { makeQuestion } from "../src/core/blockTemplate";
 import type { Question } from "../src/core/types";
 
-const q = (id: string, over: Partial<Question> & { blockId?: string } = {}): Question & { blockId?: string } =>
-  ({ ...makeQuestion({ type: "single", stem: `题${id}`, options: ["1", "2"], answer: "A", ...over }), id, ...over });
+const q = (id: string, over: Partial<Question> & { blockId?: string } = {}): Question & { blockId?: string } => ({
+  ...makeQuestion({ type: "single", stem: `题${id}`, options: ["1", "2"], answer: "A", ...over }),
+  id,
+  ...over,
+});
 
 describe("批量编辑 dry-run（43-06 lite）", () => {
   it("计划逐题 from→to；值不变与无块 ID 的题跳过并计数", () => {
@@ -12,7 +15,7 @@ describe("批量编辑 dry-run（43-06 lite）", () => {
       q("a", { kp: "言语", blockId: "b1" }),
       q("b", { kp: "言语", blockId: "b2" }),
       q("c", { kp: "资料", blockId: "b3" }),
-      q("d", { kp: "资料" }),                       // 无块 ID → skip
+      q("d", { kp: "资料" }), // 无块 ID → skip
     ];
     const plan = planBatchEdit(qs, "kp", "数量");
     expect(plan.changes.map((c) => c.qid)).toEqual(["a", "b", "c"]);

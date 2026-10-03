@@ -15,7 +15,10 @@ function replacementRatio(text: string): number {
  * 按候选编码序列依次解码，返回第一个"无替换符污染"的结果；
  * 全部污染时返回 UTF-8 结果（调用方提示乱码风险）。
  */
-export function decodeBuffer(buffer: ArrayBuffer, candidates: string[] = ["utf-8", "gbk"]): { text: string; encoding: string; confident: boolean } {
+export function decodeBuffer(
+  buffer: ArrayBuffer,
+  candidates: string[] = ["utf-8", "gbk"],
+): { text: string; encoding: string; confident: boolean } {
   const bytes = new Uint8Array(buffer);
   // UTF-8 BOM 检测
   if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
@@ -54,7 +57,10 @@ export function detectDelimiter(text: string): string {
   for (const d of [",", ";", "\t"]) {
     let n = 0;
     for (let i = 0; i < sample.length; i++) if (sample[i] === d) n++;
-    if (n > bestN) { best = d; bestN = n; }
+    if (n > bestN) {
+      best = d;
+      bestN = n;
+    }
   }
   return best;
 }

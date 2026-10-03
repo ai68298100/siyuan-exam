@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { selfRatingToRiffRating, binaryToRiffRating, pickSameKp, cramQueue, dailySet, deckNameForBank } from "../src/core/memory";
+import {
+  selfRatingToRiffRating,
+  binaryToRiffRating,
+  pickSameKp,
+  cramQueue,
+  dailySet,
+  deckNameForBank,
+} from "../src/core/memory";
 import { makeQuestion } from "../src/core/blockTemplate";
 
 const qs = [
@@ -29,7 +36,7 @@ describe("评级映射", () => {
 describe("举一反三", () => {
   it("完整考点优先，其次同章节，排除种子题", () => {
     const picked = pickSameKp(qs, qs[0], 2);
-    expect(picked[0].kp).toBe("资料/增长率");        // 完整考点：J1
+    expect(picked[0].kp).toBe("资料/增长率"); // 完整考点：J1
     expect(picked[1].kp?.split("/")[0]).toBe("资料"); // 退到同章节：资料/比重
     expect(picked.every((q) => q.id !== qs[0].id)).toBe(true);
   });
@@ -41,7 +48,11 @@ describe("举一反三", () => {
 
 describe("cram 队列", () => {
   it("错 ≥2 才入队，按错次降序，limit 生效", () => {
-    const counts = new Map([[qs[0].id, 5], [qs[1].id, 2], [qs[2].id, 1]]);
+    const counts = new Map([
+      [qs[0].id, 5],
+      [qs[1].id, 2],
+      [qs[2].id, 1],
+    ]);
     const q = cramQueue(qs, counts, 2, 50);
     expect(q.map((x) => x.id)).toEqual([qs[0].id, qs[1].id]);
     expect(cramQueue(qs, counts, 2, 1)).toHaveLength(1);

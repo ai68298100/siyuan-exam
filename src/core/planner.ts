@@ -15,7 +15,10 @@ export const REASON_WEIGHT: Record<"careless" | "unknown" | "trap", number> = {
 
 /** 自然日差（本地时区）：exam - today，负数=已过期；格式非法返回 null */
 export function daysUntil(examDate: string, now: Date = new Date()): number | null {
-  const parts = examDate.trim().split("-").map((s) => parseInt(s, 10));
+  const parts = examDate
+    .trim()
+    .split("-")
+    .map((s) => parseInt(s, 10));
   if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return null;
   const [y, mo, d] = parts;
   if (y < 2000 || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
@@ -26,14 +29,14 @@ export function daysUntil(examDate: string, now: Date = new Date()): number | nu
 }
 
 export interface PlanInput {
-  examDate?: string;            // YYYY-MM-DD（未设 = 常规模式）
-  sprintDays?: number;          // 冲刺姿态阈值，默认 14
-  dailyGoal: number;            // 每日配额
+  examDate?: string; // YYYY-MM-DD（未设 = 常规模式）
+  sprintDays?: number; // 冲刺姿态阈值，默认 14
+  dailyGoal: number; // 每日配额
   all: Question[];
-  wrongCounts: Map<string, number>;   // 全库错次（含已消灭历史）
-  activeWrongIds: Set<string>;        // 当前错题本在册
-  wrongReasons?: Map<string, "careless" | "unknown" | "trap">;  // 错因（加权回流）
-  dueFirst?: Question[];              // FSRS 到期（有卡才有；无卡传空）
+  wrongCounts: Map<string, number>; // 全库错次（含已消灭历史）
+  activeWrongIds: Set<string>; // 当前错题本在册
+  wrongReasons?: Map<string, "careless" | "unknown" | "trap">; // 错因（加权回流）
+  dueFirst?: Question[]; // FSRS 到期（有卡才有；无卡传空）
   rnd?: () => number;
 }
 
@@ -61,7 +64,12 @@ export function planToday(input: PlanInput, now: Date = new Date()): PlanResult 
   const quota = Math.max(1, dailyGoal);
   const seen = new Set<string>();
   const queue: Question[] = [];
-  const push = (q: Question) => { if (queue.length < quota && !seen.has(q.id)) { seen.add(q.id); queue.push(q); } };
+  const push = (q: Question) => {
+    if (queue.length < quota && !seen.has(q.id)) {
+      seen.add(q.id);
+      queue.push(q);
+    }
+  };
 
   /** 回流权重：错次 × 错因系数（知识不会 2.0 / 陷阱 1.6 / 粗心 1.2；未知错因取粗心档） */
   const weight = (qid: string) => {
@@ -91,7 +99,10 @@ export function planToday(input: PlanInput, now: Date = new Date()): PlanResult 
     .map((e) => e.q);
   activeWrong.forEach(push);
   if (!sprint) stubborn = all.filter((q) => activeWrongIds.has(q.id) && weight(q.id) >= 3.2).length;
-  const rest = shuffle(all.filter((q) => !seen.has(q.id)), rnd);
+  const rest = shuffle(
+    all.filter((q) => !seen.has(q.id)),
+    rnd,
+  );
   rest.forEach(push);
 
   const reason = sprint

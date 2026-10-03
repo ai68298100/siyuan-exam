@@ -3,7 +3,10 @@ import { gradeIndefinite, guardLockout, validateMaterialGroup, newGroupId } from
 import { makeQuestion } from "../src/core/blockTemplate";
 
 const indefinite = makeQuestion({
-  type: "multiple", stem: "可能诊断？", options: ["甲", "乙", "丙", "丁"], answer: "ABD",
+  type: "multiple",
+  stem: "可能诊断？",
+  options: ["甲", "乙", "丙", "丁"],
+  answer: "ABD",
 });
 
 describe("不定项判分（卫生资格倒扣范式）", () => {

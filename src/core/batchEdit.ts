@@ -22,7 +22,7 @@ export interface BatchPlan {
   skipped: number;
 }
 
-const MAX_BATCH = 500;   // 单批上限：超过显式截断（46-03 配额护栏语义），UI 提示分批
+const MAX_BATCH = 500; // 单批上限：超过显式截断（46-03 配额护栏语义），UI 提示分批
 
 function currentValue(q: Question, field: BatchField): string {
   if (field === "kp") return q.kp ?? "";
@@ -39,10 +39,19 @@ export function planBatchEdit(
   const changes: BatchChange[] = [];
   let skipped = 0;
   for (const q of questions) {
-    if (!q.blockId) { skipped++; continue; }
+    if (!q.blockId) {
+      skipped++;
+      continue;
+    }
     const from = currentValue(q, field);
-    if (from === value) { skipped++; continue; }
-    if (changes.length >= limit) { skipped++; continue; }
+    if (from === value) {
+      skipped++;
+      continue;
+    }
+    if (changes.length >= limit) {
+      skipped++;
+      continue;
+    }
     changes.push({ qid: q.id, blockId: q.blockId, field, from, to: value });
   }
   return { changes, skipped };

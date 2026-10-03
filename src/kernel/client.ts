@@ -13,7 +13,12 @@ export interface KernelTransport {
 
 export type ErrKind = "retryable" | "fatal";
 export class KernelError extends Error {
-  constructor(readonly kind: ErrKind, readonly endpoint: string, msg: string, readonly cause?: unknown) {
+  constructor(
+    readonly kind: ErrKind,
+    readonly endpoint: string,
+    msg: string,
+    readonly cause?: unknown,
+  ) {
     super(`[${endpoint}] ${msg} (${kind})`);
   }
 }
@@ -36,7 +41,10 @@ export interface ProbeResult {
 }
 
 export interface FetchLike {
-  (url: string, init: { method: string; headers: Record<string, string>; body: string }): Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
+  (
+    url: string,
+    init: { method: string; headers: Record<string, string>; body: string },
+  ): Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
 }
 
 /** HTTP 传输：直连内核（renderer 环境带 token；测试注入 fetchLike） */
@@ -67,7 +75,11 @@ export class HttpTransport implements KernelTransport {
         const text = await res.text();
         if (!res.ok) throw new KernelError("fatal", endpoint, `HTTP ${res.status}`);
         let body: { code: number; msg: string; data: unknown };
-        try { body = JSON.parse(text); } catch { throw new KernelError("fatal", endpoint, "非 JSON 响应"); }
+        try {
+          body = JSON.parse(text);
+        } catch {
+          throw new KernelError("fatal", endpoint, "非 JSON 响应");
+        }
         if (body.code !== 0) throw new KernelError("fatal", endpoint, body.msg || `code ${body.code}`);
         return body;
       } catch (e) {
@@ -75,7 +87,9 @@ export class HttpTransport implements KernelTransport {
         lastErr = e;
         const kind = e instanceof KernelError ? e.kind : classify(e);
         if (kind === "fatal" || attempt === this.retries) {
-          throw e instanceof KernelError ? e : new KernelError(kind, endpoint, e instanceof Error ? e.message : String(e), e);
+          throw e instanceof KernelError
+            ? e
+            : new KernelError(kind, endpoint, e instanceof Error ? e.message : String(e), e);
         }
         await sleep(300 * (attempt + 1));
       }
@@ -94,10 +108,27 @@ export class KernelApiClient {
       const v = await this.t.post("/api/system/version", {});
       r.kernelOk = true;
       r.version = String((v.data as Record<string, unknown>)?.version ?? "");
-    } catch { return r; }
-    try { await this.renderMarkdown("x"); r.md2html = true; } catch { /* md2html 不可用 */ }
-    try { await this.t.post("/api/query/sql", { stmt: "SELECT 1" }); r.query = true; } catch { /* SQL 不可用 */ }
-    try { await this.t.post("/api/riff/getRiffDecks", {}); r.riff = true; } catch { /* riff 不可用 */ }
+    } catch {
+      return r;
+    }
+    try {
+      await this.renderMarkdown("x");
+      r.md2html = true;
+    } catch {
+      /* md2html 不可用 */
+    }
+    try {
+      await this.t.post("/api/query/sql", { stmt: "SELECT 1" });
+      r.query = true;
+    } catch {
+      /* SQL 不可用 */
+    }
+    try {
+      await this.t.post("/api/riff/getRiffDecks", {});
+      r.riff = true;
+    } catch {
+      /* riff 不可用 */
+    }
     return r;
   }
 
@@ -152,17 +183,22 @@ export class KernelApiClient {
     // 形状漂移（perf-bank 脚本 3.8.6 实测发现）三形态并存：
     // ① 3.8.6={ notebook: { id, ... } } 嵌套对象；② 3.8.5 部分={ notebook: "id" }；③ 另有裸 id 字符串。
     // 取不到 id 时显式失败，绝不带 "[object Object]" 下行。
-    const id = typeof d === "string"
-      ? d
-      : String(
-          (d as { notebook?: { id?: string } | string } | null)?.notebook != null
-            ? typeof (d as { notebook: { id?: string } | string }).notebook === "string"
-              ? (d as { notebook: string }).notebook
-              : (d as { notebook: { id?: string } }).notebook.id ?? ""
-            : (d as { id?: string })?.id ?? "",
-        );
+    const id =
+      typeof d === "string"
+        ? d
+        : String(
+            (d as { notebook?: { id?: string } | string } | null)?.notebook != null
+              ? typeof (d as { notebook: { id?: string } | string }).notebook === "string"
+                ? (d as { notebook: string }).notebook
+                : ((d as { notebook: { id?: string } }).notebook.id ?? "")
+              : ((d as { id?: string })?.id ?? ""),
+          );
     if (!id || id === "[object Object]" || id === "null") {
-      throw new KernelError("fatal", "notebook/createNotebook", `响应缺少 notebook id（内核版本形状变化？）: ${JSON.stringify(d).slice(0, 80)}`);
+      throw new KernelError(
+        "fatal",
+        "notebook/createNotebook",
+        `响应缺少 notebook id（内核版本形状变化？）: ${JSON.stringify(d).slice(0, 80)}`,
+      );
     }
     return id;
   }
@@ -187,7 +223,9 @@ export class KernelApiClient {
       const slice = questions.slice(i, i + 20);
       const md = slice.map(questionToMarkdown).join("\n");
       const r = await this.t.post("/api/block/insertBlock", {
-        dataType: "markdown", data: md, parentID: parentId,
+        dataType: "markdown",
+        data: md,
+        parentID: parentId,
       });
       const opsArr = Array.isArray(r.data) ? (r.data as { doOperations?: { id?: string }[] }[]) : [];
       const ops = opsArr[0]?.doOperations ?? [];
@@ -299,10 +337,12 @@ export class KernelApiClient {
       for (const b of blocks) {
         if (b.id && b.riffCardID && want.has(b.id)) map.set(b.id, b.riffCardID);
       }
-    } catch { /* 回退 due 卡 */ }
+    } catch {
+      /* 回退 due 卡 */
+    }
     if (map.size < blockIds.length && deckId) {
       const r = await this.t.post("/api/riff/getRiffDueCards", { deckID: deckId, reviewedCards: [] });
-      for (const c of ((r.data as { cards?: { cardID?: string; blockID?: string }[] } | null)?.cards ?? [])) {
+      for (const c of (r.data as { cards?: { cardID?: string; blockID?: string }[] } | null)?.cards ?? []) {
         if (c.cardID && c.blockID && want.has(c.blockID) && !map.has(c.blockID)) map.set(c.blockID, c.cardID);
       }
     }

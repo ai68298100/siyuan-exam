@@ -10,21 +10,31 @@ import type { ImportReport } from "../src/importer/pipeline";
 function stubClient() {
   const written: { qid: string; blockId: string }[] = [];
   const createdDocs: string[] = [];
-  let revealRatio = 1;                       // 1=全部可读回；<1 模拟部分索引缺失
+  let revealRatio = 1; // 1=全部可读回；<1 模拟部分索引缺失
   const client = {
-    sql: async () => [],                       // ensureDoc 查重：空=文档不存在 → 走 createDocWithMd
-    createDocWithMd: async (_nb: string, hpath: string) => { createdDocs.push(hpath); return "doc-" + createdDocs.length; },
+    sql: async () => [], // ensureDoc 查重：空=文档不存在 → 走 createDocWithMd
+    createDocWithMd: async (_nb: string, hpath: string) => {
+      createdDocs.push(hpath);
+      return "doc-" + createdDocs.length;
+    },
     appendQuestions: async (_docId: string, qs: Question[]) => {
       const out = qs.map((q) => ({ qid: q.id, blockId: "b-" + q.id }));
       written.push(...out);
       return out;
     },
     listQuestions: async () => {
-      const all = written.map((w) => ({ ...makeQuestion({ type: "single", stem: w.qid, options: ["1"], answer: "A" }), id: w.qid, blockId: w.blockId, rootId: "r" }));
+      const all = written.map((w) => ({
+        ...makeQuestion({ type: "single", stem: w.qid, options: ["1"], answer: "A" }),
+        id: w.qid,
+        blockId: w.blockId,
+        rootId: "r",
+      }));
       const cut = Math.floor(all.length * revealRatio);
       return all.slice(0, cut);
     },
-    setReveal(ratio: number) { revealRatio = ratio; },
+    setReveal(ratio: number) {
+      revealRatio = ratio;
+    },
   } as unknown as KernelApiClient & { setReveal(r: number): void };
   return { client, written, createdDocs };
 }
@@ -36,8 +46,13 @@ const mkApp = (client: KernelApiClient, kernelOnline: boolean) => {
 };
 
 const report = (n: number, kp?: string): ImportReport => ({
-  ok: Array.from({ length: n }, (_, i) => ({ ...makeQuestion({ type: "single", stem: `题${i}`, options: ["1", "2"], answer: "A" }), kp })),
-  errors: [], duplicates: 0, batch: "b-test-0001",
+  ok: Array.from({ length: n }, (_, i) => ({
+    ...makeQuestion({ type: "single", stem: `题${i}`, options: ["1", "2"], answer: "A" }),
+    kp,
+  })),
+  errors: [],
+  duplicates: 0,
+  batch: "b-test-0001",
 });
 
 describe("commitImport 应用层（U08：写入+读回确认）", () => {
@@ -63,7 +78,7 @@ describe("commitImport 应用层（U08：写入+读回确认）", () => {
 
   it("部分读回：confirmed/missing 如实分列（重试缺失的依据）", async () => {
     const { client } = stubClient();
-    client.setReveal(0.6);                     // 索引只揭示 60%
+    client.setReveal(0.6); // 索引只揭示 60%
     const app = mkApp(client, true);
     const r = await app.commitImport("bank1", report(5));
     expect(r.readback.verified).toBe(true);

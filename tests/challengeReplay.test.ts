@@ -3,9 +3,19 @@ import { replay, activeWrongItems } from "../src/core/replayer";
 import type { AttemptEvent } from "../src/core/types";
 
 const ev = (over: Partial<AttemptEvent>): AttemptEvent => ({
-  v: 1, eid: "e" + Math.random().toString(36).slice(2), ts: 1_790_000_000_000, qid: "q-friend",
-  kind: "practice", mode: "challenge", verdict: "wrong", myAnswer: "A",
-  sessionId: "s-challenge", examId: null, queue: "normal", device: "d", seq: 1,
+  v: 1,
+  eid: "e" + Math.random().toString(36).slice(2),
+  ts: 1_790_000_000_000,
+  qid: "q-friend",
+  kind: "practice",
+  mode: "challenge",
+  verdict: "wrong",
+  myAnswer: "A",
+  sessionId: "s-challenge",
+  examId: null,
+  queue: "normal",
+  device: "d",
+  seq: 1,
   ...over,
 });
 
@@ -14,8 +24,8 @@ describe("挑战码作答不入错题本（13 组审计：孤儿错题防污染�
     const r = replay([ev({})]);
     expect(r.wrongbook.size).toBe(0);
     expect(activeWrongItems(r)).toHaveLength(0);
-    expect(r.byQuestion.get("q-friend")?.attempts).toBe(1);   // 统计仍计
-    expect(r.days.size).toBe(1);                              // 日活动仍计
+    expect(r.byQuestion.get("q-friend")?.attempts).toBe(1); // 统计仍计
+    expect(r.days.size).toBe(1); // 日活动仍计
   });
 
   it("同样作答在普通练习模式照常收录（规则只豁免 challenge）", () => {

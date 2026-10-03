@@ -47,8 +47,12 @@ describe("性能基线（软上限）", () => {
   });
   it(`组装 5000 题库蓝图 < 1500ms`, () => {
     const bp = {
-      id: "b", name: "bench", durationS: 3600, passLine: 60,
-      shuffleOptions: false, sectionTimed: false,
+      id: "b",
+      name: "bench",
+      durationS: 3600,
+      passLine: 60,
+      shuffleOptions: false,
+      sectionTimed: false,
       sections: [{ name: "全库", count: 2000, scoreEach: 1, source: "mixed" as const, types: [] }],
     };
     const t0 = performance.now();
@@ -65,7 +69,15 @@ describe("性能基线（软上限）", () => {
     expect(ms).toBeLessThan(1000);
   });
   it("蓝图合计纯计算", () => {
-    const bp = { id: "b", name: "x", durationS: 60, passLine: 60, shuffleOptions: false, sectionTimed: false, sections: [{ name: "s", count: 10, scoreEach: 2, source: "mixed" as const, types: [] }] };
+    const bp = {
+      id: "b",
+      name: "x",
+      durationS: 60,
+      passLine: 60,
+      shuffleOptions: false,
+      sectionTimed: false,
+      sections: [{ name: "s", count: 10, scoreEach: 2, source: "mixed" as const, types: [] }],
+    };
     expect(blueprintTotals(bp)).toEqual({ questions: 10, score: 20 });
   });
 });

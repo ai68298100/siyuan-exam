@@ -11,12 +11,7 @@ export function wrongbookToMarkdown(
 ): string {
   const d = opts.exportedAt;
   const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  const head = [
-    `# 错题册 · ${esc(opts.bankName)}`,
-    ``,
-    `> 导出于 ${ymd} · 共 ${items.length} 题 · 由小驴考试生成`,
-    ``,
-  ];
+  const head = [`# 错题册 · ${esc(opts.bankName)}`, ``, `> 导出于 ${ymd} · 共 ${items.length} 题 · 由小驴考试生成`, ``];
   if (!items.length) return head.join("\n") + "\n（错题本为空）\n";
   const body = items.map(({ wrong, q }) => {
     const lines = [

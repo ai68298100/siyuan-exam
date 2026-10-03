@@ -11,13 +11,18 @@
   border: 1px solid var(--lv-border);
   border-radius: var(--lv-r-3);
   box-shadow: var(--lv-sh-1);
-  transition: box-shadow .22s ease, transform .22s var(--lv-ease-spring), border-color .22s ease;
+  transition:
+    box-shadow 0.22s ease,
+    transform 0.22s var(--lv-ease-spring),
+    border-color 0.22s ease;
 
   &--click:hover {
     transform: translateY(-2px);
     box-shadow: var(--lv-sh-2);
   }
-  &--pop { box-shadow: var(--lv-sh-pop); }
+  &--pop {
+    box-shadow: var(--lv-sh-pop);
+  }
 }
 
 /* —— 徽章（默认 / accent / 语义三色） —— */
@@ -34,10 +39,26 @@
   border: 1px solid var(--lv-border);
   white-space: nowrap;
 
-  &--acc { color: var(--lv-accent); background: var(--lv-accent-soft); border-color: transparent; }
-  &--grn { color: var(--lv-green); background: var(--lv-green-soft); border-color: transparent; }
-  &--red { color: var(--lv-red); background: var(--lv-red-soft); border-color: transparent; }
-  &--amb { color: var(--lv-amber); background: var(--lv-amber-soft); border-color: transparent; }
+  &--acc {
+    color: var(--lv-accent);
+    background: var(--lv-accent-soft);
+    border-color: transparent;
+  }
+  &--grn {
+    color: var(--lv-green);
+    background: var(--lv-green-soft);
+    border-color: transparent;
+  }
+  &--red {
+    color: var(--lv-red);
+    background: var(--lv-red-soft);
+    border-color: transparent;
+  }
+  &--amb {
+    color: var(--lv-amber);
+    background: var(--lv-amber-soft);
+    border-color: transparent;
+  }
 }
 
 /* —— 选项行四态（默认 / 选中 / 正确 / 错误） —— */
@@ -55,67 +76,133 @@
   background: var(--lv-surface);
   transition: all var(--lv-dur-micro) ease;
 
-  &:hover { border-color: var(--lv-accent); background: var(--lv-accent-soft); transform: translateX(3px); }
-  &:active { transform: translateX(3px) scale(.995); }
+  &:hover {
+    border-color: var(--lv-accent);
+    background: var(--lv-accent-soft);
+    transform: translateX(3px);
+  }
+  &:active {
+    transform: translateX(3px) scale(0.995);
+  }
 
   .key {
-    width: 26px; height: 26px; border-radius: 8px;
-    display: grid; place-items: center; flex: none;
-    font-size: 13px; font-weight: 700;
-    background: var(--lv-surface-2); color: var(--lv-text-2);
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    flex: none;
+    font-size: 13px;
+    font-weight: 700;
+    background: var(--lv-surface-2);
+    color: var(--lv-text-2);
     border: 1px solid var(--lv-border);
     transition: all var(--lv-dur-micro) ease;
   }
-  &--sel { border-color: var(--lv-accent); background: var(--lv-accent-soft);
-    .key { background: var(--lv-accent); border-color: var(--lv-accent); color: var(--b3-theme-on-primary, #fff); } }
-  &--right { border-color: var(--lv-green); background: var(--lv-green-soft);
-    .key { background: var(--lv-green); border-color: var(--lv-green); color: #fff; } }
-  &--wrong { border-color: var(--lv-red); background: var(--lv-red-soft);
-    .key { background: var(--lv-red); border-color: var(--lv-red); color: #fff; } }
+  &--sel {
+    border-color: var(--lv-accent);
+    background: var(--lv-accent-soft);
+    .key {
+      background: var(--lv-accent);
+      border-color: var(--lv-accent);
+      color: var(--b3-theme-on-primary, #fff);
+    }
+  }
+  &--right {
+    border-color: var(--lv-green);
+    background: var(--lv-green-soft);
+    .key {
+      background: var(--lv-green);
+      border-color: var(--lv-green);
+      color: #fff;
+    }
+  }
+  &--wrong {
+    border-color: var(--lv-red);
+    background: var(--lv-red-soft);
+    .key {
+      background: var(--lv-red);
+      border-color: var(--lv-red);
+      color: #fff;
+    }
+  }
 }
 
 /* —— 判分反馈横幅 —— */
 .lv-feedback {
-  display: flex; align-items: center; gap: 10px;
-  margin: 18px 0 14px; padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0 14px;
+  padding: 12px 16px;
   border-radius: var(--lv-r-2);
-  font-weight: 650; font-size: 14.5px;
-  background: var(--lv-red-soft); color: var(--lv-red);
-  animation: lv-pop-in .35s var(--lv-ease-spring) both;
+  font-weight: 650;
+  font-size: 14.5px;
+  background: var(--lv-red-soft);
+  color: var(--lv-red);
+  animation: lv-pop-in 0.35s var(--lv-ease-spring) both;
 
-  &--good { background: var(--lv-green-soft); color: var(--lv-green); }
+  &--good {
+    background: var(--lv-green-soft);
+    color: var(--lv-green);
+  }
 }
 
 @keyframes lv-pop-in {
-  from { opacity: 0; transform: translateY(6px) scale(.98); }
-  to { opacity: 1; transform: none; }
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* —— 进度条（含 sheen 扫光） —— */
 .lv-progress {
-  height: 6px; border-radius: 999px;
-  background: var(--lv-surface-2); overflow: hidden; position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--lv-surface-2);
+  overflow: hidden;
+  position: relative;
 
   i {
-    display: block; height: 100%; border-radius: 999px;
+    display: block;
+    height: 100%;
+    border-radius: 999px;
     background: var(--lv-accent-grad);
   }
-  &--sheen i { position: relative; overflow: hidden;
+  &--sheen i {
+    position: relative;
+    overflow: hidden;
     &::after {
-      content: ""; position: absolute; inset: 0; transform: translateX(-100%);
-      background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, .45) 50%, transparent 70%);
+      content: "";
+      position: absolute;
+      inset: 0;
+      transform: translateX(-100%);
+      background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.45) 50%, transparent 70%);
       animation: lv-sheen 2.6s ease-in-out infinite;
     }
   }
 }
-@keyframes lv-sheen { to { transform: translateX(260%); } }
+@keyframes lv-sheen {
+  to {
+    transform: translateX(260%);
+  }
+}
 
 /* —— 键帽 —— */
 .lv-kbd {
   font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
-  font-size: 11px; line-height: 1; padding: 3px 6px; border-radius: 6px;
-  color: var(--lv-text-2); background: var(--lv-surface-2);
-  border: 1px solid var(--lv-border); border-bottom-width: 2px;
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 6px;
+  color: var(--lv-text-2);
+  background: var(--lv-surface-2);
+  border: 1px solid var(--lv-border);
+  border-bottom-width: 2px;
   white-space: nowrap;
 }
 
@@ -128,5 +215,10 @@
 
 /* —— 动效兜底 —— */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation: none !important; transition: none !important; }
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }

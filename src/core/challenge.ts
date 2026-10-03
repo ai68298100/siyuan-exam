@@ -13,7 +13,7 @@ export interface ChallengePaper {
   questions: {
     stem: string;
     options: string[];
-    answer: string;       // 出题人保留；受卷方版本不含此字段
+    answer: string; // 出题人保留；受卷方版本不含此字段
     type: Question["type"];
     kp?: string;
   }[];
@@ -61,13 +61,25 @@ export function compareAnswers(key: string, mine: string): ChallengeScore {
   const k = key.replace(/\s/g, "").split("");
   const m = mine.replace(/\s/g, "").split("");
   const total = Math.max(k.length, m.length);
-  let correct = 0, wrong = 0, blank = 0;
+  let correct = 0,
+    wrong = 0,
+    blank = 0;
   const marks: ChallengeScore["marks"] = [];
   for (let i = 0; i < total; i++) {
     const a = (m[i] ?? "?").toUpperCase();
     const b = (k[i] ?? "?").toUpperCase();
-    if (a === "?" || a === "." || a === "") { blank++; marks.push("–"); continue; }
-    if (a === b) { correct++; marks.push("✓"); } else { wrong++; marks.push("✕"); }
+    if (a === "?" || a === "." || a === "") {
+      blank++;
+      marks.push("–");
+      continue;
+    }
+    if (a === b) {
+      correct++;
+      marks.push("✓");
+    } else {
+      wrong++;
+      marks.push("✕");
+    }
   }
   return { total, correct, wrong, blank, percent: total ? Math.round((correct / total) * 100) : 0, marks };
 }

@@ -51,6 +51,8 @@
       const wk = `${now.getFullYear()}-W${Math.ceil(now.getDate() / 7)}`;
       if (localStorage.getItem(K) === wk) return;
       const d = app.derived();
+      // effect 内一次性临时量（非组件状态），不转 SvelteDate
+      // eslint-disable-next-line svelte/prefer-svelte-reactivity
       const lastMonday = new Date(now);
       lastMonday.setDate(now.getDate() - 7);
       const k2 = `${lastMonday.getFullYear()}-${String(lastMonday.getMonth() + 1).padStart(2, "0")}-${String(lastMonday.getDate()).padStart(2, "0")}`;
@@ -186,7 +188,7 @@
     </div>
     {#if bankOptions.length > 1}
       <select class="lv-select" style="max-width:200px" bind:value={bankId} disabled={scopeLoading} onchange={onBankChange}>
-        {#each bankOptions as b}<option value={b.id}>{b.name}</option>{/each}
+        {#each bankOptions as b, _i (_i)}<option value={b.id}>{b.name}</option>{/each}
       </select>
       <span class="lv-muted" style="font-size:11.5px">{t("report.scopeHint")}</span>
     {/if}
@@ -238,7 +240,7 @@
     <div class="lv-card lv-section">
       <b>{t("report.heat")}</b>
       <div class="lv-heat">
-        {#each heat as c}
+        {#each heat as c, _i (_i)}
           <i class={heatColor(c.count)} title="{c.date} · {c.count}"></i>
         {/each}
       </div>
@@ -249,7 +251,7 @@
       {#if !mastery.length}
         <p class="lv-muted">{t("report.noData")}</p>
       {:else}
-        {#each mastery.slice(0, 8) as m}
+        {#each mastery.slice(0, 8) as m, _i (_i)}
           <div class="lv-row" style="margin:4px 0">
             <span style="width:80px">{m.root}</span>
             <div class="progress" style="flex:1">
@@ -266,7 +268,7 @@
     {#if weak.length}
       <div class="lv-card lv-section">
         <b>{t("report.weak")}</b>
-        {#each weak.slice(0, 5) as w, i}
+        {#each weak.slice(0, 5) as w, i (i)}
           <div class="lv-row" style="margin:4px 0">
             <span class="lv-chip lv-chip--red num">{i + 1}</span>
             <span style="flex:1">{w.root}</span>
@@ -281,7 +283,7 @@
       <div class="lv-card lv-section">
         <b>{t("report.calibration")}</b>
         <p class="lv-muted" style="margin:0 0 8px">{t("report.calibrationHint")}</p>
-        {#each calib.rows as r}
+        {#each calib.rows as r, _i (_i)}
           <div class="lv-row" style="margin:4px 0">
             <span class="lv-chip num">{t("confidence." + r.confidence)}</span>
             <div class="progress" style="flex:1"><i class:ok={r.accuracy >= 80} class:mid={r.accuracy >= 50 && r.accuracy < 80} class:low={r.accuracy < 50} style="width:{r.accuracy}%"></i></div>
@@ -303,7 +305,7 @@
       <div class="lv-card lv-section">
         <b>{t("action.title")}（{openActionList.length}）</b>
         <p class="lv-muted" style="margin:0 0 8px">{t("action.hint")}</p>
-        {#each openActionList.slice(0, 10) as a}
+        {#each openActionList.slice(0, 10) as a, _i (_i)}
           <div class="lv-row" style="margin:4px 0">
             <span class="lv-chip num">{t("action.kind." + a.kind)}</span>
             <span style="flex:1;min-width:140px">{a.detail}</span>

@@ -23,8 +23,14 @@ export function replay(events: readonly AttemptEvent[]): ReplayResult {
   const ordered = [...events].sort((a, b) => a.ts - b.ts || a.seq - b.seq);
 
   for (const e of ordered) {
-    if (!e || typeof e.eid !== "string" || !e.eid || typeof e.qid !== "string" || !e.qid) { skipped++; continue; }
-    if (seen.has(e.eid)) { skipped++; continue; }
+    if (!e || typeof e.eid !== "string" || !e.eid || typeof e.qid !== "string" || !e.qid) {
+      skipped++;
+      continue;
+    }
+    if (seen.has(e.eid)) {
+      skipped++;
+      continue;
+    }
     seen.add(e.eid);
     if (e.ts < lastTs - 60_000) clockAnomalies++;
     lastTs = Math.max(lastTs, e.ts);
@@ -32,7 +38,8 @@ export function replay(events: readonly AttemptEvent[]): ReplayResult {
     // 题目统计：not_attempted 不计入 attempts 分母
     if (e.verdict !== "not_attempted") {
       const s = byQuestion.get(e.qid) ?? { attempts: 0, correct: 0, lastAt: 0 };
-      s.attempts++; s.lastAt = e.ts;
+      s.attempts++;
+      s.lastAt = e.ts;
       if (e.verdict === "correct") s.correct++;
       byQuestion.set(e.qid, s);
     }
@@ -62,7 +69,15 @@ export function replay(events: readonly AttemptEvent[]): ReplayResult {
     }
     if (e.verdict === "wrong" && entersWrongbook) {
       if (!w) {
-        w = { qid: e.qid, firstWrongAt: e.ts, lastWrongAt: e.ts, wrongCount: 1, streakCorrect: 0, myAnswer: e.myAnswer, status: "active" };
+        w = {
+          qid: e.qid,
+          firstWrongAt: e.ts,
+          lastWrongAt: e.ts,
+          wrongCount: 1,
+          streakCorrect: 0,
+          myAnswer: e.myAnswer,
+          status: "active",
+        };
         wrongbook.set(e.qid, w);
       } else if (w.status === "active") {
         w.wrongCount++;
@@ -70,7 +85,12 @@ export function replay(events: readonly AttemptEvent[]): ReplayResult {
         w.myAnswer = e.myAnswer;
       } else if (w.status === "eliminated" || w.status === "mastered") {
         // 消灭后再错：重新收录（新一轮）
-        w.status = "active"; w.wrongCount = 1; w.streakCorrect = 0; w.firstWrongAt = e.ts; w.lastWrongAt = e.ts; w.myAnswer = e.myAnswer;
+        w.status = "active";
+        w.wrongCount = 1;
+        w.streakCorrect = 0;
+        w.firstWrongAt = e.ts;
+        w.lastWrongAt = e.ts;
+        w.myAnswer = e.myAnswer;
       }
     } else if (e.verdict === "correct" && entersWrongbook) {
       if (w && w.status === "active") {
@@ -90,7 +110,9 @@ export function localDate(ts: number): string {
 }
 
 export function activeWrongItems(r: ReplayResult): WrongItem[] {
-  return [...r.wrongbook.values()].filter((w) => w.status === "active").sort((a, b) => b.wrongCount - a.wrongCount || b.firstWrongAt - a.firstWrongAt);
+  return [...r.wrongbook.values()]
+    .filter((w) => w.status === "active")
+    .sort((a, b) => b.wrongCount - a.wrongCount || b.firstWrongAt - a.firstWrongAt);
 }
 
 /** 连续学习天数（自然日有任一有效事件即保号） */

@@ -14,9 +14,7 @@ export interface AttemptLogEnvelope {
 }
 
 export type MigrateResult =
-  | { kind: "envelope"; v: number; events: unknown[] }
-  | { kind: "empty" }
-  | { kind: "invalid" };
+  { kind: "envelope"; v: number; events: unknown[] } | { kind: "empty" } | { kind: "invalid" };
 
 /** attempts/log 读回迁移：v1 裸数组 → v2 信封；结构不符 → invalid（调用方按坏行告警） */
 export function migrateAttemptLog(raw: unknown): MigrateResult {

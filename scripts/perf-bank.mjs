@@ -40,6 +40,7 @@ function synthQuestion(i) {
 
 async function main() {
   // ---------- 0. 内核可达（离线 → SKIP） ----------
+  // eslint-disable-next-line no-useless-assignment
   let version = "";
   try {
     const r = await api("/api/system/version");
@@ -53,14 +54,18 @@ async function main() {
 
   const nb = await api("/api/notebook/createNotebook", { name: `小驴考试-性能基准-${Date.now().toString(36)}` });
   const notebookId = parseNotebookId(nb);
+  // eslint-disable-next-line no-useless-assignment
   let docId = "";
   let failed = false;
   try {
     // ---------- 1. 写入（分批 20，与 appendQuestions 同批策略） ----------
-    docId = parseNotebookId(await api("/api/filetree/createDocWithMd", { notebook: notebookId, path: "/perf", markdown: "# perf\n\n" }));
+    docId = parseNotebookId(
+      await api("/api/filetree/createDocWithMd", { notebook: notebookId, path: "/perf", markdown: "# perf\n\n" }),
+    );
     if (!docId) throw new Error("createDocWithMd 未返回文档 id");
     const batches = [];
-    for (let i = 0; i < N; i += 20) batches.push(Array.from({ length: Math.min(20, N - i) }, (_, j) => synthQuestion(i + j)).join("\n"));
+    for (let i = 0; i < N; i += 20)
+      batches.push(Array.from({ length: Math.min(20, N - i) }, (_, j) => synthQuestion(i + j)).join("\n"));
     let t0 = performance.now();
     for (const md of batches) {
       await api("/api/block/insertBlock", { dataType: "markdown", data: md, parentID: docId });
@@ -106,7 +111,11 @@ async function main() {
     console.error("✗ FAIL", String(e).slice(0, 160));
   } finally {
     if (notebookId) {
-      try { await api("/api/notebook/removeNotebook", { notebook: notebookId }); } catch { /* 清理失败不掩盖结果 */ }
+      try {
+        await api("/api/notebook/removeNotebook", { notebook: notebookId });
+      } catch {
+        /* 清理失败不掩盖结果 */
+      }
     }
   }
   return failed ? 1 : 0;

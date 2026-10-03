@@ -36,7 +36,7 @@ describe("导入批次回滚（TODO 12 组）", () => {
     { ...makeQuestion({ type: "single", stem: "a", options: ["1", "2"], answer: "A" }), batch: "b-20261003-aaaa" },
     { ...makeQuestion({ type: "single", stem: "b", options: ["1", "2"], answer: "A" }), batch: "b-20261003-aaaa" },
     { ...makeQuestion({ type: "single", stem: "c", options: ["1", "2"], answer: "A" }), batch: "b-20261003-bbbb" },
-    { ...makeQuestion({ type: "single", stem: "d", options: ["1", "2"], answer: "A" }) },   // 手工录入无批次
+    { ...makeQuestion({ type: "single", stem: "d", options: ["1", "2"], answer: "A" }) }, // 手工录入无批次
   ];
 
   it("listBatches：仅统计 imported 批次，新→旧；手工录题不计", () => {

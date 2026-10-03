@@ -15,18 +15,51 @@
 }
 
 // —— 错题 Dock（index.ts refreshDock 动态渲染） ——
-.lv-dock-list { display: flex; flex-direction: column; gap: 4px; padding: 8px; }
+.lv-dock-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+}
 .lv-dock-row {
-  display: flex; align-items: center; gap: 8px; padding: 5px 8px;
-  border: 1px solid var(--lv-border); border-radius: 8px; cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid var(--lv-border);
+  border-radius: 8px;
+  cursor: pointer;
   font-size: 12px;
-  &:hover { border-color: var(--lv-accent); background: var(--lv-accent-soft); }
+  &:hover {
+    border-color: var(--lv-accent);
+    background: var(--lv-accent-soft);
+  }
 }
 .lv-dock-act {
-  margin-left: auto; border: none; background: transparent; cursor: pointer;
-  color: var(--lv-text-2); border-radius: 6px; padding: 2px 6px;
-  &:hover { background: var(--lv-surface-2); color: var(--lv-accent); }
-  & + & { margin-left: 0; }
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--lv-text-2);
+  border-radius: 6px;
+  padding: 2px 6px;
+  &:hover {
+    background: var(--lv-surface-2);
+    color: var(--lv-accent);
+  }
+  & + & {
+    margin-left: 0;
+  }
 }
-.lv-dock-empty { padding: 16px; text-align: center; color: var(--lv-text-2); font-size: 12px; }
-.lv-dock-hint { padding: 8px; text-align: center; color: var(--lv-text-2); font-size: 11px; }
+.lv-dock-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--lv-text-2);
+  font-size: 12px;
+}
+.lv-dock-hint {
+  padding: 8px;
+  text-align: center;
+  color: var(--lv-text-2);
+  font-size: 11px;
+}

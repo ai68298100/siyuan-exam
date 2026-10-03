@@ -34,7 +34,12 @@ describe("KernelApiClient 响应形状（3.8.5 预检定案）", () => {
   it("getCardIDsByBlockIDs 主路径：blocks[].riffCardID", async () => {
     const { client } = makeClient((ep) =>
       ep === "/api/riff/getRiffCardsByBlockIDs"
-        ? { blocks: [{ id: "b1", riffCardID: "c1" }, { id: "b2", riffCardID: "" }] }
+        ? {
+            blocks: [
+              { id: "b1", riffCardID: "c1" },
+              { id: "b2", riffCardID: "" },
+            ],
+          }
         : {},
     );
     const map = await client.getCardIDsByBlockIDs(["b1", "b2"]);
@@ -56,12 +61,20 @@ describe("KernelApiClient 响应形状（3.8.5 预检定案）", () => {
   it("insertBlock/appendQuestions 必须带 dataType:'markdown'（3.8.5 硬要求）", async () => {
     const { client, calls } = makeClient((ep) => {
       if (ep === "/api/filetree/createDocWithMd") return "doc-1";
-      if (ep === "/api/block/insertBlock")
-        return [{ doOperations: [{ id: "blk-1" }, { id: "blk-2" }] }];
+      if (ep === "/api/block/insertBlock") return [{ doOperations: [{ id: "blk-1" }, { id: "blk-2" }] }];
       return {};
     });
     const out = await client.appendQuestions("doc-1", [
-      { id: "q1", type: "single", stem: "s", options: ["a"], answer: "A", hash: "h1", score: 1, origin: "imported" } as never,
+      {
+        id: "q1",
+        type: "single",
+        stem: "s",
+        options: ["a"],
+        answer: "A",
+        hash: "h1",
+        score: 1,
+        origin: "imported",
+      } as never,
     ]);
     expect(out).toHaveLength(1);
     const ins = calls.find((c) => c.endpoint === "/api/block/insertBlock")!;
@@ -83,7 +96,7 @@ describe("KernelApiClient 响应形状（3.8.5 预检定案）", () => {
     expect((c.payload.attrs as Record<string, string>)["custom-exam-fav"]).toBe("1");
   });
   it("query_embed：getBlockKramdown 返回 kramdown 字段", async () => {
-    const { client } = makeClient(() => ({ kramdown: "{{SELECT 1}}\n{: id=\"x\"}" }));
+    const { client } = makeClient(() => ({ kramdown: '{{SELECT 1}}\n{: id="x"}' }));
     await expect(client.getBlockKramdown("blk-1")).resolves.toContain("SELECT 1");
   });
 });
@@ -93,7 +106,7 @@ describe("createNotebook 三形态（3.8.6 漂移：perf-bank 脚本实测发现
     const { client } = makeClient(() => ({ notebook: { id: "nb-386", name: "x", closed: false } }));
     await expect(client.createNotebook("x")).resolves.toBe("nb-386");
   });
-  it("② 嵌套字符串 { notebook: \"id\" }（3.8.5 mock/preflight 形态）→ 取字符串", async () => {
+  it('② 嵌套字符串 { notebook: "id" }（3.8.5 mock/preflight 形态）→ 取字符串', async () => {
     const { client } = makeClient(() => ({ notebook: "nb-nested-str" }));
     await expect(client.createNotebook("x")).resolves.toBe("nb-nested-str");
   });

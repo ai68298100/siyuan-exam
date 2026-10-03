@@ -15,8 +15,8 @@ describe("估分", () => {
   });
   it("空题标记 . / ？ 不计正误", () => {
     const r = estimateScore("AB.C？", "ABDCA", { scoreEach: 1 })!;
-    expect(r.blank).toBe(2);           // pos2 '.' 与 pos4 '？'（全角折半角）均为空题
-    expect(r.answered).toBe(3);        // A✓ B✓ C✓（std[3]=C）
+    expect(r.blank).toBe(2); // pos2 '.' 与 pos4 '？'（全角折半角）均为空题
+    expect(r.answered).toBe(3); // A✓ B✓ C✓（std[3]=C）
     expect(r.percent).toBe(60);
     expect(r.marks).toEqual(["✓", "✓", "–", "✓", "–"]);
   });

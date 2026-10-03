@@ -16,7 +16,9 @@ async function postWithTimeout(url: string, data: unknown): Promise<{ code: numb
   try {
     const race = await Promise.race([
       fetchSyncPost(url, data),
-      new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error(`timeout after ${KERNEL_TIMEOUT_MS}ms`)), KERNEL_TIMEOUT_MS); }),
+      new Promise<never>((_, rej) => {
+        timer = setTimeout(() => rej(new Error(`timeout after ${KERNEL_TIMEOUT_MS}ms`)), KERNEL_TIMEOUT_MS);
+      }),
     ]);
     return race as { code: number; msg: string; data: unknown };
   } finally {
@@ -33,7 +35,12 @@ function makeTransport(): KernelTransport {
         return res;
       } catch (e) {
         if (e instanceof KernelError) throw e;
-        throw new KernelError(/timeout|abort|network|fail/i.test(String(e)) ? "retryable" : "fatal", endpoint, String(e), e);
+        throw new KernelError(
+          /timeout|abort|network|fail/i.test(String(e)) ? "retryable" : "fatal",
+          endpoint,
+          String(e),
+          e,
+        );
       }
     },
   };
@@ -43,7 +50,11 @@ function makeTransport(): KernelTransport {
 function makeStorage(plugin: Plugin): StorageAdapter {
   return {
     async load(key) {
-      try { return await plugin.loadData(`${key}.json`); } catch { return undefined; }
+      try {
+        return await plugin.loadData(`${key}.json`);
+      } catch {
+        return undefined;
+      }
     },
     async save(key, value) {
       await plugin.saveData(`${key}.json`, value);

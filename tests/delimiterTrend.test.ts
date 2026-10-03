@@ -29,8 +29,8 @@ describe("30 天趋势（2.6）", () => {
     expect(trend[0].date).toBe("2026-09-04");
     expect(trend[29].date).toBe("2026-10-03");
     expect(trend[29].attempts).toBe(7);
-    expect(trend[28].attempts).toBe(0);       // 10-02 缺日补零
-    expect(trend[27].attempts).toBe(3);       // 10-01
+    expect(trend[28].attempts).toBe(0); // 10-02 缺日补零
+    expect(trend[27].attempts).toBe(3); // 10-01
   });
   it("样本不足（全空）全零输出，不炸", () => {
     const trend = dailyTrend(new Map(), today, 7);

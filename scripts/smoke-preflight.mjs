@@ -96,7 +96,9 @@ await step("notebook/getNotebookConf", async () => {
 
 await step("filetree/createDocWithMd /首页", async () => {
   const r = await api("/api/filetree/createDocWithMd", {
-    notebook: tempNotebook, path: "/首页", markdown: "# 预检首页\n",
+    notebook: tempNotebook,
+    path: "/首页",
+    markdown: "# 预检首页\n",
   });
   if (r.code !== 0) throw new Error("code=" + r.code + " " + r.msg);
   tempDocId = String(r.data ?? "");
@@ -126,17 +128,21 @@ await step("attributes 表索引 custom-exam-*（导入可见性关键）", asyn
     const r = await api("/api/query/sql", {
       stmt: `SELECT name, value FROM attributes WHERE block_id = '${tempBlockId}' AND name LIKE 'custom-exam-%'`,
     });
-    if (r.code === 0 && r.data?.length) return `${r.data.length} 行（${(i + 1)}s）`;
+    if (r.code === 0 && r.data?.length) return `${r.data.length} 行（${i + 1}s）`;
   }
   throw new Error("10s 内 attributes 表未索引 custom-exam-*（导入的题将不可见）");
 });
 
 await step("attr/set+getBlockAttrs custom-exam-* 往返", async () => {
-  await api("/api/attr/setBlockAttrs", { id: tempBlockId, attrs: { "custom-exam-fav": "1", "custom-exam-confidence": "3" } });
+  await api("/api/attr/setBlockAttrs", {
+    id: tempBlockId,
+    attrs: { "custom-exam-fav": "1", "custom-exam-confidence": "3" },
+  });
   const r = await api("/api/attr/getBlockAttrs", { id: tempBlockId });
   if (r.code !== 0) throw new Error("code=" + r.code);
   const attrs = r.data ?? {};
-  if (attrs["custom-exam-fav"] !== "1") throw new Error("custom-exam-fav 回读失败: " + JSON.stringify(attrs).slice(0, 80));
+  if (attrs["custom-exam-fav"] !== "1")
+    throw new Error("custom-exam-fav 回读失败: " + JSON.stringify(attrs).slice(0, 80));
   if (attrs["custom-exam-id"] !== "q-preflight-test") throw new Error("custom-exam-id 缺失");
   return "";
 });
@@ -168,7 +174,12 @@ await step("riff/getRiffDueCards 回读卡（blockID→cardID 映射源）", asy
 });
 
 await step("riff/reviewRiffCard rating=3", async () => {
-  const r = await api("/api/riff/reviewRiffCard", { cardID: tempCardId, deckID: tempDeckId, rating: 3, reviewedCards: [] });
+  const r = await api("/api/riff/reviewRiffCard", {
+    cardID: tempCardId,
+    deckID: tempDeckId,
+    rating: 3,
+    reviewedCards: [],
+  });
   if (r.code !== 0) throw new Error("code=" + r.code + " " + r.msg);
   return "";
 });
@@ -182,25 +193,37 @@ await step("export/exportNotebookSY", async () => {
 });
 
 // ---------- 9. AI 端点存在性（可选：未配置模型时 WARN） ----------
-recordOpt("ai/chatGPT 端点可达（未配置模型则 WARN）", await (async () => {
-  try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 15_000);
-    const r = await fetch(BASE + "/api/ai/chatGPT", {
-      method: "POST",
-      headers: { Authorization: `Token ${TOKEN}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ msg: "ping" }),
-      signal: ctrl.signal,
-    });
-    clearTimeout(t);
-    const j = await r.json().catch(() => ({}));
-    return r.ok && (j.code === 0 || /模型|model|config/i.test(j.msg ?? ""));
-  } catch { return false; }
-})(), "未配置 AI 模型时此项为 WARN，不影响其余结论");
+recordOpt(
+  "ai/chatGPT 端点可达（未配置模型则 WARN）",
+  await (async () => {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 15_000);
+      const r = await fetch(BASE + "/api/ai/chatGPT", {
+        method: "POST",
+        headers: { Authorization: `Token ${TOKEN}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ msg: "ping" }),
+        signal: ctrl.signal,
+      });
+      clearTimeout(t);
+      const j = await r.json().catch(() => ({}));
+      return r.ok && (j.code === 0 || /模型|model|config/i.test(j.msg ?? ""));
+    } catch {
+      return false;
+    }
+  })(),
+  "未配置 AI 模型时此项为 WARN，不影响其余结论",
+);
 
 // ---------- 10. 清理：删临时卡组/笔记本 + 导出包 ----------
 await step("清理：riff/removeRiffDeck + notebook/removeNotebook", async () => {
-  if (tempDeckId) { try { await api("/api/riff/removeRiffDeck", { deck: tempDeckId }); } catch { /* 尽力清理 */ } }
+  if (tempDeckId) {
+    try {
+      await api("/api/riff/removeRiffDeck", { deck: tempDeckId });
+    } catch {
+      /* 尽力清理 */
+    }
+  }
   if (tempNotebook) {
     const r = await api("/api/notebook/removeNotebook", { notebook: tempNotebook });
     if (r.code !== 0) throw new Error("code=" + r.code);
@@ -208,7 +231,12 @@ await step("清理：riff/removeRiffDeck + notebook/removeNotebook", async () =>
   return "";
 });
 
-try { if (exportedZip && /^[\w:\\/.\-]+$/.test(exportedZip) && exportedZip.includes("lv-exam-preflight")) unlinkSync(exportedZip); } catch { /* 尽力清理 */ }
+try {
+  if (exportedZip && /^[\w:/.-]+$/.test(exportedZip) && exportedZip.includes("lv-exam-preflight"))
+    unlinkSync(exportedZip);
+} catch {
+  /* 尽力清理 */
+}
 
 // ---------- 汇总 ----------
 const fail = results.filter((r) => !r.ok);

@@ -10,130 +10,131 @@ import { createServer as createLiveReloadServer } from "livereload";
 import type { Plugin } from "vite";
 
 export interface LiveReloadOptions {
-    /** Build output directory relative to the project root. */
-    outputDir: string;
-    /**
-     * LiveReload server port embedded into the client bundle. By default, a stable
-     * port is derived from the plugin name. Set this when two plugins collide.
-     */
-    port?: number;
-    /** Frontend value passed to /api/petal/setPetalEnabled. */
-    frontend?: string;
-    /** Reload notification. Defaults to "Live reload: <plugin name>". */
-    message?: string;
-    /**
-     * Delay before the server broadcasts and the client processes changes.
-     * A build may update the output directory in several passes, so the default
-     * deliberately groups changes over a longer interval.
-     */
-    debounceMs?: number;
-    /** Delay between disabling and re-enabling the plugin. */
-    reloadGapMs?: number;
+  /** Build output directory relative to the project root. */
+  outputDir: string;
+  /**
+   * LiveReload server port embedded into the client bundle. By default, a stable
+   * port is derived from the plugin name. Set this when two plugins collide.
+   */
+  port?: number;
+  /** Frontend value passed to /api/petal/setPetalEnabled. */
+  frontend?: string;
+  /** Reload notification. Defaults to "Live reload: <plugin name>". */
+  message?: string;
+  /**
+   * Delay before the server broadcasts and the client processes changes.
+   * A build may update the output directory in several passes, so the default
+   * deliberately groups changes over a longer interval.
+   */
+  debounceMs?: number;
+  /** Delay between disabling and re-enabling the plugin. */
+  reloadGapMs?: number;
 }
 
 /**
  * Starts the LiveReload server and injects its client into development bundles.
  */
 export function useLiveReload({
-    outputDir,
-    port,
-    frontend = "desktop",
-    message,
-    debounceMs = 1000 * 5,
-    reloadGapMs = 500,
+  outputDir,
+  port,
+  frontend = "desktop",
+  message,
+  debounceMs = 1000 * 5,
+  reloadGapMs = 500,
 }: LiveReloadOptions): Plugin {
-    const projectRoot = findPluginRoot();
-    const manifest = readPluginManifest(projectRoot);
-    const liveReloadPort = port ?? deriveLiveReloadPort(manifest.name);
-    const reloadMessage = message ?? `Live reload: ${manifest.name}`;
-    console.log(`[live-reload] port: ${liveReloadPort}`);
+  const projectRoot = findPluginRoot();
+  const manifest = readPluginManifest(projectRoot);
+  const liveReloadPort = port ?? deriveLiveReloadPort(manifest.name);
+  const reloadMessage = message ?? `Live reload: ${manifest.name}`;
+  console.log(`[live-reload] port: ${liveReloadPort}`);
 
-    let server: ReturnType<typeof createLiveReloadServer> | undefined;
+  let server: ReturnType<typeof createLiveReloadServer> | undefined;
 
-    return {
-        name: "siyuan-live-reload",
-        buildStart() {
-            if (server) {
-                return;
-            }
-            server = createLiveReloadServer({ port: liveReloadPort, delay: debounceMs });
-            server.on("error", (error: NodeJS.ErrnoException) => {
-                if (error.code === "EADDRINUSE") {
-                    console.error(
-                        `[live-reload] port ${liveReloadPort} is already in use, possibly by another plugin's dev watcher.\n` +
-                        `  - Inspect the port: netstat -ano | findstr ${liveReloadPort}\n` +
-                        `  - Choose another port: set useLiveReload({ port }) in vite.config.ts and restart the build.`
-                    );
-                } else {
-                    console.error(`[live-reload] unable to listen on port ${liveReloadPort}:`, error);
-                }
-                throw error;
-            });
-            // LiveReload's hello response has a fixed serverName, so send a separate
-            // identity message that prevents clients from connecting to another plugin's server.
-            server.server.on("connection", (socket) => {
-                socket.send(JSON.stringify({ command: "plugin-identity", plugin: manifest.name }));
-            });
-            server.watch(resolve(projectRoot, outputDir));
-        },
-        closeWatcher() {
-            server?.close();
-            server = undefined;
-        },
-        closeBundle() {
-            // closeBundle runs after every rebuild in watch mode, where the server must stay alive.
-            if (!this.meta.watchMode) {
-                server?.close();
-                server = undefined;
-            }
-        },
-        banner: () => createClientScript({
-            port: liveReloadPort,
-            pluginName: manifest.name,
-            frontend,
-            message: reloadMessage,
-            debounceMs,
-            reloadGapMs
-        })
-    };
+  return {
+    name: "siyuan-live-reload",
+    buildStart() {
+      if (server) {
+        return;
+      }
+      server = createLiveReloadServer({ port: liveReloadPort, delay: debounceMs });
+      server.on("error", (error: NodeJS.ErrnoException) => {
+        if (error.code === "EADDRINUSE") {
+          console.error(
+            `[live-reload] port ${liveReloadPort} is already in use, possibly by another plugin's dev watcher.\n` +
+              `  - Inspect the port: netstat -ano | findstr ${liveReloadPort}\n` +
+              `  - Choose another port: set useLiveReload({ port }) in vite.config.ts and restart the build.`,
+          );
+        } else {
+          console.error(`[live-reload] unable to listen on port ${liveReloadPort}:`, error);
+        }
+        throw error;
+      });
+      // LiveReload's hello response has a fixed serverName, so send a separate
+      // identity message that prevents clients from connecting to another plugin's server.
+      server.server.on("connection", (socket) => {
+        socket.send(JSON.stringify({ command: "plugin-identity", plugin: manifest.name }));
+      });
+      server.watch(resolve(projectRoot, outputDir));
+    },
+    closeWatcher() {
+      server?.close();
+      server = undefined;
+    },
+    closeBundle() {
+      // closeBundle runs after every rebuild in watch mode, where the server must stay alive.
+      if (!this.meta.watchMode) {
+        server?.close();
+        server = undefined;
+      }
+    },
+    banner: () =>
+      createClientScript({
+        port: liveReloadPort,
+        pluginName: manifest.name,
+        frontend,
+        message: reloadMessage,
+        debounceMs,
+        reloadGapMs,
+      }),
+  };
 }
 
 function findPluginRoot(): string {
-    // Bundled Vite configs resolve this module from the project root, while the
-    // native config loader resolves it from scripts/. Support both locations.
-    for (const directory of [import.meta.dirname, resolve(import.meta.dirname, "..")]) {
-        if (existsSync(resolve(directory, "plugin.json"))) {
-            return directory;
-        }
+  // Bundled Vite configs resolve this module from the project root, while the
+  // native config loader resolves it from scripts/. Support both locations.
+  for (const directory of [import.meta.dirname, resolve(import.meta.dirname, "..")]) {
+    if (existsSync(resolve(directory, "plugin.json"))) {
+      return directory;
     }
-    throw new Error("plugin.json not found (expected at project root)");
+  }
+  throw new Error("plugin.json not found (expected at project root)");
 }
 
 function readPluginManifest(projectRoot: string): { name: string } {
-    return JSON.parse(readFileSync(resolve(projectRoot, "plugin.json"), "utf8"));
+  return JSON.parse(readFileSync(resolve(projectRoot, "plugin.json"), "utf8"));
 }
 
 function deriveLiveReloadPort(pluginName: string): number {
-    const portRangeStart = 35740;
-    const portRangeSize = 1000;
-    let hash = 2166136261;
+  const portRangeStart = 35740;
+  const portRangeSize = 1000;
+  let hash = 2166136261;
 
-    for (let index = 0; index < pluginName.length; index += 1) {
-        hash ^= pluginName.charCodeAt(index);
-        hash = Math.imul(hash, 16777619) >>> 0;
-    }
+  for (let index = 0; index < pluginName.length; index += 1) {
+    hash ^= pluginName.charCodeAt(index);
+    hash = Math.imul(hash, 16777619) >>> 0;
+  }
 
-    return portRangeStart + (hash % portRangeSize);
+  return portRangeStart + (hash % portRangeSize);
 }
 
 interface ClientOptions {
-    /** LiveReload WebSocket port paired with the server started by useLiveReload. */
-    port: number;
-    pluginName: string;
-    frontend: string;
-    message: string;
-    debounceMs: number;
-    reloadGapMs: number;
+  /** LiveReload WebSocket port paired with the server started by useLiveReload. */
+  port: number;
+  pluginName: string;
+  frontend: string;
+  message: string;
+  debounceMs: number;
+  reloadGapMs: number;
 }
 
 /**
@@ -141,9 +142,9 @@ interface ClientOptions {
  * the LiveReload server identifies itself as belonging to this plugin.
  */
 function createClientScript({ port, pluginName, frontend, message, debounceMs, reloadGapMs }: ClientOptions): string {
-    const values = JSON.stringify({ frontend, message, pluginName, port, debounceMs, reloadGapMs });
+  const values = JSON.stringify({ frontend, message, pluginName, port, debounceMs, reloadGapMs });
 
-    return `(function () {
+  return `(function () {
     const options = ${values};
     const socketKey = "__siYuanPluginLiveReload";
     // livereload server binds to whatever "localhost" resolves to (::1 on IPv6-preferring

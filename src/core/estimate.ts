@@ -11,15 +11,19 @@ export interface EstimateResult {
   correct: number;
   wrong: number;
   blank: number;
-  score: number;          // scoreEach × correct
-  full: number;           // scoreEach × total
-  percent: number;        // 0-100
+  score: number; // scoreEach × correct
+  full: number; // scoreEach × total
+  percent: number; // 0-100
   pass: boolean;
   /** 每题对错序列（"✓"/"✕"/"–"），供逐题渲染 */
   marks: ("✓" | "✕" | "–")[];
 }
 
-export function estimateScore(myAnswers: string, key: string, opts: { scoreEach?: number; passLine?: number } = {}): EstimateResult | null {
+export function estimateScore(
+  myAnswers: string,
+  key: string,
+  opts: { scoreEach?: number; passLine?: number } = {},
+): EstimateResult | null {
   const scoreEach = opts.scoreEach ?? 1;
   const passLine = opts.passLine ?? 60;
   const mine = foldText(myAnswers).replace(/\s/g, "").toUpperCase().split("");
@@ -27,16 +31,39 @@ export function estimateScore(myAnswers: string, key: string, opts: { scoreEach?
   if (!mine.length || !std.length) return null;
   const total = Math.min(mine.length, std.length);
   if (total === 0) return null;
-  let correct = 0, wrong = 0, blank = 0;
+  let correct = 0,
+    wrong = 0,
+    blank = 0;
   const marks: EstimateResult["marks"] = [];
   for (let i = 0; i < total; i++) {
-    const m = mine[i], k = std[i];
-    if (m === "." || m === "?" || m === "？") { blank++; marks.push("–"); continue; }
-    if (m === k) { correct++; marks.push("✓"); }
-    else { wrong++; marks.push("✕"); }
+    const m = mine[i],
+      k = std[i];
+    if (m === "." || m === "?" || m === "？") {
+      blank++;
+      marks.push("–");
+      continue;
+    }
+    if (m === k) {
+      correct++;
+      marks.push("✓");
+    } else {
+      wrong++;
+      marks.push("✕");
+    }
   }
   const score = Math.round(correct * scoreEach * 10) / 10;
   const full = Math.round(total * scoreEach * 10) / 10;
   const percent = total ? Math.round((correct / total) * 1000) / 10 : 0;
-  return { total, answered: correct + wrong, correct, wrong, blank, score, full, percent, pass: percent >= passLine, marks };
+  return {
+    total,
+    answered: correct + wrong,
+    correct,
+    wrong,
+    blank,
+    score,
+    full,
+    percent,
+    pass: percent >= passLine,
+    marks,
+  };
 }

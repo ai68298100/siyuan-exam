@@ -11,18 +11,18 @@ export type ActionKind = "redo" | "note" | "probe" | "custom";
 export type ActionStatus = "open" | "done" | "cancelled";
 
 export interface ActionItem {
-  id: string;              // a-…（actionId，U15 持久标识）
+  id: string; // a-…（actionId，U15 持久标识）
   kind: ActionKind;
-  qid?: string;            // 关联题（custom 可空）
-  sessionId?: string;      // 触发来源会话/复盘
-  detail: string;          // 用户可见描述（如"重练：资料分析/增长率"）
+  qid?: string; // 关联题（custom 可空）
+  sessionId?: string; // 触发来源会话/复盘
+  detail: string; // 用户可见描述（如"重练：资料分析/增长率"）
   status: ActionStatus;
   createdAt: number;
   doneAt?: number;
-  doneEvidence?: string;   // 完成依据（当前为 user-confirmed；后续接复测 attempt/笔记块 id）
+  doneEvidence?: string; // 完成依据（当前为 user-confirmed；后续接复测 attempt/笔记块 id）
 }
 
-export const MAX_ACTIONS = 200;   // FIFO 上限（含历史）
+export const MAX_ACTIONS = 200; // FIFO 上限（含历史）
 
 /** 同 kind+qid 只保留一条 open（去重键） */
 export function dedupeKey(kind: ActionKind, qid?: string): string {
@@ -37,10 +37,14 @@ export function appendActions(
 ): { list: ActionItem[]; added: number; skipped: number } {
   const openKeys = new Set(list.filter((a) => a.status === "open").map((a) => dedupeKey(a.kind, a.qid)));
   const out = [...list];
-  let added = 0, skipped = 0;
+  let added = 0,
+    skipped = 0;
   for (const d of drafts) {
     const key = dedupeKey(d.kind, d.qid);
-    if (openKeys.has(key)) { skipped++; continue; }
+    if (openKeys.has(key)) {
+      skipped++;
+      continue;
+    }
     openKeys.add(key);
     out.push({
       id: `a-${newEventId().slice(2)}`,
@@ -67,7 +71,12 @@ export function openActions(list: readonly ActionItem[]): ActionItem[] {
 }
 
 /** 完成（用户确认为最小证据）；幂等：非 open 状态原样返回 */
-export function completeAction(list: readonly ActionItem[], id: string, evidence: string, now: number = Date.now()): ActionItem[] {
+export function completeAction(
+  list: readonly ActionItem[],
+  id: string,
+  evidence: string,
+  now: number = Date.now(),
+): ActionItem[] {
   return list.map((a) =>
     a.id === id && a.status === "open" ? { ...a, status: "done" as const, doneAt: now, doneEvidence: evidence } : a,
   );
@@ -75,5 +84,7 @@ export function completeAction(list: readonly ActionItem[], id: string, evidence
 
 /** 取消/暂缓（保留记录可回看，U15）；幂等同上 */
 export function cancelAction(list: readonly ActionItem[], id: string, now: number = Date.now()): ActionItem[] {
-  return list.map((a) => (a.id === id && a.status === "open" ? { ...a, status: "cancelled" as const, doneAt: now } : a));
+  return list.map((a) =>
+    a.id === id && a.status === "open" ? { ...a, status: "cancelled" as const, doneAt: now } : a,
+  );
 }

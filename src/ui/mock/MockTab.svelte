@@ -78,6 +78,8 @@
     /** 默认蓝图：按考点首段聚类（无考点 → 单段全量） */
     function defaultSections(qs: Question[]): BlueprintSection[] {
       if (!qs.length) return [];
+      // 函数内非响应式累加器（非组件状态），不转 SvelteMap
+      // eslint-disable-next-line svelte/prefer-svelte-reactivity
       const byRoot = new Map<string, number>();
       for (const q of qs) {
         const root = q.kp?.split("/")[0] ?? "全部";
@@ -445,7 +447,7 @@
     </div>
     <div class="lv-bp-table">
       <div class="lv-bp-row head"><span>{t("mock.sec")}</span><span>{t("mock.count")}</span><span>{t("mock.each")}</span><span>{t("mock.source")}</span><span></span></div>
-      {#each bp.sections as s, i}
+      {#each bp.sections as s, i (i)}
         <div class="lv-bp-row">
           <input class="lv-input" bind:value={s.name} oninput={() => updateSection(i, { name: s.name })} />
           <input class="lv-input num" type="number" min="0" value={s.count} oninput={(e) => updateSection(i, { count: Math.max(0, parseInt((e.target as HTMLInputElement).value) || 0) })} />
@@ -501,7 +503,7 @@
           <span class="lv-marks num">{estResult.marks.join(" ")}</span>
           {#if estFromBank}
             <div class="lv-row" style="margin:4px 0 0">
-              {#each estKey.split("") as _ans, i}
+              {#each estKey.split("") as _ans, i (i)}
                 {@const q = questions.filter((x) => x.type !== "material")[i]}
                 {@const mark = estResult.marks[i] ?? "–"}
                 {#if q}<span class="lv-chip num" class:lv-chip--grn={mark === "✓"} class:lv-chip--red={mark === "✕"} class:lv-chip--amb={mark === "–"} title={q.stem.slice(0, 60)}>{i + 1}. {q.answer} {mark}</span>{/if}
@@ -513,7 +515,7 @@
       {#if estHistory.length}
         <div class="lv-row" style="margin:6px 0 0">
           <span class="lv-muted">{t("estimate.history")}</span>
-          {#each estHistory.slice(0, 8) as h}
+          {#each estHistory.slice(0, 8) as h, _i (_i)}
             <span class="lv-chip num" title={new Date(h.at).toLocaleString()}>{h.percent}%</span>
           {/each}
         </div>
@@ -544,7 +546,7 @@
     <div class="lv-card lv-question">
       <div class="lv-stem">{currentQ.stem}</div>
       {#if currentQ.options.length}
-        {#each currentQ.options as opt, i}
+        {#each currentQ.options as opt, i (i)}
           <button class="lv-opt" class:sel={selected === String.fromCharCode(65 + i)} onclick={() => pickOption(String.fromCharCode(65 + i))}>
             <span class="key">{String.fromCharCode(65 + i)}</span><span>{opt}</span>
           </button>
@@ -556,7 +558,7 @@
     </div>
     <!-- 答题卡 -->
     <div class="lv-sheet">
-      {#each session.state.qids as qid, i}
+      {#each session.state.qids as qid, i (i)}
         <button class="lv-cell" class:done={!!answeredMap[qid]} class:flag={session.flags.has(qid)}
           class:cur={i === cursor} onclick={() => goto(i)}>{i + 1}</button>
       {/each}
@@ -594,7 +596,7 @@
         {/if}
       </div>
     </div>
-    {#each score.sections as sec}
+    {#each score.sections as sec, _i (_i)}
       <div class="lv-row" style="margin:4px 0">
         <span style="width:70px">{sec.name}</span>
         <div class="progress" style="flex:1"><i style="width:{percentBar(sec.score, sec.full)}%"></i></div>
@@ -608,7 +610,7 @@
           <polygon points={radarPoints(score.sections.map(() => 1))} fill="none" stroke="var(--lv-border)" />
           <polygon points={radarPoints(score.sections.map(() => 0.5))} fill="none" stroke="var(--lv-border)" stroke-dasharray="3 3" />
           <polygon points={radarPoints(secAccuracy)} fill="var(--lv-accent-soft)" stroke="var(--lv-accent)" stroke-width="2" />
-          {#each radarLabel(secAccuracy) as lb}
+          {#each radarLabel(secAccuracy) as lb, _i (_i)}
             <text x={lb.x} y={lb.y} font-size="10" fill="var(--lv-text-3)" text-anchor="middle">{lb.name}</text>
           {/each}
         </svg>
@@ -628,12 +630,12 @@
         <svg viewBox="0 0 300 110" style="width:100%;max-width:420px;display:block">
           <line x1="0" y1={100 - bp.passLine} x2="300" y2={100 - bp.passLine} stroke="var(--lv-green)" stroke-dasharray="4 4" />
           <polyline points={historyPoints()} fill="none" stroke="var(--lv-accent)" stroke-width="2" />
-          {#each history as h, i}
+          {#each history as h, i (i)}
             <circle cx={(i / Math.max(1, history.length - 1)) * 300} cy={100 - Math.round(h.percent)} r="3" fill="var(--lv-accent)"><title>{h.name} {h.percent}%</title></circle>
           {/each}
         </svg>
         <div class="lv-row" style="margin:6px 0 0">
-          {#each history.slice(-5) as h, i}
+          {#each history.slice(-5) as h, i (i)}
             <button class="lv-chip num" class:acc={historyDetail === history.length - 5 + i}
               title={new Date(h.startedAt).toLocaleString()}
               onclick={() => historyDetail = historyDetail === history.length - 5 + i ? -1 : history.length - 5 + i}>
@@ -646,7 +648,7 @@
           <div class="lv-card" style="padding:10px 14px;margin-top:8px">
             <b class="num" style="font-size:13px">{h.name} · {h.percent}%</b>
             {#if h.sections?.length}
-              {#each h.sections as s}
+              {#each h.sections as s, _i (_i)}
                 <div class="lv-row" style="margin:3px 0">
                   <span class="lv-muted" style="width:64px">{s.name}</span>
                   <div class="progress" style="flex:1"><i style="width:{percentBar(s.score, s.full)}%"></i></div>
@@ -664,7 +666,7 @@
       <div class="lv-card" style="margin:12px 0">
         <b style="font-size:13px">{t("mock.wrongList")}（{wrongList.length}）</b>
         <div class="lv-row" style="margin:8px 0 0;gap:6px">
-          {#each wrongList.slice(0, 12) as w}
+          {#each wrongList.slice(0, 12) as w, _i (_i)}
             <span class="lv-chip num" title={w.stem}>{w.stem}</span>
           {/each}
           {#if wrongList.length > 12}<span class="lv-muted num">… +{wrongList.length - 12}</span>{/if}
@@ -672,7 +674,7 @@
         <div class="lv-row" style="margin:8px 0 0">
           <button class="lv-btn sm" disabled={mockActionBusy} onclick={wrongsToActions}>📌 {mockActionBusy ? "…" : t("action.addWrong")}</button>
           <span class="lv-muted">{t("session.reason")}:</span>
-          {#each ["careless", "unknown", "trap"] as r}
+          {#each ["careless", "unknown", "trap"] as r, _i (_i)}
             <button class="lv-chip" onclick={() => bulkWrongReason(r as "careless" | "unknown" | "trap")}>{t("reason." + r)}</button>
           {/each}
           {#if mockActionNote}<span class="lv-muted num">{mockActionNote}</span>{/if}

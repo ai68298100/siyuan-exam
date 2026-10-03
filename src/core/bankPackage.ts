@@ -4,17 +4,17 @@
 // ============================================================
 
 export interface PkgEntry {
-  id: string;          // exam-id
+  id: string; // exam-id
   hash: string;
   type: string;
-  stem: string;        // 预览用（首行）
+  stem: string; // 预览用（首行）
   kp?: string;
 }
 
 export interface PkgDiff {
-  added: PkgEntry[];       // 仅导入侧
-  updated: PkgEntry[];     // 两侧都有但 hash 不同（冲突：保留用户版本，导入版可选覆盖）
-  removed: PkgEntry[];     // 仅本地侧（导入包未包含——提示但不自动删）
+  added: PkgEntry[]; // 仅导入侧
+  updated: PkgEntry[]; // 两侧都有但 hash 不同（冲突：保留用户版本，导入版可选覆盖）
+  removed: PkgEntry[]; // 仅本地侧（导入包未包含——提示但不自动删）
   unchanged: number;
 }
 

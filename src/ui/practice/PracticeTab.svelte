@@ -10,7 +10,8 @@ import { ttsSpeak } from "@/core/tts";
     import { parseText, parseExcelRows, autoMapExcel, errorsToCsv, type ImportReport } from "../../importer/pipeline";
     import { groupAdjacent } from "../../core/session";
     import { makeQuestion } from "../../core/blockTemplate";
-    import { grade } from "../../core/answer";
+    import { grade, normalizeAnswer, questionHash } from "../../core/answer";
+    import { validate } from "../../importer/pipeline";
     import { bankHealthReport, type BankHealthReport } from "../../core/bankHealth";
     import { planBatchEdit, invertPlan, describeChange } from "../../core/batchEdit";
     import { questionFingerprint } from "@/ai/task";
@@ -255,7 +256,7 @@ import { ttsSpeak } from "@/core/tts";
       errorMsg = "";
       const qs = (await loadQuestions()).filter((q) => q.type !== "material");
       if (!qs.length) { errorMsg = t("state.emptyBank"); return; }
-      let picked: Question[] = [];
+      let picked: Question[];
       if (mode === "wrong") {
         picked = app.wrongDrill(qs);
         if (!picked.length) { errorMsg = t("state.noWrong"); return; }
@@ -316,6 +317,8 @@ import { ttsSpeak } from "@/core/tts";
       const examDate = String(plugin.settingUtils?.get?.("examDate") ?? "").trim();
       const sprintDays = Number(plugin.settingUtils?.get?.("sprintDays") ?? 14);
       const goal = Number(plugin.settingUtils?.get?.("dailyGoal") ?? 10);
+      // rebuildPlan 函数内累加器（非组件状态），不转 SvelteMap/SvelteSet
+      // eslint-disable-next-line svelte/prefer-svelte-reactivity
       const wrongCounts = new Map<string, number>();
       for (const w of app.derived().wrongbook.values()) wrongCounts.set(w.qid, w.wrongCount);
       const activeWrongIds = new Set(app.wrongItems().map((w) => w.qid));
@@ -335,7 +338,7 @@ import { ttsSpeak } from "@/core/tts";
       const qs = (await loadQuestions()).filter((q) => q.type !== "material");
       if (!qs.length) { errorMsg = t("state.emptyBank"); return; }
       // FSRS 到期优先（docs/11 S8：dueFirst 供给；离线/无卡自然为空）
-      let due: Question[] = [];
+      let due: Question[];
       try { due = await (app as any).dueQuestions(bankName, qs); } catch { due = []; }
       rebuildPlan(due);
       const queue = groupAdjacent((plan?.queue?.length ? plan.queue : qs.slice(0, 10)).filter((q) => q.type !== "material"));
@@ -845,12 +848,12 @@ import { ttsSpeak } from "@/core/tts";
     $effect(() => { void (app as any).aiUsage().then((u: { totalTokens: number; totalCalls: number }) => (aiUsageTotal = u)); });
     /** 待审核队列持久化（TODO 27 组）：切视图/重载不丢生成结果 */
     async function persistAiQueue() {
-      try { await (app as any).deps.storage.save("ai/review-queue", { queue: aiQueue, rejected: aiRejected, duplicates: aiDuplicates, bankId: aiQueueBankId }); } catch { /* 忽略 */ }
+      try { await (app as any).deps.storage.save("ai/review-queue", { queue: aiQueue, rejected: aiRejected, duplicates: aiDuplicates, bankId: aiQueueBankId, material: aiQueueMaterial }); } catch { /* 忽略 */ }
     }
     async function restoreAiQueue() {
       try {
-        const v = (await (app as any).deps.storage.load("ai/review-queue")) as { queue: Question[]; rejected: typeof aiRejected; duplicates: number } | undefined;
-        if (v?.queue?.length) { aiQueue = v.queue; aiRejected = v.rejected ?? []; aiDuplicates = v.duplicates ?? 0; aiQueueBankId = (v as any).bankId ?? ""; }
+        const v = (await (app as any).deps.storage.load("ai/review-queue")) as { queue: Question[]; rejected: typeof aiRejected; duplicates: number; material?: string } | undefined;
+        if (v?.queue?.length) { aiQueue = v.queue; aiRejected = v.rejected ?? []; aiDuplicates = v.duplicates ?? 0; aiQueueBankId = (v as any).bankId ?? ""; aiQueueMaterial = v.material ?? ""; }
       } catch { /* 忽略 */ }
     }
 
@@ -883,6 +886,7 @@ import { ttsSpeak } from "@/core/tts";
         await app.recordAiUsage(counting.id, counting.approxTokens, counting.calls);
         aiUsageTotal = await (app as any).aiUsage();
         aiQueue = r.pending; aiRejected = r.rejected; aiDuplicates = r.duplicates; aiQueueBankId = activeBankId;
+        aiQueueMaterial = aiSource;             // 单题重生成的输入快照（41-04）
         void persistAiQueue();
         if (!r.pending.length && !r.rejected.length) errorMsg = t("ai.empty");
       } catch (e) {
@@ -961,6 +965,8 @@ import { ttsSpeak } from "@/core/tts";
     }
 
     // 审批防重入（41-04）：写入在途时同一题不再触发；失败退回队列不丢候选
+    // 命令式守卫 Set（非渲染状态），不转 SvelteSet
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity
     const approving = new Set<string>();
     /** 队列归属题库（41-04 切库不误写）：生成时记录；旧持久化队列无 bankId 则跳过校验 */
     let aiQueueBankId = $state("");
@@ -1001,6 +1007,66 @@ import { ttsSpeak } from "@/core/tts";
       if (queueBankMismatch()) return;
       for (const q of [...aiQueue]) await approveAi(q);      // 失败项已被 approveAi 退回队列
       void persistAiQueue();
+    }
+
+    // ---------- 候选编辑 + 单题重生成（41-04 剩余收口） ----------
+    let aiQueueMaterial = $state("");      // 生成时材料快照：单题重生成的输入（随队列持久化）
+    let editingAiId = $state("");
+    let aiEditDraft = $state<{ stem: string; options: string[]; answer: string; analysis: string } | null>(null);
+    let aiEditError = $state("");
+    let aiRegenBusy = $state("");
+
+    function startEditAi(q: Question) {
+      editingAiId = q.id;
+      aiEditError = "";
+      aiEditDraft = { stem: q.stem, options: [...q.options], answer: q.answer, analysis: q.analysis ?? "" };
+    }
+
+    function cancelEditAi() {
+      editingAiId = ""; aiEditDraft = null; aiEditError = "";
+    }
+
+    function saveEditAi(q: Question) {
+      if (!aiEditDraft) return;
+      const stem = aiEditDraft.stem.trim();
+      const options = aiEditDraft.options.map((o) => o.trim());
+      const answer = normalizeAnswer(q.type, aiEditDraft.answer) ?? "";
+      const edited: Question = { ...q, stem, options, answer, analysis: aiEditDraft.analysis.trim(), hash: questionHash(stem, options) };
+      const bad = validate(edited);
+      if (bad) { aiEditError = bad; return; }
+      aiQueue = aiQueue.map((x) => (x.id === q.id ? edited : x));
+      cancelEditAi();
+      void persistAiQueue();
+    }
+
+    /** 单题重生成：用生成时的材料快照按同题型/考点重出 1 题，替换原候选（41-04） */
+    async function regenOneAi(q: Question) {
+      if (aiBusy || aiRegenBusy) return;
+      if (!aiQueueMaterial.trim()) { showMessage(t("ai.regenNoSource"), 3600, "info"); return; }
+      aiRegenBusy = q.id; errorMsg = "";
+      try {
+        const { generate } = await import("@/ai/gen");
+        const { CountingChannel } = await import("@/ai/counting");
+        const counting = new CountingChannel(await makeAiChannel());
+        const aiCustomHint = String(plugin.settingUtils?.get?.("aiCustomHint") ?? "");
+        const r = await generate(counting, aiQueueMaterial, {
+          types: [q.type], count: 1, difficulty: "mixed",
+          kp: q.kp, sourceTitle: t("ai.pastedMaterial"), preset: aiPreset, quality: aiQuality,
+          customHint: aiCustomHint || undefined, signal: aiCancel,
+        });
+        aiCost = `≈${counting.approxTokens} tok · ${counting.calls} ${t("ai.usageCalls")}`;
+        await app.recordAiUsage(counting.id, counting.approxTokens, counting.calls);
+        aiUsageTotal = await (app as any).aiUsage();
+        if (r.pending[0]) {
+          aiQueue = aiQueue.map((x) => (x.id === q.id ? r.pending[0] : x));
+          void persistAiQueue();
+          showMessage(t("ai.regenDone"), 2800, "info");
+        } else {
+          errorMsg = r.rejected[0]?.reason ?? t("ai.empty");
+        }
+      } catch (e) {
+        errorMsg = String(e instanceof Error ? e.message : e);
+      } finally { aiRegenBusy = ""; }
     }
 
     // ---------- 导入 ----------
@@ -1114,6 +1180,8 @@ import { ttsSpeak } from "@/core/tts";
       if (!app.kernelOnline) return;
       try {
         const links = await (app as any).deps.client.backlinks(blockId);
+        // 写时复制更新 $state Map（惯用法），不转 SvelteMap
+        // eslint-disable-next-line svelte/prefer-svelte-reactivity
         const next = new Map(backlinkCache);
         next.set(blockId, links);
         backlinkCache = next;
@@ -1364,7 +1432,7 @@ import { ttsSpeak } from "@/core/tts";
                 <span class="lv-chip">{t("manual.kp")}</span>
                 <select class="lv-select" bind:value={expKp}>
                   <option value="">全部</option>
-                  {#each expKpRoots as k}<option value={k}>{k}</option>{/each}
+                  {#each expKpRoots as k, _i (_i)}<option value={k}>{k}</option>{/each}
                 </select>
                 <span class="lv-chip">{t("session.reason")}</span>
                 <select class="lv-select" bind:value={expReason}>
@@ -1400,7 +1468,7 @@ import { ttsSpeak } from "@/core/tts";
           <p class="num">{t("session.total")} {sessionDone.total} · <span class="lv-green">{t("session.correct")} {sessionDone.correct}</span> · <span class="lv-red">{t("session.wrong")} {sessionDone.wrong}</span></p>
           {#if session.answered.length}
             <div class="lv-row" style="flex-wrap:wrap;gap:4px;margin:8px 0">
-              {#each session.answered as a, ai}
+              {#each session.answered as a, ai (ai)}
                 {@const aq = questions.find((x) => x.id === a.qid)}
                 <span class="lv-chip num" class:lv-chip--grn={a.grade.verdict === "correct"} class:lv-chip--red={a.grade.verdict === "wrong"} title={aq?.stem.slice(0, 60) ?? a.qid}>{ai + 1} {a.grade.verdict === "correct" ? "✓" : a.grade.verdict === "wrong" ? "✕" : "–"} {(a.timeMs / 1000).toFixed(0)}s</span>
               {/each}
@@ -1451,7 +1519,7 @@ import { ttsSpeak } from "@/core/tts";
             {#if stemHtml}<div class="lv-stem lv-rich b3-typography">{@html stemHtml}</div>{:else}<div class="lv-stem">{q.stem}</div>{/if}
             {#if q.options.length}
               <div role="radiogroup" aria-label={t("session.options")}>
-                {#each q.options as opt, i}
+                {#each q.options as opt, i (i)}
                   <button class="lv-opt" class:sel={selected.includes(String.fromCharCode(65 + i))}
                     role="radio" aria-checked={selected === String.fromCharCode(65 + i)}
                     class:right={feedback && feedback.verdict !== "not_attempted" && q.answer.includes(String.fromCharCode(65 + i)) && (q.type === "single" ? q.answer === String.fromCharCode(65 + i) : true)}
@@ -1489,7 +1557,7 @@ import { ttsSpeak } from "@/core/tts";
               {#if q.analysis}<div class="lv-analysis">{q.analysis}</div>{/if}
               {#if feedback.verdict === "wrong"}
                 <div class="lv-row lv-muted">{t("session.reason")}:
-                  {#each ["careless", "unknown", "trap"] as r, ri}
+                  {#each ["careless", "unknown", "trap"] as r, ri (ri)}
                     <button class="lv-chip" class:acc={savedReason === r} title={t("entry.days") === "天" ? `快捷键 ${ri + 1}` : `Key ${ri + 1}`} onclick={async () => { await app.saveWrongReason(q.id, r as any); savedReason = r; }}>{savedReason === r ? "✓ " : ""}{t("reason." + r)}</button>
                   {/each}
                 </div>
@@ -1498,7 +1566,7 @@ import { ttsSpeak } from "@/core/tts";
             {#if !feedback}
               <div class="lv-row lv-muted" style="font-size:11.5px;gap:6px;flex-wrap:wrap">
                 <span>{t("confidence.before")}</span>
-                {#each ["sure", "fuzzy", "guess"] as c}
+                {#each ["sure", "fuzzy", "guess"] as c, _i (_i)}
                   <button class="lv-chip" class:acc={confidenceSel === c} title={`Key ${["sure", "fuzzy", "guess"].indexOf(c) + 1}`} onclick={() => confidenceSel = c as "sure" | "fuzzy" | "guess"}>{t("confidence." + c)}</button>
                 {/each}
                 <span class="lv-chip num" class:lv-chip--red={qTimeoutS > 0 && qElapsedS >= qTimeoutS} title={qTimeoutS > 0 ? t("session.timeoutHint").replace("{n}", String(qTimeoutS)) : ""}>
@@ -1596,7 +1664,7 @@ import { ttsSpeak } from "@/core/tts";
           {:else}
             {#if q.options.length}
               <div class="lv-analysis"><b>{t("recite.answer")}:</b> {q.answer}</div>
-              {#each q.options as opt, i}
+              {#each q.options as opt, i (i)}
                 <div class="lv-opt" class:right={q.answer.includes(String.fromCharCode(65 + i))} style="cursor:default">
                   <span class="key">{String.fromCharCode(65 + i)}</span><span>{opt}</span>
                 </div>
@@ -1626,7 +1694,7 @@ import { ttsSpeak } from "@/core/tts";
       <div class="lv-card lv-pad-card">
         <div class="lv-row">
           <span class="lv-chip">{t("manual.type")}</span>
-          {#each ["single", "multiple", "judge", "fill", "short"] as tt}
+          {#each ["single", "multiple", "judge", "fill", "short"] as tt, _i (_i)}
             <button class="lv-chip" class:acc={mType === tt} onclick={() => { mType = tt as any; mAnswer = ""; }}>{t("qtype." + tt)}</button>
           {/each}
         </div>
@@ -1635,7 +1703,7 @@ import { ttsSpeak } from "@/core/tts";
         </div>
         {#if mType === "single" || mType === "multiple"}
           <div class="lv-field"><span class="lv-muted">{t("manual.options")}</span>
-            {#each mOptions as _opt, i}
+            {#each mOptions as _opt, i (i)}
               <div class="lv-row" style="margin:4px 0">
                 <button class="lv-chip" class:acc={mAnswer.includes(String.fromCharCode(65 + i))}
                   title={t("manual.setCorrect")} onclick={() => setCorrectOption(i)}>{String.fromCharCode(65 + i)}</button>
@@ -1691,17 +1759,17 @@ import { ttsSpeak } from "@/core/tts";
         </div>
         <div class="lv-row">
           <span class="lv-chip">{t("ai.count")}</span>
-          {#each [3, 5, 10, 20] as n}
+          {#each [3, 5, 10, 20] as n, _i (_i)}
             <button class="lv-chip" class:acc={aiCount === n} onclick={() => aiCount = n}>{n}</button>
           {/each}
           <span class="lv-chip">{t("ai.difficulty")}</span>
-          {#each ["easy", "medium", "hard", "mixed"] as d}
+          {#each ["easy", "medium", "hard", "mixed"] as d, _i (_i)}
             <button class="lv-chip" class:acc={aiDifficulty === d} onclick={() => aiDifficulty = d as any}>{t("ai.diff." + d)}</button>
           {/each}
         </div>
         <div class="lv-row">
           <span class="lv-chip">{t("ai.preset")}</span>
-          {#each ["default", "gongkao", "kaoyan", "yixue", "jiakao"] as p}
+          {#each ["default", "gongkao", "kaoyan", "yixue", "jiakao"] as p, _i (_i)}
             <button class="lv-chip" class:acc={aiPreset === p} onclick={() => aiPreset = p as any}>{p === "default" ? t("ai.preset.default") : { gongkao: "公考行测", kaoyan: "考研政治", yixue: "医学执业", jiakao: "驾考" }[p]}</button>
           {/each}
         </div>
@@ -1752,25 +1820,48 @@ import { ttsSpeak } from "@/core/tts";
               {#if q.kp}<span class="lv-chip">{q.kp}</span>{/if}
               <span class="lv-muted lv-qrow-src">{t("ai.pendingBadge")}</span>
             </div>
-            <div class="lv-qrow-stem">{q.stem}</div>
-            {#if q.options.length}
-              <div class="lv-muted" style="margin-top:4px">{q.options.map((o, i) => String.fromCharCode(65 + i) + ". " + o).join("　")}</div>
+            {#if editingAiId === q.id && aiEditDraft}
+              <div class="lv-row" style="margin:6px 0 0"><input class="lv-input" bind:value={aiEditDraft.stem} placeholder={t("manual.stem")} /></div>
+              {#each aiEditDraft.options as _opt, i (i)}
+                <div class="lv-row" style="margin:4px 0 0">
+                  <span class="lv-chip num">{String.fromCharCode(65 + i)}</span>
+                  <input class="lv-input" bind:value={aiEditDraft.options[i]} />
+                  <button class="lv-btn sm lv-btn--ghost" title={t("manual.setCorrect")} onclick={() => { aiEditDraft.answer = String.fromCharCode(65 + i); }}>✓</button>
+                </div>
+              {/each}
+              <div class="lv-row" style="margin:4px 0 0">
+                <span class="lv-chip">{t("browse.answer")}</span>
+                <input class="lv-input" style="max-width:120px" bind:value={aiEditDraft.answer} />
+                <input class="lv-input" style="flex:1" bind:value={aiEditDraft.analysis} placeholder={t("manual.analysis")} />
+              </div>
+              {#if aiEditError}<div class="lv-error">{aiEditError}</div>{/if}
+              <div class="lv-row" style="margin:8px 0 0">
+                <button class="lv-btn sm lv-btn--primary" onclick={() => saveEditAi(q)}>✓ {t("ai.editSave")}</button>
+                <button class="lv-btn sm lv-btn--ghost" onclick={cancelEditAi}>{t("ai.editCancel")}</button>
+              </div>
+            {:else}
+              <div class="lv-qrow-stem">{q.stem}</div>
+              {#if q.options.length}
+                <div class="lv-muted" style="margin-top:4px">{q.options.map((o, i) => String.fromCharCode(65 + i) + ". " + o).join("　")}</div>
+              {/if}
+              <div class="lv-analysis" style="margin:8px 0 0">{q.analysis}</div>
+              <div class="lv-row" style="margin:8px 0 0">
+                <button class="lv-btn sm lv-btn--primary" onclick={() => approveAi(q)}>✓ {t("ai.approve")}</button>
+                <button class="lv-btn sm" onclick={() => startEditAi(q)}>✎ {t("ai.edit")}</button>
+                <button class="lv-btn sm" disabled={aiRegenBusy === q.id} onclick={() => regenOneAi(q)}>⟳ {aiRegenBusy === q.id ? "…" : t("ai.regen")}</button>
+                <button class="lv-btn sm lv-btn--ghost" onclick={() => dropAi(q)}>✕ {t("ai.drop")}</button>
+              </div>
             {/if}
-            <div class="lv-analysis" style="margin:8px 0 0">{q.analysis}</div>
-            <div class="lv-row" style="margin:8px 0 0">
-              <button class="lv-btn sm lv-btn--primary" onclick={() => approveAi(q)}>✓ {t("ai.approve")}</button>
-              <button class="lv-btn sm lv-btn--ghost" onclick={() => dropAi(q)}>✕ {t("ai.drop")}</button>
-            </div>
           </div>
         {/each}
-        {#each aiRejected.slice(0, 10) as rj}
+        {#each aiRejected.slice(0, 10) as rj, _i (_i)}
           <div class="lv-error-row"><b class="num">#{rj.index}</b> {rj.reason}</div>
         {/each}
         {#if aiTaskLog.length}
           <details class="lv-card lv-pad-card" style="padding:12px 16px;margin-top:14px">
             <summary style="cursor:pointer;font-weight:650">🧾 {t("ai.taskLog")}（{aiTaskLog.length}）</summary>
             <p class="lv-muted" style="margin:6px 0 0">{t("ai.taskLogHint")}</p>
-            {#each [...aiTaskLog].reverse().slice(0, 5) as e}
+            {#each [...aiTaskLog].reverse().slice(0, 5) as e, _i (_i)}
               <div class="lv-row" style="margin:8px 0 0">
                 <span class="lv-chip num">{new Date(e.at).toLocaleTimeString()}</span>
                 <span class="lv-chip num">{e.templateId}</span>
@@ -1779,7 +1870,7 @@ import { ttsSpeak } from "@/core/tts";
               </div>
               <details style="margin:2px 0 0 8px">
                 <summary class="lv-muted" style="cursor:pointer;font-size:11.5px">{t("ai.taskLogPayload")}</summary>
-                {#each e.messages as m}
+                {#each e.messages as m, _i (_i)}
                   <pre class="lv-muted num" style="white-space:pre-wrap;font-size:11px;margin:4px 0">[{m.role}] {m.content.slice(0, 400)}{m.content.length > 400 ? "…" : ""}</pre>
                 {/each}
               </details>
@@ -1813,7 +1904,7 @@ import { ttsSpeak } from "@/core/tts";
               <input class="lv-input" style="max-width:200px" bind:value={batchKp} placeholder={t("batch.kpPlaceholder")} />
             {:else}
               <select class="lv-select" bind:value={batchDiff}>
-                {#each [1, 2, 3, 4, 5] as d}<option value={String(d)}>{d}</option>{/each}
+                {#each [1, 2, 3, 4, 5] as d, _i (_i)}<option value={String(d)}>{d}</option>{/each}
               </select>
             {/if}
             <button class="lv-btn sm" disabled={!selectedCount} onclick={previewBatch}>🔍 {t("batch.preview")}</button>
@@ -1832,7 +1923,7 @@ import { ttsSpeak } from "@/core/tts";
               {#if batchPreview.skipped}<span class="lv-chip num">{t("batch.skipped").replace("{n}", String(batchPreview.skipped))}</span>{/if}
               {#if !app.kernelOnline}<span class="lv-chip lv-chip--amb">{t("state.offlineHint")}</span>{/if}
             </div>
-            {#each batchPreview.changes.slice(0, 20) as c}
+            {#each batchPreview.changes.slice(0, 20) as c, _i (_i)}
               {@const stem = questions.find((q) => q.id === c.qid)?.stem ?? c.qid}
               <div class="lv-error-row num">{describeChange(c, stem)}</div>
             {/each}
@@ -1848,19 +1939,19 @@ import { ttsSpeak } from "@/core/tts";
           {#if !health.clusters.length && !health.missing.length}
             <span class="lv-chip lv-chip--grn">✓ {t("health.clean")}</span>
           {:else}
-            {#each health.clusters as cl}
+            {#each health.clusters as cl, _i (_i)}
               <span class="lv-chip num" class:lv-chip--red={cl.similarity === 1} title={cl.sampleStem}>
                 ⧉ {cl.ids.length}× {Math.round(cl.similarity * 100)}%
               </span>
             {/each}
-            {#each health.missing as row}
+            {#each health.missing as row, _i (_i)}
               <span class="lv-chip lv-chip--amb num" title={row.qids.slice(0, 10).join(" · ")}>{t("health.field." + row.field)} {row.count}</span>
             {/each}
           {/if}
           {#if batchList.length}
             <div class="lv-row" style="margin:10px 0 0">
               <b style="font-size:12.5px">{t("import.batches")}</b>
-              {#each batchList as b}
+              {#each batchList as b, _i (_i)}
                 <span class="lv-chip num" title={b.batch}>📦 {b.batch.slice(0, 16)} · {b.count}</span>
                 <button class="lv-btn sm lv-btn--ghost" disabled={rollbackBusy === b.batch} onclick={() => undoBatch(b.batch)}>
                   {rollbackBusy === b.batch ? "…" : t("import.rollback")}
@@ -1897,7 +1988,7 @@ import { ttsSpeak } from "@/core/tts";
                   <button class="lv-btn sm" onclick={() => void loadBacklinks(q.blockId)}>🔗 {t("browse.backlinks")}</button>
                   {#if links}
                     {#if links.length === 0}<span class="lv-muted">{t("browse.noBacklinks")}</span>
-                    {:else}{#each links as l}<span class="lv-chip" title={l.content}>📎 {l.title}</span>{/each}{/if}
+                    {:else}{#each links as l, _i (_i)}<span class="lv-chip" title={l.content}>📎 {l.title}</span>{/each}{/if}
                   {/if}
                 </div>
               </div>
@@ -1937,7 +2028,7 @@ import { ttsSpeak } from "@/core/tts";
               <span class="lv-chip">{t("import.useMapping")}</span>
               <select class="lv-select" style="max-width:220px" bind:value={selectedMapping} onchange={() => { if (sheetRowsCache.get(activeSheet)?.length) parseActiveSheet(); }}>
                 <option value="">{t("import.autoMap")}</option>
-                {#each savedMappings as m}<option value={m.name}>{m.name}</option>{/each}
+                {#each savedMappings as m, _i (_i)}<option value={m.name}>{m.name}</option>{/each}
               </select>
             </div>
           {/if}
@@ -1948,10 +2039,10 @@ import { ttsSpeak } from "@/core/tts";
               <span class="lv-chip lv-chip--red num">✕ {importReport.errors.length}</span>
               {#if importReport.duplicates}<span class="lv-chip lv-chip--amb num" title={t("import.dupeHint")}>⧉ {importReport.duplicates}</span>{/if}
             </div>
-            {#each importReport.dupeSamples ?? [] as d}
+            {#each importReport.dupeSamples ?? [] as d, _i (_i)}
               <div class="lv-error-row num" title={t("import.dupeHint")}>#{d.row} ⧉ {t("import.dupeRow")} {d.stem}</div>
             {/each}
-            {#each importReport.errors.slice(0, 20) as err}
+            {#each importReport.errors.slice(0, 20) as err, _i (_i)}
               <div class="lv-error-row"><b class="num">#{err.row}</b> {err.reason}<span class="lv-muted"> · {err.raw}</span></div>
             {/each}
             {#if importReport.errors.length > 20}<div class="lv-muted num">… +{importReport.errors.length - 20}</div>{/if}

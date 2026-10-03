@@ -17,7 +17,7 @@ describe("官方模板（自洽性：生成的模板能被自己的导入器读�
     const mat = r.ok.find((q) => q.type === "material")!;
     expect(mat.group).toMatch(/^g-/);
     const subs = r.ok.filter((q) => q.group === mat.group);
-    expect(subs).toHaveLength(3);           // 材料 + 2 子题
-    expect(r.ok[2].answer).toBe("对");       // 判断方言
+    expect(subs).toHaveLength(3); // 材料 + 2 子题
+    expect(r.ok[2].answer).toBe("对"); // 判断方言
   });
 });

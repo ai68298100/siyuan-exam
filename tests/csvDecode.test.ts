@@ -4,11 +4,6 @@ import { decodeBuffer, decodeCsv } from "../src/importer/csvDecode";
 const utf8Text = "题干,选项A,选项B\n内容,甲,乙";
 const utf8Bytes = new TextEncoder().encode(utf8Text);
 
-function gbkBytes(text: string): Uint8Array {
-  // 测试环境无 GBK TextDecoder 编码器；用手工字节模拟"非 UTF-8 字节流"（含非法序列）
-  return new Uint8Array([0xd2, 0xbc, 0xb8, 0xf6, 0x2c, 0x41]); // GBK "一个" + "," + "A" 的典型字节
-}
-
 describe("CSV 编码检测", () => {
   it("UTF-8 BOM → utf-8-sig 高置信", () => {
     const bom = new Uint8Array([0xef, 0xbb, 0xbf, ...utf8Bytes]);

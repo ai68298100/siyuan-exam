@@ -1,0 +1,10 @@
+dist
+node_modules
+output
+package.zip
+preview.png
+icon.png
+pnpm-lock.yaml
+*.d.ts
+design/prototype/prototype.js
+tsconfig.node.tsbuildinfo

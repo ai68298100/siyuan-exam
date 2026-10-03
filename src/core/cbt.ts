@@ -21,8 +21,12 @@ export function gradeIndefinite(q: Question, myAnswerRaw: string | null | undefi
   const correctSet = new Set(normalizeAnswer("multiple", q.answer)?.split("") ?? []);
   const mine = [...new Set(normalizeAnswer("multiple", myAnswer)?.split("") ?? [])];
   if (!mine.length || !correctSet.size) return { verdict: "wrong", myAnswer, factor: 0 };
-  let hits = 0, misses = 0;
-  for (const L of mine) (correctSet.has(L) ? hits++ : misses++);
+  let hits = 0,
+    misses = 0;
+  for (const L of mine) {
+    if (correctSet.has(L)) hits++;
+    else misses++;
+  }
   if (misses > 0) return { verdict: "wrong", myAnswer, factor: 0 };
   if (hits === correctSet.size) return { verdict: "correct", myAnswer, factor: 1 };
   // 少选：按命中比例给部分分，但判 wrong（进错题本——漏选也是漏）
@@ -32,11 +36,7 @@ export function gradeIndefinite(q: Question, myAnswerRaw: string | null | undefi
 /** 作答流锁守卫（人机对话严格顺序作答）：
  *  - 已有已答题：强制停留于"已答边界 +1"（不可回跳、不可跳过未答题）
  *  - 尚无已答题：目标索引自由（钳制在卷内） */
-export function guardLockout(
-  targetIndex: number,
-  answeredFlags: readonly boolean[],
-  _current: number,
-): number {
+export function guardLockout(targetIndex: number, answeredFlags: readonly boolean[], _current: number): number {
   const last = answeredFlags.length - 1;
   let max = -1;
   for (let i = 0; i < answeredFlags.length; i++) if (answeredFlags[i]) max = i;

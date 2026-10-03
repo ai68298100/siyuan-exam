@@ -6,10 +6,31 @@
 // ============================================================
 import type { Question } from "./types";
 
-export const BANK_CSV_HEADERS = ["题号", "题型", "题干", "选项A", "选项B", "选项C", "选项D", "选项E", "选项F", "答案", "解析", "难度", "知识点", "分值", "来源"];
+export const BANK_CSV_HEADERS = [
+  "题号",
+  "题型",
+  "题干",
+  "选项A",
+  "选项B",
+  "选项C",
+  "选项D",
+  "选项E",
+  "选项F",
+  "答案",
+  "解析",
+  "难度",
+  "知识点",
+  "分值",
+  "来源",
+];
 
 const TYPE_NAMES: Record<Question["type"], string> = {
-  single: "单选", multiple: "多选", judge: "判断", fill: "填空", short: "简答", material: "材料",
+  single: "单选",
+  multiple: "多选",
+  judge: "判断",
+  fill: "填空",
+  short: "简答",
+  material: "材料",
 };
 
 function csvField(v: unknown): string {
@@ -19,9 +40,16 @@ function csvField(v: unknown): string {
 
 export function questionToCsvRow(q: Question, idx: number): string[] {
   const cells: unknown[] = [
-    idx + 1, TYPE_NAMES[q.type], q.stem,
+    idx + 1,
+    TYPE_NAMES[q.type],
+    q.stem,
     ...[0, 1, 2, 3, 4, 5].map((i) => q.options[i] ?? ""),
-    q.answer, q.analysis ?? "", q.difficulty ?? "", q.kp ?? "", q.score, q.source ?? "",
+    q.answer,
+    q.analysis ?? "",
+    q.difficulty ?? "",
+    q.kp ?? "",
+    q.score,
+    q.source ?? "",
   ];
   return cells.map(csvField);
 }

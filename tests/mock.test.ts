@@ -3,8 +3,17 @@ import { assemble, blueprintTotals, MockSession, type Blueprint } from "../src/c
 import { makeQuestion } from "../src/core/blockTemplate";
 import type { Question } from "../src/core/types";
 
-const q = (id: string, type: Question["type"], sourceKind: "real" | "mock", kp: string): Question =>
-  ({ ...makeQuestion({ type, stem: id, options: type === "single" ? ["1", "2"] : [], answer: type === "judge" ? "对" : type === "single" ? "A" : "A" }), id, sourceKind, kp });
+const q = (id: string, type: Question["type"], sourceKind: "real" | "mock", kp: string): Question => ({
+  ...makeQuestion({
+    type,
+    stem: id,
+    options: type === "single" ? ["1", "2"] : [],
+    answer: type === "judge" ? "对" : type === "single" ? "A" : "A",
+  }),
+  id,
+  sourceKind,
+  kp,
+});
 
 const bank: Question[] = [
   q("r1", "single", "real", "言语"),
@@ -17,8 +26,12 @@ const bank: Question[] = [
 ];
 
 const bp: Blueprint = {
-  id: "bp1", name: "行测模拟", durationS: 3600, passLine: 60,
-  shuffleOptions: false, sectionTimed: true,
+  id: "bp1",
+  name: "行测模拟",
+  durationS: 3600,
+  passLine: 60,
+  shuffleOptions: false,
+  sectionTimed: true,
   sections: [
     { name: "言语", count: 3, scoreEach: 0.8, source: "real", types: ["single"] },
     { name: "判断", count: 4, scoreEach: 1, source: "mock", types: ["judge"] },
@@ -37,14 +50,20 @@ describe("组卷", () => {
     expect(blueprintTotals(bp)).toEqual({ questions: 7, score: 6.4 });
   });
   it("来源不足 → mixed 兜底并计入 filledFromMixed", () => {
-    const tight: Blueprint = { ...bp, sections: [{ name: "言语", count: 4, scoreEach: 1, source: "real", types: ["single"] }] };
+    const tight: Blueprint = {
+      ...bp,
+      sections: [{ name: "言语", count: 4, scoreEach: 1, source: "real", types: ["single"] }],
+    };
     const r = assemble(tight, bank, () => 0);
     expect(r.paper).toHaveLength(4);
-    expect(r.paper.some((q) => q.id === "m1")).toBe(true);   // mock 单选兜底
+    expect(r.paper.some((q) => q.id === "m1")).toBe(true); // mock 单选兜底
     expect(r.shortages).toEqual([{ name: "言语", need: 4, have: 4, filledFromMixed: 1 }]);
   });
   it("题型过滤", () => {
-    const typed: Blueprint = { ...bp, sections: [{ name: "判断", count: 2, scoreEach: 1, source: "mixed", types: ["judge"] }] };
+    const typed: Blueprint = {
+      ...bp,
+      sections: [{ name: "判断", count: 2, scoreEach: 1, source: "mixed", types: ["judge"] }],
+    };
     const r = assemble(typed, bank, () => 0);
     expect(r.paper.every((x) => x.type === "judge")).toBe(true);
   });
@@ -71,7 +90,7 @@ describe("模考会话", () => {
     const { s, start, r } = build();
     const q1 = r.paper[0]; // real 言语 答案 A
     s.setAnswer(q1.id, "A", start + 10_000);
-    s.setAnswer(q1.id, "B", start + 20_000);   // 改答
+    s.setAnswer(q1.id, "B", start + 20_000); // 改答
     s.toggleFlag(q1.id);
     expect(s.answers.get(q1.id)!.changes).toBe(1);
     expect(s.flags.has(q1.id)).toBe(true);
@@ -90,7 +109,10 @@ describe("模考会话", () => {
       [r.paper[4].id, r.paper[4].answer],
     ];
     let t = start + 1000;
-    for (const [id, a] of answerPairs) { s.setAnswer(id, a, t); t += 60_000; }
+    for (const [id, a] of answerPairs) {
+      s.setAnswer(id, a, t);
+      t += 60_000;
+    }
     s.submit(start + 3_599_000);
     const score = s.score();
     expect(score.full).toBeCloseTo(6.4);

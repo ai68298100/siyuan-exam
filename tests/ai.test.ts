@@ -19,7 +19,12 @@ describe("切片与提示词", () => {
     expect(msgs[1].content).toContain("判断");
   });
   it("自定义命题要求追加到系统提示", () => {
-    const msgs = buildPrompt("材料内容", { types: ["single"], count: 3, difficulty: "easy", customHint: "多用数值计算题" });
+    const msgs = buildPrompt("材料内容", {
+      types: ["single"],
+      count: 3,
+      difficulty: "easy",
+      customHint: "多用数值计算题",
+    });
     expect(msgs[0].content).toContain("用户额外要求：多用数值计算题");
   });
 });
@@ -33,7 +38,7 @@ describe("容错 JSON 解析", () => {
     expect(extractJsonArray(raw)).toEqual([{ a: 1 }, { b: "x]y" }]);
   });
   it("字符串内的括号/转义不破坏平衡", () => {
-    expect(extractJsonArray('noise ["a\\"[x]b"] tail')).toEqual(["a\"[x]b"]);
+    expect(extractJsonArray('noise ["a\\"[x]b"] tail')).toEqual(['a"[x]b']);
   });
   it("非数组/坏 JSON → null", () => {
     expect(extractJsonArray('{"a":1}')).toBeNull();
@@ -44,28 +49,43 @@ describe("容错 JSON 解析", () => {
 
 describe("生成管线（mock 通道）", () => {
   const good = {
-    type: "single", stem: "思源内核闪卡算法是什么？",
-    options: ["SM-2", "FSRS"], answer: "B",
+    type: "single",
+    stem: "思源内核闪卡算法是什么？",
+    options: ["SM-2", "FSRS"],
+    answer: "B",
     analysis: "因为思源 3.8 集成了 go-fsrs，因此默认调度由 FSRS 驱动。",
     kp: "闪卡",
   };
   const channel: AiChannel = {
     id: "siyuan",
     async chat() {
-      return "```json\n" + JSON.stringify([
-        good,
-        { ...good },   // 同题同指纹 → 去重
-        { type: "single", stem: "解析太短", options: ["1", "2"], answer: "A", analysis: "短" },
-        { type: "single", stem: "以上都对是哪个？", options: ["以上都对", "2"], answer: "A", analysis: "解析足够长，含因果说明内容。" },
-        { type: "essay", stem: "坏题型", options: [], answer: "A", analysis: "解析足够长，含因果说明内容。" },
-        "not-an-object",
-      ]) + "\n```";
+      return (
+        "```json\n" +
+        JSON.stringify([
+          good,
+          { ...good }, // 同题同指纹 → 去重
+          { type: "single", stem: "解析太短", options: ["1", "2"], answer: "A", analysis: "短" },
+          {
+            type: "single",
+            stem: "以上都对是哪个？",
+            options: ["以上都对", "2"],
+            answer: "A",
+            analysis: "解析足够长，含因果说明内容。",
+          },
+          { type: "essay", stem: "坏题型", options: [], answer: "A", analysis: "解析足够长，含因果说明内容。" },
+          "not-an-object",
+        ]) +
+        "\n```"
+      );
     },
   };
 
   it("质量门槛：好题入库；短解析/禁用选项/坏题型/非对象拒绝；重复去重", async () => {
     const r = await generate(channel, "一些材料", {
-      types: ["single"], count: 10, difficulty: "mixed", quality: "economy",
+      types: ["single"],
+      count: 10,
+      difficulty: "mixed",
+      quality: "economy",
       existingHashes: new Set(),
     });
     expect(r.pending).toHaveLength(1);
@@ -80,28 +100,49 @@ describe("生成管线（mock 通道）", () => {
   });
   it("外部 hash 去重", async () => {
     const seed = await generate(channel, "材料", { types: ["single"], count: 10, quality: "economy" });
-    const r2 = await generate(channel, "材料", { types: ["single"], count: 10, quality: "economy", existingHashes: new Set(seed.pending.map((q) => q.hash)) });
+    const r2 = await generate(channel, "材料", {
+      types: ["single"],
+      count: 10,
+      quality: "economy",
+      existingHashes: new Set(seed.pending.map((q) => q.hash)),
+    });
     expect(r2.pending).toHaveLength(0);
-    expect(r2.duplicates).toBe(2);   // mock 通道两次出现同一好题，均撞外部 hash
+    expect(r2.duplicates).toBe(2); // mock 通道两次出现同一好题，均撞外部 hash
   });
 });
 
 describe("双通道客户端", () => {
   it("思源通道：拼接 msg 并取 data 字符串", async () => {
-    const kernel = { aiChat: async (msg: string) => (msg.includes("[指令]") ? "OK-JSON" : "") } as unknown as KernelApiClient;
-    const out = await new SiyuanAiChannel(kernel).chat([{ role: "system", content: "S" }, { role: "user", content: "U" }]);
+    const kernel = {
+      aiChat: async (msg: string) => (msg.includes("[指令]") ? "OK-JSON" : ""),
+    } as unknown as KernelApiClient;
+    const out = await new SiyuanAiChannel(kernel).chat([
+      { role: "system", content: "S" },
+      { role: "user", content: "U" },
+    ]);
     expect(out).toBe("OK-JSON");
   });
   it("OpenAI 通道：Bearer 头 + choices 解析；未配置报错", async () => {
     let captured: any;
     const ch = new OpenAiChannel(
       { endpoint: "https://x/v1/chat/completions", apiKey: "sk", model: "m" },
-      async (url, init) => { captured = init; return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: "hi" } }] }) }; },
+      async (url, init) => {
+        captured = init;
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ choices: [{ message: { content: "hi" } }] }),
+        };
+      },
     );
     expect(await ch.chat([{ role: "user", content: "q" }])).toBe("hi");
     expect(captured.headers.Authorization).toBe("Bearer sk");
     expect(JSON.parse(captured.body).model).toBe("m");
-    const bad = new OpenAiChannel({ endpoint: "", apiKey: "", model: "" }, async () => ({ ok: true, status: 200, text: async () => "" }));
+    const bad = new OpenAiChannel({ endpoint: "", apiKey: "", model: "" }, async () => ({
+      ok: true,
+      status: 200,
+      text: async () => "",
+    }));
     await expect(bad.chat([{ role: "user", content: "q" }])).rejects.toThrow(/未配置/);
   });
 });

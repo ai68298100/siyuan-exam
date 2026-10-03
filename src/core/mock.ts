@@ -15,25 +15,25 @@ export interface BlueprintSection {
   count: number;
   scoreEach: number;
   source: SectionSource;
-  types: Question["type"][];    // 允许的题型（空 = 不限）
-  indefinite?: boolean;         // 不定项：少选按比例部分分、错选全扣（cbt.gradeIndefinite）
+  types: Question["type"][]; // 允许的题型（空 = 不限）
+  indefinite?: boolean; // 不定项：少选按比例部分分、错选全扣（cbt.gradeIndefinite）
 }
 
 export interface Blueprint {
   id: string;
   name: string;
-  durationS: number;            // 总时长
-  passLine: number;             // 及格线（百分制）
+  durationS: number; // 总时长
+  passLine: number; // 及格线（百分制）
   shuffleOptions: boolean;
-  sectionTimed: boolean;        // 分段计时
-  lockout?: boolean;            // 人机对话作答流锁：不可回退、顺序作答
+  sectionTimed: boolean; // 分段计时
+  lockout?: boolean; // 人机对话作答流锁：不可回退、顺序作答
   sections: BlueprintSection[];
 }
 
 export interface AssembleReport {
-  paper: Question[];            // 顺序：按 section 依次拼接
-  sectionOf: Map<string, string>;      // qid → section name
-  scoreOf: Map<string, number>;        // qid → 分值
+  paper: Question[]; // 顺序：按 section 依次拼接
+  sectionOf: Map<string, string>; // qid → section name
+  scoreOf: Map<string, number>; // qid → 分值
   shortages: { name: string; need: number; have: number; filledFromMixed: number }[];
 }
 
@@ -51,17 +51,14 @@ export function assemble(
 
   const matchesSource = (q: Question, s: BlueprintSection) =>
     s.source === "mixed" || (q.sourceKind ?? "mock") === s.source;
-  const matchesTypes = (q: Question, s: BlueprintSection) =>
-    !s.types.length || s.types.includes(q.type);
+  const matchesTypes = (q: Question, s: BlueprintSection) => !s.types.length || s.types.includes(q.type);
 
   for (const s of bp.sections) {
     let pool = bank.filter((q) => !used.has(q.id) && matchesSource(q, s) && matchesTypes(q, s));
     const strictCount = pool.length;
     // strict 不够且允许 mixed → 用其他来源补齐（显式计数，蓝图配置器出警告）
     if (strictCount < s.count && s.source !== "mixed") {
-      const extra = bank.filter(
-        (q) => !used.has(q.id) && !pool.includes(q) && matchesTypes(q, s),
-      );
+      const extra = bank.filter((q) => !used.has(q.id) && !pool.includes(q) && matchesTypes(q, s));
       pool = pool.concat(extra);
     }
     const picked: Question[] = [];
@@ -96,7 +93,7 @@ export interface MockAnswer {
   answer: string | null;
   verdict: GradeResult["verdict"];
   timeMs: number;
-  answeredAt: number;           // 相对开考 ms
+  answeredAt: number; // 相对开考 ms
   changes: number;
   /** 不定项部分分系数 0-1（非不定项恒 1/0 随 verdict） */
   factor: number;
@@ -105,7 +102,7 @@ export interface MockAnswer {
 export interface MockState {
   blueprint: Blueprint;
   qids: string[];
-  startedAt: number;            // wall clock
+  startedAt: number; // wall clock
   finishedAt?: number;
 }
 
@@ -120,7 +117,7 @@ export class MockSession {
   cursor = 0;
   private readonly byId: Map<string, Question>;
   private readonly indefinite: Set<string>;
-  private readonly sectionStart: Record<string, number> = {};   // section 名 → 进入时刻（相对 ms）
+  private readonly sectionStart: Record<string, number> = {}; // section 名 → 进入时刻（相对 ms）
   /** 逐题驻留计时（40-03）：导航切题时结算上一题，作答时刻取真实累计 */
   private readonly dwell = new Map<string, number>();
   private currentEnter: { qid: string; at: number } = { qid: "", at: 0 };
@@ -150,13 +147,19 @@ export class MockSession {
     if (paper[0]) this.currentEnter = { qid: paper[0].id, at: startedAt };
   }
 
-  sectionOfQ(qid: string): string { return this.sectionOf.get(qid) ?? ""; }
+  sectionOfQ(qid: string): string {
+    return this.sectionOf.get(qid) ?? "";
+  }
 
   /** 相对开考的经过毫秒 */
-  elapsed(now: number): number { return Math.max(0, now - this.state.startedAt); }
+  elapsed(now: number): number {
+    return Math.max(0, now - this.state.startedAt);
+  }
 
   /** 剩余总时长 ms（负数=已超时） */
-  remaining(now: number): number { return this.bp.durationS * 1000 - this.elapsed(now); }
+  remaining(now: number): number {
+    return this.bp.durationS * 1000 - this.elapsed(now);
+  }
 
   /** 当前段剩余（分段计时模式）：按该段题量折算份额；归零即应跳段 */
   sectionRemaining(section: string, now: number): number | null {
@@ -192,7 +195,9 @@ export class MockSession {
     return true;
   }
 
-  cursorIndex(): number { return this.cursor; }
+  cursorIndex(): number {
+    return this.cursor;
+  }
 
   /** 进入某题：结算上一题驻留，开新计时；同题重复调用不重复结算 */
   enterQuestion(qid: string, now: number) {
@@ -257,9 +262,28 @@ export class MockSession {
 
   /** 结算（docs/11 S7 四维）：未作答按 not_attempted 计 0 分 */
   score(): MockScore {
-    const sections = new Map<string, { name: string; score: number; full: number; correct: number; total: number; timeSpentMs: number; overtimeQ: number }>();
+    const sections = new Map<
+      string,
+      {
+        name: string;
+        score: number;
+        full: number;
+        correct: number;
+        total: number;
+        timeSpentMs: number;
+        overtimeQ: number;
+      }
+    >();
     for (const s of this.bp.sections) {
-      sections.set(s.name, { name: s.name, score: 0, full: s.count * s.scoreEach, correct: 0, total: 0, timeSpentMs: 0, overtimeQ: 0 });
+      sections.set(s.name, {
+        name: s.name,
+        score: 0,
+        full: s.count * s.scoreEach,
+        correct: 0,
+        total: 0,
+        timeSpentMs: 0,
+        overtimeQ: 0,
+      });
     }
     for (const [qid, a] of this.answers) {
       const name = this.sectionOf.get(qid);
@@ -267,7 +291,9 @@ export class MockSession {
       if (!sec) continue;
       sec.total++;
       sec.timeSpentMs += a.timeMs;
-      if (a.verdict === "correct") { sec.correct++; }
+      if (a.verdict === "correct") {
+        sec.correct++;
+      }
       // 不定项部分分：scoreEach × factor；整题对=1；错=0
       sec.score += (this.scoreOf.get(qid) ?? 0) * (a.verdict === "correct" ? 1 : a.factor);
     }
@@ -295,9 +321,13 @@ export class MockSession {
 
   private last20min() {
     const cutoff = this.bp.durationS * 1000 - 20 * 60 * 1000;
-    let attempted = 0, correct = 0;
+    let attempted = 0,
+      correct = 0;
     for (const a of this.answers.values()) {
-      if (a.answeredAt >= cutoff) { attempted++; if (a.verdict === "correct") correct++; }
+      if (a.answeredAt >= cutoff) {
+        attempted++;
+        if (a.verdict === "correct") correct++;
+      }
     }
     return { attempted, correct };
   }
@@ -355,7 +385,15 @@ export interface MockScore {
   full: number;
   pass: boolean;
   percent: number;
-  sections: { name: string; score: number; full: number; correct: number; total: number; timeSpentMs: number; overtimeQ: number }[];
+  sections: {
+    name: string;
+    score: number;
+    full: number;
+    correct: number;
+    total: number;
+    timeSpentMs: number;
+    overtimeQ: number;
+  }[];
   flagsUsed: number;
   changes: number;
   screenSwitches: number;
@@ -367,15 +405,15 @@ export interface MockScore {
 // 恢复后剩余时间按真实流逝计算（休眠/关页不清零计时）。
 
 export interface MockRunSnapshot {
-  v: number;                          // SCHEMA_VERSION
-  runId: string;                      // 本次考试运行 id（r-…）
-  bp: Blueprint;                      // 开考时冻结的蓝图拷贝
-  qids: string[];                     // 冻结卷面顺序
-  sectionOf: Record<string, string>;  // qid → 段名
-  scoreOf: Record<string, number>;    // qid → 分值
-  indefinite: string[];               // 不定项 qids
-  startedAt: number;                  // wall clock 开考时刻
-  savedAt: number;                    // 快照保存时刻
+  v: number; // SCHEMA_VERSION
+  runId: string; // 本次考试运行 id（r-…）
+  bp: Blueprint; // 开考时冻结的蓝图拷贝
+  qids: string[]; // 冻结卷面顺序
+  sectionOf: Record<string, string>; // qid → 段名
+  scoreOf: Record<string, number>; // qid → 分值
+  indefinite: string[]; // 不定项 qids
+  startedAt: number; // wall clock 开考时刻
+  savedAt: number; // 快照保存时刻
   answers: MockAnswer[];
   flags: string[];
   cursor: number;
@@ -384,7 +422,7 @@ export interface MockRunSnapshot {
   /** 逐题驻留毫秒（40-03；旧快照缺省 = 恢复后重新累计） */
   dwell?: Record<string, number>;
   currentEnter?: { qid: string; at: number };
-  finishedAt?: number;                // 已交卷（恢复时直接进报告，不重考）
+  finishedAt?: number; // 已交卷（恢复时直接进报告，不重考）
 }
 
 /** 恢复报告：missingQids = 卷面有但题库已读不到的题（改题/删题后如实降级，不静默补题） */

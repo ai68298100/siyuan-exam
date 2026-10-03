@@ -1,6 +1,6 @@
 // verify-package.mjs —— 产物白名单校验（TODO 26.3）
 // package.zip 必须只含运行必需文件：无源码、无密钥、无测试资料
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { execSync } from "node:child_process";
 
 const ALLOW = [
@@ -24,9 +24,15 @@ try {
   out = execSync("unzip -Z1 package.zip", { encoding: "utf8" });
 } catch {
   // Git Bash 无 unzip 时退回 powershell
-  out = execSync('powershell -NoProfile -Command "Add-Type -AssemblyName System.IO.Compression.FileSystem; [IO.Compression.ZipFile]::OpenRead(\\"package.zip\\").Entries.FullName -join \\"`n\\""', { encoding: "utf8" });
+  out = execSync(
+    'powershell -NoProfile -Command "Add-Type -AssemblyName System.IO.Compression.FileSystem; [IO.Compression.ZipFile]::OpenRead(\\"package.zip\\").Entries.FullName -join \\"`n\\""',
+    { encoding: "utf8" },
+  );
 }
-const names = out.split(/\r?\n/).map((s) => s.replace(/^\.\//, "").trim()).filter((n) => n && !n.endsWith("/"));
+const names = out
+  .split(/\r?\n/)
+  .map((s) => s.replace(/^\.\//, "").trim())
+  .filter((n) => n && !n.endsWith("/"));
 const bad = names.filter((n) => !ALLOW.some((re) => re.test(n)));
 const mustHave = ["index.js", "plugin.json", "i18n/zh-CN.json", "i18n/en.json", "icon.png"];
 const missing = mustHave.filter((m) => !names.includes(m));

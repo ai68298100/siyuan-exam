@@ -8,18 +8,18 @@ import { newQuestionId, newBatchId } from "../core/ids";
 import { newGroupId } from "../core/cbt";
 
 export interface ImportOptions {
-  kp?: string;                 // 整批兜底考点
+  kp?: string; // 整批兜底考点
   difficulty?: number;
   source?: string;
   sourceKind?: "real" | "mock";
-  dedupe?: boolean;            // 默认 true：批内 + 与已存在 hash 集合去重
+  dedupe?: boolean; // 默认 true：批内 + 与已存在 hash 集合去重
   existingHashes?: Set<string>;
   /** 内部：材料组自动分组的进行中组 ID（parseExcelRows 维护） */
   _pendingGroup?: string;
 }
 
 export interface ImportError {
-  row: number;                 // 1-based 数据行
+  row: number; // 1-based 数据行
   reason: string;
   raw: string;
 }
@@ -34,12 +34,31 @@ export interface ImportReport {
 }
 
 const TYPE_ALIASES: Record<string, QuestionType> = {
-  单选: "single", 单选题: "single", single: "single", 单项选择题: "single",
-  多选: "multiple", 多选题: "multiple", multiple: "multiple", 多项选择题: "multiple",
-  判断: "judge", 判断题: "judge", judge: "judge", truefalse: "judge",
-  填空: "fill", 填空题: "fill", fill: "fill",
-  简答: "short", 简答题: "short", short: "short", 问答: "short", 论述: "short",
-  材料: "material", 材料题: "material", material: "material", 共用题干: "material", 共用备选答案: "material",
+  单选: "single",
+  单选题: "single",
+  single: "single",
+  单项选择题: "single",
+  多选: "multiple",
+  多选题: "multiple",
+  multiple: "multiple",
+  多项选择题: "multiple",
+  判断: "judge",
+  判断题: "judge",
+  judge: "judge",
+  truefalse: "judge",
+  填空: "fill",
+  填空题: "fill",
+  fill: "fill",
+  简答: "short",
+  简答题: "short",
+  short: "short",
+  问答: "short",
+  论述: "short",
+  材料: "material",
+  材料题: "material",
+  material: "material",
+  共用题干: "material",
+  共用备选答案: "material",
 };
 
 export function parseType(raw: string): QuestionType | null {
@@ -53,7 +72,8 @@ export function validate(q: Question): string | null {
   if (q.type === "single") {
     if (q.options.length < 2) return "单选题至少需要 2 个选项";
     const idx = q.answer.charCodeAt(0) - 65;
-    if (!(idx >= 0 && idx < q.options.length)) return `答案 ${q.answer} 超出选项范围（A-${OPTION_LETTERS[q.options.length - 1]}）`;
+    if (!(idx >= 0 && idx < q.options.length))
+      return `答案 ${q.answer} 超出选项范围（A-${OPTION_LETTERS[q.options.length - 1]}）`;
   }
   if (q.type === "multiple") {
     if (q.options.length < 2) return "多选题至少需要 2 个选项";
@@ -63,12 +83,27 @@ export function validate(q: Question): string | null {
       if (!(idx >= 0 && idx < q.options.length)) return `答案含越界选项 ${ch}`;
     }
   }
+  // 选项区分度（"答案命中选项"核验的可检测面，AI 生成与导入共用）：
+  // ① 空选项 ② 折叠后内容重复 ③ 正确答案选项文本在题干中逐字出现（题干泄漏答案；仅单选且文本 ≥4 字符防误伤）
+  if (q.type === "single" || q.type === "multiple") {
+    const folded = q.options.map((o) => foldText(o));
+    if (folded.some((o) => !o)) return "存在空选项";
+    const dup = folded.find((o, i) => folded.indexOf(o) !== i);
+    if (dup) return `选项内容重复：${dup.slice(0, 20)}`;
+    if (q.type === "single") {
+      const ansText = folded[q.answer.charCodeAt(0) - 65] ?? "";
+      if (ansText.length >= 4 && foldText(q.stem).includes(ansText)) return "题干泄漏答案（正确选项文本在题干中出现）";
+    }
+  }
   if (q.type === "judge" && q.answer !== "对" && q.answer !== "错") return "判断题答案必须为 对/错";
   if (q.type === "fill" && !q.answer) return "填空题答案为空";
   return null;
 }
 
-function build(raw: Omit<Question, "id" | "hash" | "origin" | "score"> & { score?: number }, opt: ImportOptions): Question {
+function build(
+  raw: Omit<Question, "id" | "hash" | "origin" | "score"> & { score?: number },
+  opt: ImportOptions,
+): Question {
   return {
     ...raw,
     id: newQuestionId(),
@@ -95,7 +130,13 @@ export function parseAiken(text: string, opt: ImportOptions = {}): ImportReport 
   const blocks: { rows: string[]; start: number }[] = [];
   let cur: { rows: string[]; start: number } | null = null;
   lines.forEach((line, i) => {
-    if (!line.trim()) { if (cur) { blocks.push(cur); cur = null; } return; }
+    if (!line.trim()) {
+      if (cur) {
+        blocks.push(cur);
+        cur = null;
+      }
+      return;
+    }
     if (!cur) cur = { rows: [], start: i + 1 };
     cur.rows.push(line);
   });
@@ -116,14 +157,24 @@ export function parseAiken(text: string, opt: ImportOptions = {}): ImportReport 
       const options = optLines.map((l) => l.replace(/^[A-J][.)]\s*/, ""));
       const idx = answer.charCodeAt(0) - 65;
       if (idx >= options.length) throw new Error(`答案 ${answer} 超出选项范围`);
-      const q = build({
-        type: "single", stem: stemLines.join("\n"), options, answer,
-        analysis: "", kp: kpLine ? kpLine.replace(/^KP\s*:\s*/i, "").trim() : "",
-      }, opt);
+      const q = build(
+        {
+          type: "single",
+          stem: stemLines.join("\n"),
+          options,
+          answer,
+          analysis: "",
+          kp: kpLine ? kpLine.replace(/^KP\s*:\s*/i, "").trim() : "",
+        },
+        opt,
+      );
       const bad = validate(q);
       if (bad) throw new Error(bad);
       if (dedupe && seenHash.has(q.hash)) duplicates++;
-      else { seenHash.add(q.hash); ok.push(q); }
+      else {
+        seenHash.add(q.hash);
+        ok.push(q);
+      }
     } catch (e) {
       errors.push({ row: block.start, reason: (e as Error).message, raw: block.rows.join(" / ").slice(0, 120) });
     }
@@ -133,9 +184,15 @@ export function parseAiken(text: string, opt: ImportOptions = {}): ImportReport 
 
 /** Excel 列契约映射：题号(忽略)|题型|题干|选项A-F|答案|解析|难度|知识点|分值|来源 */
 export interface ExcelColumnMap {
-  type: number; stem: number; answer: number;
-  options: number[];          // 2-6 个列下标
-  analysis?: number; difficulty?: number; kp?: number; score?: number; source?: number;
+  type: number;
+  stem: number;
+  answer: number;
+  options: number[]; // 2-6 个列下标
+  analysis?: number;
+  difficulty?: number;
+  kp?: number;
+  score?: number;
+  source?: number;
 }
 
 export function parseExcelRows(rows: string[][], map: ExcelColumnMap, opt: ImportOptions = {}): ImportReport {
@@ -146,7 +203,7 @@ export function parseExcelRows(rows: string[][], map: ExcelColumnMap, opt: Impor
   let duplicates = 0;
   const dupeSamples: { row: number; stem: string }[] = [];
   const batch = newBatchId();
-  let lastKp = "";              // 材料组内子题沿用材料的考点
+  let lastKp = ""; // 材料组内子题沿用材料的考点
 
   rows.forEach((row, i) => {
     const rowNo = i + 2; // 首行表头
@@ -166,7 +223,7 @@ export function parseExcelRows(rows: string[][], map: ExcelColumnMap, opt: Impor
       } else if (opt._pendingGroup != null) {
         group = opt._pendingGroup;
         if (cell(map.kp) && cell(map.kp) !== lastKp) {
-          opt._pendingGroup = undefined;   // 考点变化 → 出组（且本题不带组）
+          opt._pendingGroup = undefined; // 考点变化 → 出组（且本题不带组）
           group = undefined;
         }
       }
@@ -174,15 +231,21 @@ export function parseExcelRows(rows: string[][], map: ExcelColumnMap, opt: Impor
       if (type !== "material" && !answer) throw new Error(`答案无法识别："${cell(map.answer)}"`);
       const diffRaw = parseInt(cell(map.difficulty) || "", 10);
       const scoreRaw = parseFloat(cell(map.score) || "0");
-      const q = build({
-        type, stem, options, answer,
-        analysis: cell(map.analysis),
-        difficulty: Number.isFinite(diffRaw) ? Math.min(5, Math.max(1, diffRaw)) : undefined,
-        kp: cell(map.kp) || (group ? lastKp : ""),
-        score: Number.isFinite(scoreRaw) && scoreRaw > 0 ? scoreRaw : undefined,
-        source: cell(map.source),
-        group,
-      }, opt);
+      const q = build(
+        {
+          type,
+          stem,
+          options,
+          answer,
+          analysis: cell(map.analysis),
+          difficulty: Number.isFinite(diffRaw) ? Math.min(5, Math.max(1, diffRaw)) : undefined,
+          kp: cell(map.kp) || (group ? lastKp : ""),
+          score: Number.isFinite(scoreRaw) && scoreRaw > 0 ? scoreRaw : undefined,
+          source: cell(map.source),
+          group,
+        },
+        opt,
+      );
       if (type === "material") lastKp = q.kp;
       const bad = type === "material" ? (foldText(stem) ? null : "材料题干为空") : validate(q);
       if (bad) throw new Error(bad);
@@ -190,8 +253,10 @@ export function parseExcelRows(rows: string[][], map: ExcelColumnMap, opt: Impor
         duplicates++;
         // 已有题摘要回灌（TODO 2.3）：预览显示与题库重复的行，便于取消导入或删旧再导
         if (dupeSamples.length < 20) dupeSamples.push({ row: rowNo, stem: stem.slice(0, 40) });
+      } else {
+        seenHash.add(q.hash);
+        ok.push(q);
       }
-      else { seenHash.add(q.hash); ok.push(q); }
     } catch (e) {
       errors.push({ row: rowNo, reason: (e as Error).message, raw: row.filter(Boolean).join(" | ").slice(0, 120) });
     }

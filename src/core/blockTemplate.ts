@@ -41,7 +41,9 @@ export function ialOf(q: Question): string {
   if (q.review) attrs["exam-review"] = q.review;
   if (q.alt?.length) attrs["exam-alt"] = q.alt.join("|");
   if (typeof q.confidence === "number") attrs["exam-confidence"] = q.confidence.toFixed(2);
-  return Object.entries(attrs).map(([k, v]) => `custom-${k}="${escapeAttr(v)}"`).join(" ");
+  return Object.entries(attrs)
+    .map(([k, v]) => `custom-${k}="${escapeAttr(v)}"`)
+    .join(" ");
 }
 
 const escapeAttr = (s: string) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
@@ -72,7 +74,10 @@ export function questionFromBlock(input: FromBlockInput): Question | null {
   const type = attrs["exam-type"] as QuestionType;
   if (!id || !QUESTION_TYPES.includes(type)) return null;
 
-  const lines = input.text.split("\n").map((l) => l.trim()).filter(Boolean);
+  const lines = input.text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
   const options: string[] = [];
   const stemLines: string[] = [];
   for (const l of lines) {
@@ -112,9 +117,16 @@ const letterIdx = (L: string) => L.charCodeAt(0) - 65;
 
 /** 便捷构造（手工录题/测试）：规范化答案后生成 Question */
 export function makeQuestion(p: {
-  type: QuestionType; stem: string; options?: string[]; answer: string;
-  analysis?: string; kp?: string; source?: string; difficulty?: number;
-  alt?: string[]; group?: string;
+  type: QuestionType;
+  stem: string;
+  options?: string[];
+  answer: string;
+  analysis?: string;
+  kp?: string;
+  source?: string;
+  difficulty?: number;
+  alt?: string[];
+  group?: string;
 }): Question {
   const options = p.options ?? [];
   const answer = p.type === "material" ? "" : (normalizeAnswer(p.type, p.answer) ?? p.answer);

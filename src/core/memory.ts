@@ -15,11 +15,16 @@ export const deckNameForBank = (bankName: string) => DECK_PREFIX + bankName;
 /** 四级自评 → riff rating（1不会 2模糊 3会 4熟知） */
 export function selfRatingToRiffRating(selfRating: number): 0 | 1 | 2 | 3 {
   switch (selfRating) {
-    case 1: return 0;  // Again
-    case 2: return 1;  // Hard
-    case 3: return 2;  // Good
-    case 4: return 3;  // Easy
-    default: return 0;
+    case 1:
+      return 0; // Again
+    case 2:
+      return 1; // Hard
+    case 3:
+      return 2; // Good
+    case 4:
+      return 3; // Easy
+    default:
+      return 0;
   }
 }
 
@@ -30,10 +35,13 @@ export function binaryToRiffRating(remembered: boolean): 0 | 1 | 2 | 3 {
 
 /** 举一反三：完整考点优先 → 同章节（kp 首段）→ 任意；排除已做 */
 export function pickSameKp(
-  all: Question[], seedQuestion: Question, n: number,
-  excludeIds: Set<string> = new Set(), rnd: () => number = Math.random,
+  all: Question[],
+  seedQuestion: Question,
+  n: number,
+  excludeIds: Set<string> = new Set(),
+  rnd: () => number = Math.random,
 ): Question[] {
-  let pool = all.filter((q) => !excludeIds.has(q.id) && q.id !== seedQuestion.id);
+  const pool = all.filter((q) => !excludeIds.has(q.id) && q.id !== seedQuestion.id);
   const sameExact = seedQuestion.kp ? pool.filter((q) => q.kp === seedQuestion.kp) : [];
   const kpRoot = seedQuestion.kp?.split("/")[0];
   const sameRoot = kpRoot ? pool.filter((q) => q.kp?.split("/")[0] === kpRoot && !sameExact.includes(q)) : [];
@@ -42,7 +50,9 @@ export function pickSameKp(
   const drain = (arr: Question[]) => {
     while (arr.length && out.length < n) out.push(arr.splice(Math.floor(rnd() * arr.length), 1)[0]);
   };
-  drain(sameExact); drain(sameRoot); drain(rest);
+  drain(sameExact);
+  drain(sameRoot);
+  drain(rest);
   return out;
 }
 
@@ -70,7 +80,10 @@ export function dailySet(
   const seen = new Set<string>();
   const out: Question[] = [];
   const push = (q: Question) => {
-    if (out.length < n && !seen.has(q.id)) { seen.add(q.id); out.push(q); }
+    if (out.length < n && !seen.has(q.id)) {
+      seen.add(q.id);
+      out.push(q);
+    }
   };
   dueFirst.forEach(push);
   const byWrong = [...all].sort((a, b) => (wrongCounts.get(b.id) ?? 0) - (wrongCounts.get(a.id) ?? 0));

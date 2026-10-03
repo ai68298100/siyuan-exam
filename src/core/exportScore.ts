@@ -20,7 +20,9 @@ export function scoreToMarkdown(bp: Blueprint, score: MockScore, startedAt: numb
     `|---|---|---|---|---|`,
   ];
   for (const s of score.sections) {
-    lines.push(`| ${s.name} | ${s.score} | ${s.full} | ${s.correct}/${s.total} | ${Math.round(s.timeSpentMs / 1000)}s |`);
+    lines.push(
+      `| ${s.name} | ${s.score} | ${s.full} | ${s.correct}/${s.total} | ${Math.round(s.timeSpentMs / 1000)}s |`,
+    );
   }
   lines.push(
     ``,

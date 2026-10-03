@@ -13,8 +13,8 @@ export type SaveState = "idle" | "pending" | "confirmed" | "failed" | "unknown";
 export interface SaveRecord {
   key: string;
   state: SaveState;
-  at: number;              // 最近一次状态变更时刻
-  error?: string;          // failed 时的错误摘要
+  at: number; // 最近一次状态变更时刻
+  error?: string; // failed 时的错误摘要
 }
 
 export interface SaveSummary {
@@ -67,7 +67,7 @@ export class SaveGate {
   }
 
   private async doRun<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    let timer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+    const timer: ReturnType<typeof setTimeout> = setTimeout(() => {
       // 结果未知：不能替用户宣称成功或失败；底层写入完成后由 flush 结果覆盖
       if (this.state(key) === "pending") this.mark(key, "unknown");
     }, this.timeoutMs);
@@ -80,7 +80,7 @@ export class SaveGate {
       this.mark(key, "failed", e instanceof Error ? e.message : String(e));
       throw e;
     } finally {
-      if (timer) { clearTimeout(timer); timer = null; }
+      clearTimeout(timer);
     }
   }
 
@@ -97,7 +97,9 @@ export class SaveGate {
   }
 
   /** 手动清除（用户放弃该目标时） */
-  clear(key: string) { this.states.delete(key); }
+  clear(key: string) {
+    this.states.delete(key);
+  }
 
   private mark(key: string, state: SaveState, error?: string) {
     const prev = this.states.get(key);

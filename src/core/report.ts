@@ -4,7 +4,10 @@
 // ============================================================
 import type { AttemptEvent, Question, ReplayResult } from "./types";
 
-export interface HeatCell { date: string; count: number }
+export interface HeatCell {
+  date: string;
+  count: number;
+}
 
 /** 53 周热力格：以今天所在周收尾，回推 371 天；count=当日做题数 */
 export function heatmap(days: ReplayResult["days"], today: Date = new Date()): HeatCell[] {
@@ -20,12 +23,12 @@ export function heatmap(days: ReplayResult["days"], today: Date = new Date()): H
 }
 
 export interface KpMastery {
-  root: string;            // 考点首段
-  total: number;           // 作答题数
-  accuracy: number;        // 加权正确率 0-1
+  root: string; // 考点首段
+  total: number; // 作答题数
+  accuracy: number; // 加权正确率 0-1
   /** FSRS 风格留存率：R=(1+F·t/S)^DECAY，S 由该考点平均间隔粗估 */
   retention: number;
-  mastery: number;         // mastery = accuracy × retention
+  mastery: number; // mastery = accuracy × retention
 }
 
 const DECAY = -0.1542;
@@ -41,7 +44,9 @@ export function masteryByKp(
   const kpOf = new Map<string, string>();
   for (const q of questions) if (q.kp) kpOf.set(q.id, q.kp);
   const agg = new Map<string, { t: number; c: number; last: number; gaps: number[]; lastTs: number[] }>();
-  const ordered = [...events].filter((e) => e.verdict !== "not_attempted" && e.kind !== "card").sort((a, b) => a.ts - b.ts);
+  const ordered = [...events]
+    .filter((e) => e.verdict !== "not_attempted" && e.kind !== "card")
+    .sort((a, b) => a.ts - b.ts);
   const lastTsByQ = new Map<string, number>();
   for (const e of ordered) {
     const kp = kpOf.get(e.qid);
@@ -51,24 +56,38 @@ export function masteryByKp(
     const prev = lastTsByQ.get(e.qid);
     if (prev) a.gaps.push(Math.max(1, Math.round((e.ts - prev) / 86_400_000)));
     lastTsByQ.set(e.qid, e.ts);
-    a.t++; if (e.verdict === "correct") a.c++;
+    a.t++;
+    if (e.verdict === "correct") a.c++;
     a.last = Math.max(a.last, e.ts);
     a.lastTs.push(e.ts);
     agg.set(root, a);
   }
   const out: KpMastery[] = [];
   for (const [root, a] of agg) {
-    if (a.t < 3) { out.push({ root, total: a.t, accuracy: 0, retention: 0, mastery: -1 }); continue; }
+    if (a.t < 3) {
+      out.push({ root, total: a.t, accuracy: 0, retention: 0, mastery: -1 });
+      continue;
+    }
     const accuracy = a.c / a.t;
     const avgGapDays = a.gaps.length ? a.gaps.reduce((x, y) => x + y, 0) / a.gaps.length : 7;
     const daysSince = Math.max(0, (now - a.last) / 86_400_000);
     const retention = Math.pow(1 + FACTOR * (daysSince / Math.max(1, avgGapDays)), DECAY);
-    out.push({ root, total: a.t, accuracy, retention: Math.max(0, Math.min(1, retention)), mastery: accuracy * retention });
+    out.push({
+      root,
+      total: a.t,
+      accuracy,
+      retention: Math.max(0, Math.min(1, retention)),
+      mastery: accuracy * retention,
+    });
   }
   return out.sort((x, y) => y.mastery - x.mastery);
 }
 
-export interface WeakItem { root: string; accuracy: number; total: number }
+export interface WeakItem {
+  root: string;
+  accuracy: number;
+  total: number;
+}
 
 /** 薄弱考点（升序，仅数据足的） */
 export function weakTop(mast: KpMastery[], n = 10): WeakItem[] {
@@ -103,7 +122,7 @@ export interface CalibrationRow {
 
 export interface CalibrationReport {
   rows: CalibrationRow[];
-  unreported: number;          // 未报信心的客观作答数（区分"没填"与"猜"）
+  unreported: number; // 未报信心的客观作答数（区分"没填"与"猜"）
   /** 校准差：自评"确定"档正确率 − 自评"蒙"档正确率（正数越大区分度越好；样本不足为 null） */
   spread: number | null;
 }
@@ -118,7 +137,10 @@ export function calibration(events: readonly AttemptEvent[]): CalibrationReport 
   for (const e of events) {
     if (e.verdict === "not_attempted") continue;
     if (e.kind !== "practice" && e.kind !== "mock") continue;
-    if (!e.confidence) { unreported++; continue; }
+    if (!e.confidence) {
+      unreported++;
+      continue;
+    }
     const b = buckets.get(e.confidence) ?? { attempts: 0, correct: 0 };
     b.attempts++;
     if (e.verdict === "correct") b.correct++;
@@ -126,11 +148,18 @@ export function calibration(events: readonly AttemptEvent[]): CalibrationReport 
   }
   const rows: CalibrationRow[] = CONF_ORDER.filter((c) => buckets.has(c)).map((c) => {
     const b = buckets.get(c)!;
-    return { confidence: c, attempts: b.attempts, correct: b.correct, accuracy: Math.round((b.correct / b.attempts) * 100) };
+    return {
+      confidence: c,
+      attempts: b.attempts,
+      correct: b.correct,
+      accuracy: Math.round((b.correct / b.attempts) * 100),
+    };
   });
-  const sure = buckets.get("sure"), guess = buckets.get("guess");
-  const spread = sure && guess && sure.attempts >= 3 && guess.attempts >= 3
-    ? Math.round(((sure.correct / sure.attempts) - (guess.correct / guess.attempts)) * 100)
-    : null;
+  const sure = buckets.get("sure"),
+    guess = buckets.get("guess");
+  const spread =
+    sure && guess && sure.attempts >= 3 && guess.attempts >= 3
+      ? Math.round((sure.correct / sure.attempts - guess.correct / guess.attempts) * 100)
+      : null;
   return { rows, unreported, spread };
 }

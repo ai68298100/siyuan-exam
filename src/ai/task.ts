@@ -18,12 +18,12 @@ export type ExplainTemplateId = "practice.hint" | "practice.socratic" | "practic
 /** 任务上下文（G1 身份字段；任一变化 → contextHash 变化） */
 export interface AiTaskContext {
   templateId: ExplainTemplateId;
-  templateVersion: number;        // 提示词模板版本（docs/18 模板修订）
+  templateVersion: number; // 提示词模板版本（docs/18 模板修订）
   qid: string;
-  questionRevision: string;       // 题面指纹（stem+options；改题后旧讲解失效）
-  learnerAnswer: string | null;   // 本次作答快照（null=未作答）
-  submitted: boolean;             // 提交状态（未提交=独立作答中）
-  mode: string;                   // practice|recite|paper|strictMock…
+  questionRevision: string; // 题面指纹（stem+options；改题后旧讲解失效）
+  learnerAnswer: string | null; // 本次作答快照（null=未作答）
+  submitted: boolean; // 提交状态（未提交=独立作答中）
+  mode: string; // practice|recite|paper|strictMock…
   sessionId: string;
 }
 
@@ -34,12 +34,12 @@ export interface AiTaskEnvelope {
   templateId: ExplainTemplateId;
   templateVersion: number;
   status: AiTaskStatus;
-  summary: string;                // 面向用户的一句说明
-  data: { text?: string };        // 讲解类任务产物为文本；结构化任务后续扩展
-  contextHash: string;            // G1：生成时的上下文指纹
+  summary: string; // 面向用户的一句说明
+  data: { text?: string }; // 讲解类任务产物为文本；结构化任务后续扩展
+  contextHash: string; // G1：生成时的上下文指纹
   createdAt: number;
   durationMs: number;
-  tokens: number;                 // 粗估（chars/4，与 CountingChannel 同口径）
+  tokens: number; // 粗估（chars/4，与 CountingChannel 同口径）
   error?: string;
 }
 
@@ -62,17 +62,28 @@ export function questionFingerprint(q: Pick<Question, "stem" | "options">): stri
 
 /** G1 上下文指纹 */
 export function taskContextHash(ctx: AiTaskContext): string {
-  return hashText([
-    ctx.templateId, ctx.templateVersion, ctx.qid, ctx.questionRevision,
-    ctx.learnerAnswer ?? "\u0002", ctx.submitted ? "1" : "0", ctx.mode, ctx.sessionId,
-  ].join("\u0000"));
+  return hashText(
+    [
+      ctx.templateId,
+      ctx.templateVersion,
+      ctx.qid,
+      ctx.questionRevision,
+      ctx.learnerAnswer ?? "\u0002",
+      ctx.submitted ? "1" : "0",
+      ctx.mode,
+      ctx.sessionId,
+    ].join("\u0000"),
+  );
 }
 
 // ---------- 帮助闸门（G6 最小实现） ----------
 
 export type HelpKind = "hint" | "socratic" | "reveal";
 
-export interface HelpVerdict { allowed: boolean; reason?: string }
+export interface HelpVerdict {
+  allowed: boolean;
+  reason?: string;
+}
 
 /** 题目级帮助条件：strictMock 全拒；未提交只允许 hint/socratic（揭示型必须已提交） */
 export function helpAllowed(ctx: Pick<AiTaskContext, "mode" | "submitted">, kind: HelpKind): HelpVerdict {
@@ -88,7 +99,7 @@ const newTaskId = () => `t-${Date.now().toString(36)}-${(taskCounter++).toString
 
 export interface TaskRunnerOpts {
   now?: () => number;
-  maxCalls?: number;              // 预算闸门（119-04 lite）：超限直接拒绝，不发请求
+  maxCalls?: number; // 预算闸门（119-04 lite）：超限直接拒绝，不发请求
 }
 
 export class AiTaskRunner {

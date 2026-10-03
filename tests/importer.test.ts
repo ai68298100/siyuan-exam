@@ -35,7 +35,7 @@ describe("Aiken 解析", () => {
     expect(r1.ok).toHaveLength(2);
     const hashes = new Set(r1.ok.map((q) => q.hash));
     const r2 = parseAiken(AIKEN, { existingHashes: hashes });
-    expect(r2.ok).toHaveLength(0);   // 两道成功题全部撞重（残缺题本就失败）
+    expect(r2.ok).toHaveLength(0); // 两道成功题全部撞重（残缺题本就失败）
     expect(r2.duplicates).toBe(2);
   });
   it("answer 越界报错", () => {
@@ -57,10 +57,10 @@ describe("Aiken 解析", () => {
     const subs = r.ok.filter((q) => q.type !== "material");
     expect(mat.group).toMatch(/^g-[0-9a-f]{6}$/);
     for (const s of subs.slice(0, 2)) {
-      expect(s.group).toBe(mat.group);        // 子题携带组 ID
-      expect(s.kp).toBe("呼吸内科");           // 沿用材料考点
+      expect(s.group).toBe(mat.group); // 子题携带组 ID
+      expect(s.kp).toBe("呼吸内科"); // 沿用材料考点
     }
-    expect(subs[2].group).toBeUndefined();     // 独立题不在组内
+    expect(subs[2].group).toBeUndefined(); // 独立题不在组内
     expect(subs[2].kp).toBe("算术");
   });
 });
@@ -99,12 +99,18 @@ describe("Excel 解析", () => {
 describe("块模板往返", () => {
   it("markdown → IAL → 解析一致", () => {
     const q = makeQuestion({
-      type: "single", stem: "题干\"带引号\"", options: ["甲", "乙"], answer: "A",
-      analysis: "解析", kp: "资料/比重", source: "2023 国考", difficulty: 3,
+      type: "single",
+      stem: '题干"带引号"',
+      options: ["甲", "乙"],
+      answer: "A",
+      analysis: "解析",
+      kp: "资料/比重",
+      source: "2023 国考",
+      difficulty: 3,
     });
     const md = questionToMarkdown(q);
     expect(md).toContain("{{{row");
-    expect(md).toContain('- A. 甲');
+    expect(md).toContain("- A. 甲");
     const ial = parseIal(md.split("{: ")[1]!.replace(/}$/, "").trim());
     // 3.8.5 实测：attributes 表只索引 custom- 前缀，IAL 必须写全名
     expect(ial["custom-exam-id"]).toBe(q.id);

@@ -84,7 +84,7 @@
     <button class="b3-button b3-button--outline fn__flex-center" class:fn__size200={fnSize} id={key} type="button" onclick={handleClick} style={style}>{button?.label ?? value}</button>
 {:else if type === "select"}
     <select class="b3-select fn__flex-center" class:fn__size200={fnSize} id={key} bind:value={value} onchange={handleChanged} style={style}>
-        {#each Object.entries(options) as [optionValue, text]}
+        {#each Object.entries(options) as [optionValue, text] (optionValue)}
             <option value={optionValue}>{text}</option>
         {/each}
     </select>

@@ -7,25 +7,25 @@ import type { Question } from "./types";
 
 export interface DupCluster {
   ids: string[];
-  similarity: number;          // 0-1（精确重复=1）
-  sampleStem: string;          // 展示用：首题题干截断
+  similarity: number; // 0-1（精确重复=1）
+  sampleStem: string; // 展示用：首题题干截断
 }
 
 export interface MissingFieldRow {
-  field: string;               // answer | analysis | kp | source | options | groupOfMaterial
+  field: string; // answer | analysis | kp | source | options | groupOfMaterial
   count: number;
-  qids: string[];              // 上限内命中的题目 id（截断见 LIMIT_PER_FIELD）
+  qids: string[]; // 上限内命中的题目 id（截断见 LIMIT_PER_FIELD）
 }
 
 export interface BankHealthReport {
   total: number;
-  clusters: DupCluster[];      // 全部重复簇（similarity=1 即精确重复）
+  clusters: DupCluster[]; // 全部重复簇（similarity=1 即精确重复）
   missing: MissingFieldRow[];
 }
 
-const LIMIT_PER_FIELD = 50;    // 清单截断：UI 显示 count 全量、qid 只带前 50
+const LIMIT_PER_FIELD = 50; // 清单截断：UI 显示 count 全量、qid 只带前 50
 const FUZZY_THRESHOLD = 0.82;
-const MAX_FUZZY_SCAN = 3000;   // 超大题库退化为只查精确重复（万题 O(n²) 不可接受）
+const MAX_FUZZY_SCAN = 3000; // 超大题库退化为只查精确重复（万题 O(n²) 不可接受）
 
 // ---------- 相似度 ----------
 
@@ -37,7 +37,8 @@ function bigrams(s: string): Set<string> {
 }
 
 export function jaccard(a: string, b: string): number {
-  const A = bigrams(a), B = bigrams(b);
+  const A = bigrams(a),
+    B = bigrams(b);
   let inter = 0;
   for (const g of A) if (B.has(g)) inter++;
   return inter / (A.size + B.size - inter);
@@ -78,7 +79,10 @@ export function duplicateClusters(qs: Question[], threshold = FUZZY_THRESHOLD): 
       for (let j = i + 1; j < rest.length; j++) {
         if (used.has(rest[j].id)) continue;
         const sim = jaccard(stemFingerprint(rest[i]), stemFingerprint(rest[j]));
-        if (sim >= threshold) { group.push(rest[j]); used.add(rest[j].id); }
+        if (sim >= threshold) {
+          group.push(rest[j]);
+          used.add(rest[j].id);
+        }
       }
       if (group.length > 1) clusters.push(clusterOf(group, threshold));
     }
@@ -100,10 +104,16 @@ const CHOICE_TYPES = new Set(["single", "multiple"]);
 
 /** 按题型体检：选择题必须有 ≥2 选项与答案；全部题型要求解析/考点/出处（缺计缺失） */
 export function missingFields(qs: Question[]): MissingFieldRow[] {
-  const miss = (field: string, ids: string[]): MissingFieldRow =>
-    ({ field, count: ids.length, qids: ids.slice(0, LIMIT_PER_FIELD) });
-  const noAnalysis: string[] = [], noKp: string[] = [], noSource: string[] = [];
-  const noOptions: string[] = [], noAnswer: string[] = [];
+  const miss = (field: string, ids: string[]): MissingFieldRow => ({
+    field,
+    count: ids.length,
+    qids: ids.slice(0, LIMIT_PER_FIELD),
+  });
+  const noAnalysis: string[] = [],
+    noKp: string[] = [],
+    noSource: string[] = [];
+  const noOptions: string[] = [],
+    noAnswer: string[] = [];
   for (const q of qs) {
     if (!q.analysis?.trim()) noAnalysis.push(q.id);
     if (!q.kp?.trim()) noKp.push(q.id);

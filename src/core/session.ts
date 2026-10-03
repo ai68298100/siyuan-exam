@@ -15,7 +15,12 @@ export class PracticeSession {
   /** 需要写入流水的事件（作答），上层读取后批量 append */
   readonly answered: { qid: string; grade: GradeResult; timeMs: number }[] = [];
 
-  constructor(questions: Question[], mode: string, existing?: SessionState, private readonly now: () => number = Date.now) {
+  constructor(
+    questions: Question[],
+    mode: string,
+    existing?: SessionState,
+    private readonly now: () => number = Date.now,
+  ) {
     this.byId = new Map(questions.map((q) => [q.id, q]));
     if (existing) {
       this.state = { ...existing, finishedAt: undefined };
@@ -37,20 +42,28 @@ export class PracticeSession {
     }
   }
 
-  get id() { return this.state.id; }
-  get phase(): SessionPhase { return this.state.finishedAt ? "finished" : "running"; }
+  get id() {
+    return this.state.id;
+  }
+  get phase(): SessionPhase {
+    return this.state.finishedAt ? "finished" : "running";
+  }
   get current(): Question | null {
     const id = this.state.qids[this.state.cursor];
-    return id ? this.byId.get(id) ?? null : null;
+    return id ? (this.byId.get(id) ?? null) : null;
   }
-  get progress() { return { done: this.state.cursor, total: this.state.qids.length }; }
+  get progress() {
+    return { done: this.state.cursor, total: this.state.qids.length };
+  }
 
   setDraft(qid: string, value: string) {
     this.state.drafts[qid] = value;
     this.touch();
   }
 
-  getDraft(qid: string): string { return this.state.drafts[qid] ?? ""; }
+  getDraft(qid: string): string {
+    return this.state.drafts[qid] ?? "";
+  }
 
   /** 提交当前题：判分 + 记录待写流水事件；返回判分结果（UI 渲染反馈态）。
    *  已答快照（含位置）与重排集合同步进 state（37-05），暂停/重载后可完整恢复 */
@@ -59,7 +72,13 @@ export class PracticeSession {
     if (!q || this.phase === "finished") return null;
     const g = grade(q, myAnswer);
     this.answered.push({ qid: q.id, grade: g, timeMs });
-    (this.state.answered ??= []).push({ qid: q.id, pos: this.state.cursor, verdict: g.verdict, myAnswer: g.myAnswer, timeMs });
+    (this.state.answered ??= []).push({
+      qid: q.id,
+      pos: this.state.cursor,
+      verdict: g.verdict,
+      myAnswer: g.myAnswer,
+      timeMs,
+    });
     // 学习科学 re-review：答错且尚未重排过 → 排到队尾再来一次（每题至多一次，防死循环）
     if (g.verdict === "wrong" && !this.requeued.has(q.id)) {
       this.requeued.add(q.id);
@@ -121,7 +140,9 @@ export class PracticeSession {
     return { total: this.answered.length, correct, wrong };
   }
 
-  private touch() { this.state.updatedAt = this.now(); }
+  private touch() {
+    this.state.updatedAt = this.now();
+  }
 }
 
 /** 抽题策略：随机 n 题（快刷）；后续模式（错题/收藏/cram）在此扩展 */

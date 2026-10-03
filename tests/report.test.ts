@@ -12,9 +12,19 @@ const dayKey = (offset: number) => {
 const q1 = makeQuestion({ type: "single", stem: "A", options: ["1", "2"], answer: "A", kp: "资料/增长率" });
 const q2 = makeQuestion({ type: "judge", stem: "B", answer: "对", kp: "言语/逻辑" });
 const ev = (i: number, qid: string, verdict: "correct" | "wrong"): AttemptEvent => ({
-  v: 1, eid: "e" + i, ts: NOW - i * 86_400_000, qid,
-  kind: "practice", mode: "single", verdict, myAnswer: null,
-  sessionId: "s", examId: null, queue: "normal", device: "d", seq: i,
+  v: 1,
+  eid: "e" + i,
+  ts: NOW - i * 86_400_000,
+  qid,
+  kind: "practice",
+  mode: "single",
+  verdict,
+  myAnswer: null,
+  sessionId: "s",
+  examId: null,
+  queue: "normal",
+  device: "d",
+  seq: i,
 });
 
 describe("热力图", () => {
@@ -29,9 +39,16 @@ describe("热力图", () => {
 
 describe("考点掌握度", () => {
   it("首段聚合：正确率 × 留存；<3 题数据不足(-1)", () => {
-    const qs = [q1, makeQuestion({ type: "judge", stem: "A2", answer: "对", kp: "资料/比重" }), q2, makeQuestion({ type: "fill", stem: "B2", answer: "x", kp: "言语" })];
+    const qs = [
+      q1,
+      makeQuestion({ type: "judge", stem: "A2", answer: "对", kp: "资料/比重" }),
+      q2,
+      makeQuestion({ type: "fill", stem: "B2", answer: "x", kp: "言语" }),
+    ];
     const events = [
-      ev(3, q1.id, "wrong"), ev(2, q1.id, "correct"), ev(1, qs[1].id, "correct"),
+      ev(3, q1.id, "wrong"),
+      ev(2, q1.id, "correct"),
+      ev(1, qs[1].id, "correct"),
       ev(0, q2.id, "correct"),
     ];
     const mast = masteryByKp(qs, new Map(), events, NOW);
@@ -40,14 +57,11 @@ describe("考点掌握度", () => {
     expect(ziliao.accuracy).toBeCloseTo(2 / 3);
     const yanYu = mast.find((m) => m.root === "言语")!;
     expect(yanYu.total).toBe(1);
-    expect(yanYu.mastery).toBe(-1);      // 数据不足
+    expect(yanYu.mastery).toBe(-1); // 数据不足
   });
   it("薄弱 Top10 升序且剔除数据不足", () => {
     const qs = [q1, q2];
-    const events = [
-      ev(2, q1.id, "wrong"), ev(1, q1.id, "correct"), ev(0, q1.id, "correct"),
-      ev(0, q2.id, "correct"),
-    ];
+    const events = [ev(2, q1.id, "wrong"), ev(1, q1.id, "correct"), ev(0, q1.id, "correct"), ev(0, q2.id, "correct")];
     // q2 仅 1 题 → 数据不足剔除
     const byQuestion = new Map();
     const mast = masteryByKp(qs, byQuestion, events, NOW);
@@ -74,13 +88,13 @@ describe("错题即重排（re-review）", () => {
       makeQuestion({ type: "judge", stem: "B", answer: "对" }),
     ];
     const s = new PracticeSession(qs, "single", undefined, () => Date.now());
-    expect(s.submit("B")!.grade.verdict).toBe("wrong");   // A 错 → 排队尾
+    expect(s.submit("B")!.grade.verdict).toBe("wrong"); // A 错 → 排队尾
     expect(s.state.qids).toHaveLength(3);
     s.next();
     expect(s.submit("对")!.grade.verdict).toBe("correct");
     s.next();
     expect(s.submit("A")!.grade.verdict).toBe("correct"); // 重来的 A 答对，不再重排
-    expect(s.state.qids.filter((x) => x === qs[0].id)).toHaveLength(2);   // 原位 + 一次重排
+    expect(s.state.qids.filter((x) => x === qs[0].id)).toHaveLength(2); // 原位 + 一次重排
     expect(s.state.qids[s.state.qids.length - 1]).toBe(qs[0].id);
   });
 });
@@ -88,9 +102,19 @@ describe("错题即重排（re-review）", () => {
 function mk(i: number, qid: string, verdict: "correct" | "wrong", hour = 12): AttemptEvent {
   const d = new Date(2026, 9, 2, hour, 0);
   return {
-    v: 1, eid: "e" + i + hour, ts: d.getTime(), qid,
-    kind: "practice", mode: "single", verdict, myAnswer: null,
-    sessionId: "s", examId: null, queue: "normal", device: "d", seq: i,
+    v: 1,
+    eid: "e" + i + hour,
+    ts: d.getTime(),
+    qid,
+    kind: "practice",
+    mode: "single",
+    verdict,
+    myAnswer: null,
+    sessionId: "s",
+    examId: null,
+    queue: "normal",
+    device: "d",
+    seq: i,
   };
 }
 

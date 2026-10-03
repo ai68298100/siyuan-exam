@@ -4,12 +4,16 @@
 // ============================================================
 import type { ReplayResult } from "./types";
 
-export interface WeekAgg { key: string; attempts: number; correct: number }
+export interface WeekAgg {
+  key: string;
+  attempts: number;
+  correct: number;
+}
 
 /** 本地周一 00:00 */
 function mondayOf(d: Date): Date {
   const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const dow = (x.getDay() + 6) % 7;   // 0=Mon
+  const dow = (x.getDay() + 6) % 7; // 0=Mon
   x.setDate(x.getDate() - dow);
   return x;
 }
@@ -26,13 +30,17 @@ export function weeklyAggregates(days: ReplayResult["days"], today: Date = new D
     const mon = new Date(thisMonday);
     mon.setDate(mon.getDate() - w * 7);
     const key = keyOf(mon);
-    let attempts = 0, correct = 0;
+    let attempts = 0,
+      correct = 0;
     for (let d = 0; d < 7; d++) {
       const day = new Date(mon);
       day.setDate(day.getDate() + d);
       const k = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
       const v = days.get(k);
-      if (v) { attempts += v.attempts; correct += v.correct; }
+      if (v) {
+        attempts += v.attempts;
+        correct += v.correct;
+      }
     }
     out.push({ key, attempts, correct });
   }
@@ -45,7 +53,11 @@ export function weekCompare(weeks: WeekAgg[]): { thisWeek: WeekAgg; lastWeek: We
   return { thisWeek: weeks[weeks.length - 1], lastWeek: weeks[weeks.length - 2] };
 }
 
-export interface DayTrendPoint { date: string; attempts: number; correct: number }
+export interface DayTrendPoint {
+  date: string;
+  attempts: number;
+  correct: number;
+}
 
 /** 最近 n 天（含今天）逐日做题量，旧→新（2.6 趋势线；本地日界，缺日补零） */
 export function dailyTrend(days: ReplayResult["days"], today: Date = new Date(), n = 30): DayTrendPoint[] {

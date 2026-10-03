@@ -11,15 +11,25 @@ class GatedStorage implements StorageAdapter {
   release: () => void = () => {};
   failNext = false;
   private gate: Promise<void> | null = null;
-  async load(key: string) { return this.map.get(key); }
+  async load(key: string) {
+    return this.map.get(key);
+  }
   async save(key: string, value: unknown) {
     if (this.gate) await this.gate;
     this.saves++;
-    if (this.failNext) { this.failNext = false; throw new Error("disk full"); }
+    if (this.failNext) {
+      this.failNext = false;
+      throw new Error("disk full");
+    }
     this.map.set(key, value);
   }
-  hold() { this.gate = new Promise<void>((r) => (this.release = r)); }
-  unhold() { this.release(); this.gate = null; }
+  hold() {
+    this.gate = new Promise<void>((r) => (this.release = r));
+  }
+  unhold() {
+    this.release();
+    this.gate = null;
+  }
 }
 
 const log = (storage: StorageAdapter) => new AttemptLog(storage, "attempts/log", () => 1_000_000, 10_000, 60_000);
@@ -34,8 +44,8 @@ describe("AttemptLog 写入协调（37-03）", () => {
     const a = log(s);
     a.append({ qid: "q1", kind: "practice", mode: "m", verdict: "correct", myAnswer: null, sessionId: "s" });
     s.hold();
-    const p = a.flush();                       // 在途写入（快照=1 条）
-    a.append({ qid: "q2", kind: "practice", mode: "m", verdict: "wrong", myAnswer: null, sessionId: "s" });  // 写入期间新增
+    const p = a.flush(); // 在途写入（快照=1 条）
+    a.append({ qid: "q2", kind: "practice", mode: "m", verdict: "wrong", myAnswer: null, sessionId: "s" }); // 写入期间新增
     s.unhold();
     await p;
     // 第一份快照只有 q1；新增使 dirty 保持，由 flush 内部补写第二份（两条齐全）
@@ -49,7 +59,7 @@ describe("AttemptLog 写入协调（37-03）", () => {
     a.append({ qid: "q1", kind: "practice", mode: "m", verdict: "correct", myAnswer: null, sessionId: "s" });
     s.hold();
     const p1 = a.flush();
-    const p2 = a.flush();                      // 在途 → 只置 flushAgain
+    const p2 = a.flush(); // 在途 → 只置 flushAgain
     s.unhold();
     await Promise.all([p1, p2]);
     expect(a.dirty).toBe(false);
@@ -64,20 +74,20 @@ describe("AttemptLog 写入协调（37-03）", () => {
     await expect(a.flush()).rejects.toThrow("disk full");
     expect(a.dirty).toBe(true);
     expect(a.lastFlushError).toBe("disk full");
-    await a.flush();                            // 重试
+    await a.flush(); // 重试
     expect(a.dirty).toBe(false);
     expect(persisted(s)).toHaveLength(1);
   });
 
   it("后台节流调用失败不产生未处理拒绝（void flush().catch）", async () => {
     const s = new GatedStorage();
-    const a = new AttemptLog(s, "k", () => 1, 2, 60_000);   // flushLimit=2：第 2 条触发后台 flush
+    const a = new AttemptLog(s, "k", () => 1, 2, 60_000); // flushLimit=2：第 2 条触发后台 flush
     s.failNext = true;
     a.append({ qid: "q1", kind: "practice", mode: "m", verdict: "correct", myAnswer: null, sessionId: "s" });
-    await Promise.resolve();                    // 让微任务跑完
+    await Promise.resolve(); // 让微任务跑完
     a.append({ qid: "q2", kind: "practice", mode: "m", verdict: "wrong", myAnswer: null, sessionId: "s" });
     await new Promise((r) => setTimeout(r, 10));
-    expect(a.dirty).toBe(true);                 // 失败后待保存标记保留
+    expect(a.dirty).toBe(true); // 失败后待保存标记保留
     s.failNext = false;
     await a.flush();
     expect(a.dirty).toBe(false);
@@ -86,8 +96,19 @@ describe("AttemptLog 写入协调（37-03）", () => {
 
 describe("attempts 落盘 v2 信封与迁移（TODO 0 组 schemaVersion）", () => {
   const ev = (i: number): AttemptEvent => ({
-    v: 1, eid: `e${i}`, ts: 1_000 + i, qid: "q", kind: "practice", mode: "m",
-    verdict: "correct", myAnswer: null, sessionId: "s", examId: null, queue: "normal", device: "d", seq: i,
+    v: 1,
+    eid: `e${i}`,
+    ts: 1_000 + i,
+    qid: "q",
+    kind: "practice",
+    mode: "m",
+    verdict: "correct",
+    myAnswer: null,
+    sessionId: "s",
+    examId: null,
+    queue: "normal",
+    device: "d",
+    seq: i,
   });
 
   it("新写入为 { v, events } 信封；读回完整", async () => {

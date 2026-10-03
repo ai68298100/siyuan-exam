@@ -11,13 +11,24 @@ import { PracticeSession, pickRandom, groupAdjacent } from "./core/session";
 import { deckNameForBank, selfRatingToRiffRating, pickSameKp, cramQueue, dailySet } from "./core/memory";
 import { SaveGate } from "./core/saveGate";
 import type { MockRunSnapshot } from "./core/mock";
-import { appendActions, completeAction, cancelAction, openActions, type ActionItem, type ActionKind } from "./core/actions";
+import {
+  appendActions,
+  completeAction,
+  cancelAction,
+  openActions,
+  type ActionItem,
+  type ActionKind,
+} from "./core/actions";
 import type { ImportReport } from "./importer/pipeline";
 
-export interface BankInfo { id: string; name: string; createdAt: number }
+export interface BankInfo {
+  id: string;
+  name: string;
+  createdAt: number;
+}
 
 export interface MockRecord {
-  id: string;               // 蓝图 id
+  id: string; // 蓝图 id
   /** 本次考试运行 id（r-…；与蓝图分离，同蓝图多次考试互不覆盖；旧记录无此字段） */
   runId?: string;
   name: string;
@@ -81,24 +92,44 @@ export class ExamApp {
       this.kernelOnline = false;
       this.probeMessage = "内核不可达：离线降级";
     }
-    try { await this.attempts.load(deviceId); } catch { /* 流水损坏已在 load 内部兜底 */ }
-    try { await this.loadWrongOverlay(); } catch { this.wrongOverlay = new Map(); }
-    try { await this.loadWrongReasons(); } catch { this.wrongReasons = new Map(); }
+    try {
+      await this.attempts.load(deviceId);
+    } catch {
+      /* 流水损坏已在 load 内部兜底 */
+    }
+    try {
+      await this.loadWrongOverlay();
+    } catch {
+      this.wrongOverlay = new Map();
+    }
+    try {
+      await this.loadWrongReasons();
+    } catch {
+      this.wrongReasons = new Map();
+    }
     this.invalidate();
     try {
       const banks = await this.deps.storage.load(BANK_REGISTRY_KEY);
       if (Array.isArray(banks)) this.banks = banks as BankInfo[];
-    } catch { this.banks = []; }
+    } catch {
+      this.banks = [];
+    }
   }
 
   // ---------- 题库 ----------
-  listBanks(): BankInfo[] { return [...this.banks]; }
+  listBanks(): BankInfo[] {
+    return [...this.banks];
+  }
 
   async createBank(name: string): Promise<BankInfo> {
     const clean = name.trim();
     if (!clean) throw new Error("题库名不能为空");
     const notebookId = await this.deps.client.createNotebook(`题库/${clean}`);
-    await this.deps.client.createDocWithMd(notebookId, "/首页", `# 题库：${clean}\n\n> 本笔记本由小驴考试管理。章节文档存放题目块。\n`);
+    await this.deps.client.createDocWithMd(
+      notebookId,
+      "/首页",
+      `# 题库：${clean}\n\n> 本笔记本由小驴考试管理。章节文档存放题目块。\n`,
+    );
     const info: BankInfo = { id: notebookId, name: clean, createdAt: Date.now() };
     this.banks.push(info);
     await this.deps.storage.save(BANK_REGISTRY_KEY, this.banks);
@@ -119,7 +150,11 @@ export class ExamApp {
   async commitImport(bankId: string, report: ImportReport): Promise<ImportCommitResult> {
     if (!report.ok.length) return { written: 0, docs: [], readback: { confirmed: [], missing: [], verified: false } };
     const expected = report.ok.map((q) => q.id);
-    const baseline = this.kernelOnline ? await this.listQuestions(bankId).then((qs) => qs.length).catch(() => 0) : 0;
+    const baseline = this.kernelOnline
+      ? await this.listQuestions(bankId)
+          .then((qs) => qs.length)
+          .catch(() => 0)
+      : 0;
     const byDoc = new Map<string, typeof report.ok>();
     for (const q of report.ok) {
       const doc = q.kp ? `/${q.kp.split("/")[0]}` : `/导入/${report.batch}`;
@@ -143,7 +178,9 @@ export class ExamApp {
         try {
           const n = await this.listQuestions(bankId);
           if (n.length >= baseline + written) break;
-        } catch { /* 索引未就绪，继续等 */ }
+        } catch {
+          /* 索引未就绪，继续等 */
+        }
       }
     }
     // 读回确认（U08）：完成页只认真实读回的 qid；读回失败如实报告"未核实"，不冒充成功
@@ -157,7 +194,9 @@ export class ExamApp {
           missing: expected.filter((id) => !have.has(id)),
           verified: true,
         };
-      } catch { readback = { confirmed: [], missing: [], verified: false }; }
+      } catch {
+        readback = { confirmed: [], missing: [], verified: false };
+      }
     }
     return { written, docs, readback };
   }
@@ -176,13 +215,17 @@ export class ExamApp {
   }
 
   /** 块菜单直通（2.2）：按 blockId 在各题库定位题目；离线返回 null（调用方降级提示） */
-  async findQuestionByBlock(blockId: string): Promise<{ q: Question & { blockId: string; rootId: string }; bank: BankInfo } | null> {
+  async findQuestionByBlock(
+    blockId: string,
+  ): Promise<{ q: Question & { blockId: string; rootId: string }; bank: BankInfo } | null> {
     if (!blockId || !this.kernelOnline) return null;
     for (const bank of this.listBanks()) {
       try {
         const q = (await this.listQuestions(bank.id)).find((x) => x.blockId === blockId);
         if (q) return { q, bank };
-      } catch { /* 该库读取失败 → 试下一个 */ }
+      } catch {
+        /* 该库读取失败 → 试下一个 */
+      }
     }
     return null;
   }
@@ -215,7 +258,8 @@ export class ExamApp {
   async setWrongStatus(qid: string, status: "mastered" | "removed" | "active"): Promise<void> {
     const current = this.derived().wrongbook.get(qid);
     const key = "wrongbook/overlays";
-    const v = (await this.deps.storage.load(key)) as Record<string, { status: string; at: number; wrongCount: number }> | undefined;
+    const v = (await this.deps.storage.load(key)) as
+      Record<string, { status: string; at: number; wrongCount: number }> | undefined;
     const map: Record<string, { status: string; at: number; wrongCount: number }> = v ?? {};
     if (status === "active") delete map[qid];
     else map[qid] = { status, at: Date.now(), wrongCount: current?.wrongCount ?? 0 };
@@ -227,7 +271,8 @@ export class ExamApp {
   private wrongOverlay = new Map<string, { status: string; at: number; wrongCount: number }>();
 
   private async loadWrongOverlay(): Promise<void> {
-    const v = (await this.deps.storage.load("wrongbook/overlays")) as Record<string, { status: string; at: number; wrongCount: number }> | undefined;
+    const v = (await this.deps.storage.load("wrongbook/overlays")) as
+      Record<string, { status: string; at: number; wrongCount: number }> | undefined;
     this.wrongOverlay = new Map(Object.entries(v ?? {}));
   }
 
@@ -235,7 +280,9 @@ export class ExamApp {
   private wrongReasons = new Map<string, "careless" | "unknown" | "trap">();
 
   async saveWrongReason(qid: string, reason: "careless" | "unknown" | "trap"): Promise<void> {
-    const map = ((await this.deps.storage.load(WRONG_REASON_KEY)) as Record<string, { reason: string; at: number }> | undefined) ?? {};
+    const map =
+      ((await this.deps.storage.load(WRONG_REASON_KEY)) as
+        Record<string, { reason: string; at: number }> | undefined) ?? {};
     map[qid] = { reason, at: Date.now() };
     await this.deps.storage.save(WRONG_REASON_KEY, map);
     this.wrongReasons.set(qid, reason);
@@ -250,7 +297,9 @@ export class ExamApp {
   private async loadWrongReasons(): Promise<void> {
     const map = (await this.deps.storage.load(WRONG_REASON_KEY)) as Record<string, { reason?: string }> | undefined;
     this.wrongReasons = new Map(
-      Object.entries(map ?? {}).filter((e): e is [string, { reason: "careless" | "unknown" | "trap" }] => !!e[1]?.reason).map(([k, v]) => [k, v.reason]),
+      Object.entries(map ?? {})
+        .filter((e): e is [string, { reason: "careless" | "unknown" | "trap" }] => !!e[1]?.reason)
+        .map(([k, v]) => [k, v.reason]),
     );
   }
 
@@ -259,16 +308,22 @@ export class ExamApp {
     return new Map(this.wrongReasons);
   }
 
-  private invalidate() { this.replayCache = null; }
+  private invalidate() {
+    this.replayCache = null;
+  }
 
-  async flush(): Promise<void> { await this.attempts.flush(); }
+  async flush(): Promise<void> {
+    await this.attempts.flush();
+  }
 
   // ---------- 下一行动（U15 lite：持久化 + 去重 + 状态可回看） ----------
   private async loadActions(): Promise<ActionItem[]> {
     try {
       const v = await this.deps.storage.load(ACTIONS_KEY);
       return Array.isArray(v) ? (v as ActionItem[]) : [];
-    } catch { return []; }
+    } catch {
+      return [];
+    }
   }
 
   private async saveActions(list: ActionItem[]): Promise<void> {
@@ -276,7 +331,9 @@ export class ExamApp {
   }
 
   /** 加入行动（同 kind+qid 去重）；返回实际新增与跳过数 */
-  async addActions(drafts: { kind: ActionKind; qid?: string; sessionId?: string; detail: string }[]): Promise<{ added: number; skipped: number }> {
+  async addActions(
+    drafts: { kind: ActionKind; qid?: string; sessionId?: string; detail: string }[],
+  ): Promise<{ added: number; skipped: number }> {
     const list = await this.loadActions();
     const r = appendActions(list, drafts, this.deps.now?.() ?? Date.now());
     if (r.added) await this.saveActions(r.list);
@@ -300,7 +357,9 @@ export class ExamApp {
   }
 
   // ---------- 会话（单活动） ----------
-  currentSession(): PracticeSession | null { return this.activeSession; }
+  currentSession(): PracticeSession | null {
+    return this.activeSession;
+  }
 
   async startSession(questions: Question[], mode: string, bankId?: string): Promise<PracticeSession> {
     if (this.activeSession && this.activeSession.phase === "running") {
@@ -309,7 +368,7 @@ export class ExamApp {
     // 材料组聚拢：所有入口统一生效（单点，替代各调用方自行排序）
     const ordered = groupAdjacent(questions);
     this.activeSession = new PracticeSession(ordered, mode, undefined, this.deps.now ?? (() => Date.now()));
-    if (bankId) this.activeSession.state.bankId = bankId;   // 37-05：会话归属题库
+    if (bankId) this.activeSession.state.bankId = bankId; // 37-05：会话归属题库
     await this.saveSession();
     return this.activeSession;
   }
@@ -320,13 +379,16 @@ export class ExamApp {
   /** 恢复（含启动时）：questionLoader 负责按 qids 补题面；
    *  过期草稿（2.4）：>7 天隐藏（返回 null 但保留），>30 天清理存储；
    *  37-05：bankId 不匹配不跨库恢复；缺题如实剔除并记入 lastResumeMissing */
-  async resumeSession(questionLoader: (qids: string[]) => Promise<Question[]>, expectedBankId?: string): Promise<PracticeSession | null> {
+  async resumeSession(
+    questionLoader: (qids: string[]) => Promise<Question[]>,
+    expectedBankId?: string,
+  ): Promise<PracticeSession | null> {
     if (this.activeSession?.phase === "running") return this.activeSession;
     this.lastResumeMissing = [];
     try {
-      const saved = await this.deps.storage.load(SESSION_KEY) as SessionState | undefined;
+      const saved = (await this.deps.storage.load(SESSION_KEY)) as SessionState | undefined;
       if (!saved?.qids?.length || saved.finishedAt) return null;
-      if (saved.bankId && expectedBankId && saved.bankId !== expectedBankId) return null;   // 跨库不串
+      if (saved.bankId && expectedBankId && saved.bankId !== expectedBankId) return null; // 跨库不串
       const now = this.deps.now ?? Date.now;
       const age = now() - (saved.updatedAt || saved.startedAt);
       if (age > DRAFT_DROP_MS) {
@@ -372,13 +434,20 @@ export class ExamApp {
         await new Promise((r) => setTimeout(r, 700));
         try {
           if (await this.listQuestions(bankId).then((qs) => qs.some((x) => x.id === q.id))) break;
-        } catch { /* 继续 等 */ }
+        } catch {
+          /* 继续 等 */
+        }
       }
     }
   }
 
   /** 题目笔记子块（docs/02 §2.4）：kind = mnemonic | note | ai-explain */
-  async appendQuestionNote(qid: string, blockId: string | undefined, text: string, kind: "mnemonic" | "note" | "ai-explain"): Promise<void> {
+  async appendQuestionNote(
+    qid: string,
+    blockId: string | undefined,
+    text: string,
+    kind: "mnemonic" | "note" | "ai-explain",
+  ): Promise<void> {
     if (!blockId) throw new Error("题目块不存在（先完成导入）");
     const md = `{{{row\n${text}\n}}}\n{: exam-note-id="${qid}-n-${Date.now().toString(36)}" exam-note-kind="${kind}"`;
     await this.deps.client.appendBlock(blockId, md);
@@ -396,15 +465,21 @@ export class ExamApp {
 
   /** 批量编辑应用（43-06）：逐题写 custom-exam-* 属性；返回 {ok, failed}。
    *  单题失败不中断批次；离线直接拒绝（调用方已有在线守卫，此为兜底）。 */
-  async applyBatchEdit(changes: { blockId: string; field: "kp" | "difficulty"; to: string }[]): Promise<{ ok: number; failed: number }> {
+  async applyBatchEdit(
+    changes: { blockId: string; field: "kp" | "difficulty"; to: string }[],
+  ): Promise<{ ok: number; failed: number }> {
     if (!this.kernelOnline) throw new Error("离线：批量编辑需要内核可写");
-    let ok = 0, failed = 0;
+    let ok = 0,
+      failed = 0;
     for (const c of changes) {
       try {
         await this.saves.run(`batch-edit/${c.blockId}`, () =>
-          this.deps.client.setExamAttrs(c.blockId, { [c.field === "kp" ? "exam-kp" : "exam-difficulty"]: c.to }));
+          this.deps.client.setExamAttrs(c.blockId, { [c.field === "kp" ? "exam-kp" : "exam-difficulty"]: c.to }),
+        );
         ok++;
-      } catch { failed++; }
+      } catch {
+        failed++;
+      }
     }
     return { ok, failed };
   }
@@ -432,12 +507,15 @@ export class ExamApp {
          AND a.name='custom-exam-batch' AND a.value='${escaped}'`,
     );
     const ids = rows.map((r) => String(r.id ?? "")).filter(Boolean);
-    let deleted = 0, failed = 0;
+    let deleted = 0,
+      failed = 0;
     for (const id of ids) {
       try {
         await this.saves.run(`rollback/${id}`, () => this.deps.client.removeBlock(id));
         deleted++;
-      } catch { failed++; }
+      } catch {
+        failed++;
+      }
     }
     this.invalidate();
     return { deleted, failed };
@@ -448,9 +526,13 @@ export class ExamApp {
   async writeDailyReport(bankId: string, bankName: string): Promise<string> {
     const { dailyDocPath } = await import("./core/weekly");
     const d = this.derived();
-    let attempts = 0, correct = 0, eliminated = 0;
-    for (const s of d.byQuestion.values()) { attempts += s.attempts; correct += s.correct; }
-    eliminated = [...d.wrongbook.values()].filter((w) => w.status === "eliminated").length;
+    let attempts = 0,
+      correct = 0;
+    for (const s of d.byQuestion.values()) {
+      attempts += s.attempts;
+      correct += s.correct;
+    }
+    const eliminated = [...d.wrongbook.values()].filter((w) => w.status === "eliminated").length;
     const today = new Date();
     const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
     const md = [
@@ -467,9 +549,11 @@ export class ExamApp {
       if (conf.dailyNoteSavePath) {
         const hpath = dailyDocPath(conf.dailyNoteSavePath, today);
         await this.ensureDoc(nb.id, hpath);
-        const docId = await this.deps.client.sql(
-          `SELECT id FROM blocks WHERE box='${nb.id.replace(/'/g, "''")}' AND hpath='${hpath.replace(/'/g, "''")}' AND type='d' LIMIT 1`,
-        ).then((rows) => String(rows[0]?.id ?? ""));
+        const docId = await this.deps.client
+          .sql(
+            `SELECT id FROM blocks WHERE box='${nb.id.replace(/'/g, "''")}' AND hpath='${hpath.replace(/'/g, "''")}' AND type='d' LIMIT 1`,
+          )
+          .then((rows) => String(rows[0]?.id ?? ""));
         if (!docId) throw new Error("日记文档未找到");
         await this.deps.client.appendBlock(docId, md);
         return docId;
@@ -481,8 +565,13 @@ export class ExamApp {
 
   /** AI 用量累计（成本记录 28 组 P2）：tokens/调用次数 累计 + 最近一次 */
   async recordAiUsage(channelId: string, tokens: number, calls: number): Promise<void> {
-    const v = (await this.deps.storage.load("ai/usage")) as { totalTokens?: number; totalCalls?: number; last?: unknown } | undefined;
-    const log = { totalTokens: (v?.totalTokens ?? 0) + tokens, totalCalls: (v?.totalCalls ?? 0) + calls, last: { channelId, tokens, calls, at: Date.now() } };
+    const v = (await this.deps.storage.load("ai/usage")) as
+      { totalTokens?: number; totalCalls?: number; last?: unknown } | undefined;
+    const log = {
+      totalTokens: (v?.totalTokens ?? 0) + tokens,
+      totalCalls: (v?.totalCalls ?? 0) + calls,
+      last: { channelId, tokens, calls, at: Date.now() },
+    };
     await this.deps.storage.save("ai/usage", log);
   }
 
@@ -500,12 +589,12 @@ export class ExamApp {
 
   async importBankSyZip(zipAbsPath: string): Promise<void> {
     await this.deps.client.importSy(zipAbsPath);
-    this.banks = [];   // 触发题库列表重建
+    this.banks = []; // 触发题库列表重建
   }
 
   /** 估分历史（FIFO 20 条） */
   async saveEstimate(rec: { key: string; mine: string; percent: number; score: number; total: number }): Promise<void> {
-    const list = (await this.deps.storage.load("estimate/history")) as typeof rec[] | undefined;
+    const list = (await this.deps.storage.load("estimate/history")) as (typeof rec)[] | undefined;
     const next = [...(list ?? []), { ...rec, at: Date.now() }].slice(-20);
     await this.deps.storage.save("estimate/history", next);
   }
@@ -523,9 +612,11 @@ export class ExamApp {
 
   async loadMockRun(): Promise<MockRunSnapshot | null> {
     try {
-      const v = await this.deps.storage.load(MOCK_RUN_KEY) as MockRunSnapshot | null | undefined;
+      const v = (await this.deps.storage.load(MOCK_RUN_KEY)) as MockRunSnapshot | null | undefined;
       return v && Array.isArray(v.qids) && typeof v.startedAt === "number" ? v : null;
-    } catch { return null; }
+    } catch {
+      return null;
+    }
   }
 
   async clearMockRun(): Promise<void> {
@@ -545,7 +636,11 @@ export class ExamApp {
 
   /** 错题册导出：生成 Markdown 并写入题库笔记本"导出"文档，返回文档 id
    *  过滤（27 组 P2）：kpRoot（考点首段）/ reason（错因）/ sinceDays（最近 N 天首次答错） */
-  async exportWrongbook(bankId: string, bankName: string, opts: { kpRoot?: string; reason?: string; sinceDays?: number } = {}): Promise<string> {
+  async exportWrongbook(
+    bankId: string,
+    bankName: string,
+    opts: { kpRoot?: string; reason?: string; sinceDays?: number } = {},
+  ): Promise<string> {
     const { wrongbookToMarkdown } = await import("./core/exportMd");
     let items = this.wrongItems();
     const qs = await this.listQuestions(bankId);
@@ -594,7 +689,11 @@ export class ExamApp {
   }
 
   /** 错题/收藏转卡：返回成功送入卡包的块数（bankId 预留：将来按章节拆卡包） */
-  async convertToCards(_bankId: string, bankName: string, questions: (Question & { blockId?: string })[]): Promise<number> {
+  async convertToCards(
+    _bankId: string,
+    bankName: string,
+    questions: (Question & { blockId?: string })[],
+  ): Promise<number> {
     const blockIds = questions.map((q) => q.blockId).filter((s): s is string => !!s);
     if (!blockIds.length) return 0;
     const deckId = await this.ensureDeck(bankName);
@@ -613,16 +712,30 @@ export class ExamApp {
       const due = new Set(cards.map((c) => String((c as { blockID?: string }).blockID ?? "")).filter(Boolean));
       if (!due.size) return [];
       return questions.filter((q) => q.blockId != null && due.has(q.blockId));
-    } catch { return []; }
+    } catch {
+      return [];
+    }
   }
 
   /** 背诵/闪卡作答：写流水（kind=recite + selfRating）；若块已转卡则同步 riff 评级 */
-  async reciteAnswer(bankName: string, q: Question & { blockId?: string }, selfRating: 1 | 2 | 3 | 4, sessionId: string, timeMs = 0): Promise<void> {
+  async reciteAnswer(
+    bankName: string,
+    q: Question & { blockId?: string },
+    selfRating: 1 | 2 | 3 | 4,
+    sessionId: string,
+    timeMs = 0,
+  ): Promise<void> {
     const remembered = selfRating >= 3;
     this.recordAttempt({
-      qid: q.id, kind: "recite", mode: "recite",
+      qid: q.id,
+      kind: "recite",
+      mode: "recite",
       verdict: remembered ? "correct" : "wrong",
-      myAnswer: null, selfRating, sessionId, queue: "normal", timeMs,
+      myAnswer: null,
+      selfRating,
+      sessionId,
+      queue: "normal",
+      timeMs,
     });
     if (q.blockId && this.kernelOnline) {
       try {
@@ -630,7 +743,9 @@ export class ExamApp {
         const ids = await this.deps.client.getCardIDsByBlockIDs([q.blockId], deckId);
         const cardId = ids.get(q.blockId);
         if (cardId) await this.deps.client.reviewRiffCard(cardId, deckId, selfRatingToRiffRating(selfRating));
-      } catch { /* riff 失败不阻塞背诵流水（离线降级语义） */ }
+      } catch {
+        /* riff 失败不阻塞背诵流水（离线降级语义） */
+      }
     }
   }
 
@@ -661,9 +776,7 @@ export class ExamApp {
   // ---------- 常用抽题 ----------
   /** 背诵池：优先错题；已毕业（背诵连击 ≥4）的题出清，回选择题形态 */
   recitePool(questions: Question[]): Question[] {
-    const graduated = new Set(
-      [...this.derived().reciteStreak.entries()].filter(([, s]) => s >= 4).map(([qid]) => qid),
-    );
+    const graduated = new Set([...this.derived().reciteStreak.entries()].filter(([, s]) => s >= 4).map(([qid]) => qid));
     const wrongs = this.wrongDrill(questions).filter((q) => !graduated.has(q.id));
     const wrongIds = new Set(wrongs.map((q) => q.id));
     const rest = questions.filter((q) => !graduated.has(q.id) && !wrongIds.has(q.id));

@@ -7,7 +7,7 @@
 import type { KernelApiClient } from "../kernel/client";
 
 export interface OpenAiConfig {
-  endpoint: string;             // https://.../v1/chat/completions
+  endpoint: string; // https://.../v1/chat/completions
   apiKey: string;
   model: string;
 }
@@ -41,7 +41,10 @@ export class OpenAiChannel implements AiChannel {
   readonly id = "openai" as const;
   constructor(
     private readonly cfg: OpenAiConfig,
-    private readonly fetchImpl: (url: string, init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>,
+    private readonly fetchImpl: (
+      url: string,
+      init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal },
+    ) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>,
     private readonly timeoutMs = 60_000,
   ) {}
 

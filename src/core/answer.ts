@@ -33,7 +33,10 @@ export function normalizeAnswer(type: Question["type"], raw: string): string | n
     return m ? m[0] : null;
   }
   if (type === "multiple") {
-    const letters = s.toUpperCase().replace(/[^A-J]/g, "").split("");
+    const letters = s
+      .toUpperCase()
+      .replace(/[^A-J]/g, "")
+      .split("");
     const uniq = [...new Set(letters)].sort();
     return uniq.length ? uniq.join("") : null;
   }
@@ -73,11 +76,14 @@ export function questionHash(stem: string, options: string[]): string {
 
 /** 轻量散列（FNV-1a 64bit 的 hex；非加密用途，去重足够） */
 export function sha1like(s: string): string {
-  let h1 = 0xcbf29ce4, h2 = 0x84222325;
+  let h1 = 0xcbf29ce4,
+    h2 = 0x84222325;
   for (let i = 0; i < s.length; i++) {
     const c = s.charCodeAt(i);
-    h1 = (h1 ^ c) >>> 0; h1 = Math.imul(h1, 0x01000193) >>> 0;
-    h2 = (h2 ^ ((c << 3) | (i & 7))) >>> 0; h2 = Math.imul(h2, 0x01000193) >>> 0;
+    h1 = (h1 ^ c) >>> 0;
+    h1 = Math.imul(h1, 0x01000193) >>> 0;
+    h2 = (h2 ^ ((c << 3) | (i & 7))) >>> 0;
+    h2 = Math.imul(h2, 0x01000193) >>> 0;
   }
   return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
 }
