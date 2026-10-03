@@ -16,6 +16,7 @@ const HEADER_NAMES = [
   "题型", "题干", "答案", "解析", "难度", "知识点", "考点", "分值", "来源",
   "type", "stem", "question", "answer", "analysis", "difficulty", "kp", "score", "source",
   "选项a", "选项b", "选项c", "选项d", "选项e", "选项f",
+  "option a", "option b", "option c", "option d", "option e", "option f",
 ];
 
 const stripHtml = (s: string) =>

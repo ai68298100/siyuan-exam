@@ -265,12 +265,12 @@ export function parseExcelRows(rows: string[][], map: ExcelColumnMap, opt: Impor
   return { ok, errors, duplicates, batch, dupeSamples };
 }
 
-/** 官方 Excel 模板：自动列映射（按表头名识别，找不到的列报给上层） */
+/** 官方 Excel 模板：自动列映射（按表头名识别，找不到的列报给上层；中英文别名，廿五批补 option X） */
 export function autoMapExcel(header: string[]): { map: ExcelColumnMap; missing: string[] } {
   const find = (...names: string[]) => header.findIndex((h) => names.includes(foldText(h).toLowerCase()));
   const options: number[] = [];
   for (const L of OPTION_LETTERS.split("")) {
-    const idx = find(`选项${L.toLowerCase()}`, `选项${L}`, L.toLowerCase());
+    const idx = find(`选项${L.toLowerCase()}`, `选项${L}`, `option ${L.toLowerCase()}`, `option${L.toLowerCase()}`, L.toLowerCase());
     if (idx >= 0) options.push(idx);
   }
   const map: ExcelColumnMap = {

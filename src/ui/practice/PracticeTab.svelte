@@ -15,6 +15,7 @@ import { ttsSpeak } from "@/core/tts";
     import { bankHealthReport, type BankHealthReport } from "../../core/bankHealth";
     import { planBatchEdit, invertPlan, describeChange } from "../../core/batchEdit";
     import { buildSectionTree, questionInSection } from "../../core/sectionTree";
+    import { upsertView, viewBankMismatch } from "@/core/smartViews";
     import { onExamEvent } from "@/core/bus";
     import { questionFingerprint } from "@/ai/task";
     import SaveStatus from "../shared/SaveStatus.svelte";
@@ -138,7 +139,11 @@ import { ttsSpeak } from "@/core/tts";
 
     async function applyBatch(undo = false) {
       if (batchBusy || !app.kernelOnline) { batchNote = t("state.offlineHint"); return; }
-      const changes = undo ? invertPlan(appliedChanges) : batchPreview?.changes ?? [];
+      // 撤销基线（43-06）：优先本次会话已应用的计划；无则回退持久化的最近一次（重载后仍可撤销）
+      let changes = undo ? invertPlan(appliedChanges) : batchPreview?.changes ?? [];
+      if (undo && !changes.length && batchUndo && batchUndo.bankId === activeBankId) {
+        changes = invertPlan(batchUndo.changes);
+      }
       if (!changes.length) return;
       batchBusy = true; batchNote = "";
       try {
@@ -146,11 +151,32 @@ import { ttsSpeak } from "@/core/tts";
         batchNote = undo
           ? t("batch.undone").replace("{n}", String(r.ok)).replace("{f}", String(r.failed))
           : t("batch.applied").replace("{n}", String(r.ok)).replace("{f}", String(r.failed));
-        if (!undo) appliedChanges = changes;      // 撤销基线 = 最近一次成功应用的计划
+        if (undo) {
+          appliedChanges = [];      // 撤销后基线清空（重置为存储基线）
+          batchUndo = null;
+          await saveBatchUndo();
+        } else {
+          appliedChanges = changes;      // 撤销基线 = 最近一次成功应用的计划
+          batchUndo = { changes, bankId: activeBankId, at: Date.now() };
+          await saveBatchUndo();
+        }
         await loadQuestions();
       } catch (e) {
         batchNote = String(e instanceof Error ? e.message : e);
       } finally { batchBusy = false; }
+    }
+
+    /** 最近一次批量编辑的持久化（43-06 剩余）：重载后仍可逆向撤销；换库不误撤 */
+    let batchUndo = $state<null | { changes: import("@/core/batchEdit").BatchChange[]; bankId: string; at: number }>(null);
+    const batchUndoHere = $derived(!!batchUndo && batchUndo.bankId === activeBankId);
+    async function loadBatchUndo() {
+      try {
+        const v = (await (app as any).deps.storage.load("batchedit/last")) as typeof batchUndo;
+        batchUndo = v && Array.isArray(v.changes) ? v : null;
+      } catch { batchUndo = null; }
+    }
+    async function saveBatchUndo() {
+      try { await (app as any).deps.storage.save("batchedit/last", batchUndo); } catch { /* 静默 */ }
     }
 
     const bankName = $derived(banks.find((b) => b.id === activeBankId)?.name ?? "");
@@ -244,6 +270,8 @@ import { ttsSpeak } from "@/core/tts";
         try { explainHistory = ((await (app as any).deps.storage.load("ai/explain-history")) ?? {}) as Record<string, import("@/ai/client").AiMessage[]>; } catch { /* 忽略 */ }
         await restoreAiQueue();
         await loadMappings();
+        await loadSmartViews();
+        await loadBatchUndo();
         await loadAiTaskLog();
       })();
       banks = app.listBanks();
@@ -1240,6 +1268,9 @@ import { ttsSpeak } from "@/core/tts";
 
     function parseActiveSheet() {
       importError = "";
+      // U07：重解析（切映射/切 Sheet）产生全新 qid → 旧试导确认/重试池全部失效；
+      // 不清会导致 commitImport 的排除过滤永远不命中 → 已试导确认的行被整批重导（双导入）
+      trialConfirmed = []; trialNote = ""; retryPool = [];
       const rows = sheetRowsCache.get(activeSheet);
       if (!rows?.length) { importError = t("import.emptyFile"); return; }
       // 回灌去重（2.3）：与题库已有题比对；并存模式（重合并策略 lite）置空 → 重复行照常入库
@@ -1303,6 +1334,57 @@ import { ttsSpeak } from "@/core/tts";
     });
     const shownQuestions = $derived(filteredQuestions.slice(0, browseLimit));
     const hasMore = $derived(filteredQuestions.length > browseLimit);
+
+    // ---------- 命名智能视图（43-05 lite）：浏览过滤保存/复用/删除 ----------
+    let smartViews = $state<import("@/core/smartViews").SmartView[]>([]);
+    let selectedView = $state("");
+    async function loadSmartViews() {
+      try {
+        const v = (await (app as any).deps.storage.load("browse/smartViews")) as import("@/core/smartViews").SmartView[] | undefined;
+        smartViews = Array.isArray(v) ? v : [];
+      } catch { smartViews = []; }
+    }
+    async function saveSmartViews() {
+      try { await (app as any).deps.storage.save("browse/smartViews", smartViews); } catch { /* 本地保存失败静默 */ }
+    }
+    /** 当前过滤态 → 视图快照（43-05：过滤条件+题库身份+schema 版本一起存） */
+    async function saveCurrentView() {
+      if (!activeBankId) return;
+      const { inputDialogSync } = await import("../../libs/dialog");
+      const name = (await inputDialogSync({ title: t("view.saveTitle"), placeholder: t("view.namePlaceholder") }))?.trim();
+      if (!name) return;
+      smartViews = upsertView(smartViews, {
+        name,
+        v: 1,
+        bankId: activeBankId,
+        search: searchText,
+        favOnly,
+        section: sectionSel ? JSON.parse(JSON.stringify(sectionSel)) : null,
+        createdAt: Date.now(),
+      });
+      selectedView = name;
+      await saveSmartViews();
+      showMessage(t("view.saved"), 2400, "info");
+    }
+    /** 应用视图：跨库视图显式确认（不静默改变含义）；应用后过滤三件套整体切换 */
+    async function applyNamedView(name: string) {
+      selectedView = name;
+      const v = smartViews.find((x) => x.name === name);
+      if (!v) return;
+      if (viewBankMismatch(v, activeBankId) && !confirm(t("view.bankMismatch").replace("{name}", v.name))) {
+        selectedView = "";
+        return;
+      }
+      searchText = v.search ?? "";
+      favOnly = !!v.favOnly;
+      sectionSel = v.section ? { ...v.section } : null;
+    }
+    async function deleteNamedView() {
+      if (!selectedView) return;
+      smartViews = smartViews.filter((v) => v.name !== selectedView);
+      selectedView = "";
+      await saveSmartViews();
+    }
 
     // ---------- 浏览详情：展开/文档跳转/反链 ----------
     let expandedId = $state("");
@@ -2111,6 +2193,14 @@ import { ttsSpeak } from "@/core/tts";
         <button class="lv-chip" class:acc={batchMode} onclick={() => { batchMode = !batchMode; if (!batchMode) selectedIds = {}; }}>{t("batch.mode")}</button>
         <button class="lv-chip" title={t("browse.exportCsvTitle")} onclick={exportBankCsv}>⬇️ CSV</button>
         <input class="lv-input" style="flex:1;min-width:160px" placeholder={t("browse.searchPlaceholder")} bind:value={searchText} />
+        {#if smartViews.length}
+          <select class="lv-select" style="max-width:150px" bind:value={selectedView} onchange={() => void applyNamedView(selectedView)}>
+            <option value="">{t("view.pick")}</option>
+            {#each smartViews as v, _i (_i)}<option value={v.name}>{v.name}</option>{/each}
+          </select>
+          <button class="lv-btn sm lv-btn--ghost" title={t("view.delete")} disabled={!selectedView} onclick={() => void deleteNamedView()}>🗑</button>
+        {/if}
+        <button class="lv-btn sm lv-btn--ghost" title={t("view.saveTitle")} onclick={() => void saveCurrentView()}>💾 {t("view.save")}</button>
       </div>
       {#if sectionSel}
         <div class="lv-row" style="margin:4px 0">
@@ -2148,6 +2238,10 @@ import { ttsSpeak } from "@/core/tts";
           <div class="lv-row" style="margin:0">
             <b style="font-size:13px">{t("batch.title")}</b>
             <span class="lv-chip num">{t("batch.selected").replace("{n}", String(Object.keys(selectedIds).length))}</span>
+            {#if batchUndoHere && !appliedChanges.length}
+              <span class="lv-chip num" title={t("batch.undoStoredHint")}>↩ {t("batch.undoStored").replace("{n}", String(batchUndo!.changes.length))}</span>
+              <button class="lv-btn sm" disabled={batchBusy || !app.kernelOnline} onclick={() => applyBatch(true)}>{t("batch.undo")}</button>
+            {/if}
             <select class="lv-select" bind:value={batchField}>
               <option value="kp">{t("batch.field.kp")}</option>
               <option value="difficulty">{t("batch.field.difficulty")}</option>
@@ -2170,7 +2264,7 @@ import { ttsSpeak } from "@/core/tts";
               <button class="lv-btn lv-btn--primary sm" disabled={batchBusy || !batchPreview.changes.length} onclick={() => applyBatch(false)}>
                 {batchBusy ? "…" : t("batch.apply").replace("{n}", String(batchPreview.changes.length))}
               </button>
-              {#if appliedChanges.length}
+              {#if appliedChanges.length || batchUndoHere}
                 <button class="lv-btn sm" disabled={batchBusy} onclick={() => applyBatch(true)}>↩ {t("batch.undo")}</button>
               {/if}
             {/if}
