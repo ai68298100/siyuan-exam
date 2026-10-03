@@ -779,9 +779,25 @@ export class ExamApp {
     return { zipPath, filename };
   }
 
-  async importBankSyZip(zipAbsPath: string): Promise<void> {
-    await this.deps.client.importSy(zipAbsPath);
-    this.banks = []; // 触发题库列表重建
+  /** 原生包导入（38-05 multipart 契约 + 38-06 lite 自动登记）：
+   *  上传 .sy.zip → 扫描笔记本 → 自动登记「题库/」命名空间的新库（已知 id 与非题库笔记本不收），
+   *  返回本次登记的名称列表（空=无新库，可能为同名覆盖导入）。浏览器/桌面同路径，不依赖 File.path */
+  async importBankSyZip(file: Blob, filename = "bank.sy.zip"): Promise<{ registered: string[] }> {
+    await this.deps.client.importSyUpload(file, filename);
+    const all = await this.deps.client.listNotebooks();
+    const known = new Set(this.banks.map((b) => b.id));
+    const registered: string[] = [];
+    for (const nb of all) {
+      if (known.has(nb.id) || !nb.name.startsWith("题库/")) continue;
+      this.banks.push({
+        id: nb.id,
+        name: nb.name.replace(/^题库\//, "") || nb.name,
+        createdAt: this.deps.now?.() ?? Date.now(),
+      });
+      registered.push(nb.name);
+    }
+    if (registered.length) await this.deps.storage.save(BANK_REGISTRY_KEY, this.banks);
+    return { registered };
   }
 
   /** 估分历史（FIFO 20 条） */

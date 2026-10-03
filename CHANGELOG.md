@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased（0.6.x-dev：廿三~三七批，2026-10-03/04）
+## Unreleased（0.6.x-dev：廿三~三八批，2026-10-03/04）
 
-> guard 七门禁全绿（311 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、ESLint 0 告警）+ 生产构建通过；**真机验证（SiYuan 3.8.6）**：preflight 17/17、数据生命周期 6/6、CSV 往返冒烟 5/5（`scripts/smoke-csv.mjs`）、题目编辑 updateBlock / 章节树 docTree / listQuestions hpath 三项契约实测通过。docs/17 人工 UI 步骤剩 27/28/36-38。
+> guard 七门禁全绿（313 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、ESLint 0 告警）+ 生产构建通过；**真机验证（SiYuan 3.8.6）**：preflight 17/17、数据生命周期 6/6、CSV 往返冒烟 5/5（`scripts/smoke-csv.mjs`）、题目编辑 updateBlock / 章节树 docTree / listQuestions hpath 三项契约实测通过。docs/17 人工 UI 步骤剩 27/28/36-38。
 
 - **内核 429 限流处理**：HTTP 429 识别为可重试错误分类；perf-bank 真机基线发现 3.8.6 连续请求限流（32 组新待办）
 - **GIFT 解析器**（42-04 部分）：Moodle GIFT 单选/多选/判断/简答，`::标题::`→考点、`#反馈`→解析；行内选择式 `{=对~错}` 归一
@@ -52,6 +52,7 @@
 - **浏览筛选补全**（65-01，三七批）：新增「仅受助」chip（AttemptEvent.help）与作答时间筛选（今日/近7天/近30天），字段契约覆盖考点/来源/题型/状态/错误次数/提示暴露/日期
 - **模考成绩数据表+CSV**（45-08 收口，三七批）：成绩单分段明细数据表与分段/历史 CSV（与雷达/折线同一数据快照）
 - **CSV 往返真机冒烟**（docs/17 39-40 脚本化，三七批）：`scripts/smoke-csv.mjs`——真机插题→读回→官方模板 CSV 构建（含引号/逗号转义）→整批回滚→重导入→往返一致 5/5；题库包契约发现（importSY 需 multipart 上传、exportNotebookSY headless 不落盘）记录于 38-05
+- **原生包导入按真机契约重写**（38-05，三八批）：`importSyUpload` multipart 上传替代 JSON 绝对路径（浏览器/桌面同路径，退役 File.path 依赖与"仅桌面"提示）；**导入后自动登记**（38-06 lite）——扫描笔记本自动登记「题库/」命名空间新库（去重/前缀剥离/持久化），同名覆盖导入如实提示
 
 ## 0.6.0 (2026-10-03)
 

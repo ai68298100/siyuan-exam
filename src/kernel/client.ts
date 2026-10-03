@@ -9,6 +9,8 @@ import { questionToMarkdown, questionFromBlock } from "../core/blockTemplate";
 
 export interface KernelTransport {
   post(endpoint: string, payload: unknown): Promise<{ code: number; msg: string; data: unknown }>;
+  /** multipart 文件上传（importSY 等；38-05 实测：JSON path 形态返回 -1）。可选：测试桩可不实现 */
+  postForm?(endpoint: string, file: Blob, filename: string): Promise<{ code: number; msg: string; data: unknown }>;
 }
 
 export type ErrKind = "retryable" | "fatal";
@@ -101,6 +103,23 @@ export class HttpTransport implements KernelTransport {
     }
     throw lastErr;
   }
+
+  /** multipart 文件上传（importSY 契约，38-05 真机实测：JSON path 形态返回 -1）。
+   *  浏览器 FormData 自动带 boundary，不可手工设 Content-Type */
+  async postForm(endpoint: string, file: Blob, filename: string) {
+    const fd = new FormData();
+    fd.append("file", file, filename);
+    const res = await fetch(this.baseUrl + endpoint, {
+      method: "POST",
+      headers: { Authorization: `Token ${this.token}` },
+      body: fd,
+    });
+    const body = (await res.json().catch(() => null)) as { code: number; msg: string; data: unknown } | null;
+    if (!res.ok || !body || body.code !== 0) {
+      throw new KernelError("fatal", endpoint, body?.msg || `HTTP ${res.status}`);
+    }
+    return body;
+  }
 }
 
 export class KernelApiClient {
@@ -158,9 +177,19 @@ export class KernelApiClient {
     return { zipPath: zip };
   }
 
-  /** 从本机绝对路径导入 .sy.zip（Electron 前端；browser 前端不可用） */
-  async importSy(zipAbsPath: string): Promise<void> {
-    await this.t.post("/api/import/importSY", { path: zipAbsPath });
+  /** 原生包导入（38-05 真机契约）：importSY 要求 multipart/form-data 文件上传，
+   *  JSON {path} 绝对路径形态返回 -1（2026-10-04 实测）——旧实现已废弃。
+   *  导入的笔记本按包内名称落库（同名自动避让），需调用方随后 lsNotebooks 登记 */
+  async importSyUpload(file: Blob, filename = "bank.sy.zip"): Promise<void> {
+    if (!this.t.postForm) throw new KernelError("fatal", "/api/import/importSY", "传输层不支持 multipart 上传");
+    await this.t.postForm("/api/import/importSY", file, filename);
+  }
+
+  /** 笔记本清单（38-06 lite：导入后发现/登记新库；closed 笔记本不返回） */
+  async listNotebooks(): Promise<{ id: string; name: string }[]> {
+    const r = await this.t.post("/api/notebook/lsNotebooks", {});
+    const notebooks = (r.data as { notebooks?: { id: string; name: string; closed?: boolean }[] } | null)?.notebooks ?? [];
+    return notebooks.filter((n) => !n.closed).map((n) => ({ id: n.id, name: n.name }));
   }
 
   /** 文档导出 Markdown（AI 出题"当前文档"输入源；2026-10-02 实测返回 hPath+content，content 带 YAML 头需剥离） */

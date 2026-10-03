@@ -769,12 +769,10 @@ import { ttsSpeak } from "@/core/tts";
       const file = input.files?.[0];
       if (!file) return;
       try {
-        // Electron 提供绝对路径；browser 前端按钮已隐藏
-        const path = (file as any).path as string | undefined;
-        if (!path) { showMessage(t("share.needDesktop"), 4200, "error"); return; }
-        await (app as any).importBankSyZip(path);
+        // 38-05：multipart 上传，浏览器/桌面同路径（不再依赖 Electron File.path）
+        const { registered } = await app.importBankSyZip(file, file.name);
         banks = app.listBanks();
-        showMessage(t("share.importDone"), 4000, "info");
+        showMessage(registered.length ? t("share.importRegistered").replace("{names}", registered.join("、")) : t("share.importDone"), 4600, "info");
         void loadQuestions();
       } catch (err) {
         showMessage(String(err instanceof Error ? err.message : err), 4200, "error");

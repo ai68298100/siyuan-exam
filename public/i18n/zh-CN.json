@@ -518,6 +518,7 @@
     "browse.f7": "近 7 天有作答",
     "browse.f30": "近 30 天有作答",
     "browse.fDaysTip": "按最近作答时间筛选",
+    "share.importRegistered": "✓ 导入完成，已自动登记题库：{names}（同名覆盖导入则无新库）",
     "mock.history": "历史",
     "view.pick": "📌 智能视图…",
     "view.save": "存为视图",

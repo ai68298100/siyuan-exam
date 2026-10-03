@@ -518,6 +518,7 @@
     "browse.f7": "Answered in 7d",
     "browse.f30": "Answered in 30d",
     "browse.fDaysTip": "Filter by last-attempt time",
+    "share.importRegistered": "✓ Imported; banks registered: {names} (same-name overwrite yields none)",
     "mock.history": "history",
     "view.pick": "📌 Smart views…",
     "view.save": "Save view",
