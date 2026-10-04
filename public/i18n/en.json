@@ -390,6 +390,8 @@
     "flash.type.qa": "Q/A",
     "flash.type.cloze": "Cloze",
     "flash.type.contrast": "Contrast",
+    "receipt.lastHypothesis": "Last AI hypothesis",
+    "receipt.adopted": "adopted into reflection",
     "mock.exportToDoc": "📚 Write to bank docs",
     "challenge.copied": "✓ Challenge copied (answers included, friendly mode)",
     "challenge.importTitle": "Import challenge code",

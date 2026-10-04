@@ -66,6 +66,16 @@ import {
   type MaterialLinkStore,
   type QuestionMaterialRef,
 } from "./core/materialLinks";
+import {
+  addMisdiagnosis,
+  latestOf,
+  markAdopted,
+  parseMisdiagnosis,
+  serializeMisdiagnosis,
+  EMPTY_MISDIAGNOSIS,
+  type MisdiagnosisRecord,
+  type MisdiagnosisStore,
+} from "./core/misdiagnosis";
 
 /** ArrayBuffer → base64（分块拼接，避免大文件 String.fromCharCode 展开栈溢出） */
 function arrayBufferToBase64(buf: ArrayBuffer): string {
@@ -115,6 +125,7 @@ const KNOWN_STORAGE_KEYS = [
   "ai/review-queue",
   "ai/task-log",
   "ai/explain-history",
+  "ai/misdiagnosis",
   "estimate/history",
   "import/mappings",
   "browse/smartViews",
@@ -138,6 +149,7 @@ const ACTIONS_KEY = "actions/items";
 const MATERIALS_KEY = "materials/registry";
 const MATERIAL_NOTES_KEY = "materials/notes";
 const MATERIAL_QREFS_KEY = "materials/qrefs";
+const MISDIAGNOSIS_KEY = "ai/misdiagnosis";
 
 /** 过期草稿（TODO 2.4）：7 天隐藏不再续做入口，30 天清理（流水保留） */
 const DRAFT_HIDE_MS = 7 * 86_400_000;
@@ -162,6 +174,7 @@ export class ExamApp {
   private materialsVersionTooNew = false;
   private materialNoteStore: MaterialNoteStore = EMPTY_NOTE_STORE;
   private materialLinkStore: MaterialLinkStore = EMPTY_LINK_STORE;
+  private misdiagnosisStore: MisdiagnosisStore = EMPTY_MISDIAGNOSIS;
   private activeSession: PracticeSession | null = null;
   kernelOnline = false;
   probeMessage = "";
@@ -230,6 +243,13 @@ export class ExamApp {
       this.materialLinkStore = parsedLinks.store;
     } catch {
       this.materialLinkStore = EMPTY_LINK_STORE;
+    }
+    // AI 错因假设（116-01/U14：与用户复盘分层独立保存）
+    try {
+      const parsedMis = parseMisdiagnosis(await this.deps.storage.load(MISDIAGNOSIS_KEY));
+      this.misdiagnosisStore = parsedMis.store;
+    } catch {
+      this.misdiagnosisStore = EMPTY_MISDIAGNOSIS;
     }
   }
 
@@ -810,6 +830,7 @@ export class ExamApp {
         materials: serializeRegistry(this.materialsRegistry),
         materialNotes: serializeNoteStore(this.materialNoteStore),
         materialLinks: serializeLinkStore(this.materialLinkStore),
+        misdiagnoses: serializeMisdiagnosis(this.misdiagnosisStore),
       },
       null,
       2,
@@ -1001,6 +1022,30 @@ export class ExamApp {
     this.materialLinkStore = r.store;
     await this.saves.run(MATERIAL_QREFS_KEY, () =>
       this.deps.storage.save(MATERIAL_QREFS_KEY, serializeLinkStore(this.materialLinkStore)),
+    );
+  }
+
+  // ---------- AI 错因假设（116-01/U14：独立持久化，与用户复盘分层） ----------
+
+  latestMisdiagnosis(qid: string): MisdiagnosisRecord | null {
+    return latestOf(this.misdiagnosisStore, qid);
+  }
+
+  /** 生成成功后落库（同题保留最新）；纯本地存储，离线也可写 */
+  async saveMisdiagnosis(rec: MisdiagnosisRecord): Promise<void> {
+    if (this.materialsReadonly) throw new Error("存储版本较新：只读（降级回滚场景），写入已拒绝");
+    this.misdiagnosisStore = addMisdiagnosis(this.misdiagnosisStore, rec);
+    await this.saves.run(MISDIAGNOSIS_KEY, () =>
+      this.deps.storage.save(MISDIAGNOSIS_KEY, serializeMisdiagnosis(this.misdiagnosisStore)),
+    );
+  }
+
+  /** 采纳打点（用户并入复盘时调用；只记时间戳，不改假设原文） */
+  async markMisdiagnosisAdopted(qid: string): Promise<void> {
+    if (this.materialsReadonly) throw new Error("存储版本较新：只读（降级回滚场景），写入已拒绝");
+    this.misdiagnosisStore = markAdopted(this.misdiagnosisStore, qid, this.deps.now?.() ?? Date.now());
+    await this.saves.run(MISDIAGNOSIS_KEY, () =>
+      this.deps.storage.save(MISDIAGNOSIS_KEY, serializeMisdiagnosis(this.misdiagnosisStore)),
     );
   }
 

@@ -519,11 +519,15 @@ import { ttsSpeak } from "@/core/tts";
     let receiptCache = $state<import("../../core/types").AttemptEvent[]>([]);
     let receiptBusy = $state("");
     let receiptMisdiagnosis = $state<Record<string, string>>({});
+    let receiptStored = $state<{ text: string; at: number; adoptedAt?: number } | null>(null);
 
     function toggleReceipts(qid: string) {
       receiptOpenFor = receiptOpenFor === qid ? "" : qid;
       if (receiptOpenFor) {
         receiptCache = app.attempts.all().filter((e) => e.qid === qid).slice(-10).reverse();
+        // U14：上次 AI 假设（独立存储）回显——与用户复盘分层展示
+        const rec = app.latestMisdiagnosis(qid);
+        receiptStored = rec ? { text: rec.text, at: rec.at, adoptedAt: rec.adoptedAt } : null;
       }
     }
 
@@ -563,6 +567,15 @@ import { ttsSpeak } from "@/core/tts";
         if (env.status === "ok" && env.data.text) {
           receiptMisdiagnosis = { ...receiptMisdiagnosis, [key]: env.data.text };
           void app.recordAiUsage(ch.id, env.tokens, 1);
+          // U14：按该次回执的证据独立落库
+          void app.saveMisdiagnosis({
+            qid: e.qid,
+            text: env.data.text,
+            at: Date.now(),
+            sessionId: e.sessionId,
+            templateVersion: 1,
+            evidence: { myAnswer: e.myAnswer ?? null, confidence: e.confidence, timeMs: e.timeMs, helped: !!e.help },
+          }).catch(() => { /* 持久化失败不阻断展示 */ });
         } else {
           showMessage(`⚠ ${env.summary}${env.error ? "：" + env.error : ""}`, 3600, "error");
         }
@@ -1420,6 +1433,15 @@ import { ttsSpeak } from "@/core/tts";
         if (env.status === "ok" && env.data.text) {
           misdiagnosisText = { ...misdiagnosisText, [a.qid]: env.data.text };
           void app.recordAiUsage(ch.id, env.tokens, 1);
+          // U14：假设独立持久化（与用户复盘分层；离线落内存态，重载后可回看）
+          void app.saveMisdiagnosis({
+            qid: a.qid,
+            text: env.data.text,
+            at: Date.now(),
+            sessionId: session.id,
+            templateVersion: 1,
+            evidence: { myAnswer: a.grade.myAnswer ?? null, confidence: meta.confidence, timeMs: a.timeMs, helped: meta.helped },
+          }).catch(() => { /* 持久化失败不阻断展示 */ });
         } else {
           showMessage(`⚠ ${env.summary}${env.error ? "：" + env.error : ""}`, 3600, "error");
         }
@@ -1436,6 +1458,7 @@ import { ttsSpeak } from "@/core/tts";
       const merged = (cur?.text ? cur.text + "\n\n" : "") + "【AI 错因假设（参考，未确认）】\n" + hypothesis;
       await app.saveWrongReflection(qid, merged);
       reflections = { ...reflections, [qid]: { text: merged, at: Date.now() } };
+      void app.markMisdiagnosisAdopted(qid).catch(() => { /* 打点失败不影响并入 */ });
       showMessage(t("reflection.saved"), 2000, "info");
     }
     /** 114-01：本会话受助标记（qid → 讲解模式；reveal=查看被拦泄露提示）；同题再答时随 attempt 落 help 字段 */
@@ -3760,6 +3783,14 @@ import { ttsSpeak } from "@/core/tts";
                     </div>
                     {#if receiptOpenFor === q.id}
                       <div class="lv-detail" style="margin:4px 0">
+                        {#if receiptStored}
+                          <!-- U14：上次 AI 假设（独立存储层回显，与用户复盘分层） -->
+                          <div class="lv-row" style="flex-wrap:wrap;margin:3px 0;gap:4px;font-size:11.5px">
+                            <span class="lv-chip">🧪 {t("receipt.lastHypothesis")} · {new Date(receiptStored.at).toLocaleDateString()}</span>
+                            {#if receiptStored.adoptedAt}<span class="lv-chip lv-chip--grn">{t("receipt.adopted")}</span>{/if}
+                          </div>
+                          <div class="lv-muted" style="font-size:11.5px;white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 6px">{receiptStored.text}</div>
+                        {/if}
                         {#each receiptCache as e (e.seq)}
                           {@const rkey = `${e.qid}#${e.seq}`}
                           <div class="lv-row" style="flex-wrap:wrap;font-size:11.5px;margin:3px 0;gap:4px">

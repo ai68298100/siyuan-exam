@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased（0.6.x-dev：廿三~六五批，2026-10-03/05）
+## Unreleased（0.6.x-dev：廿三~六六批，2026-10-03/05）
 
-> guard 八门禁全绿（425 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、样式 token 审计、ESLint 0 告警）+ 生产构建通过；**真机验证（SiYuan 3.8.6）**：preflight 17/17、数据生命周期 6/6、CSV 往返冒烟 5/5、种子数据经真实插件重载存活（37-01 路径语义实测通过）、题目编辑 updateBlock / 章节树 docTree / listQuestions hpath 三项契约实测通过、只读 e2e 走查 6 过/0 败（检查点 22 项）；**CI 首次真跑全绿**（check.yml 修复后 run 37221044264 success）。docs/17 人工 UI 步骤剩 27/28/36-38。
+> guard 八门禁全绿（428 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、样式 token 审计、ESLint 0 告警）+ 生产构建通过；**真机验证（SiYuan 3.8.6）**：preflight 17/17、数据生命周期 6/6、CSV 往返冒烟 5/5、种子数据经真实插件重载存活（37-01 路径语义实测通过）、题目编辑 updateBlock / 章节树 docTree / listQuestions hpath 三项契约实测通过、只读 e2e 走查 6 过/0 败（检查点 22 项）；**CI 首次真跑全绿**（check.yml 修复后 run 37221044264 success）。docs/17 人工 UI 步骤剩 27/28/36-38。
+
+- **错因假设独立存储**（116-01/U14 收口，六六批）：`core/misdiagnosis.ts` + `ai/misdiagnosis` 信封 v1——AI 假设独立持久化（同题保留最新/200 FIFO/证据快照随存：当时作答/信心/用时/受助），与用户复盘互不覆写；采纳只打 adoptedAt 时间戳；结算与浏览回执生成即落库，回执面板回显上次假设（日期/已并入标记）；存储键入账；3 项存储单测
 
 - **聚合性能回归锁**（六五批，优化向）：`tests/perfAggregate.test.ts`——10k 合成流水（500 题×180 天，判定/信心/受助/先回忆混合）预算断言：replay <1.5s、报告聚合全套（校准/暴露/延迟回忆/时段/掌握度/弱项）<1.5s，含语义抽查防空转；与真机 SQL 基线（perf-bank）互补，聚合退化到秒级即门禁拦截
 
