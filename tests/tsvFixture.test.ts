@@ -33,10 +33,18 @@ describe("TSV 真实导出样例（42-04 fixture，廿六批）", () => {
     expect(r.ok[0].options).toEqual(["3", "4"]);
   });
 
-  it("非法样例：表头行缺选项列 → 明确报错，不猜列", () => {
+  it("非法样例：无选项列的选择题行 → 逐行明确报错（38-02：选项列不再是一等必填）", () => {
     const text = "#separator:tab\nType\tStem\tAnswer\nsingle\t1+1\tA";
     const r = parseTsv(text);
     expect(r.ok).toHaveLength(0);
-    expect(r.errors[0].reason).toContain("选项A/B");
+    expect(r.errors[0].reason).toContain("选项");
+  });
+
+  it("38-02：仅判断/填空表（无选项列）可整表导入", () => {
+    const text = "#separator:tab\n题型\t题干\t答案\n判断\t错题连对2次自动移出错题本\t对\n填空\tFSRS 唯一参数是期望____率\t保留";
+    const r = parseTsv(text);
+    expect(r.errors).toHaveLength(0);
+    expect(r.ok).toHaveLength(2);
+    expect(r.ok.every((q) => q.type === "judge" || q.type === "fill")).toBe(true);
   });
 });

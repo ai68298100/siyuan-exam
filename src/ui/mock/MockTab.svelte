@@ -860,8 +860,8 @@
   .lv-bp-row { display: grid; grid-template-columns: 1.1fr .5fr .5fr .8fr 1fr 36px; gap: 8px; padding: 8px 12px; border-bottom: 1px dashed var(--lv-border); align-items: center; }
   .lv-bp-row:last-child { border-bottom: none; }
   .lv-bp-row.head { background: var(--lv-surface-2); font-size: 11.5px; font-weight: 700; color: var(--lv-text-3); border-bottom: 1px solid var(--lv-border); }
-  .lv-sheet { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
-  .lv-cell { width: 30px; height: 30px; border-radius: 7px; border: 1px solid var(--lv-border); background: var(--lv-surface); font-size: 11.5px; font-family: var(--mono); color: var(--lv-text-2); cursor: pointer; }
+  .lv-sheet { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
+  .lv-cell { min-width: 0; min-height: 44px; border-radius: 8px; border: 1px solid var(--lv-border); background: var(--lv-surface); font-size: 12px; font-variant-numeric: tabular-nums; color: var(--lv-text-2); cursor: pointer; }
   .lv-cell.done { background: var(--lv-green-soft); color: var(--lv-green); border-color: transparent; }
   .lv-cell.flag { outline: 2px solid var(--lv-amber); }
   .lv-cell.cur { background: var(--lv-accent); color: var(--b3-theme-on-primary, #fff); border-color: transparent; }

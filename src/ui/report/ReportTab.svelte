@@ -429,10 +429,12 @@
         <b>{t("report.calibration")}</b>
         <p class="lv-muted" style="margin:0 0 8px">{t("report.calibrationHint")}</p>
         {#each calib.rows as r, _i (_i)}
-          <div class="lv-row" style="margin:4px 0">
+          <!-- 44-02：样本门槛 UI——不足 3 题的档位淡化并标注（不参与 spread 但仍如实显示） -->
+          <div class="lv-row" style="margin:4px 0" class:low-sample={r.attempts < 3}
+            title={r.attempts < 3 ? t("report.lowSampleTip") : ""}>
             <span class="lv-chip num">{t("confidence." + r.confidence)}</span>
             <div class="progress" style="flex:1"><i class:ok={r.accuracy >= 80} class:mid={r.accuracy >= 50 && r.accuracy < 80} class:low={r.accuracy < 50} style="width:{r.accuracy}%"></i></div>
-            <span class="num lv-muted" style="width:90px">{r.accuracy}% · {r.attempts} {t("browse.count")}</span>
+            <span class="num lv-muted" style="width:130px">{r.accuracy}% · {r.attempts} {t("browse.count")}{r.attempts < 3 ? " · " + t("report.lowSample") : ""}</span>
             {#if r.assisted}
               <span class="lv-chip lv-chip--amb num" title={t("report.assistedTip")}>🫱 {r.assisted}</span>
             {/if}
@@ -607,6 +609,7 @@
   .lv-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
   .lv-select { padding: 4px 10px; border-radius: 9px; border: 1px solid var(--lv-border); background: var(--lv-surface); color: var(--lv-text); font: inherit; font-size: 12.5px; }
   .lv-card { background: var(--lv-surface); border: 1px solid var(--lv-border); border-radius: var(--lv-r-3); padding: 16px 18px; box-shadow: var(--lv-sh-1); margin-bottom: 12px; }
+  .lv-row.low-sample { opacity: .55; }
   .lv-section b { display: block; font-size: 13px; margin-bottom: 10px; }
   .lv-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 550; color: var(--lv-text-2); background: var(--lv-surface-2); border: 1px solid var(--lv-border); }
   .lv-chip.acc { color: var(--lv-accent); background: var(--lv-accent-soft); border-color: transparent; }

@@ -83,8 +83,16 @@ import { ttsSpeak } from "@/core/tts";
     // 题库健康（TODO 2.2）：重复聚类 + 缺字段清单（纯函数，浏览视图按需展开）
     let healthOpen = $state(false);
     const health = $derived<BankHealthReport | null>(healthOpen && questions.length ? bankHealthReport(questions) : null);
-    /** 43-04 lite：生产者覆盖概览（与健康面板同开） */
-    const coverage = $derived(healthOpen && questions.length ? coverageStats(questions) : null);
+    /** 43-04 lite：生产者覆盖概览（与健康面板同开）；51-03 lite：注入作答集算已学考点覆盖 */
+    const coverage = $derived.by(() => {
+      if (!healthOpen || !questions.length) return null;
+      // eslint-disable-next-line svelte/prefer-svelte-reactivity -- derived 内累加集（重算即弃，非跨状态）
+      const attempted = new Set<string>();
+      for (const e of app.attempts.all()) {
+        if (e.verdict !== "not_attempted") attempted.add(e.qid);
+      }
+      return coverageStats(questions, attempted);
+    });
 
     // 每题用时显示 + 超时提示（TODO 13 组 lite）：会话作答期 1s tick；超时阈值取设置（0=关）
     let qTick = $state(0);
@@ -2066,8 +2074,8 @@ import { ttsSpeak } from "@/core/tts";
       {:else if planTrace && planTrace.planned > 0 && planTrace.done >= 0}
         <span class="lv-chip num" title={t("entry.yesterdayTip")}>📅 {t("entry.yesterday").replace("{p}", String(planTrace.planned)).replace("{d}", String(planTrace.done))}</span>
       {/if}
-      {#if planTime}
-        <!-- 53-01 lite：今日计划分钟预算；缺历史题型如实标注默认值口径 -->
+      {#if planTime && view !== "entry"}
+        <!-- 53-01 lite：分钟预算 chip（入口页已在 hero 卡内展示，避免重复） -->
         <span class="lv-chip num" title={planTime.sourced ? t("entry.timeSourced") : t("entry.timeDefault")}>
           ⏳ ~{planTime.minutes} {t("entry.minutes")}（{planTime.low}-{planTime.high}）
         </span>
@@ -2140,11 +2148,22 @@ import { ttsSpeak } from "@/core/tts";
       {/if}
       <div class="lv-pad">
         {#if plan}
-          <div class="lv-card lv-resume" style="margin-bottom:12px">
-            <div>
-              <b>📅 {t("entry.today")}</b>
-              <div class="lv-muted">{plan.reason}</div>
+          <div class="lv-card lv-hero lv-entry-hero" style="margin-bottom:12px">
+            <div class="lv-entry-main">
+              <span class="lv-focus-label">{t("entry.today")}</span>
+              <div class="lv-entry-reason">{plan.reason}</div>
+              {#if planTime}
+                <span class="lv-chip num" title={planTime.sourced ? t("entry.timeSourced") : t("entry.timeDefault")}>
+                  ⏳ ~{planTime.minutes} {t("entry.minutes")}（{planTime.low}-{planTime.high}）
+                </span>
+              {/if}
             </div>
+            <div class="lv-entry-num">
+              <div class="num lv-entry-count">{plan.queue.length}</div>
+              <div class="lv-muted lv-entry-unit">{t("browse.count")}</div>
+            </div>
+          </div>
+          <div class="lv-row" style="margin:0 0 12px">
             <button class="lv-btn lv-btn--primary" onclick={startToday}>▶ {t("entry.startToday")}</button>
           </div>
         {/if}
@@ -2891,6 +2910,10 @@ import { ttsSpeak } from "@/core/tts";
                 <button class="lv-chip num" class:acc={filterType === t2.type} title={t("coverage.typeTip")}
                   onclick={() => { filterType = filterType === t2.type ? "" : t2.type; }}>{t("qtype." + t2.type)} {t2.count}</button>
               {/each}
+              {#if coverage.kpLearned != null}
+                <!-- 51-03 lite：已学考点覆盖（有题考点中至少一题作答过的数量；练一题≠掌握整个考点） -->
+                <span class="lv-chip num" title={t("coverage.learnedTip")}>📖 {t("coverage.learned").replace("{l}", String(coverage.kpLearned)).replace("{t}", String(coverage.kpCovered))}</span>
+              {/if}
               <span class="lv-chip num">{t("coverage.sources").replace("{n}", String(coverage.sources))}</span>
               {#if coverage.sourceMissing}<button class="lv-chip lv-chip--amb num" onclick={() => { filterSource = "@@none"; }} title={t("coverage.sourceMissTip")}>{t("coverage.sourceMissing").replace("{n}", String(coverage.sourceMissing))}</button>{/if}
               {#if coverage.kpMissing}<button class="lv-chip lv-chip--amb num" onclick={() => { kpOpen = true; }}>{t("kp.empty").replace("{n}", String(coverage.kpMissing))}</button>{/if}
@@ -3179,6 +3202,17 @@ import { ttsSpeak } from "@/core/tts";
 
 <style>
   .lv-pad { padding: 12px 16px; overflow: auto; }
+  /* —— 入口 hero 卡（对齐原型 home 首屏；600px 下折叠单列） —— */
+  .lv-entry-hero { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 18px; align-items: center; padding: 22px 24px; }
+  .lv-entry-main { min-width: 0; }
+  .lv-entry-reason { font-size: 19px; font-weight: 650; letter-spacing: -.3px; margin: 8px 0; overflow-wrap: anywhere; }
+  .lv-entry-num { border-left: 1px solid var(--lv-border); padding: 4px 0 4px 18px; text-align: center; }
+  .lv-entry-count { font-size: 40px; font-weight: 650; letter-spacing: -1.5px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .lv-entry-unit { font-size: 11px; margin-top: 4px; }
+  @media (max-width: 600px) {
+    .lv-entry-hero { grid-template-columns: minmax(0,1fr); padding: 18px; }
+    .lv-entry-num { border-left: 0; border-top: 1px solid var(--lv-border); padding: 12px 0 0; display: flex; align-items: baseline; gap: 10px; text-align: left; }
+  }
   .lv-center { display: flex; align-items: center; justify-content: center; min-height: 60%; }
   .lv-muted { color: var(--lv-text-3); font-size: 12.5px; }
   .lv-green { color: var(--lv-green); font-weight: 650; }

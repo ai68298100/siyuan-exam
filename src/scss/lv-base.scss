@@ -86,8 +86,8 @@
   }
 
   .key {
-    width: 26px;
-    height: 26px;
+    width: 28px;
+    height: 28px;
     border-radius: 8px;
     display: grid;
     place-items: center;
@@ -161,7 +161,7 @@
 
 /* —— 进度条（含 sheen 扫光） —— */
 .lv-progress {
-  height: 6px;
+  height: 7px;
   border-radius: 999px;
   background: var(--lv-surface-2);
   overflow: hidden;
@@ -206,11 +206,109 @@
   white-space: nowrap;
 }
 
-/* —— 全局焦点可见性 —— */
+/* —— 全局焦点可见性（对齐原型：3px 焦点环） —— */
 :focus-visible {
-  outline: 2px solid var(--lv-accent);
-  outline-offset: 2px;
+  outline: 3px solid var(--lv-accent);
+  outline-offset: 3px;
   border-radius: 6px;
+}
+
+/* —— 触控目标基线（对齐原型：交互控件 ≥44px；徽章/键帽除外） ——
+   各 Svelte 文件内的 .lv-btn/.lv-input/.lv-select/.lv-seg 只定义外观，
+   尺寸下限统一在此保证，任何文件不得写更小的 min-height。 */
+.lv-btn,
+.lv-input,
+.lv-select,
+.lv-seg button {
+  min-height: 44px;
+}
+
+/* —— 原生控件强调色（原型：checkbox/radio/range accent-color） —— */
+input[type="checkbox"],
+input[type="radio"],
+input[type="range"] {
+  accent-color: var(--lv-accent);
+}
+
+/* —— 数据表（原型 table：th 浅底 muted、行分隔线；报告/模考数据表共用） —— */
+.lv-dtable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+
+  th,
+  td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--lv-border);
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    font-size: 12px;
+    font-weight: 550;
+    color: var(--lv-text-3);
+    background: var(--lv-surface-2);
+  }
+  tr:last-child td {
+    border-bottom: 0;
+  }
+}
+
+/* —— Hero 卡（原型 home 首屏：渐变纸面 + focus-label 引导 + 大数字预算位） —— */
+.lv-hero {
+  background: linear-gradient(115deg, var(--lv-surface), color-mix(in srgb, var(--lv-accent) 6%, var(--lv-surface)));
+  box-shadow: var(--lv-sh-2);
+}
+.lv-focus-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--lv-accent);
+  font-weight: 550;
+  letter-spacing: 0.6px;
+
+  &::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--lv-accent);
+  }
+}
+
+/* —— 长文本溢出（V08：无空格英文/URL/公式不撑破布局） —— */
+:where(.lv-exam-tab, .lv-pad, .lv-detail, .lv-qrow-stem) {
+  overflow-wrap: anywhere;
+}
+
+/* —— 移动端安全区（V10：底部手势/Home 条不遮挡主操作） —— */
+.lv-exam-tab {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* —— 高对比/强制色模式（对齐原型 forced-colors 段） —— */
+@media (forced-colors: active) {
+  .lv-card,
+  .lv-chip,
+  .lv-opt,
+  .lv-btn,
+  .lv-progress,
+  .lv-seg,
+  .lv-kbd {
+    border: 1px solid CanvasText;
+  }
+  .lv-progress i,
+  .lv-btn--primary {
+    background: Highlight;
+    color: ButtonText;
+    forced-color-adjust: none;
+  }
+  .lv-opt--sel,
+  .lv-seg button.on,
+  .lv-seg button.active {
+    outline: 1px solid Highlight;
+  }
 }
 
 /* —— 动效兜底 —— */

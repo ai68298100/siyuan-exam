@@ -153,13 +153,17 @@ export interface CoverageStats {
   kpMissing: number;
   /** 内容缺陷：短解析（有解析但 <10 字）题数 */
   shortAnalysis: number;
+  /** 51-03 lite：有题考点数 / 已学考点数（至少一题作答过；attemptedQids 未注入时 null） */
+  kpCovered: number;
+  kpLearned: number | null;
 }
 
-export function coverageStats(qs: Question[]): CoverageStats {
+export function coverageStats(qs: Question[], attemptedQids?: Set<string>): CoverageStats {
   const byType = new Map<string, number>();
   const sources = new Set<string>();
   let sourceMissing = 0;
   const kpTops = new Map<string, number>();
+  const kpTopsAttempted = new Set<string>();
   let kpMissing = 0;
   let shortAnalysis = 0;
   for (const q of qs) {
@@ -171,6 +175,8 @@ export function coverageStats(qs: Question[]): CoverageStats {
     if (kp) {
       const top = kp.split("/")[0].trim();
       kpTops.set(top, (kpTops.get(top) ?? 0) + 1);
+      // 51-03 lite：已学覆盖=该考点下至少有一题作答过（attemptedQids 由调用方注入）
+      if (attemptedQids?.has(q.id)) kpTopsAttempted.add(top);
     } else kpMissing++;
     const analysis = (q.analysis ?? "").trim();
     if (analysis.length > 0 && analysis.length < 10) shortAnalysis++;
@@ -182,5 +188,8 @@ export function coverageStats(qs: Question[]): CoverageStats {
     kpTops: [...kpTops.entries()].map(([top, count]) => ({ top, count })).sort((a, b) => b.count - a.count),
     kpMissing,
     shortAnalysis,
+    /** 51-03：有题考点 / 已学考点（有题且至少一题作答过）；attemptedQids 未注入时 learned 为 null */
+    kpCovered: kpTops.size,
+    kpLearned: attemptedQids ? kpTopsAttempted.size : null,
   };
 }

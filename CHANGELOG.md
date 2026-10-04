@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased（0.6.x-dev：廿三~四九批，2026-10-03/04）
+## Unreleased（0.6.x-dev：廿三~五十批，2026-10-03/04）
 
-> guard 八门禁全绿（346 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、样式 token 审计、ESLint 0 告警）+ 生产构建通过；**真机验证（SiYuan 3.8.6）**：preflight 17/17、数据生命周期 6/6、CSV 往返冒烟 5/5（`scripts/smoke-csv.mjs`）、题目编辑 updateBlock / 章节树 docTree / listQuestions hpath 三项契约实测通过。docs/17 人工 UI 步骤剩 27/28/36-38。
+> guard 八门禁全绿（348 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、样式 token 审计、ESLint 0 告警）+ 生产构建通过；**真机验证（SiYuan 3.8.6）**：preflight 17/17、数据生命周期 6/6、CSV 往返冒烟 5/5（`scripts/smoke-csv.mjs`）、题目编辑 updateBlock / 章节树 docTree / listQuestions hpath 三项契约实测通过。docs/17 人工 UI 步骤剩 27/28/36-38。
 
 - **内核 429 限流处理**：HTTP 429 识别为可重试错误分类；perf-bank 真机基线发现 3.8.6 连续请求限流（32 组新待办）
 - **GIFT 解析器**（42-04 部分）：Moodle GIFT 单选/多选/判断/简答，`::标题::`→考点、`#反馈`→解析；行内选择式 `{=对~错}` 归一
@@ -76,6 +76,9 @@
 - **AI 端点变更重新确认**（41-06 lite，四九批）：consent 绑定端点（JSON `{endpoint}`），端点变化或自定义↔内置切换时自动重新弹确认；旧版布尔同意兼容保留
 - **恢复默认设置命令**（47-05 lite，四九批）：命令面板「恢复默认设置」逐项写回注册时快照的默认值（aiKey 兜底副本豁免防误清）
 - **docs/15 导入样例**（42-04，四九批）：GIFT（含行内式）/TSV 双形态/重复合并策略样例与规则表落文档
+- **UI 对照原型审查**（五十批）：对照 design/prototype v5 逐项修复低于原型的落差——交互控件 44px 触控下限入基线、焦点环 2px→3px/offset 3px、forced-colors 高对比支持、checkbox/radio/range accent-color、数据表样式（原裸表）、进度条 6→7px、选项键帽 26→28px、卡片圆角 16→18px、长文本 overflow-wrap anywhere、底部安全区 env()、模考答题卡改原型 5 列网格 44px 格、入口 plan 卡升级 hero 形态（渐变+focus-label+大数字题数，600px 折叠单列）
+- **仅判断/填空表导入**（38-02，五十批）：选项列不再是一等必填——无选项列表格可整表导入，选择题行由校验器逐行报错
+- **校准样本门槛 UI**（44-02，五十批）：不足 3 题的档位淡化并标注「样本不足」，悬停说明不参与校准差
 - **会话/错题事件**（48-02 lite 收口，四四批）：`lv-exam:session-ended`（结算计数，无题干）与 `lv-exam:wrongbook-changed`（处置/暂缓）接入总线
 - **昨日计划回看**（44-05 lite，四四批）：入口 chip 显示昨日计划完成 x/y；连续缺席 ≥2 天 ⚠ 提醒（配额恒定不爆量，随时从今天继续）
 

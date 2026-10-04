@@ -278,7 +278,8 @@ export function parseExcelRows(rows: string[][], map: ExcelColumnMap, opt: Impor
   return { ok, errors, duplicates, batch, dupeSamples, updates };
 }
 
-/** 官方 Excel 模板：自动列映射（按表头名识别，找不到的列报给上层；中英文别名，廿五批补 option X） */
+/** 官方 Excel 模板：自动列映射（按表头名识别，找不到的列报给上层；中英文别名，廿五批补 option X）。
+ *  38-02：必填=题型/题干/答案；选项列不强制——仅判断/填空表可省略，选择题行由 validate 逐行报错 */
 export function autoMapExcel(header: string[]): { map: ExcelColumnMap; missing: string[] } {
   const find = (...names: string[]) => header.findIndex((h) => names.includes(foldText(h).toLowerCase()));
   const options: number[] = [];
@@ -288,7 +289,7 @@ export function autoMapExcel(header: string[]): { map: ExcelColumnMap; missing: 
   }
   const map: ExcelColumnMap = {
     type: find("题型", "type"),
-    stem: find("题干", "stem", "题目"),
+    stem: find("题干", "stem", "题目", "question"),
     answer: find("答案", "answer"),
     options,
     analysis: find("解析", "analysis"),
@@ -301,7 +302,6 @@ export function autoMapExcel(header: string[]): { map: ExcelColumnMap; missing: 
   if (map.type < 0) missing.push("题型");
   if (map.stem < 0) missing.push("题干");
   if (map.answer < 0) missing.push("答案");
-  if (options.length < 2) missing.push("选项A/B（至少两列）");
   return { map, missing };
 }
 

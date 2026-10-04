@@ -23,6 +23,22 @@ describe("43-04 覆盖概览（三五批）", () => {
     expect(c.kpTops).toEqual([{ top: "资料", count: 2 }, { top: "言语", count: 1 }]);
     expect(c.kpMissing).toBe(1);
     expect(c.shortAnalysis).toBe(1);
+    expect(c.kpLearned).toBeNull(); // 未注入作答集 → 如实 null
+  });
+
+  it("51-03：注入作答集 → 已学考点覆盖（至少一题作答过的考点数）", () => {
+    const qs = [
+      { id: "a", kp: "资料/比重" },
+      { id: "b", kp: "资料/增长" },
+      { id: "c", kp: "言语" },
+      { id: "d", kp: "" }, // 无考点不计入覆盖分母
+    ] as never[];
+    const attempted = new Set(["a", "c"]); // 资料、言语各有作答
+    const c = coverageStats(qs, attempted);
+    expect(c.kpCovered).toBe(2);
+    expect(c.kpLearned).toBe(2);
+    const c2 = coverageStats(qs, new Set(["a"])); // 只有资料有作答
+    expect(c2.kpLearned).toBe(1);
   });
 
   it("空题库：全零不抛错", () => {
