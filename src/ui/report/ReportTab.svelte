@@ -86,6 +86,72 @@
       trend30 = cutoff ? dailyTrend(d.days).filter((p) => p.date >= cutoffDate) : dailyTrend(d.days);
     }
 
+    // ---------- AI 报告解读（117-01 T11：只解释确定性统计，事实全部来自 report.ts 既有聚合） ----------
+    let explainBusy = $state(false);
+    let explainText = $state("");
+    let explainError = $state("");
+
+    function windowLabel(): string {
+      return rangeDays === 1 ? t("report.rangeToday") : rangeDays === 7 ? t("report.range7") : rangeDays === 30 ? t("report.range30") : t("report.rangeAll");
+    }
+
+    async function runReportExplain() {
+      if (!app || explainBusy) return;
+      if (!app.kernelOnline) { explainError = t("state.offlineHint"); return; }
+      explainBusy = true; explainError = ""; explainText = "";
+      try {
+        const { SiyuanAiChannel, OpenAiChannel } = await import("@/ai/client");
+        const { buildReportExplainMessages } = await import("@/ai/reportExplain");
+        const { AiTaskRunner } = await import("@/ai/task");
+        const endpoint = String(plugin?.settingUtils?.get?.("aiEndpoint") ?? "");
+        const key = String(plugin?.settingUtils?.get?.("aiKey") ?? "");
+        const model = String(plugin?.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
+        const ch = endpoint && key
+          ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
+          : new SiyuanAiChannel((app as any).deps.client);
+        const cutoff = rangeDays > 0 ? Date.now() - rangeDays * 86_400_000 : 0;
+        const events = app.attempts.all().filter((e) => !cutoff || e.ts >= cutoff);
+        let attempts = 0, correct = 0;
+        for (const e of events) {
+          if (e.verdict === "not_attempted") continue;
+          attempts++;
+          if (e.verdict === "correct") correct++;
+        }
+        const cutoffDate = cutoff ? new Date(cutoff).toISOString().slice(0, 10) : "";
+        const facts: import("@/ai/reportExplain").ReportFactsInput = {
+          windowLabel: windowLabel(),
+          attempts,
+          correct,
+          accuracy: attempts ? Math.round((correct / attempts) * 100) : null,
+          trend: cutoff ? dailyTrend(app.derived().days).filter((p) => p.date >= cutoffDate) : dailyTrend(app.derived().days),
+          calibration: calibration(events),
+          exposure: exposureStats(events),
+          delayed: delayedRecall(events),
+          weakKp: weak.slice(0, 3).map((w) => ({ kp: w.root, accuracy: w.accuracy, attempts: w.total })),
+        };
+        const messages = buildReportExplainMessages(facts);
+        const reqCtx: import("@/ai/task").AiTaskContext = {
+          templateId: "report.explain",
+          templateVersion: 1,
+          qid: "", // 聚合统计任务：无单题身份
+          questionRevision: "",
+          learnerAnswer: null,
+          submitted: true, // 报告=事后解读（揭示闸门天然满足）
+          mode: "report",
+          sessionId: "",
+        };
+        const env = await new AiTaskRunner(ch).run(reqCtx, messages);
+        if (env.status === "ok" && env.data.text) {
+          explainText = env.data.text;
+          void app.recordAiUsage(ch.id, env.tokens, 1);
+        } else {
+          explainError = `⚠ ${env.summary}${env.error ? "：" + env.error : ""}`;
+        }
+      } catch (e) {
+        explainError = String(e instanceof Error ? e.message : e);
+      } finally { explainBusy = false; }
+    }
+
     onMount(async () => {
       if (!app) { loading = false; errorMsg = t("state.appNotReady"); return; }
       try {
@@ -320,8 +386,27 @@
       <span class="lv-muted" style="font-size:11.5px">{t("report.scopeHint")}</span>
     {/if}
     <span class="fn__flex-1"></span>
+    <!-- 117-01 T11：AI 解读当前范围（只解释确定性统计；未配置 AI Key 时给出信封错误） -->
+    <button class="lv-btn sm" onclick={() => void runReportExplain()} disabled={explainBusy}>
+      🧪 {explainBusy ? "…" : t("reportExplain.ask")}
+    </button>
     <span class="lv-chip">{t("report.dataFromLog")}</span>
   </div>
+
+  {#if explainError}
+    <div class="lv-error" style="margin:0 0 8px">{explainError}</div>
+  {:else if explainText}
+    <div class="lv-card" style="margin:0 0 10px;padding:10px 14px">
+      <div class="lv-row" style="margin:0 0 4px">
+        <b style="font-size:13px">🧪 {t("reportExplain.title")}</b>
+        <span class="lv-chip">{windowLabel()}</span>
+        <span class="fn__flex-1"></span>
+        <button class="lv-btn sm lv-btn--ghost" onclick={() => { explainText = ""; }}>{t("edit.cancel")}</button>
+      </div>
+      <div style="font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere">{explainText}</div>
+      <div class="lv-muted" style="font-size:10.5px;margin-top:4px">{t("reportExplain.disclaimer")}</div>
+    </div>
+  {/if}
 
   {#if loading}
     <div class="lv-skeleton"></div>

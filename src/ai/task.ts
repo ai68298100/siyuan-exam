@@ -13,7 +13,12 @@ import type { AiChannel, AiMessage } from "./client";
 export type AiTaskStatus = "ok" | "needsEvidence" | "needsReview" | "unsupported" | "failed";
 
 /** docs/18 模板目录的最小子集（已实际接入的讲解类任务） */
-export type ExplainTemplateId = "practice.hint" | "practice.socratic" | "practice.explain" | "practice.misdiagnosis";
+export type ExplainTemplateId =
+  | "practice.hint"
+  | "practice.socratic"
+  | "practice.explain"
+  | "practice.misdiagnosis"
+  | "report.explain";
 
 /** 任务上下文（G1 身份字段；任一变化 → contextHash 变化） */
 export interface AiTaskContext {
@@ -170,8 +175,10 @@ export function applyResult(
 // ---------- 内部 ----------
 
 function helpKindOf(templateId: ExplainTemplateId): HelpKind {
-  // misdiagnosis 是提交后的证据分析：与 explain 同走揭示闸门（未提交拒绝）
-  if (templateId === "practice.explain" || templateId === "practice.misdiagnosis") return "reveal";
+  // misdiagnosis/report.explain 都是"已提交后"的证据/统计解读：与 explain 同走揭示闸门
+  if (templateId === "practice.explain" || templateId === "practice.misdiagnosis" || templateId === "report.explain") {
+    return "reveal";
+  }
   if (templateId === "practice.hint") return "hint";
   return "socratic";
 }
@@ -180,5 +187,6 @@ function templateLabel(templateId: ExplainTemplateId): string {
   if (templateId === "practice.explain") return "依据讲解";
   if (templateId === "practice.hint") return "递进提示";
   if (templateId === "practice.misdiagnosis") return "错因假设";
+  if (templateId === "report.explain") return "报告解读";
   return "苏格拉底追问";
 }
