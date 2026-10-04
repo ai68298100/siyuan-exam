@@ -1262,6 +1262,39 @@ export class ExamApp {
     return blockIds.length;
   }
 
+  /** AI 闪卡候选建卡（116-03 lite：确认后走此方法）——卡块落题库「/AI 闪卡」文档（缺则建），
+   *  逐块送入题库卡包；不自动评级、不碰 FSRS 参数（边界）。返回新卡块 id 列表。 */
+  async createFlashCards(
+    bankId: string,
+    bankName: string,
+    cards: { type: string; front: string; back: string; source: string }[],
+  ): Promise<{ blockIds: string[] }> {
+    if (!this.kernelOnline) throw new Error("离线：建卡需要内核可写");
+    if (!cards.length) throw new Error("无候选卡");
+    const deckId = await this.ensureDeck(bankName);
+    const hpath = "/AI 闪卡";
+    let docId: string | undefined;
+    try {
+      const rows = await this.deps.client.sql<{ id: string }>(
+        `SELECT id FROM blocks WHERE box = '${bankId}' AND hpath = '${hpath}' AND type = 'p' LIMIT 1`,
+      );
+      docId = rows[0]?.id;
+    } catch { /* 查询失败走新建路径 */ }
+    if (!docId) {
+      docId = await this.deps.client.createDocWithMd(
+        bankId,
+        hpath,
+        "# AI 闪卡\n\n> 由错因/解析生成的最小卡候选（116-03）。删除本文档不影响题目与作答流水。\n",
+      );
+    }
+    if (!docId) throw new Error("无法创建「AI 闪卡」文档");
+    const markdown = cards.map((c) => `- 【AI·${c.type}】${c.front}\n  → ${c.back}（来源：${c.source}）`).join("\n");
+    const blockIds = await this.deps.client.appendBlock(docId, markdown);
+    if (!blockIds.length) throw new Error("卡块写入失败（内核未返回块 id）");
+    await this.deps.client.addRiffCards(deckId, blockIds);
+    return { blockIds };
+  }
+
   /** FSRS 到期题（planToday.dueFirst 供给；离线/无卡包/无到期返回空，不建卡包） */
   async dueQuestions(bankName: string, questions: (Question & { blockId?: string })[]): Promise<Question[]> {
     if (!this.kernelOnline) return [];

@@ -19,7 +19,8 @@ export type ExplainTemplateId =
   | "practice.explain"
   | "practice.misdiagnosis"
   | "report.explain"
-  | "plan.nextaction";
+  | "plan.nextaction"
+  | "practice.flash";
 
 /** 任务上下文（G1 身份字段；任一变化 → contextHash 变化） */
 export interface AiTaskContext {
@@ -182,7 +183,8 @@ export function helpKindOf(templateId: ExplainTemplateId): HelpKind {
     templateId === "practice.explain" ||
     templateId === "practice.misdiagnosis" ||
     templateId === "report.explain" ||
-    templateId === "plan.nextaction"
+    templateId === "plan.nextaction" ||
+    templateId === "practice.flash"
   ) {
     return "reveal";
   }
@@ -196,5 +198,6 @@ function templateLabel(templateId: ExplainTemplateId): string {
   if (templateId === "practice.misdiagnosis") return "错因假设";
   if (templateId === "report.explain") return "报告解读";
   if (templateId === "plan.nextaction") return "下一行动";
+  if (templateId === "practice.flash") return "闪卡候选";
   return "苏格拉底追问";
 }

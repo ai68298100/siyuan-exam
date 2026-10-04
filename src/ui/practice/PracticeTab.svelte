@@ -25,6 +25,7 @@ import { ttsSpeak } from "@/core/tts";
     import { onExamEvent, emitExamEvent } from "@/core/bus";
     import { escapeHtml } from "../../libs/sanitize";
     import { questionFingerprint } from "@/ai/task";
+    import { summarizeLoad } from "@/ai/flashCandidates";
     import SaveStatus from "../shared/SaveStatus.svelte";
 
     let { plugin, examApp: app }: { plugin: any; examApp: ExamApp } = $props();
@@ -527,8 +528,7 @@ import { ttsSpeak } from "@/core/tts";
     }
 
     /** 按选定回执（而非当前会话）做错因假设：证据取自该次作答事件本身（U14 口径） */
-    async function runReceiptMisdiagnosis(q: Question, e: import("../../core/types").AttemptEvent) {
-      const key = `${e.qid}#${e.seq}`;
+    async function runReceiptMisdiagnosis(q: Question, e: import("../../core/types").AttemptEvent) {      const key = `${e.qid}#${e.seq}`;
       if (receiptBusy || !app.kernelOnline) return;
       receiptBusy = key;
       try {
@@ -569,6 +569,79 @@ import { ttsSpeak } from "@/core/tts";
       } catch (err) {
         showMessage(String(err instanceof Error ? err.message : err), 3600, "error");
       } finally { receiptBusy = ""; }
+    }
+
+    // ---------- AI 闪卡候选（116-03 T10：最小卡/拆卡理由；先展示卡数/负荷/来源，确认后才建卡） ----------
+    let flashBusy = $state("");
+    let flashCandidates = $state<Record<string, import("@/ai/flashCandidates").FlashCandidateResult>>({});
+    let flashError = $state<Record<string, string>>({});
+
+    async function makeFlashCandidates(q: Question) {
+      if (flashBusy || !app.kernelOnline) {
+        if (!app.kernelOnline) showMessage(t("state.offlineHint"), 2400, "info");
+        return;
+      }
+      flashBusy = q.id;
+      try {
+        const { SiyuanAiChannel, OpenAiChannel } = await import("@/ai/client");
+        const { buildFlashCandidateMessages, parseFlashCandidates, findCardLeaks } = await import("@/ai/flashCandidates");
+        const { AiTaskRunner, questionFingerprint } = await import("@/ai/task");
+        const endpoint = String(plugin.settingUtils?.get?.("aiEndpoint") ?? "");
+        const key = String(plugin.settingUtils?.get?.("aiKey") ?? "");
+        const model = String(plugin.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
+        const ch = endpoint && key
+          ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
+          : new SiyuanAiChannel((app as any).deps.client);
+        const reflection = (await app.loadWrongReflection(q.id))?.text;
+        const messages = buildFlashCandidateMessages(q, { reflection });
+        const reqCtx: import("@/ai/task").AiTaskContext = {
+          templateId: "practice.flash",
+          templateVersion: 1,
+          qid: q.id,
+          questionRevision: questionFingerprint(q),
+          learnerAnswer: null,
+          submitted: true, // 闪卡候选基于已提交知识的解析/反思（揭示闸门）
+          mode: "practice",
+          sessionId: "",
+        };
+        const env = await new AiTaskRunner(ch).run(reqCtx, messages);
+        void logAiTask({ templateId: env.templateId, qid: q.id, status: env.status, tokens: env.tokens, messages });
+        if (env.status === "ok" && env.data.text) {
+          void app.recordAiUsage(ch.id, env.tokens, 1);
+          const parsed = parseFlashCandidates(env.data.text);
+          const leaks = findCardLeaks(parsed.cards);
+          if (leaks.length) {
+            flashError = { ...flashError, [q.id]: t("flash.leak").replace("{r}", leaks.join("、")) };
+            return;
+          }
+          flashCandidates = { ...flashCandidates, [q.id]: parsed };
+        } else {
+          flashError = { ...flashError, [q.id]: `⚠ ${env.summary}${env.error ? "：" + env.error : ""}` };
+        }
+      } catch (e) {
+        flashError = { ...flashError, [q.id]: String(e instanceof Error ? e.message : e) };
+      } finally { flashBusy = ""; }
+    }
+
+    async function confirmFlashCards(q: Question) {
+      const result = flashCandidates[q.id];
+      if (!result || flashBusy) return;
+      const bank = app.listBanks().find((b) => b.id === activeBankId);
+      if (!bank) { showMessage(t("guard.needBankFirst"), 2400, "error"); return; }
+      const { confirmDialogSync } = await import("../../libs/dialog");
+      const ok = await confirmDialogSync({
+        title: t("flash.confirmTitle").replace("{n}", String(result.cards.length)),
+        content: result.cards.map((c) => `・${c.front}`).join("<br>"),
+      });
+      if (!ok) return;
+      flashBusy = q.id;
+      try {
+        const { blockIds } = await app.createFlashCards(bank.id, bank.name, result.cards);
+        flashCandidates = { ...flashCandidates, [q.id]: { ...result, cards: [] } };
+        showMessage(t("flash.done").replace("{n}", String(blockIds.length)), 3200, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
+      } finally { flashBusy = ""; }
     }
 
     async function createBank() {
@@ -3708,6 +3781,36 @@ import { ttsSpeak } from "@/core/tts";
                         {/each}
                       </div>
                     {/if}
+                  {/if}
+                  {#if flashError[q.id]}<div class="lv-error">{flashError[q.id]}</div>{/if}
+                  <div class="lv-row" style="font-size:11.5px">
+                    <button class="lv-btn sm lv-btn--ghost" disabled={flashBusy === q.id} onclick={() => void makeFlashCandidates(q)}>
+                      🃏 {flashBusy === q.id ? "…" : t("flash.ask")}
+                    </button>
+                    {#if flashCandidates[q.id]?.cards?.length}
+                      <span class="lv-chip num" title={flashCandidates[q.id]!.splitReason ?? ""}>{summarizeLoad(flashCandidates[q.id]!.cards)}</span>
+                    {/if}
+                  </div>
+                  {#if flashCandidates[q.id]?.cards?.length}
+                    <!-- 116-03 T10：先展示卡数/负荷/来源；确认后才建卡（ riff 卡包） -->
+                    <div class="lv-detail" style="margin:4px 0">
+                      {#each flashCandidates[q.id]!.cards as c, _ci (_ci)}
+                        <div class="lv-row" style="font-size:11.5px;margin:2px 0;align-items:flex-start;gap:4px">
+                          <span class="lv-chip">{t("flash.type." + c.type)}</span>
+                          <div style="flex:1;min-width:200px;overflow-wrap:anywhere">
+                            <b>{c.front}</b>
+                            <div class="lv-muted">→ {c.back}</div>
+                          </div>
+                          <span class="lv-chip num">{c.source}</span>
+                        </div>
+                      {/each}
+                      <div class="lv-row">
+                        <button class="lv-btn lv-btn--primary sm" disabled={flashBusy === q.id} onclick={() => void confirmFlashCards(q)}>
+                          {t("flash.confirm").replace("{n}", String(flashCandidates[q.id]!.cards.length))}
+                        </button>
+                        <button class="lv-btn sm lv-btn--ghost" onclick={() => { flashCandidates = { ...flashCandidates, [q.id]: { cards: [] } }; }}>{t("edit.cancel")}</button>
+                      </div>
+                    </div>
                   {/if}
                 {/if}
               </div>
