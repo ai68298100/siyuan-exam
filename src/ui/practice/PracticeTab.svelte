@@ -21,6 +21,7 @@ import { ttsSpeak } from "@/core/tts";
     import { avgMsByType, estimatePlanMinutes } from "@/core/timeBudget";
     import { kpAudit, planKpMerge, planEmptyKpFill } from "@/core/kpGovernance";
     import { coverageTree, subtreeCount, subtreeLearned, subtreeNoSource, gapsToCsv } from "@/core/syllabus";
+    import { parseErrataCsv, planErrata, errataTemplateCsv } from "@/core/errata";
     import { probeCheckinApi, syncCheckin, localDateKeyOf, bridgeEnabled, fetchStreak } from "@/core/checkinBridge";
     import { probeGlean, listLaterClips, formatClipsForSource, markClipDone, type GleanClip } from "@/core/gleanBridge";
     import { onExamEvent, emitExamEvent } from "@/core/bus";
@@ -285,6 +286,56 @@ import { ttsSpeak } from "@/core/tts";
       a.download = `考纲缺口清单 ${new Date().toISOString().slice(0, 10)}.csv`;
       a.click();
       URL.revokeObjectURL(a.href);
+    }
+
+    // ---------- 勘误回导（57 lite）：导出模板（qid+当前值）→ 线下修订 → 回导 dry-run → 批量应用（撤销基线共用） ----------
+    let errataOpen = $state(false);
+    let errataPlan = $state<import("@/core/errata").ErrataPlan | null>(null);
+    let errataErrors = $state<{ row: number; reason: string }[]>([]);
+    let errataBusy = $state(false);
+    let errataNote = $state("");
+
+    function exportErrataTemplate() {
+      const csv = "\uFEFF" + errataTemplateCsv(questions);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `勘误模板 ${bankName || "题库"} ${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    async function onErrataFile(e: Event) {
+      const input = e.target as HTMLInputElement;
+      const file = input.files?.[0];
+      input.value = "";
+      if (!file) return;
+      errataBusy = true; errataNote = "";
+      try {
+        const text = await file.text();
+        const { rows, errors } = parseErrataCsv(text);
+        errataErrors = errors;
+        errataPlan = rows.length ? planErrata(rows, questions as (Question & { blockId?: string })[]) : null;
+      } catch (err) {
+        errataErrors = [{ row: 0, reason: String(err instanceof Error ? err.message : err) }];
+      } finally { errataBusy = false; }
+    }
+
+    async function applyErrata() {
+      const plan = errataPlan;
+      if (!plan?.changes.length || errataBusy) return;
+      errataBusy = true;
+      try {
+        const r = await app.applyBatchEdit(plan.changes);
+        // 撤销基线与批量编辑共用（43-06）：保存逆向计划，重载后可撤
+        batchUndo = { changes: invertPlan(plan.changes), bankId: activeBankId, at: Date.now() };
+        await saveBatchUndo();
+        errataNote = t("errata.applied").replace("{ok}", String(r.ok)).replace("{f}", String(r.failed));
+        errataPlan = null;
+        void loadQuestions();
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
+      } finally { errataBusy = false; }
     }
 
     function previewKpMerge() {
@@ -3538,6 +3589,7 @@ import { ttsSpeak } from "@/core/tts";
         <button class="lv-chip" class:acc={sectionOpen} onclick={() => void toggleSectionTree()}>📑 {t("browse.sectionTree")}</button>
         <button class="lv-chip" class:acc={kpOpen} onclick={() => { kpOpen = !kpOpen; }}>🧭 {t("kp.title")}</button>
         <button class="lv-chip" class:acc={healthOpen} onclick={() => healthOpen = !healthOpen}>🩺 {t("health.title")}</button>
+        <button class="lv-chip" class:acc={errataOpen} onclick={() => errataOpen = !errataOpen}>📄 {t("errata.title")}</button>
         <button class="lv-chip" class:acc={batchMode} onclick={() => { batchMode = !batchMode; if (!batchMode) selectedIds = {}; }}>{t("batch.mode")}</button>
         <button class="lv-chip" title={t("browse.exportCsvTitle")} onclick={exportBankCsv}>⬇️ CSV</button>
         <input class="lv-input" style="flex:1;min-width:160px" placeholder={t("browse.searchPlaceholder")} bind:value={searchText} />
@@ -3702,6 +3754,48 @@ import { ttsSpeak } from "@/core/tts";
             {#if sylError}<div class="lv-error">{sylError}</div>{/if}
             {#if sylNote}<div class="lv-row"><span class="lv-muted num">{sylNote}</span></div>{/if}
           {/if}
+        </div>
+      {/if}
+      {#if errataOpen}
+        <!-- 57 lite：勘误回导——qid 定向元数据勘误，dry-run 预览后走批量编辑同一写路径与撤销基线 -->
+        <div class="lv-card lv-pad-card" style="padding:12px 16px;max-height:320px;overflow:auto">
+          <div class="lv-row" style="margin:0">
+            <b style="font-size:13px">📄 {t("errata.title")}</b>
+            <span class="lv-muted" style="font-size:11.5px">{t("errata.hint")}</span>
+          </div>
+          <div class="lv-row" style="margin:6px 0 0">
+            <button class="lv-btn sm lv-btn--ghost" onclick={exportErrataTemplate}>⬇️ {t("errata.template")}</button>
+            <label class="lv-btn sm">
+              📥 {t("errata.import")}
+              <input type="file" accept=".csv,.tsv,.txt" style="display:none" onchange={onErrataFile} disabled={errataBusy} />
+            </label>
+          </div>
+          {#if errataErrors.length}
+            {#each errataErrors.slice(0, 5) as er, _ei (_ei)}
+              <div class="lv-error-row num">#{er.row} {er.reason}</div>
+            {/each}
+            {#if errataErrors.length > 5}<div class="lv-muted num">… +{errataErrors.length - 5}</div>{/if}
+          {/if}
+          {#if errataPlan}
+            <div class="lv-row" style="margin:6px 0 0;flex-wrap:wrap">
+              <span class="lv-chip num">{t("batch.planCount").replace("{n}", String(errataPlan.changes.length))}</span>
+              {#if errataPlan.unchanged}<span class="lv-chip num">{t("errata.unchanged").replace("{n}", String(errataPlan.unchanged))}</span>{/if}
+              {#if errataPlan.unknownQids.length}
+                <span class="lv-chip lv-chip--amb num" title={errataPlan.unknownQids.join("、")}>{t("errata.unknown").replace("{n}", String(errataPlan.unknownQids.length))}</span>
+              {/if}
+              <button class="lv-btn lv-btn--primary sm" disabled={errataBusy || !app.kernelOnline || !errataPlan.changes.length} onclick={() => void applyErrata()}>
+                {errataBusy ? "…" : t("batch.apply").replace("{n}", String(errataPlan.changes.length))}
+              </button>
+              {#if !app.kernelOnline}<span class="lv-chip lv-chip--amb">{t("state.offlineHint")}</span>{/if}
+            </div>
+            {#each errataPlan.changes.slice(0, 8) as c, _ci (_ci)}
+              <div class="lv-row lv-muted num" style="margin:2px 0;font-size:11px">
+                {t("batch.field." + c.field)}：{c.from || "（空）"} → {c.to || "（空）"}
+              </div>
+            {/each}
+            {#if errataPlan.changes.length > 8}<div class="lv-muted num">… +{errataPlan.changes.length - 8}</div>{/if}
+          {/if}
+          {#if errataNote}<div class="lv-row"><span class="lv-chip num">{errataNote}</span></div>{/if}
         </div>
       {/if}
       {#if batchMode}
