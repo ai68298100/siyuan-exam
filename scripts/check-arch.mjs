@@ -124,6 +124,24 @@ for (const f of srcFiles) {
 must("自定义事件带 lv-exam: 前缀", badEvents.length === 0);
 if (badEvents.length) console.error("  违规:\n" + badEvents.map((b) => "  - " + b).join("\n"));
 
+// 8. 114-02 严格模考跨入口 AI 禁用：模考场不得出现题目级 AI 发送入口
+//（全部题目级 AI 帮助走 AiTaskRunner → helpAllowed 的 session 模式闸门；模考 UI 任何 AI 入口都算违规）
+const mockSrc = readFileSync("src/ui/mock/MockTab.svelte", "utf8");
+const aiEntryPatterns = [
+  /AiTaskRunner/, /aiChat\(/, /explainCurrent/, /requestHint/, /runMisdiagnosis/,
+  /buildExplainMessages/, /buildHintMessages/, /buildMisdiagnosisMessages/, /\.chat\(/,
+];
+const aiHits = aiEntryPatterns.filter((re) => re.test(mockSrc));
+must("114-02 模考场无题目级 AI 发送入口", aiHits.length === 0);
+if (aiHits.length) console.error("  违规模式:\n" + aiHits.map((re) => "  - " + re).join("\n"));
+
+// 9. 114-02 闸门共用：UI 层不得绕过 AiTaskRunner 直连通道发题目级 AI（.chat 只允许出现在 ai/ 服务层）
+const uiFiles = ["src/ui/practice/PracticeTab.svelte", "src/ui/report/ReportTab.svelte", "src/ui/mock/MockTab.svelte"];
+for (const f of uiFiles) {
+  const direct = /\.chat\(/.test(readFileSync(f, "utf8"));
+  must(`114-02 ${f.split("/").pop()} 无直连 .chat（AI 经闸门）`, !direct);
+}
+
 const failedAll = checks.filter((c) => !c.ok);
 for (const c of checks.slice(-2)) console.log((c.ok ? "✓" : "✗") + " " + c.name);
 if (failedAll.length) process.exit(1);

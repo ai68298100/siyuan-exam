@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildExplainMessages, continueExplainMessages } from "../src/ai/explain";
 import { findHintLeaks } from "../src/ai/hint";
+import { helpAllowed, helpKindOf, type ExplainTemplateId } from "../src/ai/task";
 import type { Question } from "../src/core/types";
 
 function q(partial: Partial<Question>): Question {
@@ -51,6 +52,24 @@ describe("114-03 T06 苏格拉底单问题", () => {
     const cont = continueExplainMessages(base, "我选 A 是因为界面也算后端？");
     expect(cont).toHaveLength(3);
     expect(cont[2].content).toContain("界面也算后端");
+  });
+});
+
+describe("114-02 严格模考跨入口 AI 禁用（枚举锁）", () => {
+  it("全部模板（含未来新增）在 strictMock 下一律拒绝，无论提交状态", () => {
+    const ids: ExplainTemplateId[] = [
+      "practice.hint",
+      "practice.socratic",
+      "practice.explain",
+      "practice.misdiagnosis",
+      "report.explain",
+    ];
+    for (const id of ids) {
+      expect(helpAllowed({ mode: "strictMock", submitted: false }, helpKindOf(id)).allowed, id).toBe(false);
+      expect(helpAllowed({ mode: "strictMock", submitted: true }, helpKindOf(id)).allowed, id).toBe(false);
+    }
+    // 非 strictMock 的提交后解读可用（对照，防锁死）
+    expect(helpAllowed({ mode: "practice", submitted: true }, helpKindOf("practice.explain")).allowed).toBe(true);
   });
 });
 

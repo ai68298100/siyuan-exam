@@ -174,7 +174,8 @@ export function applyResult(
 
 // ---------- 内部 ----------
 
-function helpKindOf(templateId: ExplainTemplateId): HelpKind {
+/** 模板 → 帮助种类（114-02 审计锁用：枚举全部模板断言 strictMock 拒绝） */
+export function helpKindOf(templateId: ExplainTemplateId): HelpKind {
   // misdiagnosis/report.explain 都是"已提交后"的证据/统计解读：与 explain 同走揭示闸门
   if (templateId === "practice.explain" || templateId === "practice.misdiagnosis" || templateId === "report.explain") {
     return "reveal";
