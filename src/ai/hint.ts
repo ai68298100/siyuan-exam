@@ -75,6 +75,13 @@ export interface HintLeak {
   detail: string;
 }
 
+/** 提示文本归一：全角字母→半角、压缩空白（泄题变体「答案是Ｂ」不因宽度漏检） */
+function normalizeHintText(text: string): string {
+  return text
+    .replace(/[Ａ-Ｚ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+    .replace(/\s+/g, " ");
+}
+
 /**
  * 检查提示文本是否泄露答案：
  * - 答案字母披露：『答案：B』『选 C』『正确答案是 A』；
@@ -84,12 +91,12 @@ export interface HintLeak {
  */
 export function findHintLeaks(hintText: string, q: Question): HintLeak[] {
   const leaks: HintLeak[] = [];
-  const text = hintText.replace(/\s+/g, " ");
+  const text = normalizeHintText(hintText);
 
   // 1) 答案字母披露（choice/judge）：『答案[:：是]? B』『选[:：]? C』
   if (q.options.length > 0) {
     const letters = validLetters(q.options.length);
-    const letterRe = new RegExp(`(?:正确答案|答案|应选|选|choose|answer)\\s*[:：是]?\\s*([${letters}])\\b`, "i");
+    const letterRe = new RegExp(`(?:正确答案|答案|应选|选|choose|answer)[\\s:：是]*([${letters}])\\b`, "i");
     const m = text.match(letterRe);
     if (m) leaks.push({ kind: "answer-letter", detail: `提示出现答案字母「${m[1]}」` });
   }

@@ -848,7 +848,7 @@ import { ttsSpeak } from "@/core/tts";
       // G1 任务身份：模板+题面指纹+作答快照+提交状态（ai/task.ts 信封契约）
       const reqCtx: import("@/ai/task").AiTaskContext = {
         templateId: mode === "explain" ? "practice.explain" : mode === "hint" ? "practice.hint" : "practice.socratic",
-        templateVersion: 1,
+        templateVersion: 2, // 五八批模板修订（T07 分层/T06 单问题）
         qid: q.id,
         questionRevision: questionFingerprint(q),
         learnerAnswer: feedback.myAnswer,
@@ -988,7 +988,7 @@ import { ttsSpeak } from "@/core/tts";
       // 追问沿用苏格拉底模板身份；揭示状态随当前题提交事实
       const reqCtx: import("@/ai/task").AiTaskContext = {
         templateId: "practice.socratic",
-        templateVersion: 1,
+        templateVersion: 2, // 五八批模板修订（T06 单问题）
         qid: q.id,
         questionRevision: questionFingerprint(q),
         learnerAnswer: feedback?.myAnswer ?? null,
