@@ -143,6 +143,7 @@ const KNOWN_STORAGE_KEYS = [
   "materials/notes",
   "materials/qrefs",
   "syllabus/tree",
+  "kp/relations",
 ];
 
 export interface ExamAppDeps {
