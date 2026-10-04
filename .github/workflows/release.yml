@@ -18,8 +18,8 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 11.4.0
           run_install: false
+        # pnpm 版本单一来源 = package.json 的 packageManager（不在此重复指定，避免双声明冲突）
 
       - name: Install Node.js
         uses: actions/setup-node@v4
