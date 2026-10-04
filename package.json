@@ -32,6 +32,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "verify:package": "node ./scripts/verify-package.mjs",
+    "release:check": "node ./scripts/release-check.mjs",
     "check:types": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
     "check:svelte": "svelte-check --tsconfig ./tsconfig.json",
     "clean": "node ./scripts/clean.js",
