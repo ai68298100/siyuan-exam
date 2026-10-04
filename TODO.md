@@ -87,7 +87,7 @@
 - [x] settings `schemaVersion` 字段与迁移器骨架 ✓2026-10-03（`core/migrations.ts`：DATA_SCHEMA_VERSION + migrateAttemptLog 版本链；attempts/log 落盘升级为 `{v, events}` 信封，读回兼容 v1 裸数组与更高版本（versionTooNew 告警标记，不降级丢数据）；5 项单测。settings 载荷在发生格式变更时按同一骨架补迁移函数）
 - [x] 性能基准脚本（万题级题库 SQL 检索/渲染计时） ✓2026-10-03（scripts/perf-bank.mjs：写入/检索/渲染计时 + 离线 SKIP + 自清理；真机 3.8.6 基线入库 7.0 条目） **补强（2026-10-05 六五批）**：聚合侧性能回归锁——`tests/perfAggregate.test.ts` 10k 合成流水（500 题×180 天）预算断言 replay <1.5s、报告聚合全套（校准/暴露/延迟回忆/时段/掌握度/弱项）<1.5s，语义抽查防空转；纯本地聚合与真机 SQL 基线（perf-bank）互补。
 - [ ] mimosa 安全扫描纳入发布前 checklist
-- [ ] 依赖策略：siyuan npm 包版本升级跟踪（petal 1.2.x → 后续）
+- [ ] 依赖策略：siyuan npm 包版本升级跟踪（petal 1.2.x → 后续） ✓2026-10-05 七八批评估更新（`pnpm outdated` 全量）：siyuan 1.2.5→1.2.9（仅类型收紧：基类 i18n 宽化为 JSONValue——以 `declare i18n: Record<string, string>` 收窄回字典一行修，check-i18n 本就强制平铺字符串）；vite 8.3.2/svelte 5.57.1/sass 1.105.1/@types/node 26.6.4/js-yaml 5.4.2/livereload 0.10.3 更新后 guard 451 项全绿；**延后**：eslint 9→10（flat config 迁移）与 typescript 6→7（major），按 38-08 纪律不为更新而更新，待发版后窗口处理。
 
 ## 1. 内核在线复核（开工前置，内核需运行）
 

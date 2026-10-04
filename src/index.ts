@@ -21,6 +21,9 @@ const TAB_REPORT = "exam-report";
 const DOCK_WRONGBOOK = "dock-wrongbook";
 
 export default class LvExamPlugin extends Plugin {
+  /** siyuan 1.2.9 将基类 i18n 宽化为 Record<string, JSONValue>；本项目 i18n 文件为平铺
+   *  string→string（scripts/check-i18n.mjs 强制非空字符串），此处收窄回字符串字典 */
+  declare i18n: Record<string, string>;
   private isMobile: boolean;
   private settingUtils: SettingUtils;
   private tabApps: { [tabType: string]: object } = {};
