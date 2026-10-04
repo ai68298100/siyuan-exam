@@ -30,34 +30,35 @@
 | AI explanations behind a paywall | **Bring your own AI**: generation, per-option explanations, Socratic follow-ups — via SiYuan's built-in AI or your own OpenAI-compatible endpoint, with explicit data-flow consent |
 | Half-baked mock exams | **CBT engine**: blueprint assembly, section timing, answer-sheet flags, indefinite-question partial credit, answer lockout, post-exam scoring |
 
-## 📦 Feature overview (v0.5.1 source capabilities; journey checks pending)
+## 📦 Feature overview (0.7.0 in preparation; journey checks ongoing)
 
-This table describes existing source capabilities. Known gaps in saving, XLSX input, riff ratings, native-package import and multiple-choice mock answers remain in [TODO groups36–42](TODO.md). The [consolidated plan](docs/19-待办融合与分阶段执行规划.md) assigns 620 candidates to 27 work packages; it is planning only.
+Everything below is implemented in source with automated tests in the CI gate. "Journey checks ongoing" means per-screen manual walkthroughs are still in progress — see the [release checklist](docs/23-发版检查清单.md) for known unverified items.
 
 | Module | Capabilities |
 |---|---|
-| 📥 **Import** | Excel/CSV column mapping · Aiken · medical **material-group auto-batching** · runtime-generated official template · drag-drop · CSV encoding detection (GBK/BOM) · per-row error list export — never fails in batch |
-| ✏️ **Manual entry** | All question types (single/multiple/judge/fill/short/material) · material-group linking · letter-tap correct options |
-| 🖥️ **Practice** | Quick/wrong/favorites/daily drills · practice & recite modes · **keyboard flow** (A-J choose / Enter submit / J-K navigate / E fav / Esc exit) · material context card · search filter · resumable sessions |
-| 🧠 **Wrongbook** | 3-way reason tags (careless/unknown/trap, with echo) · auto-eliminate after 2-in-a-row · manual disposition overlay · dock inline actions · Markdown export |
-| 📅 **Daily plan** | Exam countdown · sprint posture · **stubborn-wrong weighted reflow** (wrong count × reason weight) · FSRS due cards first |
-| 🔁 **Memory engine** | SiYuan kernel FSRS (riff) · wrong-to-card (single & one-tap batch at settle) · 4-level self-rating (riff contract correction pending) · cram queue (writeback validation pending) · jump back to source note from recite |
-| 📝 **Mock exam** | Blueprint configurator (shortage warnings, persistence) · CBT lockout · indefinite partial credit · section timing with auto-switch · answer-sheet flags · score report (radar/history/week compare) · post-exam scoring (bank-sourced answer keys + source filter) · challenge codes |
-| 📊 **Reports** | KPIs · week compare · 53-week heatmap · Heuristic KP mastery (sample/coverage validation pending) · weak Top5 re-drill · hourly distribution |
-| 🤖 **AI** | Dual channel (SiYuan built-in / BYO key) · generation pipeline (overshoot + Haladyna distractor rules + quality gate + **second-pass adversarial review** + review queue + **reject-retry repair**) · paste **or current-document** source · per-option explain + Socratic + multi-turn follow-up · cost tracking |
-| 🔗 **SiYuan integration** | Block attribute contract (`custom-exam-*`) · query-embed drill (circle a query, practice its results) · wrongbook dock · status bar · `lv-exam:stats` public event · bank sharing via `.sy.zip` |
-| 🔊 **Listen & learn** | TTS read-aloud · pure-listening mode · progressive hint chain · cover-answer 4-level self-rating |
+| 📥 **Import** | One-click bank creation · manual entry with draft protection · XLSX/XLS binary reading · CSV/TSV/GIFT/Aiken parsing · **manual column mapping** · duplicate strategy (skip/coexist/update) · trial import + read-back confirmation · progress/cancel · native package multipart import with auto-registration |
+| ✏️ **Practice** | Recall-first mode · one-layer-at-a-time hints (leak guard + formal reveal) · multiple-choice & keyboard flow · resumable sessions with negotiation · receipt drill-down per attempt |
+| 🧠 **Wrongbook** | Dispositions (suspend/self-diagnosis/self-explanation) · reason tags · AI error-analysis hypotheses (stored separately from your own reflection) · flashcard candidates (created only after confirmation) |
+| 📅 **Daily plan** | Exam countdown · sprint posture · weighted wrong reflow · FSRS due cards first · minute-budget estimates · check-in streak projection |
+| 🔁 **Memory engine** | SiYuan kernel FSRS (riff) · wrong-to-card · 4-level self-rating · cram queue · AI flashcard candidates |
+| 📝 **Mock exam** | Run snapshot/resume/submit audit · multiple choice · keyboard · real dwell timing · quota assembly · blueprint health checks · score sheets with data-table & CSV export |
+| 📊 **Reports** | KPIs · date-range filter · heatmap/trend/hourly with data-table & CSV · confidence calibration · delayed independent recall · AI report explanation · AI next-action suggestions |
+| 📚 **Study materials** | Register PDF/audio/video/links (copied into workspace assets or by link) · open & locate (page / timestamp) · personal notes per material · question↔material linking with located open |
+| 🗺️ **Syllabus & governance** | Paste-outline syllabus import · coverage per node (questions / independently mastered / missing source) · gap CSV export · KP governance (merge/rename/fill) · errata import by question ID · relation contract validation (cycles/invalid nodes/cross-version diff) |
+| 🖨️ **Print & export** | Question sheet / answer sheet separated printing (question sheet never contains answers) · CSV exports (bank/wrongbook/mock/charts) · JSON data export |
+| 🤖 **AI tasks (8 templates)** | All through one task envelope (context fingerprint / budget / strictMock gate / audit & usage accounting): generate · review · repair · layered explain · one-layer hint · Socratic · error analysis · report explanation · next actions · flashcard candidates — SiYuan built-in model or your own OpenAI-compatible endpoint |
+| 🔗 **SiYuan integration** | Block attribute contract · query-embed drill · section tree · event bus (envelope v1) · check-in bridge · widget · Glean source bridge · `window.siyuanExam` public API · bank sharing via `.sy.zip` |
+| 🔊 **Listen & learn** | TTS read-aloud · pure-listening mode · cover-answer self-rating |
 
 <details>
-<summary><b>🚧 Not yet (v1.x roadmap — click to expand)</b></summary>
+<summary><b>🚧 Not yet (click to expand)</b></summary>
 
-- Word (images/formulas), GIFT, TSV, Anki apkg import
-- Topic-tree browsing, full-paper view
-- SiYuan database (av) management view
-- AI block-reference citation deepening
-- AI across the learning journey, SiYuan agent integration, module entry points and task/exam prompt templates (planning only; see the [AI template specification](docs/18-AI智能体与提示词模板规范.md))
-- Purchased PDFs/videos and local/cloud files: minimum viewing and personal-note editing, plus SiReader, media-player, cloud and desktop-tool integration (planning only; see [material research](research/17-付费资料与本地网盘媒体联动调研.md))
-- Mobile polish, marketplace listing (gated on beta feedback)
+- SiYuan agent entry registration (planning; contract layer ready)
+- OCR / subtitle transcription / in-fragment AI for materials; native-file editing; cloud-drive authorized APIs
+- Errata status for disputed questions; multi-party review round-trips (contract validated, feature pending real data)
+- Stable syllabus node identity across renames; Anki apkg export
+- Multi-party review round-trips (57-01/02) — contract validated, feature pending
+- Marketplace listing (gated on beta feedback per TODO 7B)
 
 </details>
 
