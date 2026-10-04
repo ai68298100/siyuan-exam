@@ -1177,6 +1177,74 @@ import { ttsSpeak } from "@/core/tts";
       }
       reflections = next;
     }
+
+    // ---------- AI 错因假设（116-01 T08：事实→假设→验证行动；假设与用户复盘独立，采纳由用户操作） ----------
+    let misdiagnosisBusy = $state("");
+    let misdiagnosisText = $state<Record<string, string>>({});
+
+    /** 本次会话该题最近一次作答的 confidence/help（流水口径；无记录=缺证据，模板如实标注） */
+    function attemptMeta(qid: string): { confidence?: "sure" | "fuzzy" | "guess"; helped?: boolean } {
+      const events = app.attempts.all().filter((e) => e.qid === qid && e.sessionId === session?.id);
+      const last = events[events.length - 1];
+      return { confidence: last?.confidence, helped: !!last?.help };
+    }
+
+    async function runMisdiagnosis(a: { qid: string; grade: { myAnswer: string | null }; timeMs: number }) {
+      const q = questions.find((x) => x.id === a.qid);
+      if (!q || misdiagnosisBusy || !session) return;
+      if (!app.kernelOnline) { showMessage(t("state.offlineHint"), 2400, "info"); return; }
+      misdiagnosisBusy = a.qid;
+      try {
+        const { SiyuanAiChannel, OpenAiChannel } = await import("@/ai/client");
+        const { buildMisdiagnosisMessages } = await import("@/ai/misdiagnosis");
+        const { AiTaskRunner, questionFingerprint } = await import("@/ai/task");
+        const endpoint = String(plugin.settingUtils?.get?.("aiEndpoint") ?? "");
+        const key = String(plugin.settingUtils?.get?.("aiKey") ?? "");
+        const model = String(plugin.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
+        const ch = endpoint && key
+          ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
+          : new SiyuanAiChannel((app as any).deps.client);
+        const meta = attemptMeta(a.qid);
+        const messages = buildMisdiagnosisMessages(q, {
+          myAnswer: a.grade.myAnswer ?? null,
+          confidence: meta.confidence,
+          timeMs: a.timeMs,
+          helped: meta.helped,
+          userThought: reflections[a.qid]?.text,
+        });
+        const reqCtx: import("@/ai/task").AiTaskContext = {
+          templateId: "practice.misdiagnosis",
+          templateVersion: 1,
+          qid: q.id,
+          questionRevision: questionFingerprint(q),
+          learnerAnswer: a.grade.myAnswer ?? null,
+          submitted: true, // 结算回看=已提交（揭示闸门天然满足）
+          mode: "practice",
+          sessionId: session.id,
+        };
+        const env = await new AiTaskRunner(ch).run(reqCtx, messages);
+        void logAiTask({ templateId: env.templateId, qid: reqCtx.qid, status: env.status, tokens: env.tokens, messages });
+        if (env.status === "ok" && env.data.text) {
+          misdiagnosisText = { ...misdiagnosisText, [a.qid]: env.data.text };
+          void app.recordAiUsage(ch.id, env.tokens, 1);
+        } else {
+          showMessage(`⚠ ${env.summary}${env.error ? "：" + env.error : ""}`, 3600, "error");
+        }
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 3600, "error");
+      } finally { misdiagnosisBusy = ""; }
+    }
+
+    /** 采纳：把假设并入用户复盘，显式标注「AI 参考（未确认）」——用户标签与 AI 假设独立 */
+    async function adoptMisdiagnosis(qid: string) {
+      const hypothesis = misdiagnosisText[qid];
+      if (!hypothesis) return;
+      const cur = await app.loadWrongReflection(qid);
+      const merged = (cur?.text ? cur.text + "\n\n" : "") + "【AI 错因假设（参考，未确认）】\n" + hypothesis;
+      await app.saveWrongReflection(qid, merged);
+      reflections = { ...reflections, [qid]: { text: merged, at: Date.now() } };
+      showMessage(t("reflection.saved"), 2000, "info");
+    }
     /** 114-01：本会话受助标记（qid → 讲解模式；reveal=查看被拦泄露提示）；同题再答时随 attempt 落 help 字段 */
     // eslint-disable-next-line svelte/prefer-svelte-reactivity -- 函数内累加 Map（非组件遍历状态）
     const helpShown = new Map<string, "explain" | "hint" | "socratic" | "reveal">();
@@ -2584,9 +2652,21 @@ import { ttsSpeak } from "@/core/tts";
                       <!-- 52-04：上次检查点回显 -->
                       <div class="lv-muted" style="font-size:11.5px">📝 {t("reflection.last").replace("{d}", new Date(reflections[a.qid].at).toLocaleDateString())}：{reflections[a.qid].text}</div>
                     {/if}
-                    <button class="lv-btn sm lv-btn--ghost" onclick={() => void editReflection(a.qid)}>
-                      📝 {reflections[a.qid] ? t("reflection.edit") : t("reflection.add")}
-                    </button>
+                    <div class="lv-row" style="margin:4px 0 0;gap:4px">
+                      <button class="lv-btn sm lv-btn--ghost" onclick={() => void editReflection(a.qid)}>
+                        📝 {reflections[a.qid] ? t("reflection.edit") : t("reflection.add")}
+                      </button>
+                      <!-- 116-01 T08：AI 错因假设（事实→假设→验证行动；采纳由用户操作） -->
+                      <button class="lv-btn sm lv-btn--ghost" disabled={misdiagnosisBusy === a.qid}
+                        onclick={() => void runMisdiagnosis(a)}>
+                        🧪 {misdiagnosisBusy === a.qid ? "…" : t("misdiagnosis.ask")}
+                      </button>
+                    </div>
+                    {#if misdiagnosisText[a.qid]}
+                      <div class="lv-detail" style="margin:4px 0 0;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere">{misdiagnosisText[a.qid]}</div>
+                      <div class="lv-muted" style="font-size:10.5px">{t("misdiagnosis.disclaimer")}</div>
+                      <button class="lv-btn sm lv-btn--ghost" onclick={() => void adoptMisdiagnosis(a.qid)}>➕ {t("misdiagnosis.adopt")}</button>
+                    {/if}
                   </div>
                 {/each}
               </div>
