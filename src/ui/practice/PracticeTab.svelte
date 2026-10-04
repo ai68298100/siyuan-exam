@@ -19,7 +19,7 @@ import { ttsSpeak } from "@/core/tts";
     import { avgMsByType, estimatePlanMinutes } from "@/core/timeBudget";
     import { kpAudit, planKpMerge, planEmptyKpFill } from "@/core/kpGovernance";
     import { probeCheckinApi, syncCheckin, localDateKeyOf, bridgeEnabled, fetchStreak } from "@/core/checkinBridge";
-    import { probeGlean, listLaterClips, formatClipsForSource } from "@/core/gleanBridge";
+    import { probeGlean, listLaterClips, formatClipsForSource, markClipDone, type GleanClip } from "@/core/gleanBridge";
     import { onExamEvent, emitExamEvent } from "@/core/bus";
     import { escapeHtml } from "../../libs/sanitize";
     import { questionFingerprint } from "@/ai/task";
@@ -1249,6 +1249,10 @@ import { ttsSpeak } from "@/core/tts";
     /** 60-01 lite：拾遗桥可用性（apiVersion===1 才显示入口） */
     const gleanAvailable = $derived(!!probeGlean(window));
     let gleanBusy = $state(false);
+    /** 60-01 写方向：本次出题所用素材（生成成功后可一键标记已读） */
+    let gleanPendingDone = $state<GleanClip[]>([]);
+    let gleanDoneBusy = $state(false);
+    let gleanDoneNote = $state("");
     async function importGleanClips() {
       if (gleanBusy) return;
       gleanBusy = true;
@@ -1259,8 +1263,27 @@ import { ttsSpeak } from "@/core/tts";
         if (!clips.length) { showMessage(t("ai.gleanEmpty"), 3200, "info"); return; }
         const block = formatClipsForSource(clips);
         aiSource = aiSource.trim() ? `${aiSource.trim()}\n\n${block}` : block;
+        gleanPendingDone = clips; // 记录本次所用素材（生成成功后可标记已读）
         showMessage(t("ai.gleanImported").replace("{n}", String(clips.length)), 3200, "info");
       } finally { gleanBusy = false; }
+    }
+    /** 60-01 写方向：逐篇 setClipStatus(done)；拾遗侧写开关未开/失败如实计数，不伪造成功 */
+    async function markGleanDone() {
+      if (gleanDoneBusy || !gleanPendingDone.length) return;
+      const g = probeGlean(window);
+      if (!g) return;
+      gleanDoneBusy = true;
+      try {
+        let ok = 0;
+        for (const c of gleanPendingDone) {
+          if (await markClipDone(g, c.id)) ok++;
+        }
+        gleanDoneNote = ok === gleanPendingDone.length
+          ? t("ai.gleanDoneAll").replace("{n}", String(ok))
+          : t("ai.gleanDonePartial").replace("{ok}", String(ok)).replace("{n}", String(gleanPendingDone.length));
+        showMessage(gleanDoneNote, 4600, ok ? "info" : "error");
+        if (ok === gleanPendingDone.length) gleanPendingDone = [];
+      } finally { gleanDoneBusy = false; }
     }
     let aiCount = $state(5);
     let aiDifficulty = $state<"easy" | "medium" | "hard" | "mixed">("mixed");
@@ -1325,6 +1348,11 @@ import { ttsSpeak } from "@/core/tts";
         aiQueue = r.pending; aiRejected = r.rejected; aiDuplicates = r.duplicates; aiQueueBankId = activeBankId;
         aiQueueMaterial = aiSource;             // 单题重生成的输入快照（41-04）
         void persistAiQueue();
+        // 60-01 写方向：出题成功且素材来自拾遗 → 提供「标记已读」闭环入口
+        if (r.pending.length && gleanPendingDone.length) {
+          const g = probeGlean(window);
+          gleanDoneNote = g ? "" : t("ai.gleanUnavailable");
+        }
         if (!r.pending.length && !r.rejected.length) errorMsg = t("ai.empty");
       } catch (e) {
         errorMsg = String(e instanceof Error ? e.message : e);
@@ -2511,6 +2539,15 @@ import { ttsSpeak } from "@/core/tts";
               </button>
               <span class="lv-muted" style="font-size:11.5px">{t("ai.gleanHint")}</span>
             </div>
+            {#if gleanPendingDone.length && aiQueue.length}
+              <!-- 60-01 写方向：出题成功后一键标记素材已读（需拾遗侧开启协同写入） -->
+              <div class="lv-row" style="margin:6px 0 0">
+                <button class="lv-btn sm" disabled={gleanDoneBusy} onclick={() => void markGleanDone()}>
+                  ✓ {gleanDoneBusy ? "…" : t("ai.gleanMarkDone").replace("{n}", String(gleanPendingDone.length))}
+                </button>
+                {#if gleanDoneNote}<span class="lv-muted" style="font-size:11.5px">{gleanDoneNote}</span>{/if}
+              </div>
+            {/if}
           {/if}
         </div>
         <div class="lv-row">

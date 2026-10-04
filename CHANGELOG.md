@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased（0.6.x-dev：廿三~四六批，2026-10-03/04）
+## Unreleased（0.6.x-dev：廿三~四七批，2026-10-03/04）
 
-> guard 八门禁全绿（341 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、样式 token 审计、ESLint 0 告警）+ 生产构建通过；**真机验证（SiYuan 3.8.6）**：preflight 17/17、数据生命周期 6/6、CSV 往返冒烟 5/5（`scripts/smoke-csv.mjs`）、题目编辑 updateBlock / 章节树 docTree / listQuestions hpath 三项契约实测通过。docs/17 人工 UI 步骤剩 27/28/36-38。
+> guard 八门禁全绿（342 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、样式 token 审计、ESLint 0 告警）+ 生产构建通过；**真机验证（SiYuan 3.8.6）**：preflight 17/17、数据生命周期 6/6、CSV 往返冒烟 5/5（`scripts/smoke-csv.mjs`）、题目编辑 updateBlock / 章节树 docTree / listQuestions hpath 三项契约实测通过。docs/17 人工 UI 步骤剩 27/28/36-38。
 
 - **内核 429 限流处理**：HTTP 429 识别为可重试错误分类；perf-bank 真机基线发现 3.8.6 连续请求限流（32 组新待办）
 - **GIFT 解析器**（42-04 部分）：Moodle GIFT 单选/多选/判断/简答，`::标题::`→考点、`#反馈`→解析；行内选择式 `{=对~错}` 归一
@@ -71,6 +71,7 @@
 - **先回忆可追溯**（52-02 收口，四六批）：`AttemptEvent.recall` 字段——揭示选项/未揭示提交均落标记，AttemptLog 白名单同步
 - **总线信封 source 字段**（48-02，四六批）：信封增加 `source: "siyuan-exam"`，生态消费者可按来源甄别
 - **样式 token 审计入 guard**（45-10 lite，四六批）：`scripts/check-styles.mjs` 扫描全部 svelte/scss 裸色值（白名单=token 定义+思源回退位），guard 升为八检；现存 8 处违规清零（迁移至 on-primary/primary-lighter token 回退）
+- **拾遗素材已读闭环**（60-01 写方向，四七批）：出题成功且素材来自拾遗 → 「✓ 标记 {n} 篇已读」逐篇 setClipStatus(done)；拾遗侧协同写入默认关闭，未开启/失败如实计数提示不伪造成功
 - **会话/错题事件**（48-02 lite 收口，四四批）：`lv-exam:session-ended`（结算计数，无题干）与 `lv-exam:wrongbook-changed`（处置/暂缓）接入总线
 - **昨日计划回看**（44-05 lite，四四批）：入口 chip 显示昨日计划完成 x/y；连续缺席 ≥2 天 ⚠ 提醒（配额恒定不爆量，随时从今天继续）
 

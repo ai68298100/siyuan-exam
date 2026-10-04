@@ -21,6 +21,7 @@ export interface GleanBridgeV1 {
     status?: string;
     limit?: number;
   }) => Promise<GleanClip[]>;
+  setClipStatus?: (id: string, status: "inbox" | "later" | "reading" | "done" | "archived") => Promise<void>;
 }
 
 /** 探测拾遗桥（apiVersion 必须为 1；不满足 → null，入口隐藏） */
@@ -51,4 +52,17 @@ export function formatClipsForSource(clips: GleanClip[]): string {
     if (c.summary) lines.push(`   摘要：${c.summary}`);
   });
   return lines.join("\n");
+}
+
+/** 标记素材已读（60-01 写方向 lite）：用户显式点击后调用。
+ *  契约：拾遗侧 `integration.bridgeWriteEnabled` 默认关闭——未开启/失败均返回 false，
+ *  由 UI 提示"需在拾遗设置开启协同写入"，不静默重试不伪造成功。 */
+export async function markClipDone(g: GleanBridgeV1, id: string): Promise<boolean> {
+  if (typeof g.setClipStatus !== "function") return false;
+  try {
+    await g.setClipStatus(id, "done");
+    return true;
+  } catch {
+    return false;
+  }
 }

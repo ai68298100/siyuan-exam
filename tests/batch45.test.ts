@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { formatClipsForSource, listLaterClips, probeGlean, type GleanBridgeV1 } from "../src/core/gleanBridge";
+import { formatClipsForSource, listLaterClips, markClipDone, probeGlean, type GleanBridgeV1 } from "../src/core/gleanBridge";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -47,5 +47,21 @@ describe("拾遗桥探测与素材格式化（60-01 lite，四五批）", () => 
     expect(text).toContain("2. 《文章二》");
     expect(text).toContain("核对原文");
     expect(formatClipsForSource([])).toBe("");
+  });
+
+  it("60-01 写方向：markClipDone 成功 true；写开关未开（拒绝）/无方法 → false 不伪造成功", async () => {
+    const written: [string, string][] = [];
+    const okG: GleanBridgeV1 = {
+      apiVersion: 1,
+      setClipStatus: async (id, status) => { written.push([id, status]); },
+    };
+    expect(await markClipDone(okG, "c1")).toBe(true);
+    expect(written).toEqual([["c1", "done"]]);
+    const rejectG: GleanBridgeV1 = {
+      apiVersion: 1,
+      setClipStatus: async () => { throw new Error("bridge write disabled"); },
+    };
+    expect(await markClipDone(rejectG, "c1")).toBe(false);
+    expect(await markClipDone({ apiVersion: 1 }, "c1")).toBe(false);
   });
 });
