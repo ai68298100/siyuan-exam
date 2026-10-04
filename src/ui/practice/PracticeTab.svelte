@@ -883,6 +883,101 @@ import { ttsSpeak } from "@/core/tts";
       } finally { explainBusy = false; }
     }
 
+    /** 提示按钮文案：随已展示层级推进（114-01 一次一层） */
+    function hintButtonLabel(q: { id: string; options: string[] }): string {
+      const step = nextHintStepSync(hintLevels.get(q.id) ?? 0, q.options.length);
+      if (step.kind === "reveal") return t("explain.hintTop");
+      if (step.level === 1) return t("explain.hint");
+      return t("explain.hintNext").replace("{n}", String(step.level));
+    }
+    /** 同步版推进判定（UI 文案用；请求路径用 ai/hint 的异步同名逻辑） */
+    function nextHintStepSync(shown: 0 | 1 | 2 | 3, optionCount: number): { kind: "hint"; level: 1 | 2 | 3 } | { kind: "reveal" } {
+      if (shown === 0) return { kind: "hint", level: 1 };
+      if (shown === 1) return { kind: "hint", level: 2 };
+      if (shown === 2 && optionCount <= 2) return { kind: "reveal" };
+      if (shown === 2) return { kind: "hint", level: 3 };
+      return { kind: "reveal" };
+    }
+
+    /** 114-01 一次一层提示：提交前后均可逐层申请；≤2 选项题型 L2 后转正式揭示；泄露守卫拦截疑似泄题层 */
+    async function requestHint() {
+      const q = session?.current;
+      if (!q || explainBusy) return;
+      explainQid = q.id; leakPending = null;
+      if (!app.kernelOnline) { explainText = `⚠ ${t("state.offlineHint")}`; return; }
+      const shown = hintLevels.get(q.id) ?? 0;
+      const step = nextHintStepSync(shown, q.options.length);
+      if (step.kind === "reveal") {
+        // G6 正式揭示：不冒充提示——提交作答由判定揭示答案，帮助事件随 attempt 如实落
+        explainText = `🔒 ${t("explain.hintReveal")}`;
+        return;
+      }
+      explainBusy = true; explainText = "";
+      const submitted = !!feedback;
+      // G1 任务身份：提交前提示携当前草稿（有草稿如实带出，无草稿=未作答）
+      const reqCtx: import("@/ai/task").AiTaskContext = {
+        templateId: "practice.hint",
+        templateVersion: 2, // 一次一层模板修订（docs/18 T05）
+        qid: q.id,
+        questionRevision: questionFingerprint(q),
+        learnerAnswer: feedback?.myAnswer ?? session?.getDraft(q.id) ?? null,
+        submitted,
+        mode: "practice",
+        sessionId: session?.id ?? "",
+      };
+      try {
+        const { SiyuanAiChannel, OpenAiChannel } = await import("@/ai/client");
+        const { buildHintMessages, findHintLeaks } = await import("@/ai/hint");
+        const { AiTaskRunner } = await import("@/ai/task");
+        const endpoint = String(plugin.settingUtils?.get?.("aiEndpoint") ?? "");
+        const key = String(plugin.settingUtils?.get?.("aiKey") ?? "");
+        const model = String(plugin.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
+        const ch = endpoint && key
+          ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
+          : new SiyuanAiChannel((app as any).deps.client);
+        const shownTexts = hintTexts.get(q.id) ?? [];
+        const messages = buildHintMessages(q, reqCtx.learnerAnswer, step.level, shownTexts);
+        const env = await new AiTaskRunner(ch).run(reqCtx, messages);
+        void logAiTask({ templateId: env.templateId, qid: reqCtx.qid, status: env.status, tokens: env.tokens, messages });
+        if (env.status === "ok" && env.data.text) {
+          if (!submitted) {
+            // 揭示前（答案未上屏）：确定性泄露守卫——命中即隐藏，用户明确揭示才展示
+            const leaks = findHintLeaks(env.data.text, q);
+            if (leaks.length) {
+              leakPending = { level: step.level, text: env.data.text, reasons: leaks.map((l) => l.detail).join("、") };
+              return;
+            }
+          }
+          hintLevels.set(q.id, step.level);
+          hintTexts.set(q.id, [...shownTexts, env.data.text]);
+          explainText = hintTexts
+            .get(q.id)!
+            .map((s, i) => `💡 ${t("explain.hintLayer").replace("{n}", String(i + 1))}：${s}`)
+            .join("\n");
+          helpShown.set(q.id, "hint"); // 受助标记：本题后续作答（含本次提交）随 attempt 落 help
+          void app.recordAiUsage(ch.id, env.tokens, 1);
+        } else {
+          explainText = `⚠ ${env.summary}${env.error ? "：" + env.error : ""}`;
+        }
+      } catch (e) {
+        explainText = String(e instanceof Error ? e.message : e);
+      } finally { explainBusy = false; }
+    }
+
+    /** 泄露守卫：用户明确选择查看 → 记为受助-揭示（help=reveal），层级照常推进 */
+    function viewLeakedHint() {
+      const q = session?.current;
+      if (!q || !leakPending) return;
+      hintLevels.set(q.id, leakPending.level);
+      hintTexts.set(q.id, [...(hintTexts.get(q.id) ?? []), leakPending.text]);
+      explainText = hintTexts
+        .get(q.id)!
+        .map((s, i) => `💡 ${t("explain.hintLayer").replace("{n}", String(i + 1))}：${s}`)
+        .join("\n");
+      helpShown.set(q.id, "reveal");
+      leakPending = null;
+    }
+
     async function sendFollowUp() {
       const q = session?.current;
       const history = explainHistory[q?.id ?? ""];
@@ -1080,9 +1175,16 @@ import { ttsSpeak } from "@/core/tts";
       }
       reflections = next;
     }
-    /** 114-01 lite：本会话受助标记（qid → 讲解模式）；同题再答时随 attempt 落 help 字段 */
+    /** 114-01：本会话受助标记（qid → 讲解模式；reveal=查看被拦泄露提示）；同题再答时随 attempt 落 help 字段 */
     // eslint-disable-next-line svelte/prefer-svelte-reactivity -- 函数内累加 Map（非组件遍历状态）
-    const helpShown = new Map<string, "explain" | "hint" | "socratic">();
+    const helpShown = new Map<string, "explain" | "hint" | "socratic" | "reveal">();
+    /** 114-01：一次一层提示——qid → 已展示层级（0=未申请）；已展示层文本供后续层去重 */
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- 函数内累加 Map（非组件遍历状态）
+    const hintLevels = new Map<string, 0 | 1 | 2 | 3>();
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- 函数内累加 Map（非组件遍历状态）
+    const hintTexts = new Map<string, string[]>();
+    /** 114-01 泄露守卫拦截的待决提示（提交前）：用户明确揭示才展示（G6） */
+    let leakPending = $state<{ level: 1 | 2 | 3; text: string; reasons: string } | null>(null);
     function submitAnswer() {
       if (!session || feedback) return;
       const q = session.current;
@@ -1119,7 +1221,7 @@ import { ttsSpeak } from "@/core/tts";
 
     function nextQuestion() {
       feedback = null; selected = ""; confidenceSel = ""; materialExpanded = false; answerStart = Date.now();
-      hideOptions = false; recallDraft = ""; // 52-02：切题重置先回忆态（揭示/草稿不沿用上一题，U02 口径）
+      hideOptions = false; recallDraft = ""; leakPending = null; // 52-02：切题重置先回忆态（揭示/草稿不沿用上一题，U02 口径）；114-01 泄露待决随之作废
       if (!session.next()) { void finishSession(); return; }
       void app.saveSession();   // 游标推进随答随存
     }
@@ -1581,22 +1683,20 @@ import { ttsSpeak } from "@/core/tts";
     async function onExcelFile(e: Event) {
       importError = ""; importResult = null; importReport = null; retryPool = []; trialConfirmed = []; trialNote = "";
       // 清理上次导入残留（TODO 27 组：多 Sheet 残留状态 bug 预防）
-      pendingWorkbook = null; sheetNames = []; sheetRowsCache = new Map();
+      sheetNames = []; sheetRowsCache = new Map();
       const input = e.target as HTMLInputElement;
       const file = input.files?.[0];
       if (!file) return;
       try {
+        // 38-01：xlsx/xls 走二进制读取，仅 CSV 做编码/分隔符探测
+        //（此前 xlsx 也过 decodeCsv 文本路径，真 XLSX 报 Bad compressed size）
         const XLSX = await import("xlsx");
-        const { decodeCsv, detectDelimiter } = await import("@/importer/csvDecode");
+        const { parseWorkbookFile } = await import("@/importer/workbookFile");
         const buf = await file.arrayBuffer();
-        const { text, garbled } = decodeCsv(buf);
-        if (garbled) showMessage(t("import.garbledWarning"), 5200, "info");
-        pendingWorkbook = XLSX.read(text, { type: "string", FS: detectDelimiter(text) });
-        sheetNames = pendingWorkbook.SheetNames;
-        sheetRowsCache = new Map(sheetNames.map((n: string) => {
-          const rows: string[][] = XLSX.utils.sheet_to_json(pendingWorkbook.Sheets[n], { header: 1, defval: "" });
-          return [n, rows] as [string, string[][]];
-        }));
+        const parsed = await parseWorkbookFile(XLSX, buf, file.name);
+        if (parsed.garbled) showMessage(t("import.garbledWarning"), 5200, "info");
+        sheetNames = parsed.sheetNames;
+        sheetRowsCache = parsed.sheets;
         activeSheet = sheetNames[0];
         parseActiveSheet();
       } catch (e) { importError = String(e instanceof Error ? e.message : e); }
@@ -1604,7 +1704,6 @@ import { ttsSpeak } from "@/core/tts";
     }
 
     /** 多 Sheet 支持（TODO 12 组）：读文件时缓存各行，选择工作表重解析 */
-    let pendingWorkbook: any = null;
     let sheetNames = $state<string[]>([]);
     let activeSheet = $state("");
     let sheetRowsCache = $state(new Map<string, string[][]>());
@@ -2406,6 +2505,7 @@ import { ttsSpeak } from "@/core/tts";
             <div class="lv-row">
               {#if !feedback}
                 <button class="lv-btn lv-btn--primary" onclick={submitAnswer} disabled={!selected && !session.getDraft(q.id)}>{t("session.submit")}</button>
+                <button class="lv-btn lv-btn--ghost" onclick={requestHint} disabled={explainBusy}>{hintButtonLabel(q)}</button>
                 {#if q.type === "fill" || q.type === "short"}
                   <button class="lv-btn lv-btn--ghost" onclick={() => { submitAnswer(); }}>{t("session.skip")}</button>
                 {/if}
@@ -2415,9 +2515,18 @@ import { ttsSpeak } from "@/core/tts";
                   <button class="lv-btn" onclick={toCard}>🎴 {t("memory.toCard")}</button>
                   {#if cardResult}<span class="lv-muted">{cardResult}</span>{/if}
                   <button class="lv-btn" onclick={() => explainCurrent("explain")} disabled={explainBusy}>🤖 {explainBusy ? "…" : t("explain.ask")}</button>
-                  <button class="lv-btn" onclick={() => explainCurrent("hint")} disabled={explainBusy}>💡 {t("explain.hint")}</button>
+                  <button class="lv-btn" onclick={requestHint} disabled={explainBusy}>{hintButtonLabel(q)}</button>
                   <button class="lv-btn" onclick={() => explainCurrent("socratic")} disabled={explainBusy}>🧠 {t("explain.socratic")}</button>
                 {/if}
+              {/if}
+              {#if leakPending && session?.current && explainQid === session.current.id}
+                <div class="lv-analysis lv-explain">
+                  ⚠ {t("explain.hintLeak").replace("{r}", leakPending.reasons)}
+                  <div class="lv-row">
+                    <button class="lv-btn sm" onclick={viewLeakedHint}>{t("explain.hintLeakView")}</button>
+                    <button class="lv-btn sm" onclick={() => (leakPending = null)}>{t("explain.hintLeakDismiss")}</button>
+                  </div>
+                </div>
               {/if}
               {#if explainText && session?.current && explainQid === session.current.id}
                 <div class="lv-analysis lv-explain">{explainText}</div>
@@ -2425,7 +2534,7 @@ import { ttsSpeak } from "@/core/tts";
                   {#if !explainText.startsWith("✓")}
                     <button class="lv-btn sm" onclick={saveExplain}>📌 {t("explain.save")}</button>
                   {/if}
-                  <button class="lv-btn sm" onclick={() => explainCurrent("hint")} disabled={explainBusy}>💡 {t("explain.hint")}</button>
+                  <button class="lv-btn sm" onclick={requestHint} disabled={explainBusy}>{hintButtonLabel(q)}</button>
                   <button class="lv-btn sm" onclick={() => explainCurrent("socratic")} disabled={explainBusy}>🧠 {t("explain.socratic")}</button>
                 </div>
                 <div class="lv-row">
