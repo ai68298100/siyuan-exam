@@ -20,6 +20,7 @@
     "smoke": "run-s preflight smoke:data smoke:csv perf:bank",
     "smoke:data": "node ./scripts/smoke-data.mjs",
     "smoke:csv": "node ./scripts/smoke-csv.mjs",
+    "e2e": "node ./scripts/smoke-e2e.mjs",
     "check:styles": "node ./scripts/check-styles.mjs",
     "commit:check": "commitlint",
     "lint": "eslint .",
