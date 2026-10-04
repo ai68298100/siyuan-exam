@@ -408,6 +408,8 @@
     "flash.type.contrast": "对照",
     "receipt.lastHypothesis": "上次 AI 假设",
     "receipt.adopted": "已并入复盘",
+    "materials.search": "搜索（标题/科目/章节）",
+    "materials.noMatch": "无匹配资料——换个关键词试试",
     "mock.exportToDoc": "📚 写入题库导出文档",
     "challenge.copied": "✓ 挑战码已复制，发给朋友吧（含答案，友谊赛模式）",
     "challenge.importTitle": "导入挑战码",

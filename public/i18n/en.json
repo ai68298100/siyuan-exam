@@ -392,6 +392,8 @@
     "flash.type.contrast": "Contrast",
     "receipt.lastHypothesis": "Last AI hypothesis",
     "receipt.adopted": "adopted into reflection",
+    "materials.search": "Search (title/subject/chapter)",
+    "materials.noMatch": "No matching materials — try another keyword",
     "mock.exportToDoc": "📚 Write to bank docs",
     "challenge.copied": "✓ Challenge copied (answers included, friendly mode)",
     "challenge.importTitle": "Import challenge code",

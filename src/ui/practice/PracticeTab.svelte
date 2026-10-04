@@ -2091,6 +2091,17 @@ import { ttsSpeak } from "@/core/tts";
     let matChapter = $state("");
     let matLink = $state("");
     let matLinkTitle = $state("");
+    /** 六七批：资料搜索（标题/科目/章节/位置，大小写不敏感） */
+    let materialsSearch = $state("");
+    const materialsFiltered = $derived.by(() => {
+      const kw = materialsSearch.trim().toLowerCase();
+      if (!kw) return materialsList;
+      return materialsList.filter((m) =>
+        [m.title, m.subject, m.chapter, ...m.locations.map((l) => l.path)]
+          .filter(Boolean)
+          .some((s) => String(s).toLowerCase().includes(kw)),
+      );
+    });
 
     function loadMaterials() {
       materialsList = app.listMaterials();
@@ -3374,14 +3385,19 @@ import { ttsSpeak } from "@/core/tts";
           <span>{t("materials.meta")}</span>
           <input class="lv-input" style="max-width:150px" placeholder={t("materials.subject")} bind:value={matSubject} />
           <input class="lv-input" style="max-width:150px" placeholder={t("materials.chapter")} bind:value={matChapter} />
+          <span class="fn__flex-1"></span>
+          <!-- 六七批：资料搜索（标题/科目/章节/位置） -->
+          <input class="lv-input" style="max-width:200px" placeholder={t("materials.search")} bind:value={materialsSearch} />
         </div>
         {#if offline}<div class="lv-muted">⚠ {t("materials.offlineNote")}</div>{/if}
         {#if materialsNote}<div class="lv-row"><span class="lv-chip">{materialsNote}</span></div>{/if}
       </div>
       {#if materialsList.length === 0}
         <div class="lv-muted" style="margin-top:12px">{t("materials.empty")}</div>
+      {:else if materialsFiltered.length === 0}
+        <div class="lv-muted" style="margin-top:12px">{t("materials.noMatch")}</div>
       {:else}
-        {#each materialsList as m (m.id)}
+        {#each materialsFiltered as m (m.id)}
           <div class="lv-card" style="margin-top:8px">
             <div class="lv-row" style="flex-wrap:wrap">
               <b>{materialIcon(m.kind)} {m.title}</b>

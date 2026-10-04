@@ -73,7 +73,7 @@
 
 - [x] git 首次提交与后续里程碑提交 ✓2026-10-02（复核 HEAD df2346b，104 个提交）
 - [x] [!] GitHub 创建 `siyuan-exam` 公开仓库并推送 —— ✓2026-10-02 用户授权提前执行（4 commits；集市仍暂缓）
-- [ ] GitHub 仓库基建（届时）：description/topics（siyuan-plugin/exam/flashcard/spaced-repetition）/社交预览图/README 徽章/Issues+Discussions 开关
+- [x] GitHub 仓库基建（届时）：description/topics（siyuan-plugin/exam/flashcard/spaced-repetition）/社交预览图/README 徽章/Issues+Discussions 开关 ✓2026-10-05 六七批对账（gh 实核：description 已设、topics 8 个（exam/flashcards/fsrs/spaced-repetition/siyuan-plugin/siyuan-note/wrongbook/quiz）、Discussions 已开、README 已带 Release+CI+SiYuan+License 徽章；社交预览图无公开 API 不可核——缺时在仓库 Settings→Social preview 一键上传）
 - [x] CONTRIBUTING.md（本地开发/测试/PR 流程，单人亦维护） ✓2026-10-03（开发安装/make-link/preflight、guard 六检硬约束（core 纯函数/契约登记/i18n 前缀/持久化版本）、stub 内核测试模式、Conventional Commits、问题报告与脱敏诊断、范围边界六条）
 - [x] commitlint + conventional commits（配合里程碑小步提交） ✓2026-10-03 全量生效（依赖已安装并验证：规范消息通过/非规范消息被拒 type/subject-empty；.githooks/commit-msg 已激活；另有 pnpm commit:check 手动入口）
 - [ ] ESLint + Prettier 接入（官方模板未含 lint）
