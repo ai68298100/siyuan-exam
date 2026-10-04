@@ -152,6 +152,86 @@
       } finally { explainBusy = false; }
     }
 
+    // ---------- AI 下一行动（117-02：容量+开放行动+弱项+错题在册 → 2-3 条任务建议） ----------
+    let nextActionBusy = $state(false);
+    let nextActionText = $state("");
+    let nextActionError = $state("");
+
+    async function runNextAction() {
+      if (!app || nextActionBusy) return;
+      if (!app.kernelOnline) { nextActionError = t("state.offlineHint"); return; }
+      nextActionBusy = true; nextActionError = ""; nextActionText = "";
+      try {
+        const { SiyuanAiChannel, OpenAiChannel } = await import("@/ai/client");
+        const { buildNextActionMessages } = await import("@/ai/nextAction");
+        const { AiTaskRunner } = await import("@/ai/task");
+        const { estimatePlanMinutes, avgMsByType } = await import("@/core/timeBudget");
+        const endpoint = String(plugin?.settingUtils?.get?.("aiEndpoint") ?? "");
+        const key = String(plugin?.settingUtils?.get?.("aiKey") ?? "");
+        const model = String(plugin?.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
+        const ch = endpoint && key
+          ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
+          : new SiyuanAiChannel((app as any).deps.client);
+        // 容量口径：错题重练队列前 10 题（53-01 估算；入口页今日计划不在此上下文，如实标注口径）
+        const wrongItems = app.wrongItems();
+        let redoQueue: any[] = [];
+        const scopeBank = bankId || app.listBanks()[0]?.id || "";
+        if (wrongItems.length && scopeBank) {
+          const qs = await app.listQuestions(scopeBank);
+          const byId = new Map(qs.map((q: any) => [q.id, q]));
+          redoQueue = wrongItems.map((w) => byId.get(w.qid)).filter(Boolean).slice(0, 10) as any[];
+        }
+        const typeOf = new Map(redoQueue.map((q) => [q.id, q.type] as const));
+        const est = redoQueue.length
+          ? estimatePlanMinutes(redoQueue, avgMsByType(app.attempts.all(), (qid) => typeOf.get(qid)))
+          : null;
+        const openActions = await app.listOpenActions();
+        const cutoff = rangeDays > 0 ? Date.now() - rangeDays * 86_400_000 : 0;
+        const events = app.attempts.all().filter((e) => !cutoff || e.ts >= cutoff);
+        let attempts = 0, correct = 0;
+        for (const e of events) {
+          if (e.verdict === "not_attempted") continue;
+          attempts++;
+          if (e.verdict === "correct") correct++;
+        }
+        const now = Date.now();
+        const facts: import("@/ai/nextAction").NextActionFactsInput = {
+          windowLabel: windowLabel(),
+          capacity: est ? { minutes: est.minutes, low: est.low, high: est.high, sourced: est.sourced } : null,
+          capacityScope: "错题重练队列前 10 题（非入口页今日计划）",
+          openActions: openActions.slice(0, 8).map((a) => ({
+            detail: a.detail,
+            kind: a.kind,
+            ageDays: Math.max(0, Math.floor((now - a.createdAt) / 86_400_000)),
+          })),
+          weakKp: weak.slice(0, 3).map((w) => ({ kp: w.root, accuracy: w.accuracy, attempts: w.total })),
+          wrongInBook: wrongItems.length,
+          recentAttempts: attempts,
+          recentAccuracy: attempts ? Math.round((correct / attempts) * 100) : null,
+        };
+        const messages = buildNextActionMessages(facts);
+        const reqCtx: import("@/ai/task").AiTaskContext = {
+          templateId: "plan.nextaction",
+          templateVersion: 1,
+          qid: "",
+          questionRevision: "",
+          learnerAnswer: null,
+          submitted: true,
+          mode: "report",
+          sessionId: "",
+        };
+        const env = await new AiTaskRunner(ch).run(reqCtx, messages);
+        if (env.status === "ok" && env.data.text) {
+          nextActionText = env.data.text;
+          void app.recordAiUsage(ch.id, env.tokens, 1);
+        } else {
+          nextActionError = `⚠ ${env.summary}${env.error ? "：" + env.error : ""}`;
+        }
+      } catch (e) {
+        nextActionError = String(e instanceof Error ? e.message : e);
+      } finally { nextActionBusy = false; }
+    }
+
     onMount(async () => {
       if (!app) { loading = false; errorMsg = t("state.appNotReady"); return; }
       try {
@@ -386,9 +466,12 @@
       <span class="lv-muted" style="font-size:11.5px">{t("report.scopeHint")}</span>
     {/if}
     <span class="fn__flex-1"></span>
-    <!-- 117-01 T11：AI 解读当前范围（只解释确定性统计；未配置 AI Key 时给出信封错误） -->
+    <!-- 117-01 T11 / 117-02：AI 解读与 AI 下一行动（按当前统计范围；只解释/建议，不重算不虚构） -->
     <button class="lv-btn sm" onclick={() => void runReportExplain()} disabled={explainBusy}>
       🧪 {explainBusy ? "…" : t("reportExplain.ask")}
+    </button>
+    <button class="lv-btn sm" onclick={() => void runNextAction()} disabled={nextActionBusy}>
+      🧭 {nextActionBusy ? "…" : t("nextAction.ask")}
     </button>
     <span class="lv-chip">{t("report.dataFromLog")}</span>
   </div>
@@ -405,6 +488,19 @@
       </div>
       <div style="font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere">{explainText}</div>
       <div class="lv-muted" style="font-size:10.5px;margin-top:4px">{t("reportExplain.disclaimer")}</div>
+    </div>
+  {/if}
+  {#if nextActionError}
+    <div class="lv-error" style="margin:0 0 8px">{nextActionError}</div>
+  {:else if nextActionText}
+    <div class="lv-card" style="margin:0 0 10px;padding:10px 14px">
+      <div class="lv-row" style="margin:0 0 4px">
+        <b style="font-size:13px">🧭 {t("nextAction.title")}</b>
+        <span class="fn__flex-1"></span>
+        <button class="lv-btn sm lv-btn--ghost" onclick={() => { nextActionText = ""; }}>{t("edit.cancel")}</button>
+      </div>
+      <div style="font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere">{nextActionText}</div>
+      <div class="lv-muted" style="font-size:10.5px;margin-top:4px">{t("nextAction.disclaimer")}</div>
     </div>
   {/if}
 

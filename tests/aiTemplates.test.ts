@@ -63,6 +63,7 @@ describe("114-02 严格模考跨入口 AI 禁用（枚举锁）", () => {
       "practice.explain",
       "practice.misdiagnosis",
       "report.explain",
+      "plan.nextaction",
     ];
     for (const id of ids) {
       expect(helpAllowed({ mode: "strictMock", submitted: false }, helpKindOf(id)).allowed, id).toBe(false);

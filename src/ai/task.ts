@@ -18,7 +18,8 @@ export type ExplainTemplateId =
   | "practice.socratic"
   | "practice.explain"
   | "practice.misdiagnosis"
-  | "report.explain";
+  | "report.explain"
+  | "plan.nextaction";
 
 /** 任务上下文（G1 身份字段；任一变化 → contextHash 变化） */
 export interface AiTaskContext {
@@ -176,8 +177,13 @@ export function applyResult(
 
 /** 模板 → 帮助种类（114-02 审计锁用：枚举全部模板断言 strictMock 拒绝） */
 export function helpKindOf(templateId: ExplainTemplateId): HelpKind {
-  // misdiagnosis/report.explain 都是"已提交后"的证据/统计解读：与 explain 同走揭示闸门
-  if (templateId === "practice.explain" || templateId === "practice.misdiagnosis" || templateId === "report.explain") {
+  // 事后证据/统计/计划类任务：与 explain 同走揭示闸门（未提交拒绝；strictMock 一律拒绝）
+  if (
+    templateId === "practice.explain" ||
+    templateId === "practice.misdiagnosis" ||
+    templateId === "report.explain" ||
+    templateId === "plan.nextaction"
+  ) {
     return "reveal";
   }
   if (templateId === "practice.hint") return "hint";
@@ -189,5 +195,6 @@ function templateLabel(templateId: ExplainTemplateId): string {
   if (templateId === "practice.hint") return "递进提示";
   if (templateId === "practice.misdiagnosis") return "错因假设";
   if (templateId === "report.explain") return "报告解读";
+  if (templateId === "plan.nextaction") return "下一行动";
   return "苏格拉底追问";
 }
