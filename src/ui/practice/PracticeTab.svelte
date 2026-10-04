@@ -1290,7 +1290,8 @@ import { ttsSpeak } from "@/core/tts";
     async function loadReflections() {
       const next: Record<string, { text: string; at: number }> = {};
       for (const a of session?.answered ?? []) {
-        if (a.grade.verdict === "correct") continue;
+        // 114-05 lite：受助答对（讲解/提示后）也纳入回看——自我解释的载体与错题复盘同层
+        if (a.grade.verdict === "correct" && !helpShown.get(a.qid)) continue;
         const r = await app.loadWrongReflection(a.qid);
         if (r) next[a.qid] = r;
       }
@@ -2788,6 +2789,22 @@ import { ttsSpeak } from "@/core/tts";
                     {/if}
                   </div>
                 {/each}
+                {#if session.answered.some((a) => a.grade.verdict === "correct" && helpShown.get(a.qid))}
+                  <!-- 114-05 lite：受助答对 → 自我解释（用自己的话说明依据；可跳过；与错题复盘同层存储） -->
+                  <div class="lv-muted" style="margin:8px 0 2px;font-size:11.5px">🫱 {t("selfexplain.header")}</div>
+                  {#each session.answered.filter((a) => a.grade.verdict === "correct" && helpShown.get(a.qid)) as a, _si2 (_si2)}
+                    {@const aq = questions.find((x) => x.id === a.qid)}
+                    <div class="lv-error-row" style="white-space:normal">
+                      <b class="num">🫱✓</b> {aq?.stem.slice(0, 80) ?? a.qid}
+                      {#if reflections[a.qid]}
+                        <div class="lv-muted" style="font-size:11.5px">🗣 {reflections[a.qid].text}</div>
+                      {/if}
+                      <button class="lv-btn sm lv-btn--ghost" onclick={() => void editReflection(a.qid)}>
+                        🗣 {reflections[a.qid] ? t("selfexplain.edit") : t("selfexplain.add")}
+                      </button>
+                    </div>
+                  {/each}
+                {/if}
               </div>
             {/if}
           {/if}
