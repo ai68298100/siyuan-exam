@@ -67,13 +67,15 @@ export function parseFlashCandidates(raw: string): FlashCandidateResult {
   const rawCards = Array.isArray((obj as { cards?: unknown }).cards) ? (obj as { cards: unknown[] }).cards : [];
   const validTypes = new Set(["qa", "cloze", "contrast"]);
   const validSources = new Set(["反思", "解析", "补充"]);
+  // 发版加固（七三批）：压平换行——front/back 进单块 markdown 卡面，换行会破坏块结构与卡面
+  const flat = (v: unknown) => String(v ?? "").replace(/\r?\n+/g, " ").trim().slice(0, MAX_LEN);
   const cards: FlashCardCandidate[] = [];
   for (const c of rawCards) {
     if (!c || typeof c !== "object") continue;
     const o = c as Record<string, unknown>;
     const type = String(o.type ?? "");
-    const front = String(o.front ?? "").trim().slice(0, MAX_LEN);
-    const back = String(o.back ?? "").trim().slice(0, MAX_LEN);
+    const front = flat(o.front);
+    const back = flat(o.back);
     const source = String(o.source ?? "补充");
     if (!validTypes.has(type) || !front || !back) continue;
     cards.push({
@@ -85,7 +87,7 @@ export function parseFlashCandidates(raw: string): FlashCandidateResult {
     if (cards.length >= MAX_CARDS) break;
   }
   if (!cards.length) throw new Error("模型未给出可用的卡候选（证据不足或格式不符）");
-  const splitReason = String((obj as { splitReason?: unknown }).splitReason ?? "").trim().slice(0, 200) || undefined;
+  const splitReason = String((obj as { splitReason?: unknown }).splitReason ?? "").replace(/\r?\n+/g, " ").trim().slice(0, 200) || undefined;
   return { cards, splitReason };
 }
 

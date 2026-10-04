@@ -58,6 +58,16 @@ describe("116-03 T10 闪卡候选", () => {
     expect(() => parseFlashCandidates('{"cards":[{"type":"qa","front":"","back":""}]}')).toThrow(/可用的卡候选/);
   });
 
+  it("发版加固：front/back 换行压平（防单块卡面与块结构被破坏）", () => {
+    const r = parseFlashCandidates(JSON.stringify({
+      cards: [{ type: "qa", front: "第一行\n第二行", back: "答案一\r\n答案二", source: "解析" }],
+      splitReason: "多行\n理由",
+    }));
+    expect(r.cards[0].front).toBe("第一行 第二行");
+    expect(r.cards[0].back).toBe("答案一 答案二");
+    expect(r.splitReason).toBe("多行 理由");
+  });
+
   it("泄露守卫：front 含 back（≥4 字）与 front=back 命中；正常卡干净", () => {
     const leaks = findCardLeaks([
       { type: "qa", front: "FSRS 的核心参数是期望保留率（request retention）吗？", back: "期望保留率", source: "解析" },
