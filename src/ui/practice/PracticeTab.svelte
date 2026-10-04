@@ -8,6 +8,7 @@ import { ttsSpeak } from "@/core/tts";
     import type { ExamApp } from "../../app";
     import type { Question } from "../../core/types";
     import { parseText, parseExcelRows, autoMapExcel, errorsToCsv, extractTextRowAt, type ImportReport } from "../../importer/pipeline";
+    import { columnLabel, autoAssignment, assignmentFromMap, assignmentToMap, assignmentErrors, emptyAssignment, type MapAssignment } from "../../importer/mapping";
     import { groupAdjacent } from "../../core/session";
     import { makeQuestion } from "../../core/blockTemplate";
     import { normalizeAnswer, questionHash } from "../../core/answer";
@@ -1684,6 +1685,7 @@ import { ttsSpeak } from "@/core/tts";
       importError = ""; importResult = null; importReport = null; retryPool = []; trialConfirmed = []; trialNote = "";
       // 清理上次导入残留（TODO 27 组：多 Sheet 残留状态 bug 预防）
       sheetNames = []; sheetRowsCache = new Map();
+      manualMap = null; mapEditorOpen = false; mapErrors = []; // 38-02：手动映射随文件更换重置
       const input = e.target as HTMLInputElement;
       const file = input.files?.[0];
       if (!file) return;
@@ -1717,6 +1719,19 @@ import { ttsSpeak } from "@/core/tts";
       if (!rows?.length) { importError = t("import.emptyFile"); return; }
       // 回灌去重（2.3）：与题库已有题比对；并存模式（重合并策略 lite）置空 → 重复行照常入库
       const existing = dupeStrategy === "coexist" ? new Set<string>() : new Set(questions.map((q) => q.hash));
+      // 手动映射（38-02）优先；列越界（换文件/切 Sheet 后）→ 提示并回退自动映射
+      if (manualMap) {
+        const width = rows[0].length;
+        const idxs = [manualMap.type, manualMap.stem, manualMap.answer, manualMap.analysis, manualMap.difficulty, manualMap.kp, manualMap.score, manualMap.source, ...(manualMap.options ?? [])];
+        if (idxs.some((i) => i != null && i >= width)) {
+          importError = t("import.mappingMismatch");
+          manualMap = null;
+          return;
+        }
+        lastMap = manualMap;
+        importReport = parseExcelRows(rows.slice(1), manualMap, { existingHashes: existing });
+        return;
+      }
       // 映射复用（2.3/38-02）：已保存映射优先；列越界守卫 → 提示并回退自动映射
       const saved = savedMappings.find((m) => m.name === selectedMapping);
       if (saved) {
@@ -1732,9 +1747,55 @@ import { ttsSpeak } from "@/core/tts";
         return;
       }
       const { map, missing } = autoMapExcel(rows[0].map(String));
-      if (missing.length) { importError = t("import.missingColumns") + missing.join("、"); return; }
+      if (missing.length) {
+        importError = t("import.missingColumns") + missing.join("、");
+        // 38-02：自动映射失败 → 直接展开手动映射编辑器（预填最优猜测，异名列/乱序表可手动指派）
+        mapAssign = autoAssignment(rows[0].map(String));
+        mapErrors = [];
+        mapEditorOpen = true;
+        return;
+      }
       lastMap = map;
       importReport = parseExcelRows(rows.slice(1), map, { existingHashes: existing });
+    }
+
+    // ---------- 手动列映射（38-02）：自动失败/异名列/乱序表可手动指派列↔字段 ----------
+    let mapEditorOpen = $state(false);
+    let manualMap = $state<import("../../importer/pipeline").ExcelColumnMap | null>(null);
+    let mapAssign = $state<MapAssignment>(emptyAssignment());
+    let mapErrors = $state<string[]>([]);
+    /** 编辑器字段行（options 槽单独渲染） */
+    const MAP_FIELDS: { key: "type" | "stem" | "answer" | "analysis" | "difficulty" | "kp" | "score" | "source"; i18n: string }[] = [
+      { key: "type", i18n: "import.f.type" },
+      { key: "stem", i18n: "import.f.stem" },
+      { key: "answer", i18n: "import.f.answer" },
+      { key: "analysis", i18n: "import.f.analysis" },
+      { key: "difficulty", i18n: "import.f.difficulty" },
+      { key: "kp", i18n: "import.f.kp" },
+      { key: "score", i18n: "import.f.score" },
+      { key: "source", i18n: "import.f.source" },
+    ];
+
+    function toggleMapEditor() {
+      mapEditorOpen = !mapEditorOpen;
+      if (!mapEditorOpen) return;
+      mapErrors = [];
+      const rows = sheetRowsCache.get(activeSheet);
+      if (!rows?.length) return;
+      // 预填优先级：当前手动映射 > 已保存映射 > 自动映射最优猜测
+      const base = manualMap ?? savedMappings.find((m) => m.name === selectedMapping)?.map ?? null;
+      mapAssign = base ? assignmentFromMap(base) : autoAssignment(rows[0].map(String));
+    }
+
+    function applyManualMap() {
+      const rows = sheetRowsCache.get(activeSheet);
+      if (!rows?.length) return;
+      const errs = assignmentErrors(mapAssign, rows[0].length);
+      if (errs.length) { mapErrors = errs; return; }
+      manualMap = assignmentToMap(mapAssign);
+      selectedMapping = ""; // 手动映射与已保存映射互斥
+      mapEditorOpen = false;
+      parseActiveSheet(); // U07：重解析清 trialConfirmed/retryPool
     }
 
     // ---------- 映射保存/复用（2.3/38-02） ----------
@@ -3170,11 +3231,56 @@ import { ttsSpeak } from "@/core/tts";
           {#if savedMappings.length}
             <div class="lv-row">
               <span class="lv-chip">{t("import.useMapping")}</span>
-              <select class="lv-select" style="max-width:220px" bind:value={selectedMapping} onchange={() => { if (sheetRowsCache.get(activeSheet)?.length) parseActiveSheet(); }}>
+              <select class="lv-select" style="max-width:220px" bind:value={selectedMapping} onchange={() => { manualMap = null; if (sheetRowsCache.get(activeSheet)?.length) parseActiveSheet(); }}>
                 <option value="">{t("import.autoMap")}</option>
                 {#each savedMappings as m, _i (_i)}<option value={m.name}>{m.name}</option>{/each}
               </select>
             </div>
+          {/if}
+          {#if sheetRowsCache.get(activeSheet)?.length}
+            <!-- 38-02：手动列映射（自动失败/异名列/乱序表） -->
+            <div class="lv-row">
+              <button class="lv-btn sm" onclick={toggleMapEditor}>🔧 {t("import.manualMap")}</button>
+              {#if manualMap}<span class="lv-chip lv-chip--acc">{t("import.manualMapActive")}</span>{/if}
+            </div>
+            {#if mapEditorOpen}
+              <div class="lv-detail" style="margin:4px 0 8px">
+                <div class="lv-row" style="flex-wrap:wrap;gap:4px">
+                  {#each sheetRowsCache.get(activeSheet)![0].map(String) as h, hi (hi)}
+                    <span class="lv-chip num" title={t("import.manualMapCol").replace("{l}", columnLabel(hi))}>{columnLabel(hi)}·{h || "—"}</span>
+                  {/each}
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:4px 12px;margin:6px 0">
+                  {#each MAP_FIELDS as f (f.key)}
+                    <label class="lv-row" style="margin:0;gap:6px">
+                      <span class="lv-muted" style="min-width:56px">{t(f.i18n)}</span>
+                      <select class="lv-select" style="flex:1;min-width:0" bind:value={mapAssign[f.key]}>
+                        <option value={-1}>{t("import.f.none")}</option>
+                        {#each sheetRowsCache.get(activeSheet)![0] as h, hi (hi)}
+                          <option value={hi}>{columnLabel(hi)}·{String(h).slice(0, 12) || "—"}</option>
+                        {/each}
+                      </select>
+                    </label>
+                  {/each}
+                  {#each Array(6) as _, oi (oi)}
+                    <label class="lv-row" style="margin:0;gap:6px">
+                      <span class="lv-muted" style="min-width:56px">{t("import.f.option")}{String.fromCharCode(65 + oi)}</span>
+                      <select class="lv-select" style="flex:1;min-width:0" bind:value={mapAssign.options[oi]}>
+                        <option value={-1}>{t("import.f.none")}</option>
+                        {#each sheetRowsCache.get(activeSheet)![0] as h, hi (hi)}
+                          <option value={hi}>{columnLabel(hi)}·{String(h).slice(0, 12) || "—"}</option>
+                        {/each}
+                      </select>
+                    </label>
+                  {/each}
+                </div>
+                {#each mapErrors as me, _mi (_mi)}<div class="lv-error-row">{me}</div>{/each}
+                <div class="lv-row">
+                  <button class="lv-btn lv-btn--primary sm" onclick={applyManualMap}>{t("import.manualMapApply")}</button>
+                  <button class="lv-btn sm lv-btn--ghost" onclick={() => (mapEditorOpen = false)}>{t("edit.cancel")}</button>
+                </div>
+              </div>
+            {/if}
           {/if}
           {#if importError}<div class="lv-error">{importError}</div>{/if}
           {#if importReport}

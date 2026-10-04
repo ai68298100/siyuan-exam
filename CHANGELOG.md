@@ -1,8 +1,11 @@
 # Changelog
 
-## Unreleased（0.6.x-dev：廿三~五二批，2026-10-03/05）
+## Unreleased（0.6.x-dev：廿三~五三批，2026-10-03/05）
 
-> guard 八门禁全绿（366 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、样式 token 审计、ESLint 0 告警）+ 生产构建通过；**真机验证（SiYuan 3.8.6）**：preflight 17/17、数据生命周期 6/6、CSV 往返冒烟 5/5、种子数据经真实插件重载存活（37-01 路径语义实测通过）、题目编辑 updateBlock / 章节树 docTree / listQuestions hpath 三项契约实测通过。docs/17 人工 UI 步骤剩 27/28/36-38。
+> guard 八门禁全绿（374 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、样式 token 审计、ESLint 0 告警）+ 生产构建通过；**真机验证（SiYuan 3.8.6）**：preflight 17/17、数据生命周期 6/6、CSV 往返冒烟 5/5、种子数据经真实插件重载存活（37-01 路径语义实测通过）、题目编辑 updateBlock / 章节树 docTree / listQuestions hpath 三项契约实测通过、只读 e2e 走查 6 过/0 败（五三批复跑）；docs/17 人工 UI 步骤剩 27/28/36-38。
+
+- **CI check.yml 修复**（0 组勘误，五三批）：workflow 文件此前为 JSON 内容，GitHub Actions 无法解析（`.yml` 扩展名 ≠ JSON）——每次 push 0 秒判 "workflow file issue"，远端检查从未真正运行过；重写为 YAML 并与本地 guard 对齐（补 lint 步、去掉 pnpm check 已含的 arch/i18n 重复步）
+- **手动列映射**（38-02，五三批）：`importer/mapping.ts` 指派契约（8 字段+6 选项槽，-1=不使用；必填/越界/重复指派逐条可行动校验，Excel 式列标）+ 导入页「🔧 手动列映射」编辑器（表头列标预览、逐字段下拉指派、apply 后走同一解析管线，U07 试导失效沿用）——自动映射失败自动展开并预填最优猜测；解析优先级 手动>已保存>自动，换文件重置、切 Sheet 越界守卫回退；非规范表头乱序表端到端单测（自动失败→手动指派→解析成功）
 
 - **文件入口二进制/文本分流**（38-01，五二批）：`.xlsx/.xls` 走 SheetJS 二进制读取（`type:"array"`），仅 `.csv` 做编码（UTF-8→GBK 回退）与分隔符探测——修复真 XLSX 走文本解码必报 "Bad compressed size" 的 P0（官方模板/中文 XLSX 导入失败）；拖拽与文件选择同源同修；`importer/workbookFile.ts` 5 项单测（真 XLSX 二进制构造 round-trip 多 sheet/GBK 回退不误报/不支持类型可行动报错）
 - **一次一层提示**（114-01 T05 模板本体，五二批）：`ai/hint.ts`——目标→概念→步骤逐层申请（单层模板 v2，携已展示层原文防复述）；≤2 选项题型第 2 层后结构性转正式揭示（G6：不冒充提示，提交作答由判定揭示）；确定性泄露守卫 `findHintLeaks`（答案字母/正确选项原文/简答答案原文含别名/排除至唯一），提交前命中层隐藏待决——用户明确查看记 `help="reveal"`（受助枚举扩展），不看直接作答不标记；练习台提交前即可申请提示（此前仅提交后，与 helpAllowed 设计对齐）；11 项单测

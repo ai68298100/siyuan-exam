@@ -1,27 +1,43 @@
-{
-  "version": "2.0.0",
-  "$schema": "https://json.schemastore.org/github-workflow.json",
-  "name": "Check",
-  "on": {
-    "push": { "branches": ["main"] },
-    "pull_request": {}
-  },
-  "permissions": { "contents": "read" },
-  "jobs": {
-    "check": {
-      "runs-on": "ubuntu-latest",
-      "steps": [
-        { "uses": "actions/checkout@v4" },
-        { "uses": "pnpm/action-setup@v4", "with": { "version": 11.4, "run_install": false } },
-        { "uses": "actions/setup-node@v4", "with": { "node-version": 24, "cache": "pnpm" } },
-        { "name": "Install", "run": "pnpm install --frozen-lockfile" },
-        { "name": "Type/Svelte check", "run": "pnpm check" },
-        { "name": "Architecture consistency", "run": "pnpm check:arch" },
-        { "name": "i18n parity", "run": "pnpm check:i18n" },
-        { "name": "Unit tests", "run": "pnpm test" },
-        { "name": "Build + package", "run": "pnpm build" },
-        { "name": "Verify package allowlist", "run": "pnpm verify:package" }
-      ]
-    }
-  }
-}
+name: Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.4.0
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Type/Svelte/i18n/arch/styles check
+        run: pnpm check
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Build + package
+        run: pnpm build
+
+      - name: Verify package allowlist
+        run: pnpm verify:package
