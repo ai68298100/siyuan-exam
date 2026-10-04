@@ -85,7 +85,7 @@
 - [x] i18n 键一致性校验脚本 ✓2026-10-02（本轮 299 键对齐通过）
 - [x] `[lv-exam]` 日志封装 + 错误二分类（可重试/致命）工具函数 ✓2026-10-03（`core/logger.ts`：作用域日志器 lvLogger(scope).debug/info/warn/error，统一 `[lv-exam][scope]` 前缀；classifyError 与 kernel/client 同口径（KernelError.kind 透传 + 网络/超时/中断→retryable）；2 项单测。settings schemaVersion 迁移器仍开放）
 - [x] settings `schemaVersion` 字段与迁移器骨架 ✓2026-10-03（`core/migrations.ts`：DATA_SCHEMA_VERSION + migrateAttemptLog 版本链；attempts/log 落盘升级为 `{v, events}` 信封，读回兼容 v1 裸数组与更高版本（versionTooNew 告警标记，不降级丢数据）；5 项单测。settings 载荷在发生格式变更时按同一骨架补迁移函数）
-- [x] 性能基准脚本（万题级题库 SQL 检索/渲染计时） ✓2026-10-03（scripts/perf-bank.mjs：写入/检索/渲染计时 + 离线 SKIP + 自清理；真机 3.8.6 基线入库 7.0 条目）
+- [x] 性能基准脚本（万题级题库 SQL 检索/渲染计时） ✓2026-10-03（scripts/perf-bank.mjs：写入/检索/渲染计时 + 离线 SKIP + 自清理；真机 3.8.6 基线入库 7.0 条目） **补强（2026-10-05 六五批）**：聚合侧性能回归锁——`tests/perfAggregate.test.ts` 10k 合成流水（500 题×180 天）预算断言 replay <1.5s、报告聚合全套（校准/暴露/延迟回忆/时段/掌握度/弱项）<1.5s，语义抽查防空转；纯本地聚合与真机 SQL 基线（perf-bank）互补。
 - [ ] mimosa 安全扫描纳入发布前 checklist
 - [ ] 依赖策略：siyuan npm 包版本升级跟踪（petal 1.2.x → 后续）
 

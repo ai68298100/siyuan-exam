@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased（0.6.x-dev：廿三~六四批，2026-10-03/05）
+## Unreleased（0.6.x-dev：廿三~六五批，2026-10-03/05）
 
-> guard 八门禁全绿（424 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、样式 token 审计、ESLint 0 告警）+ 生产构建通过；**真机验证（SiYuan 3.8.6）**：preflight 17/17、数据生命周期 6/6、CSV 往返冒烟 5/5、种子数据经真实插件重载存活（37-01 路径语义实测通过）、题目编辑 updateBlock / 章节树 docTree / listQuestions hpath 三项契约实测通过、只读 e2e 走查 6 过/0 败（检查点 22 项）；**CI 首次真跑全绿**（check.yml 修复后 run 37221044264 success）。docs/17 人工 UI 步骤剩 27/28/36-38。
+> guard 八门禁全绿（425 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、样式 token 审计、ESLint 0 告警）+ 生产构建通过；**真机验证（SiYuan 3.8.6）**：preflight 17/17、数据生命周期 6/6、CSV 往返冒烟 5/5、种子数据经真实插件重载存活（37-01 路径语义实测通过）、题目编辑 updateBlock / 章节树 docTree / listQuestions hpath 三项契约实测通过、只读 e2e 走查 6 过/0 败（检查点 22 项）；**CI 首次真跑全绿**（check.yml 修复后 run 37221044264 success）。docs/17 人工 UI 步骤剩 27/28/36-38。
+
+- **聚合性能回归锁**（六五批，优化向）：`tests/perfAggregate.test.ts`——10k 合成流水（500 题×180 天，判定/信心/受助/先回忆混合）预算断言：replay <1.5s、报告聚合全套（校准/暴露/延迟回忆/时段/掌握度/弱项）<1.5s，含语义抽查防空转；与真机 SQL 基线（perf-bank）互补，聚合退化到秒级即门禁拦截
 
 - **AI 闪卡候选**（116-03 T10 lite，六四批）：`ai/flashCandidates.ts`——最小卡候选（≤5 张/一卡一事实/问答·挖空·对照三型/来源如实标反思·解析·补充/证据不足不凑数）+ 宽容 JSON 解析 + 卡面泄露守卫（front 含 back 拦截）+ 负荷汇总（确认前展示卡数/题型/来源/拆卡理由）；浏览详情「🃏 闪卡候选」→ 确认对话框 → 题库「/AI 闪卡」文档落块并送 riff 卡包（不自动评级、不碰 FSRS 参数）；6 项单测，strictMock 枚举锁自动纳入
 
