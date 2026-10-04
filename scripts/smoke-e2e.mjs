@@ -56,6 +56,7 @@ const EXPECTED = [
   { key: "ai/explain-history", file: "ai/explain-history.json", label: "38 AI 讲解记录", critical: false },
   { key: "ai/usage", file: "ai/usage.json", label: "AI 用量记账", critical: false },
   { key: "wrongbook/overlays", file: "wrongbook/overlays.json", label: "错题处置覆盖层", critical: false },
+  { key: "materials/registry", file: "materials/registry.json", label: "120 资料注册表", critical: false },
 ];
 
 let anyData = false;
@@ -137,10 +138,25 @@ if (explain !== undefined) {
 const checkinBridge = join(WORKSPACE, "storage/petal/siyuan-checkin/bridge/events.ndjson");
 if (existsSync(checkinBridge)) {
   const text = readFileSync(checkinBridge, "utf8");
-  const examEvents = text.split("\n").filter((l) => l.includes("exam:")).length;
+  const examEvents = (text.match(/exam:/g) || []).length;
   record("48-03 打卡侧 exam: 事件", examEvents ? "pass" : "wait", examEvents ? `${examEvents} 条 exam: 引用` : "桥已装但尚无 exam: 事件");
 } else {
   record("48-03 打卡侧 exam: 事件", "wait", "打卡桥文件不存在（未触发过写入）");
+}
+
+// ---------- 7. 120-01 资料注册表 schema（materialId/locations 契约，lite） ----------
+const matReg = readJson("materials/registry.json");
+if (matReg !== undefined) {
+  anyData = true;
+  const mats = Array.isArray(matReg?.materials) ? matReg.materials : null;
+  if (matReg === null) record("120 资料注册表 schema", "fail", "文件存在但非合法 JSON");
+  else if (!mats) record("120 资料注册表 schema", "fail", "缺 materials 数组（{v,materials} 信封）");
+  else {
+    const bad = mats.filter((m) => !m || typeof m.id !== "string" || !/^m-/.test(m.id) || !Array.isArray(m.locations) || m.locations.some((l) => !l || !["assets", "link"].includes(l.kind) || typeof l.path !== "string"));
+    record("120 资料注册表 schema", bad.length ? "fail" : "pass", bad.length ? `${bad.length} 条不符合契约（id 非 m- 前缀 / locations 非法）` : `${mats.length} 份资料 · id/locations 契约成立`);
+  }
+} else {
+  record("120 资料注册表 schema", "wait", "尚未登记资料（练习台 → 📚 学习资料）");
 }
 
 // ---------- 汇总 ----------

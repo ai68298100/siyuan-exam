@@ -242,6 +242,16 @@ export class KernelApiClient {
     return String(r.data ?? "");
   }
 
+  /** 写入工作区文件（120-02 资料登记：/api/file/putFile，file=base64；目录不存在自动创建） */
+  async putFile(path: string, base64: string): Promise<void> {
+    await this.t.post("/api/file/putFile", { path, file: base64, isDir: false, mtime: Math.floor(Date.now() / 1000) });
+  }
+
+  /** 删除工作区文件（资料移除时的可选清理；调用方自担确认） */
+  async removeFile(path: string): Promise<void> {
+    await this.t.post("/api/file/removeFile", { path });
+  }
+
   async appendBlock(parentId: string, markdown: string): Promise<string[]> {
     // 3.8.5 实测：insertBlock 必须带 dataType
     const r = await this.t.post("/api/block/insertBlock", { dataType: "markdown", data: markdown, parentID: parentId });

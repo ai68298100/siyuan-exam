@@ -30,7 +30,7 @@ import { ttsSpeak } from "@/core/tts";
     const i18n = $derived(plugin?.i18n ?? {});
     const t = (k: string, fb = "") => i18n[k] ?? fb;
 
-    type View = "entry" | "session" | "browse" | "import" | "recite" | "manual" | "ai";
+    type View = "entry" | "session" | "browse" | "import" | "recite" | "manual" | "ai" | "materials";
     let view: View = $state("entry");
     let loading = $state(true);
     let errorMsg = $state("");
@@ -1798,6 +1798,82 @@ import { ttsSpeak } from "@/core/tts";
       parseActiveSheet(); // U07：重解析清 trialConfirmed/retryPool
     }
 
+    // ---------- 学习资料（120-01/02/06 lite）：登记 / 列表 / 最低查看 ----------
+    let materialsList = $state<import("../../core/materials").MaterialDoc[]>([]);
+    let materialsBusy = $state(false);
+    let materialsNote = $state("");
+    let matSubject = $state("");
+    let matChapter = $state("");
+    let matLink = $state("");
+    let matLinkTitle = $state("");
+
+    function loadMaterials() {
+      materialsList = app.listMaterials();
+    }
+
+    function materialIcon(kind: string): string {
+      if (kind === "pdf") return "📕";
+      if (kind === "video") return "🎬";
+      if (kind === "audio") return "🎧";
+      if (kind === "image") return "🖼";
+      if (kind === "doc") return "📄";
+      return "📦";
+    }
+
+    async function onMaterialFile(e: Event) {
+      const input = e.target as HTMLInputElement;
+      const file = input.files?.[0];
+      input.value = "";
+      if (!file || materialsBusy) return;
+      materialsBusy = true; materialsNote = "";
+      try {
+        const { material, deduped } = await app.registerMaterialFromFile(file, { subject: matSubject, chapter: matChapter });
+        loadMaterials();
+        materialsNote = deduped ? t("materials.deduped") : `✓ ${t("materials.registered")} ${material.title}`;
+      } catch (err) {
+        materialsNote = String(err instanceof Error ? err.message : err);
+      } finally { materialsBusy = false; }
+    }
+
+    async function registerMaterialLink() {
+      if (!matLink.trim() || materialsBusy) return;
+      materialsBusy = true; materialsNote = "";
+      try {
+        const { material, deduped } = await app.registerMaterialFromLink(matLink, {
+          title: matLinkTitle, subject: matSubject, chapter: matChapter,
+        });
+        loadMaterials();
+        matLink = ""; matLinkTitle = "";
+        materialsNote = deduped ? t("materials.deduped") : `✓ ${t("materials.registered")} ${material.title}`;
+      } catch (err) {
+        materialsNote = String(err instanceof Error ? err.message : err);
+      } finally { materialsBusy = false; }
+    }
+
+    /** 120-06 最低查看：assets → 内核静态 URL（浏览器原生看 PDF/播媒体）；link → 原样打开 */
+    function openMaterial(m: import("../../core/materials").MaterialDoc) {
+      const url = app.resolveMaterialUrlOf(m, window.location.origin);
+      if (!url) { materialsNote = t("materials.cannotOpen"); return; }
+      window.open(url, "_blank", "noopener");
+    }
+
+    async function removeMaterialEntry(m: import("../../core/materials").MaterialDoc) {
+      const { confirmDialogSync } = await import("../../libs/dialog");
+      const ok = await confirmDialogSync({
+        title: t("materials.removeTitle"),
+        content: `${materialIcon(m.kind)} ${m.title}<br><span style="font-size:12px;color:var(--b3-theme-on-surface-light, #888)">${t("materials.removeNote")}</span>`,
+      });
+      if (!ok) return;
+      materialsBusy = true; materialsNote = "";
+      try {
+        await app.removeMaterialById(m.id);
+        loadMaterials();
+        materialsNote = t("materials.removed");
+      } catch (err) {
+        materialsNote = String(err instanceof Error ? err.message : err);
+      } finally { materialsBusy = false; }
+    }
+
     // ---------- 映射保存/复用（2.3/38-02） ----------
     let savedMappings = $state<{ name: string; map: import("../../importer/pipeline").ExcelColumnMap }[]>([]);
     let selectedMapping = $state("");
@@ -2354,6 +2430,7 @@ import { ttsSpeak } from "@/core/tts";
           <button class="lv-btn" onclick={() => view = "import"}>📥 {t("import.title")}</button>
           <button class="lv-btn" onclick={() => view = "ai"}>✨ {t("ai.title")}</button>
           <button class="lv-btn" onclick={() => view = "manual"}>✏️ {t("entry.manual")}</button>
+          <button class="lv-btn" onclick={() => { view = "materials"; loadMaterials(); }}>📚 {t("materials.title")}</button>
           <button class="lv-btn" onclick={copyChallengeCode}>🎯 {t("challenge.copy")}</button>
           <button class="lv-btn" onclick={importChallengeCode}>📥 {t("challenge.import")}</button>
           <details class="lv-export-fold">
@@ -2886,6 +2963,61 @@ import { ttsSpeak } from "@/core/tts";
             {/each}
           </details>
         {/if}
+      {/if}
+    </div>
+  {:else if view === "materials"}
+    <!-- ===== 学习资料（120-01/02/06 lite）：登记 / 列表 / 最低查看 ===== -->
+    <div class="lv-pad">
+      <div class="lv-row">
+        <button class="lv-btn lv-btn--ghost" onclick={() => view = "entry"}>← {t("import.back")}</button>
+        <b>📚 {t("materials.title")}</b>
+        {#if app.materialsReadonly}<span class="lv-chip lv-chip--amb">{t("materials.readonly")}</span>{/if}
+        <span class="lv-chip num">{materialsList.length}</span>
+      </div>
+      <div class="lv-card" style="margin-top:10px">
+        <div class="lv-row">
+          <label class="lv-btn">
+            📎 {t("materials.pickFile")}
+            <input type="file" accept=".pdf,.mp4,.webm,.m4v,.mp3,.m4a,.wav,.ogg,.png,.jpg,.jpeg,.gif,.webp,.md,.txt,.docx,.epub" style="display:none" onchange={onMaterialFile} disabled={materialsBusy || offline} />
+          </label>
+          <span class="lv-muted">{t("materials.copyHint")}</span>
+        </div>
+        <div class="lv-row">
+          <span class="lv-chip">🔗 {t("materials.link")}</span>
+          <input class="lv-input" style="flex:1;min-width:200px" placeholder="https://…" bind:value={matLink} />
+          <input class="lv-input" style="max-width:150px" placeholder={t("materials.linkTitle")} bind:value={matLinkTitle} />
+          <button class="lv-btn" onclick={registerMaterialLink} disabled={materialsBusy || offline || !matLink.trim()}>{t("materials.register")}</button>
+        </div>
+        <div class="lv-row lv-muted" style="font-size:11px">
+          <span>{t("materials.meta")}</span>
+          <input class="lv-input" style="max-width:150px" placeholder={t("materials.subject")} bind:value={matSubject} />
+          <input class="lv-input" style="max-width:150px" placeholder={t("materials.chapter")} bind:value={matChapter} />
+        </div>
+        {#if offline}<div class="lv-muted">⚠ {t("materials.offlineNote")}</div>{/if}
+        {#if materialsNote}<div class="lv-row"><span class="lv-chip">{materialsNote}</span></div>{/if}
+      </div>
+      {#if materialsList.length === 0}
+        <div class="lv-muted" style="margin-top:12px">{t("materials.empty")}</div>
+      {:else}
+        {#each materialsList as m (m.id)}
+          <div class="lv-card" style="margin-top:8px">
+            <div class="lv-row" style="flex-wrap:wrap">
+              <b>{materialIcon(m.kind)} {m.title}</b>
+              <span class="lv-chip">{t("mkind." + m.kind)}</span>
+              {#if m.subject}<span class="lv-chip">{m.subject}</span>{/if}
+              {#if m.chapter}<span class="lv-chip">{m.chapter}</span>{/if}
+              <span class="fn__flex-1"></span>
+              <button class="lv-btn sm" onclick={() => openMaterial(m)}>↗ {t("materials.open")}</button>
+              <button class="lv-btn sm lv-btn--ghost" onclick={() => void removeMaterialEntry(m)} disabled={materialsBusy}>🗑</button>
+            </div>
+            <div class="lv-row lv-muted" style="font-size:11px;flex-wrap:wrap">
+              {#each m.locations as l, _li (_li)}
+                <span class="lv-chip num" style="max-width:100%;overflow:hidden;text-overflow:ellipsis">{l.kind === "assets" ? "A" : "🔗"} {l.path}</span>
+              {/each}
+              <span>v{m.revision}</span>
+            </div>
+          </div>
+        {/each}
       {/if}
     </div>
   {:else if view === "browse"}

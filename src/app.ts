@@ -27,6 +27,31 @@ import {
   type ActionKind,
 } from "./core/actions";
 import type { ImportReport } from "./importer/pipeline";
+import {
+  canCopyIntoAssets,
+  assetsPathFor,
+  attachLocation,
+  kindFromFileName,
+  parseRegistry,
+  registerMaterial,
+  removeMaterial,
+  serializeRegistry,
+  resolveMaterialUrl,
+  EMPTY_REGISTRY,
+  type MaterialDoc,
+  type MaterialRegistry,
+} from "./core/materials";
+
+/** ArrayBuffer → base64（分块拼接，避免大文件 String.fromCharCode 展开栈溢出） */
+function arrayBufferToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let bin = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(bin);
+}
 
 export interface BankInfo {
   id: string;
@@ -69,6 +94,7 @@ const KNOWN_STORAGE_KEYS = [
   "import/mappings",
   "browse/smartViews",
   "batchedit/last",
+  "materials/registry",
 ];
 
 export interface ExamAppDeps {
@@ -82,6 +108,7 @@ const SESSION_KEY = "session/active";
 const WRONG_REASON_KEY = "wrongbook/reasons";
 const MOCK_RUN_KEY = "mock/run";
 const ACTIONS_KEY = "actions/items";
+const MATERIALS_KEY = "materials/registry";
 
 /** 过期草稿（TODO 2.4）：7 天隐藏不再续做入口，30 天清理（流水保留） */
 const DRAFT_HIDE_MS = 7 * 86_400_000;
@@ -102,6 +129,8 @@ export class ExamApp {
   readonly saves = new SaveGate();
   private replayCache: ReplayResult | null = null;
   private banks: BankInfo[] = [];
+  private materialsRegistry: MaterialRegistry = EMPTY_REGISTRY;
+  private materialsVersionTooNew = false;
   private activeSession: PracticeSession | null = null;
   kernelOnline = false;
   probeMessage = "";
@@ -148,6 +177,14 @@ export class ExamApp {
       if (Array.isArray(banks)) this.banks = banks as BankInfo[];
     } catch {
       this.banks = [];
+    }
+    // 学习资料注册表（120-01）：损坏/过版本时以空表继续（versionTooNew 标记如实显示，不回写覆盖）
+    try {
+      const parsed = parseRegistry(await this.deps.storage.load(MATERIALS_KEY));
+      this.materialsRegistry = parsed.registry;
+      this.materialsVersionTooNew = parsed.versionTooNew;
+    } catch {
+      this.materialsRegistry = EMPTY_REGISTRY;
     }
   }
 
@@ -708,7 +745,7 @@ export class ExamApp {
     return auditAttemptEvents(this.attempts.all(), knownQids);
   }
 
-  /** 数据出库（58-01 lite）：核心学习资产 JSON（流水/题库注册表/错题处置/错因/行动）。
+  /** 数据出库（58-01 lite）：核心学习资产 JSON（流水/题库注册表/错题处置/错因/行动/资料登记表）。
    *  红线：不含 AI Key（存宿主 getSecret，不在插件 storage）；题干不入包（流水只含 qid）。 */
   async exportAllData(): Promise<string> {
     const [overlays, reasons, actions] = await Promise.all([
@@ -725,10 +762,114 @@ export class ExamApp {
         wrongbookOverlays: overlays ?? {},
         wrongReasons: reasons ?? {},
         actions: actions ?? [],
+        materials: serializeRegistry(this.materialsRegistry),
       },
       null,
       2,
     );
+  }
+
+  // ---------- 学习资料（120-01/02/06 lite：登记 / assets 拷贝 / 最低查看） ----------
+
+  listMaterials(): MaterialDoc[] {
+    return [...this.materialsRegistry.materials];
+  }
+
+  /** 注册表版本比当前代码新（升级回滚场景）：UI 如实显示只读提示，写路径拒绝（不降级覆盖） */
+  get materialsReadonly(): boolean {
+    return this.materialsVersionTooNew;
+  }
+
+  /** 位置解析为可打开 URL（内核 origin 由调用方传入；解析不了返回 null 由 UI 如实显示） */
+  resolveMaterialUrlOf(material: MaterialDoc, origin: string): string | null {
+    const loc = material.locations[0];
+    return loc ? resolveMaterialUrl(loc, origin) : null;
+  }
+
+  private async saveMaterialsRegistry(): Promise<void> {
+    await this.saves.run(MATERIALS_KEY, () =>
+      this.deps.storage.save(MATERIALS_KEY, serializeRegistry(this.materialsRegistry)),
+    );
+  }
+
+  /** 文件登记（120-02）：读文件 → 拷入工作区 assets（putFile）→ 注册/归并位置。
+   *  大文件不默认全拷贝（120-03）：超 30MB 如实拒绝；离线拒绝（putFile 需要内核）。 */
+  async registerMaterialFromFile(
+    file: File,
+    meta: { subject?: string; chapter?: string; title?: string } = {},
+  ): Promise<{ material: MaterialDoc; deduped: boolean }> {
+    if (this.materialsReadonly) throw new Error("注册表版本较新：只读（降级回滚场景），登记已拒绝");
+    if (!this.kernelOnline) throw new Error("离线：登记资料需要内核可写（拷入 assets）");
+    const guard = canCopyIntoAssets(file.size);
+    if (!guard.ok) throw new Error(guard.reason ?? "文件不可拷入");
+    const base64 = arrayBufferToBase64(await file.arrayBuffer());
+    const path = assetsPathFor(file.name);
+    await this.deps.client.putFile(path, base64);
+    const kind = kindFromFileName(file.name);
+    const title = meta.title?.trim() || file.name.replace(/\.[^.]+$/, "");
+    const result = registerMaterial(
+      this.materialsRegistry,
+      { title, kind, subject: meta.subject, chapter: meta.chapter, location: { kind: "assets", path } },
+      this.deps.now?.() ?? Date.now(),
+    );
+    this.materialsRegistry = result.registry;
+    await this.saveMaterialsRegistry();
+    return { material: result.material, deduped: result.deduped };
+  }
+
+  /** 链接登记（120-02）：稳定 URL（http/https）直接入册，不外发不下载 */
+  async registerMaterialFromLink(
+    url: string,
+    meta: { title?: string; subject?: string; chapter?: string } = {},
+  ): Promise<{ material: MaterialDoc; deduped: boolean }> {
+    if (this.materialsReadonly) throw new Error("注册表版本较新：只读（降级回滚场景），登记已拒绝");
+    const clean = url.trim();
+    if (!/^https?:\/\/\S+/i.test(clean)) throw new Error("仅支持 http(s) 链接");
+    let name = clean;
+    try {
+      name = decodeURIComponent(new URL(clean).pathname.split("/").pop() ?? "") || clean;
+    } catch { /* URL 解析失败按原文取名 */ }
+    const result = registerMaterial(
+      this.materialsRegistry,
+      {
+        title: meta.title?.trim() || name.replace(/\.[^.]+$/, ""),
+        kind: kindFromFileName(name),
+        subject: meta.subject,
+        chapter: meta.chapter,
+        location: { kind: "link", path: clean },
+      },
+      this.deps.now?.() ?? Date.now(),
+    );
+    this.materialsRegistry = result.registry;
+    await this.saveMaterialsRegistry();
+    return { material: result.material, deduped: result.deduped };
+  }
+
+  /** 为既有资料追加位置（同一文件第二份副本/镜像）；重复位置如实返回 deduped 不重复写 */
+  async attachMaterialLocation(materialId: string, loc: { kind: "assets" | "link"; path: string }): Promise<{ deduped: boolean }> {
+    if (this.materialsReadonly) throw new Error("注册表版本较新：只读（降级回滚场景），变更已拒绝");
+    const r = attachLocation(this.materialsRegistry, materialId, loc, this.deps.now?.() ?? Date.now());
+    if (!r.material) throw new Error("资料不存在");
+    this.materialsRegistry = r.registry;
+    await this.saveMaterialsRegistry();
+    return { deduped: r.deduped };
+  }
+
+  /** 移除登记（purgeAssets=true 时尽力删除 assets 附件；失败不阻断——登记移除是主事实） */
+  async removeMaterialById(materialId: string, purgeAssets = false): Promise<void> {
+    if (this.materialsReadonly) throw new Error("注册表版本较新：只读（降级回滚场景），移除已拒绝");
+    const material = this.materialsRegistry.materials.find((m) => m.id === materialId);
+    if (!material) throw new Error("资料不存在");
+    this.materialsRegistry = removeMaterial(this.materialsRegistry, materialId);
+    await this.saveMaterialsRegistry();
+    if (purgeAssets) {
+      for (const loc of material.locations) {
+        if (loc.kind !== "assets") continue;
+        try {
+          await this.deps.client.removeFile(loc.path);
+        } catch { /* 附件已不在/删除失败：登记移除不受影响，UI 说明保留可能 */ }
+      }
+    }
   }
 
   /** 清除插件数据（58-03 lite）：逐键置空并返回逐对象回执（不冒充全部删除）。

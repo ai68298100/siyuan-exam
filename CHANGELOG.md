@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased（0.6.x-dev：廿三~五三批，2026-10-03/05）
+## Unreleased（0.6.x-dev：廿三~五四批，2026-10-03/05）
 
-> guard 八门禁全绿（374 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、样式 token 审计、ESLint 0 告警）+ 生产构建通过；**真机验证（SiYuan 3.8.6）**：preflight 17/17、数据生命周期 6/6、CSV 往返冒烟 5/5、种子数据经真实插件重载存活（37-01 路径语义实测通过）、题目编辑 updateBlock / 章节树 docTree / listQuestions hpath 三项契约实测通过、只读 e2e 走查 6 过/0 败（五三批复跑）；docs/17 人工 UI 步骤剩 27/28/36-38。
+> guard 八门禁全绿（383 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、样式 token 审计、ESLint 0 告警）+ 生产构建通过；**真机验证（SiYuan 3.8.6）**：preflight 17/17、数据生命周期 6/6、CSV 往返冒烟 5/5、种子数据经真实插件重载存活（37-01 路径语义实测通过）、题目编辑 updateBlock / 章节树 docTree / listQuestions hpath 三项契约实测通过、只读 e2e 走查 6 过/0 败（检查点 20 项）；**CI 首次真跑全绿**（check.yml 修复后 run 37221044264 success）。docs/17 人工 UI 步骤剩 27/28/36-38。
+
+- **学习资料对象与登记入口**（120-01/02/03/06 lite，五四批，S2/Q7 地基）：`core/materials.ts`——MaterialDoc（m-id/revision/locations[]）+ `materials/registry` 信封 v1；登记去重=同位置不重复登记（同文件不产生第二条学习记录，文件名不是身份）、多位置归并、revision 推进；练习台「📚 学习资料」视图——文件显式登记（putFile 拷入 `/assets/lv-exam/`，>30MB 拒绝并提示改用链接——大视频不默认全拷贝）、http(s) 链接登记、科目/章节标注；最低查看：assets → 内核静态 URL 直接看 PDF/播媒体（无需额外插件）、链接原样打开、解析不了如实显示；移除登记明示附件保留；离线拒绝登记不伪造。存储键入账（盘点/体检/清除/出库），e2e 新增注册表 schema 检查点（20 项）
 
 - **CI check.yml 修复**（0 组勘误，五三批）：workflow 文件此前为 JSON 内容，GitHub Actions 无法解析（`.yml` 扩展名 ≠ JSON）——每次 push 0 秒判 "workflow file issue"，远端检查从未真正运行过；重写为 YAML 并与本地 guard 对齐（补 lint 步、去掉 pnpm check 已含的 arch/i18n 重复步）。**连带实锚（38-08 锁定面）**：CI 首次真跑暴露 Install 失败——xlsx CDN tarball 在 lockfile 无 integrity，`--frozen-lockfile` 拒装；tarball 收进仓库 `vendor/xlsx-0.20.3.tgz`（`file:` 引用 + lockfile integrity + `vendor/README.md` 记录来源/Apache-2.0/SHA256），冻结安装可重现且离线可用（全新安装本地模拟全过）
 - **手动列映射**（38-02，五三批）：`importer/mapping.ts` 指派契约（8 字段+6 选项槽，-1=不使用；必填/越界/重复指派逐条可行动校验，Excel 式列标）+ 导入页「🔧 手动列映射」编辑器（表头列标预览、逐字段下拉指派、apply 后走同一解析管线，U07 试导失效沿用）——自动映射失败自动展开并预填最优猜测；解析优先级 手动>已保存>自动，换文件重置、切 Sheet 越界守卫回退；非规范表头乱序表端到端单测（自动失败→手动指派→解析成功）
