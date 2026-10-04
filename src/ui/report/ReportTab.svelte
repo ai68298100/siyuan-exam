@@ -5,7 +5,7 @@
     import { showMessage } from "siyuan";
     import { weeklyAggregates, weekCompare, dailyTrend } from "@/core/weekly";
     import type { ExamApp } from "../../app";
-    import { heatmap, masteryByKp, weakTop, hourly, calibration, confidentWrongList, uncertainCorrectList, delayedRecall, type CalibrationReport } from "@/core/report";
+    import { heatmap, masteryByKp, weakTop, hourly, calibration, confidentWrongList, uncertainCorrectList, delayedRecall, exposureStats, type CalibrationReport } from "@/core/report";
     import { trendToCsv, heatmapToCsv, hourlyToCsv } from "@/core/exportMd";
     import type { ActionItem } from "@/core/actions";
     import SaveStatus from "../shared/SaveStatus.svelte";
@@ -280,6 +280,12 @@
     const ucList = $derived(ucOpen && app ? uncertainCorrectList(app.attempts.all()) : []);
     // 39-08 lite：延迟独立回忆（错后隔日首次作答；随日期范围联动）
     const recall = $derived(app ? delayedRecall(app.attempts.all().filter((e) => !rangeDays || e.ts >= Date.now() - rangeDays * 86_400_000)) : null);
+    // 52-02/114-01 呈现端：独立/受助/先回忆三口径（随日期范围联动）
+    const exposure = $derived.by(() => {
+      if (!app) return null;
+      const cutoff = rangeDays > 0 ? Date.now() - rangeDays * 86_400_000 : 0;
+      return exposureStats(app.attempts.all().filter((e) => !cutoff || e.ts >= cutoff));
+    });
 
     // 45-08：图表数据表展开态（单选一个卡）+ CSV 下载（与 SVG 同一数据快照）
     let tableOpen = $state<"trend" | "heat" | "hourly" | "">("");
@@ -502,6 +508,20 @@
           {#if recall.assistedCorrect}<span class="lv-chip lv-chip--amb num">{t("report.recallAssisted").replace("{n}", String(recall.assistedCorrect))}</span>{/if}
           {#if recall.stillWrong}<span class="lv-chip lv-chip--red num">{t("report.recallWrong").replace("{n}", String(recall.stillWrong))}</span>{/if}
           <span class="lv-chip num">{t("report.recallRate").replace("{n}", String(recall.rate ?? 0))}</span>
+        </div>
+      </div>
+    {/if}
+
+    {#if exposure && exposure.attempts > 0}
+      <!-- 52-02/114-01 呈现端：独立/受助/先回忆三口径分栏（互不混算） -->
+      <div class="lv-card lv-section">
+        <b>{t("report.exposureTitle")}</b>
+        <p class="lv-muted" style="margin:0 0 8px;font-size:11.5px">{t("report.exposureHint")}</p>
+        <div class="lv-row" style="margin:4px 0">
+          <span class="lv-chip acc num">{t("report.exposureIndependent").replace("{n}", String(exposure.independent))}</span>
+          {#if exposure.assisted}<span class="lv-chip lv-chip--amb num">{t("report.exposureAssisted").replace("{n}", String(exposure.assisted))}</span>{/if}
+          {#if exposure.recallFirst}<span class="lv-chip num">{t("report.exposureRecall").replace("{n}", String(exposure.recallFirst))}</span>{/if}
+          <span class="lv-chip num">{t("report.exposureTotal").replace("{n}", String(exposure.attempts))}</span>
         </div>
       </div>
     {/if}

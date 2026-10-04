@@ -199,6 +199,35 @@ export function uncertainCorrectList(
   return [...byQid.values()].sort((a, b) => b.ts - a.ts).slice(0, limit);
 }
 
+export interface ExposureStats {
+  /** 客观判分作答总数（分母） */
+  attempts: number;
+  /** 独立作答（无讲解/提示、非先回忆模式） */
+  independent: number;
+  /** 受助作答（作答前同题被讲解/提示过，AttemptEvent.help） */
+  assisted: number;
+  /** 先回忆作答（藏选项模式下作答，AttemptEvent.recall） */
+  recallFirst: number;
+}
+
+/** 暴露三口径分栏（52-02/114-01 呈现端，六三批）：独立/受助/先回忆互不混算——
+ *  help 与 recall 可同时为真（先回忆后仍看了讲解），此时计入受助与先回忆两个维度。 */
+export function exposureStats(events: readonly AttemptEvent[]): ExposureStats {
+  let attempts = 0;
+  let independent = 0;
+  let assisted = 0;
+  let recallFirst = 0;
+  for (const e of events) {
+    if (e.verdict === "not_attempted") continue;
+    if (e.kind !== "practice" && e.kind !== "mock") continue;
+    attempts++;
+    if (e.help) assisted++;
+    if (e.recall) recallFirst++;
+    if (!e.help && !e.recall) independent++;
+  }
+  return { attempts, independent, assisted, recallFirst };
+}
+
 export interface DelayedRecallReport {
   /** 有资格的配对数（错题之后隔日 ≥1 的首次作答） */
   pairs: number;
