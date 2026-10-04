@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased（0.6.x-dev：廿三~四八批，2026-10-03/04）
+## Unreleased（0.6.x-dev：廿三~四九批，2026-10-03/04）
 
 > guard 八门禁全绿（346 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、样式 token 审计、ESLint 0 告警）+ 生产构建通过；**真机验证（SiYuan 3.8.6）**：preflight 17/17、数据生命周期 6/6、CSV 往返冒烟 5/5（`scripts/smoke-csv.mjs`）、题目编辑 updateBlock / 章节树 docTree / listQuestions hpath 三项契约实测通过。docs/17 人工 UI 步骤剩 27/28/36-38。
 
@@ -73,6 +73,9 @@
 - **样式 token 审计入 guard**（45-10 lite，四六批）：`scripts/check-styles.mjs` 扫描全部 svelte/scss 裸色值（白名单=token 定义+思源回退位），guard 升为八检；现存 8 处违规清零（迁移至 on-primary/primary-lighter token 回退）
 - **拾遗素材已读闭环**（60-01 写方向，四七批）：出题成功且素材来自拾遗 → 「✓ 标记 {n} 篇已读」逐篇 setClipStatus(done)；拾遗侧协同写入默认关闭，未开启/失败如实计数提示不伪造成功
 - **更新式重导**（38-03 lite，四八批）：导入页重复合并策略三选（跳过/并存/**更新已有题**）——update 策略下同指纹行（题干+选项 hash，不含答案）进预览（旧A→新B），提交按指纹定位库内题只覆盖答案/解析/别名（SaveGate 过闸，逐题回执含"库内找不到"）；CSV 导出→改答案→重导→更新闭环成立；批内去重不受策略影响
+- **AI 端点变更重新确认**（41-06 lite，四九批）：consent 绑定端点（JSON `{endpoint}`），端点变化或自定义↔内置切换时自动重新弹确认；旧版布尔同意兼容保留
+- **恢复默认设置命令**（47-05 lite，四九批）：命令面板「恢复默认设置」逐项写回注册时快照的默认值（aiKey 兜底副本豁免防误清）
+- **docs/15 导入样例**（42-04，四九批）：GIFT（含行内式）/TSV 双形态/重复合并策略样例与规则表落文档
 - **会话/错题事件**（48-02 lite 收口，四四批）：`lv-exam:session-ended`（结算计数，无题干）与 `lv-exam:wrongbook-changed`（处置/暂缓）接入总线
 - **昨日计划回看**（44-05 lite，四四批）：入口 chip 显示昨日计划完成 x/y；连续缺席 ≥2 天 ⚠ 提醒（配额恒定不爆量，随时从今天继续）
 

@@ -1321,14 +1321,26 @@ import { ttsSpeak } from "@/core/tts";
         title: t("ai.regenerate"),
         content: t("ai.regenerateConfirm").replace("{n}", String(aiQueue.length)),
       }))) return;
-      // 首次调用数据流确认（26.2 P0）：端点/范围/取消入口
-      if (!localStorage.getItem("lv-exam-ai-consent")) {
+      // 首次调用数据流确认（26.2 P0）：端点/范围/取消入口。
+      // 41-06：确认绑定端点——端点改变（含自定义↔内置切换）时重新确认，不沿用旧同意
+      const currentEndpoint = String(plugin.settingUtils?.get?.("aiEndpoint") ?? "").trim() || "(内置)";
+      const consentKey = "lv-exam-ai-consent";
+      let consented = localStorage.getItem(consentKey);
+      try {
+        const parsed = JSON.parse(consented ?? "") as { endpoint?: string } | null; // 旧版 "1" 解析失败 → 视为未同意
+        if (parsed?.endpoint) consented = parsed.endpoint;
+        else consented = null;
+      } catch {
+        if (consented !== null && consented !== "1") consented = null;
+        else if (consented === "1") consented = "(legacy)"; // 旧版布尔同意：不绑定端点，保留行为
+      }
+      if (consented !== currentEndpoint) {
         const ep = String(plugin.settingUtils?.get?.("aiEndpoint") ?? "").trim();
         const msg = ep
           ? `${t("ai.consentTitle")}<br>${t("ai.consentCustom")} ${escapeHtml(ep)}`
           : `${t("ai.consentTitle")}<br>${t("ai.consentSiyuan")}`;
         if (!(await confirmDialogSync({ title: t("ai.consentTitle"), content: `${msg}<br><br>${t("ai.consentScope")}` }))) return;
-        localStorage.setItem("lv-exam-ai-consent", "1");
+        localStorage.setItem(consentKey, JSON.stringify({ endpoint: currentEndpoint }));
       }
       aiCancel = { aborted: false };
       aiBusy = true; errorMsg = ""; aiQueue = []; aiRejected = []; aiDuplicates = 0; aiSaved = 0;

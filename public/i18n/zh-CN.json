@@ -305,6 +305,8 @@
     "ai.customHint": "自定义要求",
     "ai.customHintHint": "追加到命题指令，如：多用数值计算题",
     "command.openWrongbook": "打开错题本",
+    "command.resetSettings": "恢复默认设置",
+    "setting.resetDone": "✓ 已恢复默认设置（AI Key 兜底副本保留，未清除）",
     "ai.endpointTitle": "端点与范围见设置；仅生成时发送所选内容",
     "import.unsupportedDrop": "暂不支持该文件类型（支持 xlsx/csv/sy.zip）",
     "report.drillKp": "组卷",

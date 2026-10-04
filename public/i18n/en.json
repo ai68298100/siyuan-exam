@@ -289,6 +289,8 @@
     "ai.customHint": "Custom request",
     "ai.customHintHint": "Appended to prompt, e.g. focus on numeric problems",
     "command.openWrongbook": "Open wrongbook",
+    "command.resetSettings": "Reset settings to defaults",
+    "setting.resetDone": "✓ Settings restored to defaults (AI key fallback copy preserved)",
     "ai.endpointTitle": "Endpoint & scope in settings; content sent only on generate",
     "import.unsupportedDrop": "Unsupported file type (xlsx/csv/sy.zip only)",
     "report.drillKp": "Drill",

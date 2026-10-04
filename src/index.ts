@@ -27,6 +27,8 @@ export default class LvExamPlugin extends Plugin {
   /** 应用组装层（与基类 Plugin.app: App 无关，刻意改名避免遮蔽） */
   private examApp: ExamApp | null = null;
   private boundBlockIcon = this.onBlockIconClick.bind(this);
+  /** 47-05 lite：设置默认值快照（注册完成时；恢复默认用） */
+  private settingDefaults: Map<string, unknown> = new Map();
 
   async onload() {
     this.isMobile = getFrontend() === "mobile" || getFrontend() === "browser-mobile";
@@ -180,6 +182,8 @@ export default class LvExamPlugin extends Plugin {
       this.registerStatusBar();
     }
     this.registerCommands();
+    // 47-05 lite：注册完成后的值即默认值（load() 在 onLayoutReady 才覆盖）——快照供「恢复默认」
+    this.settingDefaults = new Map([...this.settingUtils.settings].map(([k, item]) => [k, item.value]));
 
     this.eventBus.on("click-blockicon", this.boundBlockIcon);
   }
@@ -436,6 +440,18 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
       hotkey: adaptHotkey("⌥⌘E"),
       // 桌面端 Dock 由思源侧边栏开关管理；此命令在移动端/快捷键场景打开练习台
       callback: () => this.openPractice(),
+    });
+    this.addCommand({
+      langKey: "command.resetSettings",
+      // 47-05 lite：恢复默认设置（逐项写回注册时快照的默认值并持久化）
+      callback: async () => {
+        for (const [key, def] of this.settingDefaults) {
+          if (key === "aiKey") continue; // AI Key 兜底副本不在恢复范围（防误清密钥；密钥库主副本本就不在此）
+          this.settingUtils.set(key, def);
+        }
+        await this.settingUtils.save();
+        showMessage(this.i18n["setting.resetDone"], 4000, "info");
+      },
     });
   }
 
