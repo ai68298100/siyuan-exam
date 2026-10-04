@@ -73,8 +73,8 @@ import { ttsSpeak } from "@/core/tts";
     let importReport = $state<ImportReport | null>(null);
     let importError = $state("");
     let committing = $state(false);
-    /** 重复合并策略 lite（2.3）：并存=与题库已有题重复的行照常入库（批内去重仍生效）；覆盖策略挂 38-03 */
-    let coexistDupe = $state(false);
+    /** 重复合并策略（2.3/38-03）：skip=跳过（默认）/ coexist=并存（重复行照常入库）/ update=更新已有题答案解析 */
+    let dupeStrategy = $state<import("../../importer/pipeline").DuplicateStrategy>("skip");
     let importResult = $state<null | { written: number; confirmed: number; missing: number; verified: boolean; cancelled?: boolean }>(null);
 
     /** 答前置信自评（U12 最小）：随本次 attempt 落流水；提交后不可改写最初记录 */
@@ -1552,7 +1552,8 @@ import { ttsSpeak } from "@/core/tts";
         // parseText 按内容特征分流（廿五批）：GIFT / TSV(Anki) / Aiken；
         // 并存模式（2.3 重复合并策略 lite）：不回灌已有题 hash → 与题库重复的行照常入库（批内去重仍生效）
         importReport = await parseText(importText, {
-          existingHashes: coexistDupe ? new Set<string>() : new Set(questions.map((q) => q.hash)),
+          existingHashes: dupeStrategy === "coexist" ? new Set<string>() : new Set(questions.map((q) => q.hash)),
+          duplicateStrategy: dupeStrategy,
         });
       } catch (e) { importError = String(e); }
     }
@@ -1596,7 +1597,7 @@ import { ttsSpeak } from "@/core/tts";
       const rows = sheetRowsCache.get(activeSheet);
       if (!rows?.length) { importError = t("import.emptyFile"); return; }
       // 回灌去重（2.3）：与题库已有题比对；并存模式（重合并策略 lite）置空 → 重复行照常入库
-      const existing = coexistDupe ? new Set<string>() : new Set(questions.map((q) => q.hash));
+      const existing = dupeStrategy === "coexist" ? new Set<string>() : new Set(questions.map((q) => q.hash));
       // 映射复用（2.3/38-02）：已保存映射优先；列越界守卫 → 提示并回退自动映射
       const saved = savedMappings.find((m) => m.name === selectedMapping);
       if (saved) {
@@ -1876,6 +1877,8 @@ import { ttsSpeak } from "@/core/tts";
     /** 46-03：入库进度与取消（取消在文档间生效；已写文档保留，可用批次撤销整批回退） */
     let commitProgress = $state<{ done: number; total: number } | null>(null);
     let commitCancelRequested = false;
+    /** 38-03 更新式重导回执 */
+    let updateResult = $state<null | { ok: number; failed: number; missing: number }>(null);
 
     async function runCommit(report: ImportReport) {
       committing = true; importError = "";
@@ -1897,6 +1900,16 @@ import { ttsSpeak } from "@/core/tts";
         retryBatch = report.batch;
         retryBankId = activeBankId;
         importReport = null; importText = "";
+        // 38-03 更新式重导：报告.updates 按 hash 定位库内题，只覆盖答案/解析/别名
+        if (dupeStrategy === "update" && report.updates?.length) {
+          const r2 = await app.applyAnswerUpdates(report.updates, questions as never[]);
+          updateResult = r2;
+          showMessage(
+            t("import.updatesDone").replace("{ok}", String(r2.ok)).replace("{f}", String(r2.failed)).replace("{m}", String(r2.missing)),
+            5600,
+            r2.failed || r2.missing ? "error" : "info",
+          );
+        }
       } catch (e) {
         importError = offline ? t("state.offlineHint") : String(e instanceof Error ? e.message : e);
       } finally {
@@ -1971,12 +1984,14 @@ import { ttsSpeak } from "@/core/tts";
         nextSheetCache.set(activeSheet, sheet);
         sheetRowsCache = nextSheetCache;
         single = parseExcelRows([sheet[abs]], lastMap!, {
-          existingHashes: coexistDupe ? new Set<string>() : new Set(questions.map((q) => q.hash)),
+          existingHashes: dupeStrategy === "coexist" ? new Set<string>() : new Set(questions.map((q) => q.hash)),
+          duplicateStrategy: dupeStrategy,
         });
       } else {
         // 文本路径：整块重验（GIFT/TSV 特征同样走 parseText 分流）
         single = await parseText(fixText, {
-          existingHashes: coexistDupe ? new Set<string>() : new Set(questions.map((q) => q.hash)),
+          existingHashes: dupeStrategy === "coexist" ? new Set<string>() : new Set(questions.map((q) => q.hash)),
+          duplicateStrategy: dupeStrategy,
         });
       }
       if (single.ok.length === 1) {
@@ -3000,10 +3015,12 @@ import { ttsSpeak } from "@/core/tts";
           <textarea class="lv-input lv-textarea" rows="8" placeholder={t("import.placeholder")} bind:value={importText}></textarea>
           <div class="lv-row">
             <button class="lv-btn lv-btn--primary" onclick={doParseText} disabled={!importText.trim()}>{t("import.parse")}</button>
-            <label class="lv-chip" for="lv-import-coexist" title={t("import.coexistHint")}>
-              <input id="lv-import-coexist" type="checkbox" bind:checked={coexistDupe} style="margin-right:4px" />
-              {t("import.coexist")}
-            </label>
+            <!-- 38-03：重复合并策略三选（跳过/并存/更新已有题答案） -->
+            <select class="lv-select" bind:value={dupeStrategy} title={t("import.strategyHint")}>
+              <option value="skip">{t("import.strategySkip")}</option>
+              <option value="coexist">{t("import.strategyCoexist")}</option>
+              <option value="update">{t("import.strategyUpdate")}</option>
+            </select>
             <span class="lv-muted">{t("import.excelNote")}</span>
           </div>
           {#if savedMappings.length}
@@ -3049,6 +3066,15 @@ import { ttsSpeak } from "@/core/tts";
             {#each importReport.dupeSamples ?? [] as d, _i (_i)}
               <div class="lv-error-row num" title={t("import.dupeHint")}>#{d.row} ⧉ {t("import.dupeRow")} {d.stem}</div>
             {/each}
+            {#if dupeStrategy === "update" && importReport.updates?.length}
+              <!-- 38-03：更新式重导预览（这些行不再跳过，提交时按 hash 更新库内题答案/解析） -->
+              <div class="lv-row" style="margin:4px 0 0">
+                <span class="lv-chip lv-chip--amb num" title={t("import.updatesHint")}>↻ {t("import.updatesCount").replace("{n}", String(importReport.updates.length))}</span>
+              </div>
+              {#each importReport.updates.slice(0, 10) as u, _ui2 (_ui2)}
+                <div class="lv-error-row num" title={u.q.stem}>↻ #{u.row} {u.q.stem.slice(0, 40)} → {t("browse.answer")}: {u.q.answer}</div>
+              {/each}
+            {/if}
             {#each importReport.errors.slice(0, 20) as err, _i (_i)}
               <div class="lv-error-row">
                 <b class="num">#{err.row}</b> {err.reason}<span class="lv-muted"> · {err.raw}</span>
@@ -3105,6 +3131,12 @@ import { ttsSpeak } from "@/core/tts";
           {/if}
           {#if importResult}
             <div class="lv-success">✓ {t("import.done")} {importResult.written}</div>
+            {#if updateResult}
+              <!-- 38-03：更新式重导回执（与新增写入分列） -->
+              <div class="lv-row" role="status">
+                <span class="lv-chip lv-chip--amb num">↻ {t("import.updatesDone").replace("{ok}", String(updateResult.ok)).replace("{f}", String(updateResult.failed)).replace("{m}", String(updateResult.missing))}</span>
+              </div>
+            {/if}
             <div class="lv-row">
               {#if importResult.cancelled}
                 <span class="lv-chip lv-chip--amb num">{t("import.cancelledNote").replace("{w}", String(importResult.written))}</span>

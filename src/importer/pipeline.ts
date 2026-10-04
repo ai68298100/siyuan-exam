@@ -13,6 +13,8 @@ export interface ImportOptions {
   source?: string;
   sourceKind?: "real" | "mock";
   dedupe?: boolean; // 默认 true：批内 + 与已存在 hash 集合去重
+  /** 38-03：重复合并策略（默认 skip；coexist 由调用方以空 existingHashes 表达） */
+  duplicateStrategy?: DuplicateStrategy;
   existingHashes?: Set<string>;
   /** 内部：材料组自动分组的进行中组 ID（parseExcelRows 维护） */
   _pendingGroup?: string;
@@ -31,7 +33,12 @@ export interface ImportReport {
   batch: string;
   /** 已有题摘要回灌（TODO 2.3）：与题库/本批重复的行样本（上限 20；text 路径暂不收集） */
   dupeSamples?: { row: number; stem: string }[];
+  /** 38-03 更新式重导：重复指纹但内容可更新答案/解析的行（duplicateStrategy="update" 时产出） */
+  updates?: { row: number; q: Question }[];
 }
+
+/** 38-03 重复合并策略：skip=跳过（默认）/ coexist=并存（不回灌已有 hash）/ update=更新已有题答案解析 */
+export type DuplicateStrategy = "skip" | "coexist" | "update";
 
 const TYPE_ALIASES: Record<string, QuestionType> = {
   单选: "single",
@@ -202,6 +209,7 @@ export function parseExcelRows(rows: string[][], map: ExcelColumnMap, opt: Impor
   const dedupe = opt.dedupe !== false;
   let duplicates = 0;
   const dupeSamples: { row: number; stem: string }[] = [];
+  const updates: { row: number; q: Question }[] = [];
   const batch = newBatchId();
   let lastKp = ""; // 材料组内子题沿用材料的考点
 
@@ -251,9 +259,14 @@ export function parseExcelRows(rows: string[][], map: ExcelColumnMap, opt: Impor
       const bad = type === "material" ? (foldText(stem) ? null : "材料题干为空") : validate(q);
       if (bad) throw new Error(bad);
       if (dedupe && seenHash.has(q.hash)) {
-        duplicates++;
-        // 已有题摘要回灌（TODO 2.3）：预览显示与题库重复的行，便于取消导入或删旧再导
-        if (dupeSamples.length < 20) dupeSamples.push({ row: rowNo, stem: stem.slice(0, 40) });
+        if (opt.duplicateStrategy === "update") {
+          // 38-03 更新式重导：同指纹行进 updates（commit 按 hash 定位库内题，只更新答案/解析）
+          updates.push({ row: rowNo, q });
+        } else {
+          duplicates++;
+          // 已有题摘要回灌（TODO 2.3）：预览显示与题库重复的行，便于取消导入或删旧再导
+          if (dupeSamples.length < 20) dupeSamples.push({ row: rowNo, stem: stem.slice(0, 40) });
+        }
       } else {
         seenHash.add(q.hash);
         ok.push(q);
@@ -262,7 +275,7 @@ export function parseExcelRows(rows: string[][], map: ExcelColumnMap, opt: Impor
       errors.push({ row: rowNo, reason: (e as Error).message, raw: row.filter(Boolean).join(" | ").slice(0, 120) });
     }
   });
-  return { ok, errors, duplicates, batch, dupeSamples };
+  return { ok, errors, duplicates, batch, dupeSamples, updates };
 }
 
 /** 官方 Excel 模板：自动列映射（按表头名识别，找不到的列报给上层；中英文别名，廿五批补 option X） */

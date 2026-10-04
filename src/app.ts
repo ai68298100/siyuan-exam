@@ -749,6 +749,40 @@ export class ExamApp {
   }
 
   // ---------- 打卡桥待重试（48-03：失败保留原 externalRef，不换新引用） ----------
+  /** 38-03 更新式重导：按 hash 定位库内题，只覆盖答案/解析/别名属性（题干/选项/流水不动）。
+   *  返回逐题回执；existing 缺失的更新计 missing（库内找不到=已删除，不猜测） */
+  async applyAnswerUpdates(
+    updates: { row: number; q: Question }[],
+    existing: (Question & { blockId: string })[],
+  ): Promise<{ ok: number; failed: number; missing: number }> {
+    if (!this.kernelOnline) throw new Error("离线：更新已有题需要内核可写");
+    const byHash = new Map(existing.map((q) => [q.hash, q]));
+    let ok = 0,
+      failed = 0,
+      missing = 0;
+    for (const u of updates) {
+      const target = byHash.get(u.q.hash);
+      if (!target?.blockId) {
+        missing++;
+        continue;
+      }
+      try {
+        await this.saves.run(`answer-update/${target.blockId}`, () =>
+          this.deps.client.setExamAttrs(target.blockId, {
+            "exam-answer": u.q.answer,
+            "exam-analysis": u.q.analysis ?? "",
+            ...(u.q.alt?.length ? { "exam-alt": u.q.alt.join("|") } : {}),
+          }),
+        );
+        ok++;
+      } catch {
+        failed++;
+      }
+    }
+    return { ok, failed, missing };
+  }
+
+  // ---------- 打卡桥待重试（48-03：失败保留原 externalRef，不换新引用） ----------
   async getCheckinPending(): Promise<CheckinEventInput | null> {
     const v = (await this.deps.storage.load("checkin/bridge/pending")) as CheckinEventInput | null;
     return v ?? null;
