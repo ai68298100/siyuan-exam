@@ -93,3 +93,24 @@ export function buildAnswerSheet(title: string, questions: readonly Question[]):
   parts.push("</body></html>");
   return parts.join("\n");
 }
+
+/** 答题卡（68-02 lite）：题号/题型/填写格，不含题干与答案——配合题册使用；回录用「题号=作答」格式 */
+export function buildAnswerCardSheet(title: string, questions: readonly Question[]): string {
+  const parts = [head(`${title} · 答题卡`, `共 ${questions.length} 题 · 回录格式：题号=作答（如 1=A、3=对、5=水的化学式）`)];
+  questions.forEach((q, i) => {
+    const no = i + 1;
+    parts.push(`<div class="q">`);
+    parts.push(`<div class="q-head"><span class="q-type">${esc(TYPE_NAMES[q.type] ?? q.type)}</span>${no}.</div>`);
+    if (q.type === "single" || q.type === "multiple") {
+      const letters = q.options.map((_, oi) => String.fromCharCode(65 + oi)).join("  ");
+      parts.push(`<div class="ans-line">作答：${esc(letters || "A  B  C  D")}</div>`);
+    } else if (q.type === "judge") {
+      parts.push(`<div class="ans-line">作答：对 / 错（圈选其一）</div>`);
+    } else {
+      parts.push(`<div class="answer-area"></div><div class="answer-area"></div>`);
+    }
+    parts.push(`</div>`);
+  });
+  parts.push(`<div class="meta">回录示例：1=A<br>3=对<br>5=水的化学式</div></body></html>`);
+  return parts.join("\n");
+}

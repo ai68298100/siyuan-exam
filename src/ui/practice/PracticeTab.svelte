@@ -22,7 +22,8 @@ import { ttsSpeak } from "@/core/tts";
     import { kpAudit, planKpMerge, planEmptyKpFill } from "@/core/kpGovernance";
     import { coverageTree, subtreeCount, subtreeLearned, subtreeNoSource, gapsToCsv } from "@/core/syllabus";
     import { parseErrataCsv, planErrata, errataTemplateCsv } from "@/core/errata";
-    import { buildQuestionSheet, buildAnswerSheet } from "@/core/printSheet";
+    import { buildQuestionSheet, buildAnswerSheet, buildAnswerCardSheet } from "@/core/printSheet";
+    import { parsePaperAnswers, gradePaper } from "@/core/paperRecall";
     import { probeCheckinApi, syncCheckin, localDateKeyOf, bridgeEnabled, fetchStreak } from "@/core/checkinBridge";
     import { probeGlean, listLaterClips, formatClipsForSource, markClipDone, type GleanClip } from "@/core/gleanBridge";
     import { onExamEvent, emitExamEvent } from "@/core/bus";
@@ -344,16 +345,55 @@ import { ttsSpeak } from "@/core/tts";
     const LT = "\u003c";
     const PRINT_HOOK = `${LT}script>window.onload = function () { window.print(); }${LT}/script>`;
     const BODY_CLOSE = `${LT}/body>`;
-    function printSheet(answerSheet: boolean) {
-      if (!filteredQuestions.length) { showMessage(t("print.empty"), 2200, "info"); return; }
-      const title = `${bankName} · ${t("print.sheetTitle")}`;
-      const html = (answerSheet ? buildAnswerSheet(title, filteredQuestions) : buildQuestionSheet(title, filteredQuestions))
-        .replace(/<\/body>/, PRINT_HOOK + BODY_CLOSE);
+    function printSheet(html: string) {
       const w = window.open("", "_blank");
       if (!w) { showMessage(t("print.popupBlocked"), 3600, "error"); return; }
       w.document.open();
-      w.document.write(html);
+      w.document.write(html.replace(/<\/body>/, PRINT_HOOK + BODY_CLOSE));
       w.document.close();
+    }
+    function printQuestionSheet() {
+      if (!filteredQuestions.length) { showMessage(t("print.empty"), 2200, "info"); return; }
+      printSheet(buildQuestionSheet(`${bankName} · ${t("print.sheetTitle")}`, filteredQuestions));
+    }
+    function printAnswerSheet() {
+      if (!filteredQuestions.length) { showMessage(t("print.empty"), 2200, "info"); return; }
+      printSheet(buildAnswerSheet(`${bankName} · ${t("print.sheetTitle")}`, filteredQuestions));
+    }
+    function printAnswerCard() {
+      if (!filteredQuestions.length) { showMessage(t("print.empty"), 2200, "info"); return; }
+      printSheet(buildAnswerCardSheet(`${bankName} · ${t("print.sheetTitle")}`, filteredQuestions));
+    }
+
+    // ---------- 纸笔回录（68-02 lite）：题号=作答 → 判分预览 → append 流水（mode=paper，不覆盖任何线上数据） ----------
+    let paperOpen = $state(false);
+    let paperText = $state("");
+    let paperBusy = $state(false);
+    let paperNote = $state("");
+    const paperPreview = $derived.by(() => {
+      if (!paperOpen || !paperText.trim()) return null;
+      const { rows, errors } = parsePaperAnswers(paperText);
+      const { items, outOfRange } = gradePaper(filteredQuestions, rows);
+      return { errors, items, outOfRange };
+    });
+    async function applyPaperRecall() {
+      const pv = paperPreview;
+      if (!pv || paperBusy) return;
+      const graded = pv.items.filter((i) => i.verdict !== "not_attempted");
+      if (!graded.length) { paperNote = t("paper.none"); return; }
+      paperBusy = true;
+      try {
+        const sessionId = `s-paper-${Date.now().toString(36)}`;
+        for (const it of graded) {
+          app.recordAttempt({
+            qid: it.q.id, kind: "practice", mode: "paper", verdict: it.verdict,
+            myAnswer: it.given, sessionId, queue: "normal",
+          });
+        }
+        plugin.refreshDock?.();
+        paperText = "";
+        paperNote = t("paper.applied").replace("{n}", String(graded.length));
+      } finally { paperBusy = false; }
     }
 
     function previewKpMerge() {
@@ -3611,8 +3651,10 @@ import { ttsSpeak } from "@/core/tts";
         <button class="lv-chip" class:acc={batchMode} onclick={() => { batchMode = !batchMode; if (!batchMode) selectedIds = {}; }}>{t("batch.mode")}</button>
         <button class="lv-chip" title={t("browse.exportCsvTitle")} onclick={exportBankCsv}>⬇️ CSV</button>
         <!-- 68-01 lite：题册/答案册分离打印（作用于当前筛选全集；题册不含答案与解析） -->
-        <button class="lv-chip" title={t("print.qSheetTip")} onclick={() => printSheet(false)}>🖨 {t("print.qSheet")}</button>
-        <button class="lv-chip" title={t("print.aSheetTip")} onclick={() => printSheet(true)}>🖨 {t("print.aSheet")}</button>
+        <button class="lv-chip" title={t("print.qSheetTip")} onclick={printQuestionSheet}>🖨 {t("print.qSheet")}</button>
+        <button class="lv-chip" title={t("print.aSheetTip")} onclick={printAnswerSheet}>🖨 {t("print.aSheet")}</button>
+        <button class="lv-chip" title={t("print.cardTip")} onclick={printAnswerCard}>🖨 {t("print.card")}</button>
+        <button class="lv-chip" class:acc={paperOpen} onclick={() => paperOpen = !paperOpen}>📝 {t("paper.title")}</button>
         <input class="lv-input" style="flex:1;min-width:160px" placeholder={t("browse.searchPlaceholder")} bind:value={searchText} />
         <!-- 65-01 lite：结构化筛选（题型/来源/仅错题），与搜索词叠加 -->
         <select class="lv-select" style="max-width:110px" bind:value={filterType} onchange={() => (browseLimit = 200)}>
@@ -3775,6 +3817,35 @@ import { ttsSpeak } from "@/core/tts";
             {#if sylError}<div class="lv-error">{sylError}</div>{/if}
             {#if sylNote}<div class="lv-row"><span class="lv-muted num">{sylNote}</span></div>{/if}
           {/if}
+        </div>
+      {/if}
+      {#if paperOpen}
+        <!-- 68-02 lite：纸笔回录——「题号=作答」判分预览后 append 流水（mode=paper，不覆盖任何线上数据） -->
+        <div class="lv-card lv-pad-card" style="padding:12px 16px">
+          <div class="lv-row" style="margin:0">
+            <b style="font-size:13px">📝 {t("paper.title")}</b>
+            <span class="lv-muted" style="font-size:11.5px">{t("paper.hint")}</span>
+          </div>
+          <textarea class="lv-input lv-textarea" rows="4" bind:value={paperText} placeholder={t("paper.placeholder")}></textarea>
+          {#if paperPreview}
+            <div class="lv-row" style="margin:4px 0 0;flex-wrap:wrap">
+              <span class="lv-chip lv-chip--grn num">✓ {paperPreview.items.filter((i) => i.verdict === "correct").length}</span>
+              <span class="lv-chip lv-chip--red num">✕ {paperPreview.items.filter((i) => i.verdict === "wrong").length}</span>
+              {#if paperPreview.items.some((i) => i.verdict === "not_attempted")}
+                <span class="lv-chip lv-chip--amb num" title={t("paper.shortNote")}>? {paperPreview.items.filter((i) => i.verdict === "not_attempted").length}</span>
+              {/if}
+              {#if paperPreview.outOfRange.length}
+                <span class="lv-chip lv-chip--amb num" title={paperPreview.outOfRange.join("、")}>{t("paper.outOfRange").replace("{n}", String(paperPreview.outOfRange.length))}</span>
+              {/if}
+              {#each paperPreview.errors.slice(0, 3) as pe, _pi (_pi)}
+                <div class="lv-error-row num">#{pe.row} {pe.reason}</div>
+              {/each}
+              <button class="lv-btn lv-btn--primary sm" disabled={paperBusy} onclick={() => void applyPaperRecall()}>
+                {paperBusy ? "…" : t("paper.apply").replace("{n}", String(paperPreview.items.filter((i) => i.verdict !== "not_attempted").length))}
+              </button>
+            </div>
+          {/if}
+          {#if paperNote}<div class="lv-row"><span class="lv-chip num">{paperNote}</span></div>{/if}
         </div>
       {/if}
       {#if errataOpen}
