@@ -57,6 +57,28 @@ try {
   check("打包白名单校验", false, "verify-package 失败（先 pnpm build）");
 }
 
+// 6. 文档本地链接有效性（README/CHANGELOG/TODO/docs，七十九批加入；链接腐坏=发版门面 404）
+import { readdirSync } from "node:fs";
+import { join, dirname } from "node:path";
+const docFiles = ["README.md", "README.en-US.md", "CHANGELOG.md", "TODO.md",
+  ...readdirSync("docs").filter((f) => f.endsWith(".md")).map((f) => join("docs", f))];
+const linkRe = /\[[^\]]*\]\(([^)\s]+)\)/g;
+const docBroken = [];
+let docTotal = 0;
+for (const f of docFiles) {
+  const text = readFileSync(f, "utf8");
+  const base = dirname(f);
+  for (const m of text.matchAll(linkRe)) {
+    const target = m[1];
+    if (/^https?:|^mailto:/.test(target)) continue;
+    docTotal++;
+    const p = decodeURIComponent(target.split("#")[0]);
+    if (!p) continue;
+    if (!existsSync(join(base, p))) docBroken.push(`${f} → ${target}`);
+  }
+}
+check("文档本地链接有效", docBroken.length === 0, docBroken.length ? docBroken.slice(0, 5).join(" | ") : `${docTotal} 链接全有效`);
+
 // ---------- 汇总 ----------
 const failed = results.filter((r) => !r.ok);
 console.log(`\n========== 发版自动检查 ==========`);
