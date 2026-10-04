@@ -513,6 +513,64 @@ import { ttsSpeak } from "@/core/tts";
       window.open(url, "_blank", "noopener");
     }
 
+    // ---------- 作答回执下钻（U14 lite：当时作答/判定/信心/受助/先回忆/用时；错题回执可接 AI 错因假设） ----------
+    let receiptOpenFor = $state("");
+    let receiptCache = $state<import("../../core/types").AttemptEvent[]>([]);
+    let receiptBusy = $state("");
+    let receiptMisdiagnosis = $state<Record<string, string>>({});
+
+    function toggleReceipts(qid: string) {
+      receiptOpenFor = receiptOpenFor === qid ? "" : qid;
+      if (receiptOpenFor) {
+        receiptCache = app.attempts.all().filter((e) => e.qid === qid).slice(-10).reverse();
+      }
+    }
+
+    /** 按选定回执（而非当前会话）做错因假设：证据取自该次作答事件本身（U14 口径） */
+    async function runReceiptMisdiagnosis(q: Question, e: import("../../core/types").AttemptEvent) {
+      const key = `${e.qid}#${e.seq}`;
+      if (receiptBusy || !app.kernelOnline) return;
+      receiptBusy = key;
+      try {
+        const { SiyuanAiChannel, OpenAiChannel } = await import("@/ai/client");
+        const { buildMisdiagnosisMessages } = await import("@/ai/misdiagnosis");
+        const { AiTaskRunner, questionFingerprint } = await import("@/ai/task");
+        const endpoint = String(plugin.settingUtils?.get?.("aiEndpoint") ?? "");
+        const key2 = String(plugin.settingUtils?.get?.("aiKey") ?? "");
+        const model = String(plugin.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
+        const ch = endpoint && key2
+          ? new OpenAiChannel({ endpoint, apiKey: key2, model }, (u, i) => fetch(u, i))
+          : new SiyuanAiChannel((app as any).deps.client);
+        const messages = buildMisdiagnosisMessages(q, {
+          myAnswer: e.myAnswer ?? null,
+          confidence: e.confidence,
+          timeMs: e.timeMs,
+          helped: !!e.help,
+          userThought: reflections[e.qid]?.text,
+        });
+        const reqCtx: import("@/ai/task").AiTaskContext = {
+          templateId: "practice.misdiagnosis",
+          templateVersion: 1,
+          qid: e.qid,
+          questionRevision: questionFingerprint(q),
+          learnerAnswer: e.myAnswer ?? null,
+          submitted: true,
+          mode: "practice",
+          sessionId: e.sessionId,
+        };
+        const env = await new AiTaskRunner(ch).run(reqCtx, messages);
+        void logAiTask({ templateId: env.templateId, qid: e.qid, status: env.status, tokens: env.tokens, messages });
+        if (env.status === "ok" && env.data.text) {
+          receiptMisdiagnosis = { ...receiptMisdiagnosis, [key]: env.data.text };
+          void app.recordAiUsage(ch.id, env.tokens, 1);
+        } else {
+          showMessage(`⚠ ${env.summary}${env.error ? "：" + env.error : ""}`, 3600, "error");
+        }
+      } catch (err) {
+        showMessage(String(err instanceof Error ? err.message : err), 3600, "error");
+      } finally { receiptBusy = ""; }
+    }
+
     async function createBank() {
       if (!newBankName.trim() || creating) return;
       creating = true; errorMsg = "";
@@ -3602,6 +3660,37 @@ import { ttsSpeak } from "@/core/tts";
                       </div>
                       {#if qrefError}<div class="lv-error">{qrefError}</div>{/if}
                     </div>
+                  {/if}
+                  {#if st && st.attempts}
+                    <!-- U14 lite：作答回执下钻（显示当时作答/判定/信心/受助/先回忆/用时；错题回执可接 AI 错因假设） -->
+                    <div class="lv-row" style="font-size:11.5px">
+                      <button class="lv-btn sm lv-btn--ghost" onclick={() => toggleReceipts(q.id)}>
+                        🗂 {t("receipt.title")}（<span class="num">{st.attempts}</span>）
+                      </button>
+                    </div>
+                    {#if receiptOpenFor === q.id}
+                      <div class="lv-detail" style="margin:4px 0">
+                        {#each receiptCache as e (e.seq)}
+                          {@const rkey = `${e.qid}#${e.seq}`}
+                          <div class="lv-row" style="flex-wrap:wrap;font-size:11.5px;margin:3px 0;gap:4px">
+                            <span class="lv-chip num">{new Date(e.ts).toLocaleString()}</span>
+                            <span class="lv-chip">{e.verdict === "correct" ? "✓" : e.verdict === "wrong" ? "✕" : "—"}</span>
+                            {#if e.myAnswer}<span class="lv-chip num">{t("session.myAnswer")}: {e.myAnswer}</span>{/if}
+                            {#if e.confidence}<span class="lv-chip">{t("confidence." + e.confidence)}</span>{/if}
+                            {#if e.help}<span class="lv-chip lv-chip--amb">🫱 {t("receipt.help")}</span>{/if}
+                            {#if e.recall}<span class="lv-chip">🙈 {t("receipt.recall")}</span>{/if}
+                            {#if e.timeMs}<span class="lv-chip num">{Math.round(e.timeMs / 1000)}s</span>{/if}
+                            {#if e.verdict === "wrong"}
+                              <button class="lv-btn sm lv-btn--ghost" disabled={receiptBusy === rkey}
+                                onclick={() => void runReceiptMisdiagnosis(q, e)}>🧪 {receiptBusy === rkey ? "…" : t("misdiagnosis.ask")}</button>
+                            {/if}
+                            {#if receiptMisdiagnosis[rkey]}
+                              <div class="lv-detail" style="width:100%;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere">{receiptMisdiagnosis[rkey]}</div>
+                            {/if}
+                          </div>
+                        {/each}
+                      </div>
+                    {/if}
                   {/if}
                 {/if}
               </div>
