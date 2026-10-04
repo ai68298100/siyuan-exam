@@ -75,7 +75,7 @@ for (const { key, file, label } of EXPECTED) {
 }
 
 // ---------- 2. 27/28 attempts/log 信封 + 36 confidence ----------
-const log = readJson("attempts/log");
+const log = readJson("attempts/log.json");
 if (log) {
   const events = Array.isArray(log?.events) ? log.events : Array.isArray(log) ? log : null;
   if (!events) {
@@ -102,7 +102,7 @@ if (log) {
 }
 
 // ---------- 3. 27 mock/run 快照字段 ----------
-const run = readJson("mock/run");
+const run = readJson("mock/run.json");
 if (run && typeof run === "object") {
   const required = ["runId", "bp", "qids", "startedAt", "savedAt"];
   const missing = required.filter((k) => run[k] == null);
