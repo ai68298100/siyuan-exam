@@ -12,7 +12,7 @@
 // 退出码：0 = 所有关键面通过或"尚未产生数据"（待用户使用后复跑）；
 //         1 = 存在的数据不符合 schema（真缺陷）
 // ============================================================
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const WORKSPACE = "D:/小飞驴的SIYUAN";
@@ -59,7 +59,7 @@ const EXPECTED = [
 ];
 
 let anyData = false;
-for (const { key, file, label, critical } of EXPECTED) {
+for (const { key, file, label } of EXPECTED) {
   const data = readJson(file);
   if (data === undefined) {
     record(`${label}（${key}）`, "wait", "尚无数据");
