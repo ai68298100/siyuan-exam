@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased（0.6.x-dev：廿三~七十批，2026-10-03/05）
+## Unreleased（0.6.x-dev：廿三~七一批，2026-10-03/05）
 
 > guard 八门禁全绿（440 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、样式 token 审计、ESLint 0 告警）+ 生产构建通过；**真机验证（SiYuan 3.8.6）**：preflight 17/17、数据生命周期 6/6、CSV 往返冒烟 5/5、种子数据经真实插件重载存活（37-01 路径语义实测通过）、题目编辑 updateBlock / 章节树 docTree / listQuestions hpath 三项契约实测通过、只读 e2e 走查 6 过/0 败（检查点 22 项）；**CI 首次真跑全绿**（check.yml 修复后 run 37221044264 success）。docs/17 人工 UI 步骤剩 27/28/36-38。
+
+- **发版准备**（七一批）：版本漂移修复——package.json 0.5.1 → 0.6.0 对齐 plugin.json（v0.6.0 发布时即漂移，release.yml 的 tag==双文件校验会因此挂）；check-arch 新增版本一致性断言（arch 41→42 项，漂移即门禁拦截）；新增 `docs/23-发版检查清单.md`（内容门槛/发布动作/已知边界/发布后四段，v0.7.0 起适用）
 
 - **考点关系契约**（51-04 P3 可行性验证交付，七十批）：`core/kpRelations.ts`——四类关系（包含/先修/相关/等价）+来源与人工确认态、去重/自环拒绝；`detectPrereqCycles`（仅 confirmed 边参与拓扑）、`invalidEndpoints` 失效节点、`diffSyllabusVersions` 跨版本四分类映射；`kp/relations` 信封 v1。7 项单测（小型大纲验证循环/失效/跨版本=验收验证面）。**结论落账**：先修关系以「AI 提案+人工确认」形态试点值得做，全量图谱 UI 暂缓待真实考纲数据源验证；无关系数据零 UI 不阻断刷题
 

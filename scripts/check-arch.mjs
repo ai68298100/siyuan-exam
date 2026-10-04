@@ -142,6 +142,18 @@ for (const f of uiFiles) {
   must(`114-02 ${f.split("/").pop()} 无直连 .chat（AI 经闸门）`, !direct);
 }
 
+// 10. 版本一致性（发版前置）：package.json 与 plugin.json 必须同版本
+//（v0.6.0 发布时曾漂移：package.json 停在 0.5.1，release.yml 的 tag==双文件校验会因此挂）
+const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+const pluginJson = JSON.parse(readFileSync("plugin.json", "utf8"));
+must(
+  "版本一致性 package.json == plugin.json",
+  pkg.version === pluginJson.version,
+);
+if (pkg.version !== pluginJson.version) {
+  console.error(`  漂移: package.json=${pkg.version} vs plugin.json=${pluginJson.version}`);
+}
+
 const failedAll = checks.filter((c) => !c.ok);
 for (const c of checks.slice(-2)) console.log((c.ok ? "✓" : "✗") + " " + c.name);
 if (failedAll.length) process.exit(1);
