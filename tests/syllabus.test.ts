@@ -3,6 +3,7 @@ import {
   parseSyllabus,
   coverageTree,
   subtreeCount,
+  subtreeLearned,
   gapsToCsv,
   serializeSyllabus,
   parseSyllabusDoc,
@@ -45,29 +46,33 @@ describe("51-01/51-03 考纲解析", () => {
 });
 
 describe("51-03 覆盖对照", () => {
-  const kpTotals: Record<string, number> = {
-    "资料分析/增长率": 12,
-    "资料分析/比重": 5,
-    "数量/概率初步": 3,
-    "言语理解": 8,
+  const kpStats: Record<string, { total: number; learned: number }> = {
+    "资料分析/增长率": { total: 12, learned: 4 },
+    "资料分析/比重": { total: 5, learned: 5 },
+    "数量/概率初步": { total: 3, learned: 0 },
+    "言语理解": { total: 8, learned: 1 },
   };
 
-  it("节点计数：子优先认领、父计剩余（不重复归账）；零题节点可检出", () => {
-    const cov = coverageTree(parseSyllabus(OUTLINE), kpTotals);
+  it("节点计数：子优先认领、父计剩余（不重复归账）；独立掌握分开统计", () => {
+    const cov = coverageTree(parseSyllabus(OUTLINE), kpStats);
     expect(cov[0].node.title).toBe("第一章 资料分析");
     expect(subtreeCount(cov[0])).toBe(17);
-    expect(cov[0].count).toBe(0); // 全部被子节点认领
+    expect(subtreeLearned(cov[0])).toBe(9);
+    expect(cov[0].total).toBe(0); // 全部被子节点认领
     expect(subtreeCount(cov[0].children[0])).toBe(12);
+    expect(subtreeLearned(cov[0].children[0])).toBe(4);
     expect(subtreeCount(cov[1])).toBe(3);
-    expect(subtreeCount(cov[1].children[0])).toBe(0); // 行程问题零题（kp 里没有）
+    expect(subtreeLearned(cov[1].children[0])).toBe(0); // 行程问题零题
+    expect(subtreeLearned(cov[1].children[1])).toBe(0); // 有题但零独立掌握
   });
 
-  it("缺口 CSV：只含零题节点，标题/前缀转义", () => {
-    const csv = gapsToCsv(parseSyllabus(OUTLINE), kpTotals);
+  it("缺口 CSV：零题节点与有题零掌握节点都进清单，四列含独立掌握", () => {
+    const csv = gapsToCsv(parseSyllabus(OUTLINE), kpStats);
     const rows = csv.split("\n");
-    expect(rows[0]).toBe("大纲节点,kp 前缀,题目数");
-    expect(rows).toContain("第二章 数量关系 / 行程问题,数量/行程问题,0");
-    expect(csv).not.toContain("增长率"); // 有题节点不进缺口
+    expect(rows[0]).toBe("大纲节点,kp 前缀,题目数,已独立掌握");
+    expect(rows).toContain("第二章 数量关系 / 行程问题,数量/行程问题,0,0");
+    expect(rows).toContain("第二章 数量关系 / 概率,数量/概率初步,3,0");
+    expect(csv).not.toContain("增长率"); // 有独立掌握的节点不进缺口
   });
 
   it("序列化往返；过版本拒绝为空+标记", () => {

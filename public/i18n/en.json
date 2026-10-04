@@ -408,6 +408,8 @@
     "syl.import": "Import / update syllabus",
     "syl.imported": "✓ Imported {n} nodes",
     "syl.empty": "No nodes parsed (check indentation or heading format)",
+    "syl.unmastered": "no independent mastery",
+    "syl.learnedTip": "✓n = independently mastered (a correct attempt without assistance); answering one question ≠ mastering the node",
     "mock.exportToDoc": "📚 Write to bank docs",
     "challenge.copied": "✓ Challenge copied (answers included, friendly mode)",
     "challenge.importTitle": "Import challenge code",

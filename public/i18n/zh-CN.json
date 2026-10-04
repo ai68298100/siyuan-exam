@@ -424,6 +424,8 @@
     "syl.import": "导入 / 更新考纲",
     "syl.imported": "✓ 已导入 {n} 个节点",
     "syl.empty": "未解析出节点（检查缩进或标题格式）",
+    "syl.unmastered": "未独立掌握",
+    "syl.learnedTip": "✓n = 已独立掌握题数（存在无受助的答对记录）；练一题≠掌握整个节点",
     "mock.exportToDoc": "📚 写入题库导出文档",
     "challenge.copied": "✓ 挑战码已复制，发给朋友吧（含答案，友谊赛模式）",
     "challenge.importTitle": "导入挑战码",

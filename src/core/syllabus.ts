@@ -88,47 +88,62 @@ export function parseSyllabus(text: string): SyllabusNode[] {
   return roots;
 }
 
-/** 覆盖对照：kpTotals = kp 首段 → 题数（调用方从题目列表一次归好）。
+/** 覆盖对照：kpStats = kp → { total: 题数, learned: 已独立掌握题数 }（调用方从题目+流水一次归好；
+ *  learned=该题存在无受助（help 为空）的答对记录——练一题≠掌握节点，此处只报覆盖不报能力）。
  *  分层归属唯一：子节点先按自己的前缀认领 kp，父节点只计未被子孙认领的剩余（防父子重复计数）。 */
 export interface SyllabusCoverage {
   node: SyllabusNode;
-  count: number;
+  total: number;
+  learned: number;
   children: SyllabusCoverage[];
   /** 本节点及子孙已认领的 kp（父层扣除用） */
   claimed: string[];
 }
 
+export interface KpStat {
+  total: number;
+  learned: number;
+}
+
 export function coverageTree(
   roots: SyllabusNode[],
-  kpTotals: Record<string, number>,
+  kpStats: Record<string, KpStat>,
 ): SyllabusCoverage[] {
   const build = (nodes: SyllabusNode[]): SyllabusCoverage[] =>
     nodes.map((node) => {
-      const matched = Object.keys(kpTotals).filter(
+      const matched = Object.keys(kpStats).filter(
         (k) => k === node.kpPrefix || k.startsWith(node.kpPrefix + "/"),
       );
       const children = build(node.children);
       const claimedByChildren = new Set(children.flatMap((c) => c.claimed));
       const claimed = matched.filter((k) => !claimedByChildren.has(k));
-      const count = claimed.reduce((s, k) => s + (kpTotals[k] ?? 0), 0);
-      return { node, count, children, claimed };
+      const total = claimed.reduce((s, k) => s + (kpStats[k]?.total ?? 0), 0);
+      const learned = claimed.reduce((s, k) => s + (kpStats[k]?.learned ?? 0), 0);
+      return { node, total, learned, children, claimed };
     });
   return build(roots);
 }
 
-/** 树内节点计数合计（含子孙）——父节点展示用 */
+/** 树内节点题数合计（含子孙）——父节点展示用 */
 export function subtreeCount(c: SyllabusCoverage): number {
-  return c.count + c.children.reduce((sum, child) => sum + subtreeCount(child), 0);
+  return c.total + c.children.reduce((sum, child) => sum + subtreeCount(child), 0);
 }
 
-/** 缺口清单（含子孙合计为 0 的节点）→ CSV 行（BOM 由调用方拼） */
-export function gapsToCsv(roots: SyllabusNode[], kpTotals: Record<string, number>): string {
-  const cov = coverageTree(roots, kpTotals);
-  const rows: string[][] = [["大纲节点", "kp 前缀", "题目数"]];
+/** 树内节点已独立掌握合计（含子孙） */
+export function subtreeLearned(c: SyllabusCoverage): number {
+  return c.learned + c.children.reduce((sum, child) => sum + subtreeLearned(child), 0);
+}
+
+/** 缺口清单（含子孙合计为 0 的节点 + 有题但零独立掌握的节点）→ CSV 行（BOM 由调用方拼） */
+export function gapsToCsv(roots: SyllabusNode[], kpStats: Record<string, KpStat>): string {
+  const cov = coverageTree(roots, kpStats);
+  const rows: string[][] = [["大纲节点", "kp 前缀", "题目数", "已独立掌握"]];
   const walk = (list: SyllabusCoverage[], path: string) => {
     for (const c of list) {
       const total = subtreeCount(c);
-      if (total === 0) rows.push([`${path}${c.node.title}`, c.node.kpPrefix, "0"]);
+      if (total === 0 || subtreeLearned(c) === 0) {
+        rows.push([`${path}${c.node.title}`, c.node.kpPrefix, String(total), String(subtreeLearned(c))]);
+      }
       walk(c.children, `${path}${c.node.title} / `);
     }
   };

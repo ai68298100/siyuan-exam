@@ -20,7 +20,7 @@ import { ttsSpeak } from "@/core/tts";
     import { upsertView, viewBankMismatch } from "@/core/smartViews";
     import { avgMsByType, estimatePlanMinutes } from "@/core/timeBudget";
     import { kpAudit, planKpMerge, planEmptyKpFill } from "@/core/kpGovernance";
-    import { coverageTree, subtreeCount, gapsToCsv } from "@/core/syllabus";
+    import { coverageTree, subtreeCount, subtreeLearned, gapsToCsv } from "@/core/syllabus";
     import { probeCheckinApi, syncCheckin, localDateKeyOf, bridgeEnabled, fetchStreak } from "@/core/checkinBridge";
     import { probeGlean, listLaterClips, formatClipsForSource, markClipDone, type GleanClip } from "@/core/gleanBridge";
     import { onExamEvent, emitExamEvent } from "@/core/bus";
@@ -229,13 +229,20 @@ import { ttsSpeak } from "@/core/tts";
     let sylError = $state("");
     let sylNote = $state("");
     const sylDoc = $derived(app.syllabusDoc());
-    const sylKpTotals = $derived.by(() => {
-      const totals: Record<string, number> = {};
+    // 51-03 后半：kp → { 题数, 已独立掌握 }（独立=存在无受助的答对记录；练一题≠掌握节点，只报覆盖）
+    const sylKpStats = $derived.by(() => {
+      const independentCorrect = new Set(
+        app.attempts.all().filter((e) => e.verdict === "correct" && !e.help).map((e) => e.qid),
+      );
+      const stats: Record<string, { total: number; learned: number }> = {};
       for (const q of questions) {
         const k = (q.kp || "").trim();
-        if (k) totals[k] = (totals[k] ?? 0) + 1;
+        if (!k) continue;
+        const s = (stats[k] ??= { total: 0, learned: 0 });
+        s.total++;
+        if (independentCorrect.has(q.id)) s.learned++;
       }
-      return totals;
+      return stats;
     });
 
     function countSyllabusNodes(nodes: import("@/core/syllabus").SyllabusNode[]): number {
@@ -270,7 +277,7 @@ import { ttsSpeak } from "@/core/tts";
 
     function downloadSyllabusGaps() {
       if (!sylDoc.roots.length) return;
-      const csv = "\uFEFF" + gapsToCsv(sylDoc.roots, sylKpTotals);
+      const csv = "\uFEFF" + gapsToCsv(sylDoc.roots, sylKpStats);
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
@@ -3659,13 +3666,18 @@ import { ttsSpeak } from "@/core/tts";
               {/if}
             </div>
             {#if sylDoc.roots.length}
-              {@const cov = coverageTree(sylDoc.roots, sylKpTotals)}
+              {@const cov = coverageTree(sylDoc.roots, sylKpStats)}
               <div class="lv-row" style="flex-wrap:wrap;margin:4px 0 0;gap:4px">
                 {#each cov as c, _ci (_ci)}
                   {@const total = subtreeCount(c)}
-                  <button class="lv-chip" class:lv-chip--red={total === 0} title={t("syl.gapTip")}
+                  {@const learned = subtreeLearned(c)}
+                  <button class="lv-chip" class:lv-chip--red={total === 0} class:lv-chip--amb={total > 0 && learned === 0}
+                    title={t("syl.gapTip")}
                     onclick={() => { searchText = c.node.kpPrefix; }}>
-                    {c.node.title} · <span class="num">{total}</span>{#if total === 0}&nbsp;{t("syl.gap")}{/if}
+                    {c.node.title} · <span class="num">{total}</span>
+                    {#if total === 0}&nbsp;{t("syl.gap")}
+                    {:else if learned === 0}&nbsp;{t("syl.unmastered")}
+                    {:else}&nbsp;<span class="num" title={t("syl.learnedTip")}>✓{learned}</span>{/if}
                   </button>
                 {/each}
                 <button class="lv-btn sm lv-btn--ghost" onclick={downloadSyllabusGaps}>⬇️ {t("syl.exportGaps")}</button>
