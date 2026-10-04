@@ -76,6 +76,15 @@ import {
   type MisdiagnosisRecord,
   type MisdiagnosisStore,
 } from "./core/misdiagnosis";
+import {
+  parseSyllabus,
+  parseSyllabusDoc,
+  serializeSyllabus,
+  EMPTY_SYLLABUS,
+  type SyllabusDoc,
+  type SyllabusMeta,
+  type SyllabusNode,
+} from "./core/syllabus";
 
 /** ArrayBuffer → base64（分块拼接，避免大文件 String.fromCharCode 展开栈溢出） */
 function arrayBufferToBase64(buf: ArrayBuffer): string {
@@ -133,6 +142,7 @@ const KNOWN_STORAGE_KEYS = [
   "materials/registry",
   "materials/notes",
   "materials/qrefs",
+  "syllabus/tree",
 ];
 
 export interface ExamAppDeps {
@@ -150,6 +160,7 @@ const MATERIALS_KEY = "materials/registry";
 const MATERIAL_NOTES_KEY = "materials/notes";
 const MATERIAL_QREFS_KEY = "materials/qrefs";
 const MISDIAGNOSIS_KEY = "ai/misdiagnosis";
+const SYLLABUS_KEY = "syllabus/tree";
 
 /** 过期草稿（TODO 2.4）：7 天隐藏不再续做入口，30 天清理（流水保留） */
 const DRAFT_HIDE_MS = 7 * 86_400_000;
@@ -175,6 +186,8 @@ export class ExamApp {
   private materialNoteStore: MaterialNoteStore = EMPTY_NOTE_STORE;
   private materialLinkStore: MaterialLinkStore = EMPTY_LINK_STORE;
   private misdiagnosisStore: MisdiagnosisStore = EMPTY_MISDIAGNOSIS;
+  private syllabus: SyllabusDoc = EMPTY_SYLLABUS;
+  private syllabusTooNew = false;
   private activeSession: PracticeSession | null = null;
   kernelOnline = false;
   probeMessage = "";
@@ -250,6 +263,14 @@ export class ExamApp {
       this.misdiagnosisStore = parsedMis.store;
     } catch {
       this.misdiagnosisStore = EMPTY_MISDIAGNOSIS;
+    }
+    // 考纲对照（51-01/03 lite）
+    try {
+      const parsedSyl = parseSyllabusDoc(await this.deps.storage.load(SYLLABUS_KEY));
+      this.syllabus = parsedSyl.doc;
+      this.syllabusTooNew = parsedSyl.versionTooNew;
+    } catch {
+      this.syllabus = EMPTY_SYLLABUS;
     }
   }
 
@@ -831,6 +852,7 @@ export class ExamApp {
         materialNotes: serializeNoteStore(this.materialNoteStore),
         materialLinks: serializeLinkStore(this.materialLinkStore),
         misdiagnoses: serializeMisdiagnosis(this.misdiagnosisStore),
+        syllabus: serializeSyllabus(this.syllabus),
       },
       null,
       2,
@@ -1046,6 +1068,31 @@ export class ExamApp {
     this.misdiagnosisStore = markAdopted(this.misdiagnosisStore, qid, this.deps.now?.() ?? Date.now());
     await this.saves.run(MISDIAGNOSIS_KEY, () =>
       this.deps.storage.save(MISDIAGNOSIS_KEY, serializeMisdiagnosis(this.misdiagnosisStore)),
+    );
+  }
+
+  // ---------- 考纲对照（51-01/03 lite：粘贴大纲 → 树 → kp 前缀覆盖对照） ----------
+
+  syllabusDoc(): SyllabusDoc {
+    return this.syllabus;
+  }
+
+  get syllabusReadonly(): boolean {
+    return this.syllabusTooNew;
+  }
+
+  /** 解析预览（不入库）：文本 → 树 */
+  previewSyllabus(text: string): SyllabusNode[] {
+    return parseSyllabus(text);
+  }
+
+  /** 导入/更新考纲（meta=发行方/年份/来源 51-01 字段） */
+  async setSyllabusDoc(meta: SyllabusMeta, roots: SyllabusNode[]): Promise<void> {
+    if (this.syllabusTooNew) throw new Error("考纲存储版本较新：只读（降级回滚场景），写入已拒绝");
+    if (!roots.length) throw new Error("考纲为空（解析后无节点）");
+    this.syllabus = { v: 1, meta, roots, importedAt: this.deps.now?.() ?? Date.now() };
+    await this.saves.run(SYLLABUS_KEY, () =>
+      this.deps.storage.save(SYLLABUS_KEY, serializeSyllabus(this.syllabus)),
     );
   }
 

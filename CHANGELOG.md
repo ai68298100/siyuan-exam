@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased（0.6.x-dev：廿三~六七批，2026-10-03/05）
+## Unreleased（0.6.x-dev：廿三~六八批，2026-10-03/05）
 
-> guard 八门禁全绿（428 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、样式 token 审计、ESLint 0 告警）+ 生产构建通过；**真机验证（SiYuan 3.8.6）**：preflight 17/17、数据生命周期 6/6、CSV 往返冒烟 5/5、种子数据经真实插件重载存活（37-01 路径语义实测通过）、题目编辑 updateBlock / 章节树 docTree / listQuestions hpath 三项契约实测通过、只读 e2e 走查 6 过/0 败（检查点 22 项）；**CI 首次真跑全绿**（check.yml 修复后 run 37221044264 success）。docs/17 人工 UI 步骤剩 27/28/36-38。
+> guard 八门禁全绿（433 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、样式 token 审计、ESLint 0 告警）+ 生产构建通过；**真机验证（SiYuan 3.8.6）**：preflight 17/17、数据生命周期 6/6、CSV 往返冒烟 5/5、种子数据经真实插件重载存活（37-01 路径语义实测通过）、题目编辑 updateBlock / 章节树 docTree / listQuestions hpath 三项契约实测通过、只读 e2e 走查 6 过/0 败（检查点 22 项）；**CI 首次真跑全绿**（check.yml 修复后 run 37221044264 success）。docs/17 人工 UI 步骤剩 27/28/36-38。
+
+- **考纲对照**（51-01/03 lite，六八批）：`core/syllabus.ts`——粘贴考纲（Markdown 标题/缩进列表，可选「标题 => kp/前缀」映射，子节点层级继承父前缀）解析成树（≤500 节点/跳档回落）；meta 发行方/年份/来源随 `syllabus/tree` 信封 v1 存储；考点治理面板「📜 考纲对照」——覆盖 chips 按**子优先认领**分层归账（父子不重复计数）、零题节点红 chip 明示并点击过滤浏览、缺口 CSV 导出（补题任务种子）；节点身份 lite=路径编码（稳定映射如实留开放）。5 项单测
 
 - **仓库基建对账 + 资料搜索**（0 组收尾/UX，六七批）：gh 实核 GitHub 基建已全部在位（description/topics×8/Discussions/README 徽章）→ 0 组条目勾选收尾（社交预览图无公开 API，注明设置页一键上传）；资料视图新增搜索框（标题/科目/章节/位置，大小写不敏感，无匹配明示）
 

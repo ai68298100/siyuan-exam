@@ -20,6 +20,7 @@ import { ttsSpeak } from "@/core/tts";
     import { upsertView, viewBankMismatch } from "@/core/smartViews";
     import { avgMsByType, estimatePlanMinutes } from "@/core/timeBudget";
     import { kpAudit, planKpMerge, planEmptyKpFill } from "@/core/kpGovernance";
+    import { coverageTree, subtreeCount, gapsToCsv } from "@/core/syllabus";
     import { probeCheckinApi, syncCheckin, localDateKeyOf, bridgeEnabled, fetchStreak } from "@/core/checkinBridge";
     import { probeGlean, listLaterClips, formatClipsForSource, markClipDone, type GleanClip } from "@/core/gleanBridge";
     import { onExamEvent, emitExamEvent } from "@/core/bus";
@@ -218,6 +219,65 @@ import { ttsSpeak } from "@/core/tts";
     let kpBusy = $state(false);
     let kpNote = $state("");
     const kpData = $derived(kpOpen && questions.length ? kpAudit(questions) : null);
+
+    // ---------- 考纲对照（51-01/03 lite）：粘贴大纲 → 树 → kp 前缀覆盖、零题缺口导出 ----------
+    let sylText = $state("");
+    let sylPublisher = $state("");
+    let sylYear = $state("");
+    let sylSource = $state("");
+    let sylPreviewRoots = $state<import("@/core/syllabus").SyllabusNode[] | null>(null);
+    let sylError = $state("");
+    let sylNote = $state("");
+    const sylDoc = $derived(app.syllabusDoc());
+    const sylKpTotals = $derived.by(() => {
+      const totals: Record<string, number> = {};
+      for (const q of questions) {
+        const k = (q.kp || "").trim();
+        if (k) totals[k] = (totals[k] ?? 0) + 1;
+      }
+      return totals;
+    });
+
+    function countSyllabusNodes(nodes: import("@/core/syllabus").SyllabusNode[]): number {
+      return nodes.reduce((s, n) => s + 1 + countSyllabusNodes(n.children), 0);
+    }
+
+    function previewSyllabus() {
+      sylError = "";
+      try {
+        const roots = app.previewSyllabus(sylText);
+        if (!roots.length) { sylError = t("syl.empty"); sylPreviewRoots = null; return; }
+        sylPreviewRoots = roots;
+      } catch (e) {
+        sylError = String(e instanceof Error ? e.message : e);
+      }
+    }
+
+    async function importSyllabus() {
+      if (!sylPreviewRoots?.length) return;
+      try {
+        await app.setSyllabusDoc(
+          { publisher: sylPublisher.trim() || undefined, year: sylYear.trim() || undefined, source: sylSource.trim() || undefined },
+          sylPreviewRoots,
+        );
+        sylNote = t("syl.imported").replace("{n}", String(countSyllabusNodes(sylPreviewRoots)));
+        sylPreviewRoots = null;
+        sylText = "";
+      } catch (e) {
+        sylError = String(e instanceof Error ? e.message : e);
+      }
+    }
+
+    function downloadSyllabusGaps() {
+      if (!sylDoc.roots.length) return;
+      const csv = "\uFEFF" + gapsToCsv(sylDoc.roots, sylKpTotals);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `考纲缺口清单 ${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
 
     function previewKpMerge() {
       kpNote = "";
@@ -3587,6 +3647,47 @@ import { ttsSpeak } from "@/core/tts";
               </div>
             {/if}
             {#if kpNote}<div class="lv-row"><span class="lv-muted num">{kpNote}</span></div>{/if}
+            <!-- 51-01/03 lite：考纲对照——粘贴大纲树，按 kp 前缀覆盖，零题缺口明示可导出 -->
+            <div class="lv-row" style="margin:10px 0 0">
+              <b style="font-size:12.5px">📜 {t("syl.title")}</b>
+              {#if app.syllabusReadonly}<span class="lv-chip lv-chip--amb">{t("materials.readonly")}</span>{/if}
+              {#if sylDoc.roots.length}
+                <span class="lv-chip num">{t("syl.nodes").replace("{n}", String(countSyllabusNodes(sylDoc.roots)))}</span>
+                {#if sylDoc.meta.publisher}<span class="lv-chip">{sylDoc.meta.publisher}</span>{/if}
+                {#if sylDoc.meta.year}<span class="lv-chip num">{sylDoc.meta.year}</span>{/if}
+                <span class="lv-muted num">{t("syl.importedAt").replace("{d}", new Date(sylDoc.importedAt).toLocaleDateString())}</span>
+              {/if}
+            </div>
+            {#if sylDoc.roots.length}
+              {@const cov = coverageTree(sylDoc.roots, sylKpTotals)}
+              <div class="lv-row" style="flex-wrap:wrap;margin:4px 0 0;gap:4px">
+                {#each cov as c, _ci (_ci)}
+                  {@const total = subtreeCount(c)}
+                  <button class="lv-chip" class:lv-chip--red={total === 0} title={t("syl.gapTip")}
+                    onclick={() => { searchText = c.node.kpPrefix; }}>
+                    {c.node.title} · <span class="num">{total}</span>{#if total === 0}&nbsp;{t("syl.gap")}{/if}
+                  </button>
+                {/each}
+                <button class="lv-btn sm lv-btn--ghost" onclick={downloadSyllabusGaps}>⬇️ {t("syl.exportGaps")}</button>
+              </div>
+            {/if}
+            {#if !sylDoc.roots.length || sylPreviewRoots}
+              <div class="lv-row" style="margin:4px 0 0">
+                <input class="lv-input" style="max-width:150px" placeholder={t("syl.publisher")} bind:value={sylPublisher} />
+                <input class="lv-input" style="max-width:90px" placeholder={t("syl.year")} bind:value={sylYear} />
+                <input class="lv-input" style="max-width:150px" placeholder={t("syl.source")} bind:value={sylSource} />
+              </div>
+              <textarea class="lv-input lv-textarea" rows="4" bind:value={sylText} placeholder={t("syl.placeholder")}></textarea>
+              <div class="lv-row">
+                <button class="lv-btn sm" onclick={previewSyllabus} disabled={!sylText.trim()}>🔍 {t("syl.preview")}</button>
+                {#if sylPreviewRoots?.length}
+                  <span class="lv-chip num">{t("syl.nodes").replace("{n}", String(countSyllabusNodes(sylPreviewRoots)))}</span>
+                  <button class="lv-btn lv-btn--primary sm" onclick={() => void importSyllabus()} disabled={app.syllabusReadonly}>{t("syl.import")}</button>
+                {/if}
+              </div>
+            {/if}
+            {#if sylError}<div class="lv-error">{sylError}</div>{/if}
+            {#if sylNote}<div class="lv-row"><span class="lv-muted num">{sylNote}</span></div>{/if}
           {/if}
         </div>
       {/if}
