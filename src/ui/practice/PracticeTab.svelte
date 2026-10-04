@@ -9,6 +9,7 @@ import { ttsSpeak } from "@/core/tts";
     import type { Question } from "../../core/types";
     import { parseText, parseExcelRows, autoMapExcel, errorsToCsv, extractTextRowAt, type ImportReport } from "../../importer/pipeline";
     import { columnLabel, autoAssignment, assignmentFromMap, assignmentToMap, assignmentErrors, emptyAssignment, type MapAssignment } from "../../importer/mapping";
+    import { formatSecToTime, parseTimeToSec, locatorLabel, locatedUrl, needsRelocate } from "@/core/materialNotes";
     import { groupAdjacent } from "../../core/session";
     import { makeQuestion } from "../../core/blockTemplate";
     import { normalizeAnswer, questionHash } from "../../core/answer";
@@ -1868,10 +1869,79 @@ import { ttsSpeak } from "@/core/tts";
       try {
         await app.removeMaterialById(m.id);
         loadMaterials();
+        if (notesOpenId === m.id) { notesOpenId = ""; notesCache = []; }
         materialsNote = t("materials.removed");
       } catch (err) {
         materialsNote = String(err instanceof Error ? err.message : err);
       } finally { materialsBusy = false; }
+    }
+
+    // ---------- 资料定位与个人笔记（121-02/03 + 122-02/03 lite） ----------
+    let notesOpenId = $state("");
+    let notesCache = $state<import("../../core/materialNotes").MaterialNote[]>([]);
+    let noteEditingId = $state("");
+    let noteText = $state("");
+    let notePage = $state("");
+    let noteTime = $state("");
+    let noteQuote = $state("");
+    let noteTags = $state("");
+    let noteFormError = $state("");
+
+    function toggleNotes(m: import("../../core/materials").MaterialDoc) {
+      notesOpenId = notesOpenId === m.id ? "" : m.id;
+      if (notesOpenId) { refreshNotes(m); resetNoteForm(); }
+    }
+    function refreshNotes(m: import("../../core/materials").MaterialDoc) {
+      notesCache = app.listMaterialNotes(m.id);
+    }
+    function resetNoteForm() {
+      noteEditingId = ""; noteText = ""; notePage = ""; noteTime = ""; noteQuote = ""; noteTags = ""; noteFormError = "";
+    }
+    function startEditNote(n: import("../../core/materialNotes").MaterialNote) {
+      noteEditingId = n.id;
+      noteText = n.text;
+      notePage = n.locator?.page != null ? String(n.locator.page) : "";
+      noteTime = n.locator?.tSec != null ? formatSecToTime(n.locator.tSec) : "";
+      noteQuote = n.locator?.quote ?? "";
+      noteTags = (n.tags ?? []).join("，");
+      noteFormError = "";
+    }
+    async function saveNote(m: import("../../core/materials").MaterialDoc) {
+      if (!noteText.trim() || materialsBusy) return;
+      noteFormError = ""; materialsBusy = true;
+      try {
+        const page = notePage.trim() ? Number(notePage) : undefined;
+        if (notePage.trim() && (!Number.isInteger(page) || page! < 1)) throw new Error(t("materials.badPage"));
+        const tSec = noteTime.trim() ? parseTimeToSec(noteTime) : undefined;
+        const quote = noteQuote.trim() || undefined;
+        const locator: import("../../core/materialNotes").NoteLocator | null =
+          page == null && tSec == null && !quote ? null : { page, tSec, quote };
+        const tags = noteTags.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
+        if (noteEditingId) await app.updateMaterialNote(noteEditingId, { locator, text: noteText, tags });
+        else await app.addMaterialNote({ materialId: m.id, revision: m.revision, locator, text: noteText, tags });
+        refreshNotes(m); resetNoteForm();
+        materialsNote = t("materials.noteSaved");
+      } catch (err) {
+        noteFormError = String(err instanceof Error ? err.message : err);
+      } finally { materialsBusy = false; }
+    }
+    async function removeNoteEntry(m: import("../../core/materials").MaterialDoc, n: import("../../core/materialNotes").MaterialNote) {
+      const { confirmDialogSync } = await import("../../libs/dialog");
+      if (!(await confirmDialogSync({ title: t("materials.noteDelTitle"), content: n.text.slice(0, 80) }))) return;
+      materialsBusy = true;
+      try {
+        await app.deleteMaterialNote(n.id);
+        refreshNotes(m);
+      } catch (err) {
+        materialsNote = String(err instanceof Error ? err.message : err);
+      } finally { materialsBusy = false; }
+    }
+    /** 定位打开：PDF → #page、媒体 → #t（浏览器原生 seek）；无定位=普通打开 */
+    function openMaterialAt(m: import("../../core/materials").MaterialDoc, n: import("../../core/materialNotes").MaterialNote) {
+      const base = app.resolveMaterialUrlOf(m, window.location.origin);
+      const url = locatedUrl(base, n.locator);
+      if (!url) { materialsNote = t("materials.cannotOpen"); return; }
+      window.open(url, "_blank", "noopener");
     }
 
     // ---------- 映射保存/复用（2.3/38-02） ----------
@@ -3007,6 +3077,7 @@ import { ttsSpeak } from "@/core/tts";
               {#if m.subject}<span class="lv-chip">{m.subject}</span>{/if}
               {#if m.chapter}<span class="lv-chip">{m.chapter}</span>{/if}
               <span class="fn__flex-1"></span>
+              <button class="lv-btn sm" onclick={() => toggleNotes(m)}>📝 {t("materials.notes")}（<span class="num">{app.listMaterialNotes(m.id).length}</span>）</button>
               <button class="lv-btn sm" onclick={() => openMaterial(m)}>↗ {t("materials.open")}</button>
               <button class="lv-btn sm lv-btn--ghost" onclick={() => void removeMaterialEntry(m)} disabled={materialsBusy}>🗑</button>
             </div>
@@ -3016,6 +3087,43 @@ import { ttsSpeak } from "@/core/tts";
               {/each}
               <span>v{m.revision}</span>
             </div>
+            {#if notesOpenId === m.id}
+              <!-- 121-03/122-03 lite：个人笔记（绑定 revision；换版待重定位） -->
+              <div class="lv-detail" style="margin:6px 0 0">
+                {#each notesCache as n (n.id)}
+                  <div class="lv-row" style="align-items:flex-start;flex-wrap:wrap;margin:4px 0">
+                    <div style="flex:1;min-width:220px">
+                      <div class="lv-row" style="margin:0;gap:4px;flex-wrap:wrap">
+                        {#if n.locator}<span class="lv-chip num">{locatorLabel(n.locator)}</span>{/if}
+                        {#if needsRelocate(n, m.revision)}<span class="lv-chip lv-chip--amb" title={t("materials.relocateTip")}>{t("materials.relocate")}</span>{/if}
+                        {#each n.tags as tg (tg)}<span class="lv-chip num" style="font-size:10px">#{tg}</span>{/each}
+                      </div>
+                      <div style="font-size:13px;overflow-wrap:anywhere">{n.text}</div>
+                    </div>
+                    {#if n.locator}<button class="lv-btn sm" onclick={() => openMaterialAt(m, n)}>↗ {t("materials.openAt")}</button>{/if}
+                    <button class="lv-btn sm lv-btn--ghost" onclick={() => startEditNote(n)}>✎</button>
+                    <button class="lv-btn sm lv-btn--ghost" onclick={() => void removeNoteEntry(m, n)} disabled={materialsBusy}>🗑</button>
+                  </div>
+                {/each}
+                {#if !notesCache.length}<div class="lv-muted" style="font-size:12px">{t("materials.noteEmpty")}</div>{/if}
+                <div class="lv-row" style="margin:8px 0 2px"><b class="lv-muted" style="font-size:12px">{noteEditingId ? t("materials.noteEdit") : t("materials.noteAdd")}</b></div>
+                <div class="lv-row" style="flex-wrap:wrap">
+                  {#if m.kind === "pdf"}
+                    <input class="lv-input" style="max-width:90px" placeholder={t("materials.page")} bind:value={notePage} />
+                  {:else if m.kind === "video" || m.kind === "audio"}
+                    <input class="lv-input" style="max-width:110px" placeholder="mm:ss" bind:value={noteTime} />
+                  {/if}
+                  <input class="lv-input" style="flex:1;min-width:160px" placeholder={t("materials.quote")} bind:value={noteQuote} />
+                </div>
+                <textarea class="lv-input lv-textarea" rows="2" placeholder={t("materials.notePlaceholder")} bind:value={noteText}></textarea>
+                <div class="lv-row">
+                  <input class="lv-input" style="flex:1;min-width:160px" placeholder={t("materials.tagsPlaceholder")} bind:value={noteTags} />
+                  <button class="lv-btn lv-btn--primary sm" onclick={() => void saveNote(m)} disabled={!noteText.trim() || materialsBusy}>{noteEditingId ? t("materials.noteUpdate") : t("materials.noteAddBtn")}</button>
+                  {#if noteEditingId}<button class="lv-btn sm lv-btn--ghost" onclick={resetNoteForm}>{t("edit.cancel")}</button>{/if}
+                </div>
+                {#if noteFormError}<div class="lv-error">{noteFormError}</div>{/if}
+              </div>
+            {/if}
           </div>
         {/each}
       {/if}

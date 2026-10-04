@@ -41,6 +41,19 @@ import {
   type MaterialDoc,
   type MaterialRegistry,
 } from "./core/materials";
+import {
+  addNote,
+  deleteNote,
+  updateNote,
+  notesOfMaterial,
+  parseNoteStore,
+  serializeNoteStore,
+  EMPTY_NOTE_STORE,
+  type MaterialNote,
+  type MaterialNoteStore,
+  type NoteInput,
+  type NoteLocator,
+} from "./core/materialNotes";
 
 /** ArrayBuffer → base64（分块拼接，避免大文件 String.fromCharCode 展开栈溢出） */
 function arrayBufferToBase64(buf: ArrayBuffer): string {
@@ -95,6 +108,7 @@ const KNOWN_STORAGE_KEYS = [
   "browse/smartViews",
   "batchedit/last",
   "materials/registry",
+  "materials/notes",
 ];
 
 export interface ExamAppDeps {
@@ -109,6 +123,7 @@ const WRONG_REASON_KEY = "wrongbook/reasons";
 const MOCK_RUN_KEY = "mock/run";
 const ACTIONS_KEY = "actions/items";
 const MATERIALS_KEY = "materials/registry";
+const MATERIAL_NOTES_KEY = "materials/notes";
 
 /** 过期草稿（TODO 2.4）：7 天隐藏不再续做入口，30 天清理（流水保留） */
 const DRAFT_HIDE_MS = 7 * 86_400_000;
@@ -131,6 +146,7 @@ export class ExamApp {
   private banks: BankInfo[] = [];
   private materialsRegistry: MaterialRegistry = EMPTY_REGISTRY;
   private materialsVersionTooNew = false;
+  private materialNoteStore: MaterialNoteStore = EMPTY_NOTE_STORE;
   private activeSession: PracticeSession | null = null;
   kernelOnline = false;
   probeMessage = "";
@@ -185,6 +201,13 @@ export class ExamApp {
       this.materialsVersionTooNew = parsed.versionTooNew;
     } catch {
       this.materialsRegistry = EMPTY_REGISTRY;
+    }
+    // 资料笔记（121-03/122-03）：同口径容错
+    try {
+      const parsedNotes = parseNoteStore(await this.deps.storage.load(MATERIAL_NOTES_KEY));
+      this.materialNoteStore = parsedNotes.store;
+    } catch {
+      this.materialNoteStore = EMPTY_NOTE_STORE;
     }
   }
 
@@ -763,6 +786,7 @@ export class ExamApp {
         wrongReasons: reasons ?? {},
         actions: actions ?? [],
         materials: serializeRegistry(this.materialsRegistry),
+        materialNotes: serializeNoteStore(this.materialNoteStore),
       },
       null,
       2,
@@ -774,7 +798,6 @@ export class ExamApp {
   listMaterials(): MaterialDoc[] {
     return [...this.materialsRegistry.materials];
   }
-
   /** 注册表版本比当前代码新（升级回滚场景）：UI 如实显示只读提示，写路径拒绝（不降级覆盖） */
   get materialsReadonly(): boolean {
     return this.materialsVersionTooNew;
@@ -870,6 +893,48 @@ export class ExamApp {
         } catch { /* 附件已不在/删除失败：登记移除不受影响，UI 说明保留可能 */ }
       }
     }
+    // 资料本体移除 → 其笔记失去归属：一并清除（纯本地数据，无原件副作用），回执由调用方提示
+    const orphanCount = notesOfMaterial(this.materialNoteStore, materialId).length;
+    if (orphanCount) {
+      this.materialNoteStore = { v: 1, notes: this.materialNoteStore.notes.filter((n) => n.materialId !== materialId) };
+      await this.saveMaterialNotes();
+    }
+  }
+
+  // ---------- 资料定位与个人笔记（121-02/03 + 122-02/03 lite） ----------
+
+  listMaterialNotes(materialId: string): MaterialNote[] {
+    return notesOfMaterial(this.materialNoteStore, materialId);
+  }
+
+  private async saveMaterialNotes(): Promise<void> {
+    await this.saves.run(MATERIAL_NOTES_KEY, () =>
+      this.deps.storage.save(MATERIAL_NOTES_KEY, serializeNoteStore(this.materialNoteStore)),
+    );
+  }
+
+  /** 新增笔记（绑定 materialId+revision；离线也可写——纯插件存储，不动原件） */
+  async addMaterialNote(input: NoteInput): Promise<MaterialNote> {
+    if (this.materialsReadonly) throw new Error("存储版本较新：只读（降级回滚场景），写入已拒绝");
+    const r = addNote(this.materialNoteStore, input, this.deps.now?.() ?? Date.now());
+    this.materialNoteStore = r.store;
+    await this.saveMaterialNotes();
+    return r.note;
+  }
+
+  async updateMaterialNote(noteId: string, patch: { locator?: NoteLocator | null; text?: string; tags?: string[] }): Promise<MaterialNote> {
+    if (this.materialsReadonly) throw new Error("存储版本较新：只读（降级回滚场景），写入已拒绝");
+    const r = updateNote(this.materialNoteStore, noteId, patch, this.deps.now?.() ?? Date.now());
+    if (!r.note) throw new Error("笔记不存在");
+    this.materialNoteStore = r.store;
+    await this.saveMaterialNotes();
+    return r.note;
+  }
+
+  async deleteMaterialNote(noteId: string): Promise<void> {
+    if (this.materialsReadonly) throw new Error("存储版本较新：只读（降级回滚场景），删除已拒绝");
+    this.materialNoteStore = deleteNote(this.materialNoteStore, noteId);
+    await this.saveMaterialNotes();
   }
 
   /** 清除插件数据（58-03 lite）：逐键置空并返回逐对象回执（不冒充全部删除）。

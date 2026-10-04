@@ -57,6 +57,7 @@ const EXPECTED = [
   { key: "ai/usage", file: "ai/usage.json", label: "AI 用量记账", critical: false },
   { key: "wrongbook/overlays", file: "wrongbook/overlays.json", label: "错题处置覆盖层", critical: false },
   { key: "materials/registry", file: "materials/registry.json", label: "120 资料注册表", critical: false },
+  { key: "materials/notes", file: "materials/notes.json", label: "121/122 资料笔记", critical: false },
 ];
 
 let anyData = false;

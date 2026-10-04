@@ -20,6 +20,9 @@ export const newQuestionId = () => `q-${rand(8)}`;
 /** 资料对象 ID：m-xxxxxxxx（120-01 学习资料身份，与文件名/位置解耦） */
 export const newMaterialId = () => `m-${rand(8)}`;
 
+/** 资料笔记 ID：n-xxxxxxxx（121-03/122-03 个人笔记，绑定 materialId+revision） */
+export const newMaterialNoteId = () => `n-${rand(8)}`;
+
 /** 会话 ID：s-时间戳-序号 */
 export const newSessionId = () => `s-${Date.now().toString(36)}-${(counter++).toString(36)}`;
 
