@@ -14,7 +14,7 @@ import { ttsSpeak } from "@/core/tts";
     import { makeQuestion } from "../../core/blockTemplate";
     import { normalizeAnswer, questionHash } from "../../core/answer";
     import { validate } from "../../importer/pipeline";
-    import { bankHealthReport, coverageStats, type BankHealthReport } from "../../core/bankHealth";
+    import { bankHealthReport, coverageStats, answerDistribution, unreviewedStats, type BankHealthReport } from "../../core/bankHealth";
     import { planBatchEdit, invertPlan, describeChange } from "../../core/batchEdit";
     import { buildSectionTree, questionInSection } from "../../core/sectionTree";
     import { upsertView, viewBankMismatch } from "@/core/smartViews";
@@ -90,6 +90,9 @@ import { ttsSpeak } from "@/core/tts";
     // 题库健康（TODO 2.2）：重复聚类 + 缺字段清单（纯函数，浏览视图按需展开）
     let healthOpen = $state(false);
     const health = $derived<BankHealthReport | null>(healthOpen && questions.length ? bankHealthReport(questions) : null);
+    // 67-03 lite：答案分布异常 + 未审校比例（题库健康面板质量卡）
+    const answerDist = $derived(healthOpen && questions.length ? answerDistribution(questions) : null);
+    const unreviewed = $derived(healthOpen && questions.length ? unreviewedStats(questions) : null);
     /** 43-04 lite：生产者覆盖概览（与健康面板同开）；51-03 lite：注入作答集算已学考点覆盖 */
     const coverage = $derived.by(() => {
       if (!healthOpen || !questions.length) return null;
@@ -3945,6 +3948,27 @@ import { ttsSpeak } from "@/core/tts";
         <div class="lv-card lv-pad-card" style="padding:12px 16px">
           <b style="font-size:13px">{t("health.title")}</b>
           <span class="lv-chip num" style="margin-left:8px">{t("health.total")} {health.total}</span>
+          {#if answerDist && answerDist.total >= 10}
+            <!-- 67-03 lite：答案分布（公平性——答案可猜测性来自分布偏斜；样本 ≥10 才判定） -->
+            <div class="lv-row" style="margin:6px 0 0;flex-wrap:wrap;gap:4px">
+              <span class="lv-chip num" title={t("health.distTip")}>📊 {t("health.dist")}（{answerDist.total}）</span>
+              {#each Object.entries(answerDist.counts).sort() as [letter, n] (letter)}
+                <span class="lv-chip num" class:lv-chip--red={answerDist.skewed === letter}>{letter} {n}</span>
+              {/each}
+              {#if answerDist.skewed}
+                <span class="lv-chip lv-chip--red" title={t("health.distSkewTip")}>⚠ {t("health.distSkew").replace("{l}", answerDist.skewed).replace("{n}", String(answerDist.skewedRatio ?? 0))}</span>
+              {/if}
+              {#if answerDist.starved.length}
+                <span class="lv-chip lv-chip--amb" title={t("health.distStarvedTip")}>{t("health.distStarved").replace("{l}", answerDist.starved.join(""))}</span>
+              {/if}
+            </div>
+          {/if}
+          {#if unreviewed && unreviewed.count}
+            <!-- 67-03 lite：AI 未审校比例（origin=ai 且 review=pending） -->
+            <div class="lv-row" style="margin:4px 0 0">
+              <span class="lv-chip lv-chip--amb num" title={t("health.unreviewedTip")}>🤖 {t("health.unreviewed").replace("{n}", String(unreviewed.count)).replace("{r}", String(unreviewed.ratio ?? 0))}</span>
+            </div>
+          {/if}
           {#if coverage}
             <!-- 43-04 lite：生产者覆盖概览（点击 chip 直达对应过滤列表） -->
             <div class="lv-row" style="margin:6px 0 0">

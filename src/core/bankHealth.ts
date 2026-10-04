@@ -193,3 +193,62 @@ export function coverageStats(qs: Question[], attemptedQids?: Set<string>): Cove
     kpLearned: attemptedQids ? kpTopsAttempted.size : null,
   };
 }
+
+// ---------- 67-03 lite：答案分布异常 + 未审校比例 ----------
+
+export interface AnswerDistribution {
+  /** 字母 → 选择题答案计数（仅单选/多选；多选逐字母计） */
+  counts: Record<string, number>;
+  total: number; // 参与分布统计的答案字母总数
+  /** 异常判定（样本 ≥10 才判定，55-04 公平性口径）：skewed=单一字母占比 >60% */
+  skewed: string | null;
+  skewedRatio: number | null; // 0-100
+  /** 零次字母（A..最大出现字母全集中从未出现的） */
+  starved: string[];
+}
+
+const DIST_MIN_SAMPLE = 10;
+const SKEW_RATIO = 60;
+
+/** 选择题答案字母分布与异常检测（公平比较：答案可猜测性来自分布偏斜）。
+ *  零次字母参照系=选择题的选项字母全集（取题库内最大选项数，≤J）。 */
+export function answerDistribution(qs: readonly Question[]): AnswerDistribution {
+  const counts: Record<string, number> = {};
+  let total = 0;
+  let maxOptions = 4;
+  for (const q of qs) {
+    if (q.type !== "single" && q.type !== "multiple") continue;
+    maxOptions = Math.max(maxOptions, q.options.length);
+    for (const ch of q.answer.toUpperCase()) {
+      if (!/^[A-Z]$/.test(ch)) continue;
+      counts[ch] = (counts[ch] ?? 0) + 1;
+      total++;
+    }
+  }
+  let skewed: string | null = null;
+  let skewedRatio: number | null = null;
+  const starved = new Set<string>();
+  if (total >= DIST_MIN_SAMPLE) {
+    for (const [letter, n] of Object.entries(counts)) {
+      const ratio = Math.round((n / total) * 100);
+      if (ratio > SKEW_RATIO) {
+        skewed = letter;
+        skewedRatio = ratio;
+      }
+    }
+    const universe = Math.min(maxOptions, 26);
+    for (let c = 65; c < 65 + universe; c++) {
+      const letter = String.fromCharCode(c);
+      if (!counts[letter]) starved.add(letter);
+    }
+  }
+  return { counts, total, skewed, skewedRatio, starved: [...starved].sort() };
+}
+
+/** 未审校比例：AI 生成且 review=pending 的题数与占比（67-03 未审校比例口径） */
+export function unreviewedStats(qs: readonly Question[]): { count: number; ratio: number | null } {
+  const ai = qs.filter((q) => q.origin === "ai");
+  if (!ai.length) return { count: 0, ratio: null };
+  const pending = ai.filter((q) => (q.review ?? "pending") === "pending").length;
+  return { count: pending, ratio: Math.round((pending / ai.length) * 100) };
+}
