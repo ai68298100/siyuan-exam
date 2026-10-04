@@ -410,6 +410,7 @@
     "syl.empty": "No nodes parsed (check indentation or heading format)",
     "syl.unmastered": "no independent mastery",
     "syl.learnedTip": "✓n = independently mastered (a correct attempt without assistance); answering one question ≠ mastering the node",
+    "syl.noSourceTip": "{n} questions under this node lack a source (see last column of the gaps CSV)",
     "mock.exportToDoc": "📚 Write to bank docs",
     "challenge.copied": "✓ Challenge copied (answers included, friendly mode)",
     "challenge.importTitle": "Import challenge code",

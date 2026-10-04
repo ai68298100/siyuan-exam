@@ -20,7 +20,7 @@ import { ttsSpeak } from "@/core/tts";
     import { upsertView, viewBankMismatch } from "@/core/smartViews";
     import { avgMsByType, estimatePlanMinutes } from "@/core/timeBudget";
     import { kpAudit, planKpMerge, planEmptyKpFill } from "@/core/kpGovernance";
-    import { coverageTree, subtreeCount, subtreeLearned, gapsToCsv } from "@/core/syllabus";
+    import { coverageTree, subtreeCount, subtreeLearned, subtreeNoSource, gapsToCsv } from "@/core/syllabus";
     import { probeCheckinApi, syncCheckin, localDateKeyOf, bridgeEnabled, fetchStreak } from "@/core/checkinBridge";
     import { probeGlean, listLaterClips, formatClipsForSource, markClipDone, type GleanClip } from "@/core/gleanBridge";
     import { onExamEvent, emitExamEvent } from "@/core/bus";
@@ -229,18 +229,19 @@ import { ttsSpeak } from "@/core/tts";
     let sylError = $state("");
     let sylNote = $state("");
     const sylDoc = $derived(app.syllabusDoc());
-    // 51-03 后半：kp → { 题数, 已独立掌握 }（独立=存在无受助的答对记录；练一题≠掌握节点，只报覆盖）
+    // 51-03 后半：kp → { 题数, 已独立掌握, 缺来源 }（独立=存在无受助的答对记录；练一题≠掌握节点，只报覆盖）
     const sylKpStats = $derived.by(() => {
       const independentCorrect = new Set(
         app.attempts.all().filter((e) => e.verdict === "correct" && !e.help).map((e) => e.qid),
       );
-      const stats: Record<string, { total: number; learned: number }> = {};
+      const stats: Record<string, { total: number; learned: number; noSource: number }> = {};
       for (const q of questions) {
         const k = (q.kp || "").trim();
         if (!k) continue;
-        const s = (stats[k] ??= { total: 0, learned: 0 });
+        const s = (stats[k] ??= { total: 0, learned: 0, noSource: 0 });
         s.total++;
         if (independentCorrect.has(q.id)) s.learned++;
+        if (!q.source) s.noSource++;
       }
       return stats;
     });
@@ -3672,7 +3673,7 @@ import { ttsSpeak } from "@/core/tts";
                   {@const total = subtreeCount(c)}
                   {@const learned = subtreeLearned(c)}
                   <button class="lv-chip" class:lv-chip--red={total === 0} class:lv-chip--amb={total > 0 && learned === 0}
-                    title={t("syl.gapTip")}
+                    title={`${t("syl.gapTip")}${subtreeNoSource(c) ? " · " + t("syl.noSourceTip").replace("{n}", String(subtreeNoSource(c))) : ""}`}
                     onclick={() => { searchText = c.node.kpPrefix; }}>
                     {c.node.title} · <span class="num">{total}</span>
                     {#if total === 0}&nbsp;{t("syl.gap")}

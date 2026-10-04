@@ -88,13 +88,15 @@ export function parseSyllabus(text: string): SyllabusNode[] {
   return roots;
 }
 
-/** 覆盖对照：kpStats = kp → { total: 题数, learned: 已独立掌握题数 }（调用方从题目+流水一次归好；
- *  learned=该题存在无受助（help 为空）的答对记录——练一题≠掌握节点，此处只报覆盖不报能力）。
+/** 覆盖对照：kpStats = kp → { total, learned, noSource }（调用方从题目+流水一次归好；
+ *  learned=该题存在无受助（help 为空）的答对记录——练一题≠掌握节点，此处只报覆盖不报能力；
+ *  noSource=缺出处字段的题数（51-03 来源完整度）。
  *  分层归属唯一：子节点先按自己的前缀认领 kp，父节点只计未被子孙认领的剩余（防父子重复计数）。 */
 export interface SyllabusCoverage {
   node: SyllabusNode;
   total: number;
   learned: number;
+  noSource: number;
   children: SyllabusCoverage[];
   /** 本节点及子孙已认领的 kp（父层扣除用） */
   claimed: string[];
@@ -103,6 +105,7 @@ export interface SyllabusCoverage {
 export interface KpStat {
   total: number;
   learned: number;
+  noSource: number;
 }
 
 export function coverageTree(
@@ -119,7 +122,8 @@ export function coverageTree(
       const claimed = matched.filter((k) => !claimedByChildren.has(k));
       const total = claimed.reduce((s, k) => s + (kpStats[k]?.total ?? 0), 0);
       const learned = claimed.reduce((s, k) => s + (kpStats[k]?.learned ?? 0), 0);
-      return { node, total, learned, children, claimed };
+      const noSource = claimed.reduce((s, k) => s + (kpStats[k]?.noSource ?? 0), 0);
+      return { node, total, learned, noSource, children, claimed };
     });
   return build(roots);
 }
@@ -134,15 +138,26 @@ export function subtreeLearned(c: SyllabusCoverage): number {
   return c.learned + c.children.reduce((sum, child) => sum + subtreeLearned(child), 0);
 }
 
-/** 缺口清单（含子孙合计为 0 的节点 + 有题但零独立掌握的节点）→ CSV 行（BOM 由调用方拼） */
+/** 树内节点缺来源题数合计（含子孙） */
+export function subtreeNoSource(c: SyllabusCoverage): number {
+  return c.noSource + c.children.reduce((sum, child) => sum + subtreeNoSource(child), 0);
+}
+
+/** 缺口清单（零题节点 + 有题零独立掌握节点）→ CSV 行（BOM 由调用方拼）；末列=来源完整度（缺来源题数） */
 export function gapsToCsv(roots: SyllabusNode[], kpStats: Record<string, KpStat>): string {
   const cov = coverageTree(roots, kpStats);
-  const rows: string[][] = [["大纲节点", "kp 前缀", "题目数", "已独立掌握"]];
+  const rows: string[][] = [["大纲节点", "kp 前缀", "题目数", "已独立掌握", "缺来源"]];
   const walk = (list: SyllabusCoverage[], path: string) => {
     for (const c of list) {
       const total = subtreeCount(c);
       if (total === 0 || subtreeLearned(c) === 0) {
-        rows.push([`${path}${c.node.title}`, c.node.kpPrefix, String(total), String(subtreeLearned(c))]);
+        rows.push([
+          `${path}${c.node.title}`,
+          c.node.kpPrefix,
+          String(total),
+          String(subtreeLearned(c)),
+          String(subtreeNoSource(c)),
+        ]);
       }
       walk(c.children, `${path}${c.node.title} / `);
     }
