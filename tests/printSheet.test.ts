@@ -56,4 +56,16 @@ describe("68-01 打印视图", () => {
     expect(buildQuestionSheet("空", [])).toContain("共 0 题");
     expect(buildAnswerSheet("空", [])).toContain("共 0 题");
   });
+
+  it("68-03 题组连续性：材料框同组只印一次；无组材料题保持原样", () => {
+    const mat = q({ id: "q-print004", type: "material", stem: "根据以下病例回答。", analysis: "病例：患者发热咳嗽三天。", group: "grp-1" });
+    const sub1 = q({ id: "q-print005", stem: "最可能的诊断是？", group: "grp-1" });
+    const sub2 = q({ id: "q-print006", type: "judge", stem: "应立即抗肿瘤治疗？", options: [], answer: "错", group: "grp-1" });
+    const html = buildQuestionSheet("题组", [mat, sub1, sub2, q({ id: "q-print007", type: "material", stem: "独立材料题", analysis: "独立材料文本" })]);
+    // 同组材料只出现一次
+    expect(html.split("病例：患者发热咳嗽三天。")).toHaveLength(2); // 1 次 = split 2 段
+    expect(html).toContain("独立材料文本"); // 无组材料题保持材料框
+    expect(html).toContain("最可能的诊断是？");
+    expect(html).toContain("应立即抗肿瘤治疗？");
+  });
 });

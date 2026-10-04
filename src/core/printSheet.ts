@@ -45,15 +45,27 @@ function head(title: string, note: string): string {
   return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${BASE_CSS}</style></head><body><h1>${esc(title)}</h1><div class="meta">${esc(note)} · 小驴考试导出 · ${new Date().toLocaleDateString("zh-CN")}</div>`;
 }
 
-/** 题册：题干/选项/材料 + 答题区——不含答案与解析（68-01 验收：打印不泄露隐藏答案） */
+/** 题册：题干/选项/材料 + 答题区——不含答案与解析（68-01 验收：打印不泄露隐藏答案）。
+ *  68-03 lite 题组连续性：连续同组（共用材料）题的材料框只印一次，组内后续题不再重复；断页由 .q 防跨页兜底。 */
 export function buildQuestionSheet(title: string, questions: readonly Question[]): string {
   const parts = [head(title, `共 ${questions.length} 题`)];
+  const materialPrinted = new Set<string>();
   questions.forEach((q, i) => {
     const no = i + 1;
+    let materialBox: string | null = null;
+    if (q.group && !materialPrinted.has(q.group)) {
+      // 组首：材料题（或组内首个带解析的材料题）承载共用材料，只印一次
+      const carrier = questions.slice(i).find((m) => m.group === q.group && m.type === "material" && m.analysis);
+      if (carrier?.analysis) {
+        materialBox = carrier.analysis;
+        materialPrinted.add(q.group);
+      }
+    }
     parts.push(`<div class="q">`);
+    if (materialBox) parts.push(`<div class="material">${esc(materialBox)}</div>`);
     parts.push(`<div class="q-head"><span class="q-type">${esc(TYPE_NAMES[q.type] ?? q.type)}</span>${no}. ${q.kp ? `<span class="kp">${esc(q.kp)}</span>` : ""}</div>`);
-    if (q.analysis && q.type === "material") {
-      // 材料题：解析字段承载共用材料（导入口径），题册展示为材料框
+    if (!q.group && q.analysis && q.type === "material") {
+      // 无组材料题：解析字段承载材料，按材料框展示（属题面）
       parts.push(`<div class="material">${esc(q.analysis)}</div>`);
     }
     parts.push(`<div class="q-stem">${esc(q.stem)}</div>`);
