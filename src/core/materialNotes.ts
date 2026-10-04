@@ -42,19 +42,30 @@ export interface NoteInput {
   tags?: string[];
 }
 
+/** locator 归一：页 ≥1、秒 ≥0、引文截 120；三者皆空返回 null（调用方决定是否报错） */
+export function normalizeLocator(loc: NoteLocator | null | undefined): NoteLocator | null {
+  if (!loc) return null;
+  if (loc.page != null && (!Number.isFinite(loc.page) || loc.page < 1)) throw new Error("页码需为 ≥1 的整数");
+  if (loc.tSec != null && (!Number.isFinite(loc.tSec) || loc.tSec < 0)) throw new Error("时间点需 ≥0 秒");
+  const quote = loc.quote?.trim().slice(0, 120) || undefined;
+  if (loc.page == null && loc.tSec == null && !quote) return null;
+  return { page: loc.page, tSec: loc.tSec, quote };
+}
+
+/** 版本对账通用口径：绑定版本 ≠ 当前版本 → 待重定位（不自动改绑） */
+export function revisionStale(bound: number, current: number): boolean {
+  return bound !== current;
+}
+
 /** 规范化输入：text 去空白且必填、页码 ≥1、秒 ≥0、引文截 120、标签去空去重（上限 8） */
 export function normalizeNoteInput(input: NoteInput): NoteInput {
   const text = input.text.trim();
   if (!text) throw new Error("笔记内容为空");
   if (!input.materialId) throw new Error("笔记缺少资料归属");
   if (!Number.isInteger(input.revision) || input.revision < 1) throw new Error("笔记缺少有效的资料版本");
-  const loc = input.locator ?? null;
-  if (loc) {
-    if (loc.page != null && (!Number.isFinite(loc.page) || loc.page < 1)) throw new Error("页码需为 ≥1 的整数");
-    if (loc.tSec != null && (!Number.isFinite(loc.tSec) || loc.tSec < 0)) throw new Error("时间点需 ≥0 秒");
-    if (loc.page == null && loc.tSec == null && !(loc.quote ?? "").trim()) {
-      throw new Error("定位需至少含页码/时间点/引文之一");
-    }
+  const loc = normalizeLocator(input.locator);
+  if (input.locator && !loc) {
+    throw new Error("定位需至少含页码/时间点/引文之一");
   }
   const tags = [...new Set((input.tags ?? []).map((t) => t.trim()).filter(Boolean))].slice(0, 8);
   const quote = loc?.quote?.trim().slice(0, 120) || undefined;

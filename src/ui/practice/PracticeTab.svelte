@@ -9,7 +9,7 @@ import { ttsSpeak } from "@/core/tts";
     import type { Question } from "../../core/types";
     import { parseText, parseExcelRows, autoMapExcel, errorsToCsv, extractTextRowAt, type ImportReport } from "../../importer/pipeline";
     import { columnLabel, autoAssignment, assignmentFromMap, assignmentToMap, assignmentErrors, emptyAssignment, type MapAssignment } from "../../importer/mapping";
-    import { formatSecToTime, parseTimeToSec, locatorLabel, locatedUrl, needsRelocate } from "@/core/materialNotes";
+    import { formatSecToTime, parseTimeToSec, locatorLabel, locatedUrl, needsRelocate, revisionStale } from "@/core/materialNotes";
     import { groupAdjacent } from "../../core/session";
     import { makeQuestion } from "../../core/blockTemplate";
     import { normalizeAnswer, questionHash } from "../../core/answer";
@@ -445,11 +445,72 @@ import { ttsSpeak } from "@/core/tts";
       questionsError = "";
       try {
         questions = await app.listQuestions(activeBankId);
+        rebuildQrefView();
         return questions;
       } catch (e) {
         questionsError = String(e instanceof Error ? e.message : e);
         return [];
       }
+    }
+
+    // ---------- 题目↔资料关联（120-05 lite）：题目回 PDF 页/视频时间点；快照式视图保响应 ----------
+    let qrefView = $state<Record<string, { title: string; label: string; stale: boolean } | null>>({});
+    let qrefFormFor = $state("");
+    let qrefMatId = $state("");
+    let qrefPage = $state("");
+    let qrefTime = $state("");
+    let qrefError = $state("");
+
+    function qrefSnapshot(qid: string) {
+      const ref = app.questionMaterialRef(qid);
+      if (!ref) return null;
+      const m = app.listMaterials().find((x) => x.id === ref.materialId);
+      return {
+        title: m?.title ?? "?",
+        label: locatorLabel(ref.locator),
+        stale: revisionStale(ref.revision, m?.revision ?? ref.revision),
+      };
+    }
+    function rebuildQrefView() {
+      const next: Record<string, { title: string; label: string; stale: boolean } | null> = {};
+      for (const q of questions) next[q.id] = qrefSnapshot(q.id);
+      qrefView = next;
+    }
+    function refreshQref(qid: string) {
+      qrefView = { ...qrefView, [qid]: qrefSnapshot(qid) };
+    }
+    function startQrefForm(qid: string) {
+      qrefFormFor = qid; qrefError = "";
+      const ref = app.questionMaterialRef(qid);
+      qrefMatId = ref?.materialId ?? "";
+      qrefPage = ref?.locator?.page != null ? String(ref.locator.page) : "";
+      qrefTime = ref?.locator?.tSec != null ? formatSecToTime(ref.locator.tSec) : "";
+    }
+    async function saveQref(qid: string) {
+      if (!qrefMatId) return;
+      qrefError = "";
+      try {
+        const page = qrefPage.trim() ? Number(qrefPage) : undefined;
+        if (qrefPage.trim() && (!Number.isInteger(page) || page! < 1)) throw new Error(t("materials.badPage"));
+        const tSec = qrefTime.trim() ? parseTimeToSec(qrefTime) : undefined;
+        const locator = page == null && tSec == null ? null : { page, tSec };
+        const r = await app.linkQuestionMaterial(qid, qrefMatId, locator);
+        qrefFormFor = ""; refreshQref(qid);
+        showMessage(r.replaced ? t("qref.relinked") : t("qref.linked"), 2000, "info");
+      } catch (e) {
+        qrefError = String(e instanceof Error ? e.message : e);
+      }
+    }
+    async function removeQref(qid: string) {
+      await app.unlinkQuestionMaterial(qid);
+      refreshQref(qid);
+    }
+    function openQref(qid: string) {
+      const ref = app.questionMaterialRef(qid);
+      const m = ref ? app.listMaterials().find((x) => x.id === ref.materialId) : null;
+      const url = locatedUrl(m ? app.resolveMaterialUrlOf(m, window.location.origin) : null, ref?.locator ?? null);
+      if (!url) { showMessage(t("materials.cannotOpen"), 2400, "error"); return; }
+      window.open(url, "_blank", "noopener");
     }
 
     async function createBank() {
@@ -3166,6 +3227,10 @@ import { ttsSpeak } from "@/core/tts";
                 <span class="lv-chip num" style="max-width:100%;overflow:hidden;text-overflow:ellipsis">{l.kind === "assets" ? "A" : "🔗"} {l.path}</span>
               {/each}
               <span>v{m.revision}</span>
+              {#if app.listQuestionRefs(m.id).length}
+                <!-- 120-05 lite：资料侧反查关联题目 -->
+                <span class="lv-chip num" title={t("qref.linkedTip")}>🔗 {t("qref.linkedCount").replace("{n}", String(app.listQuestionRefs(m.id).length))}</span>
+              {/if}
             </div>
             {#if notesOpenId === m.id}
               <!-- 121-03/122-03 lite：个人笔记（绑定 revision；换版待重定位） -->
@@ -3509,6 +3574,35 @@ import { ttsSpeak } from "@/core/tts";
                       {:else}{#each links as l, _i (_i)}<span class="lv-chip" title={l.content}>📎 {l.title}</span>{/each}{/if}
                     {/if}
                   </div>
+                  {#if qrefView[q.id]}
+                    <!-- 120-05 lite：题目↔资料关联（回 PDF 页/视频时间点） -->
+                    <div class="lv-row" style="font-size:11.5px">
+                      <span class="lv-chip">📄 {qrefView[q.id]!.title}{#if qrefView[q.id]!.label} · {qrefView[q.id]!.label}{/if}</span>
+                      {#if qrefView[q.id]!.stale}<span class="lv-chip lv-chip--amb" title={t("materials.relocateTip")}>{t("materials.relocate")}</span>{/if}
+                      <button class="lv-btn sm" onclick={() => openQref(q.id)}>↗ {t("materials.openAt")}</button>
+                      <button class="lv-btn sm lv-btn--ghost" onclick={() => startQrefForm(q.id)}>🔗 {t("qref.relink")}</button>
+                      <button class="lv-btn sm lv-btn--ghost" onclick={() => void removeQref(q.id)}>✕</button>
+                    </div>
+                  {:else}
+                    <div class="lv-row" style="font-size:11.5px">
+                      <button class="lv-btn sm lv-btn--ghost" onclick={() => startQrefForm(q.id)}>🔗 {t("qref.link")}</button>
+                    </div>
+                  {/if}
+                  {#if qrefFormFor === q.id}
+                    <div class="lv-detail" style="margin:4px 0">
+                      <div class="lv-row" style="flex-wrap:wrap">
+                        <select class="lv-select" bind:value={qrefMatId}>
+                          <option value="">{t("qref.pickMaterial")}</option>
+                          {#each app.listMaterials() as m (m.id)}<option value={m.id}>{m.title}</option>{/each}
+                        </select>
+                        <input class="lv-input" style="max-width:90px" placeholder={t("materials.page")} bind:value={qrefPage} />
+                        <input class="lv-input" style="max-width:110px" placeholder="mm:ss" bind:value={qrefTime} />
+                        <button class="lv-btn lv-btn--primary sm" onclick={() => void saveQref(q.id)} disabled={!qrefMatId}>{t("qref.save")}</button>
+                        <button class="lv-btn sm lv-btn--ghost" onclick={() => (qrefFormFor = "")}>{t("edit.cancel")}</button>
+                      </div>
+                      {#if qrefError}<div class="lv-error">{qrefError}</div>{/if}
+                    </div>
+                  {/if}
                 {/if}
               </div>
             {/if}

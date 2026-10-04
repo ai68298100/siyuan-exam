@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased（0.6.x-dev：廿三~五九批，2026-10-03/05）
+## Unreleased（0.6.x-dev：廿三~六十批，2026-10-03/05）
 
-> guard 八门禁全绿（409 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、样式 token 审计、ESLint 0 告警）+ 生产构建通过；**真机验证（SiYuan 3.8.6）**：preflight 17/17、数据生命周期 6/6、CSV 往返冒烟 5/5、种子数据经真实插件重载存活（37-01 路径语义实测通过）、题目编辑 updateBlock / 章节树 docTree / listQuestions hpath 三项契约实测通过、只读 e2e 走查 6 过/0 败（检查点 21 项）；**CI 首次真跑全绿**（check.yml 修复后 run 37221044264 success）。docs/17 人工 UI 步骤剩 27/28/36-38。
+> guard 八门禁全绿（414 项单测、svelte 0 错 0 警、i18n 键位校验含使用覆盖率、架构断言、样式 token 审计、ESLint 0 告警）+ 生产构建通过；**真机验证（SiYuan 3.8.6）**：preflight 17/17、数据生命周期 6/6、CSV 往返冒烟 5/5、种子数据经真实插件重载存活（37-01 路径语义实测通过）、题目编辑 updateBlock / 章节树 docTree / listQuestions hpath 三项契约实测通过、只读 e2e 走查 6 过/0 败（检查点 22 项）；**CI 首次真跑全绿**（check.yml 修复后 run 37221044264 success）。docs/17 人工 UI 步骤剩 27/28/36-38。
+
+- **题目↔资料关联回链**（120-05 lite，六十批，资料纵切闭环）：`core/materialLinks.ts`——`materials/qrefs` 信封 v1（qid→materialId+revision+locator，一题一主链、改链=替换、换版待重定位与笔记同口径）；浏览详情「🔗 关联资料」选资料+页码/mm:ss → 定位打开原件（`#page/#t`）；资料卡「关联 {n} 题」反查计数；资料移除时孤儿关联一并清理；locator 归一/版本对账抽为 materialNotes 共用导出。5 项单测；存储键入账（盘点/清除/出库），e2e 检查点 +1
 
 - **严格模考 AI 禁用审计锁**（114-02 lite，五九批）：架构断言 4 项入 guard（arch 37→41）——模考场零题目级 AI 发送入口（AiTaskRunner/aiChat/讲解/提示/错因/直连 .chat 全禁）、三个 UI 视图无绕过闸门的直连通道；模板枚举锁单测——helpKindOf 导出，全部模板（hint/socratic/explain/misdiagnosis/report.explain）strictMock 下无论提交状态一律拒绝（新增模板即入锁）
 

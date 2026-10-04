@@ -54,6 +54,18 @@ import {
   type NoteInput,
   type NoteLocator,
 } from "./core/materialNotes";
+import {
+  dropMaterial as dropMaterialLinks,
+  linkQuestion,
+  parseLinkStore,
+  questionsOfMaterial,
+  refOf,
+  serializeLinkStore,
+  unlinkQuestion,
+  EMPTY_LINK_STORE,
+  type MaterialLinkStore,
+  type QuestionMaterialRef,
+} from "./core/materialLinks";
 
 /** ArrayBuffer → base64（分块拼接，避免大文件 String.fromCharCode 展开栈溢出） */
 function arrayBufferToBase64(buf: ArrayBuffer): string {
@@ -109,6 +121,7 @@ const KNOWN_STORAGE_KEYS = [
   "batchedit/last",
   "materials/registry",
   "materials/notes",
+  "materials/qrefs",
 ];
 
 export interface ExamAppDeps {
@@ -124,6 +137,7 @@ const MOCK_RUN_KEY = "mock/run";
 const ACTIONS_KEY = "actions/items";
 const MATERIALS_KEY = "materials/registry";
 const MATERIAL_NOTES_KEY = "materials/notes";
+const MATERIAL_QREFS_KEY = "materials/qrefs";
 
 /** 过期草稿（TODO 2.4）：7 天隐藏不再续做入口，30 天清理（流水保留） */
 const DRAFT_HIDE_MS = 7 * 86_400_000;
@@ -147,6 +161,7 @@ export class ExamApp {
   private materialsRegistry: MaterialRegistry = EMPTY_REGISTRY;
   private materialsVersionTooNew = false;
   private materialNoteStore: MaterialNoteStore = EMPTY_NOTE_STORE;
+  private materialLinkStore: MaterialLinkStore = EMPTY_LINK_STORE;
   private activeSession: PracticeSession | null = null;
   kernelOnline = false;
   probeMessage = "";
@@ -208,6 +223,13 @@ export class ExamApp {
       this.materialNoteStore = parsedNotes.store;
     } catch {
       this.materialNoteStore = EMPTY_NOTE_STORE;
+    }
+    // 题目↔资料关联（120-05 lite）
+    try {
+      const parsedLinks = parseLinkStore(await this.deps.storage.load(MATERIAL_QREFS_KEY));
+      this.materialLinkStore = parsedLinks.store;
+    } catch {
+      this.materialLinkStore = EMPTY_LINK_STORE;
     }
   }
 
@@ -787,6 +809,7 @@ export class ExamApp {
         actions: actions ?? [],
         materials: serializeRegistry(this.materialsRegistry),
         materialNotes: serializeNoteStore(this.materialNoteStore),
+        materialLinks: serializeLinkStore(this.materialLinkStore),
       },
       null,
       2,
@@ -899,6 +922,13 @@ export class ExamApp {
       this.materialNoteStore = { v: 1, notes: this.materialNoteStore.notes.filter((n) => n.materialId !== materialId) };
       await this.saveMaterialNotes();
     }
+    // 题目↔资料关联同样随资料移除清理（120-05：不残留断链）
+    if (questionsOfMaterial(this.materialLinkStore, materialId).length) {
+      this.materialLinkStore = dropMaterialLinks(this.materialLinkStore, materialId);
+      await this.saves.run(MATERIAL_QREFS_KEY, () =>
+        this.deps.storage.save(MATERIAL_QREFS_KEY, serializeLinkStore(this.materialLinkStore)),
+      );
+    }
   }
 
   // ---------- 资料定位与个人笔记（121-02/03 + 122-02/03 lite） ----------
@@ -935,6 +965,43 @@ export class ExamApp {
     if (this.materialsReadonly) throw new Error("存储版本较新：只读（降级回滚场景），删除已拒绝");
     this.materialNoteStore = deleteNote(this.materialNoteStore, noteId);
     await this.saveMaterialNotes();
+  }
+
+  // ---------- 题目↔资料关联（120-05 lite：题目回 PDF 页/视频时间点；资料侧反查题目） ----------
+
+  questionMaterialRef(qid: string): QuestionMaterialRef | null {
+    return refOf(this.materialLinkStore, qid);
+  }
+
+  listQuestionRefs(materialId: string): QuestionMaterialRef[] {
+    return questionsOfMaterial(this.materialLinkStore, materialId);
+  }
+
+  /** 关联/改链（一题一主链，改链=替换）；资料须在册，绑定其当前版本 */
+  async linkQuestionMaterial(qid: string, materialId: string, locator?: NoteLocator | null): Promise<{ replaced: boolean }> {
+    if (this.materialsReadonly) throw new Error("存储版本较新：只读（降级回滚场景），写入已拒绝");
+    const material = this.materialsRegistry.materials.find((m) => m.id === materialId);
+    if (!material) throw new Error("资料不存在");
+    const r = linkQuestion(
+      this.materialLinkStore,
+      { qid, materialId, revision: material.revision, locator },
+      this.deps.now?.() ?? Date.now(),
+    );
+    this.materialLinkStore = r.store;
+    await this.saves.run(MATERIAL_QREFS_KEY, () =>
+      this.deps.storage.save(MATERIAL_QREFS_KEY, serializeLinkStore(this.materialLinkStore)),
+    );
+    return { replaced: r.replaced };
+  }
+
+  async unlinkQuestionMaterial(qid: string): Promise<void> {
+    if (this.materialsReadonly) throw new Error("存储版本较新：只读（降级回滚场景），删除已拒绝");
+    const r = unlinkQuestion(this.materialLinkStore, qid);
+    if (!r.removed) return;
+    this.materialLinkStore = r.store;
+    await this.saves.run(MATERIAL_QREFS_KEY, () =>
+      this.deps.storage.save(MATERIAL_QREFS_KEY, serializeLinkStore(this.materialLinkStore)),
+    );
   }
 
   /** 清除插件数据（58-03 lite）：逐键置空并返回逐对象回执（不冒充全部删除）。

@@ -58,6 +58,7 @@ const EXPECTED = [
   { key: "wrongbook/overlays", file: "wrongbook/overlays.json", label: "错题处置覆盖层", critical: false },
   { key: "materials/registry", file: "materials/registry.json", label: "120 资料注册表", critical: false },
   { key: "materials/notes", file: "materials/notes.json", label: "121/122 资料笔记", critical: false },
+  { key: "materials/qrefs", file: "materials/qrefs.json", label: "120-05 题目资料关联", critical: false },
 ];
 
 let anyData = false;
