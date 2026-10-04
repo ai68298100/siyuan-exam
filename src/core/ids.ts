@@ -17,6 +17,9 @@ function rand(n: number): string {
 /** 题目稳定 ID：q-xxxxxxxx（导入时生成，块移动/重命名不变） */
 export const newQuestionId = () => `q-${rand(8)}`;
 
+/** 资料对象 ID：m-xxxxxxxx（120-01 学习资料身份，与文件名/位置解耦） */
+export const newMaterialId = () => `m-${rand(8)}`;
+
 /** 会话 ID：s-时间戳-序号 */
 export const newSessionId = () => `s-${Date.now().toString(36)}-${(counter++).toString(36)}`;
 

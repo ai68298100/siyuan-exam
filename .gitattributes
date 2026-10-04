@@ -1,0 +1,4 @@
+* text=auto eol=lf
+*.ps1 -text
+*.bat -text
+*.cmd -text
