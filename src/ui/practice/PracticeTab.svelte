@@ -22,6 +22,7 @@ import { ttsSpeak } from "@/core/tts";
     import { kpAudit, planKpMerge, planEmptyKpFill } from "@/core/kpGovernance";
     import { coverageTree, subtreeCount, subtreeLearned, subtreeNoSource, gapsToCsv } from "@/core/syllabus";
     import { parseErrataCsv, planErrata, errataTemplateCsv } from "@/core/errata";
+    import { buildQuestionSheet, buildAnswerSheet } from "@/core/printSheet";
     import { probeCheckinApi, syncCheckin, localDateKeyOf, bridgeEnabled, fetchStreak } from "@/core/checkinBridge";
     import { probeGlean, listLaterClips, formatClipsForSource, markClipDone, type GleanClip } from "@/core/gleanBridge";
     import { onExamEvent, emitExamEvent } from "@/core/bus";
@@ -336,6 +337,23 @@ import { ttsSpeak } from "@/core/tts";
       } catch (e) {
         showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
       } finally { errataBusy = false; }
+    }
+
+    // ---------- 打印视图（68-01 lite）：题册/答案册分离，作用于当前筛选全集 ----------
+    // 注：闭合标签经 \u003c 转义构造——Svelte 解析器对脚本内裸 "</" 敏感
+    const LT = "\u003c";
+    const PRINT_HOOK = `${LT}script>window.onload = function () { window.print(); }${LT}/script>`;
+    const BODY_CLOSE = `${LT}/body>`;
+    function printSheet(answerSheet: boolean) {
+      if (!filteredQuestions.length) { showMessage(t("print.empty"), 2200, "info"); return; }
+      const title = `${bankName} · ${t("print.sheetTitle")}`;
+      const html = (answerSheet ? buildAnswerSheet(title, filteredQuestions) : buildQuestionSheet(title, filteredQuestions))
+        .replace(/<\/body>/, PRINT_HOOK + BODY_CLOSE);
+      const w = window.open("", "_blank");
+      if (!w) { showMessage(t("print.popupBlocked"), 3600, "error"); return; }
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
     }
 
     function previewKpMerge() {
@@ -3592,6 +3610,9 @@ import { ttsSpeak } from "@/core/tts";
         <button class="lv-chip" class:acc={errataOpen} onclick={() => errataOpen = !errataOpen}>📄 {t("errata.title")}</button>
         <button class="lv-chip" class:acc={batchMode} onclick={() => { batchMode = !batchMode; if (!batchMode) selectedIds = {}; }}>{t("batch.mode")}</button>
         <button class="lv-chip" title={t("browse.exportCsvTitle")} onclick={exportBankCsv}>⬇️ CSV</button>
+        <!-- 68-01 lite：题册/答案册分离打印（作用于当前筛选全集；题册不含答案与解析） -->
+        <button class="lv-chip" title={t("print.qSheetTip")} onclick={() => printSheet(false)}>🖨 {t("print.qSheet")}</button>
+        <button class="lv-chip" title={t("print.aSheetTip")} onclick={() => printSheet(true)}>🖨 {t("print.aSheet")}</button>
         <input class="lv-input" style="flex:1;min-width:160px" placeholder={t("browse.searchPlaceholder")} bind:value={searchText} />
         <!-- 65-01 lite：结构化筛选（题型/来源/仅错题），与搜索词叠加 -->
         <select class="lv-select" style="max-width:110px" bind:value={filterType} onchange={() => (browseLimit = 200)}>
