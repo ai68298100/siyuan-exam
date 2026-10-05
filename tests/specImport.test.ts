@@ -92,4 +92,64 @@ describe("makeQuestion 推断 + 手工录题入口（B1 编辑入口）", () => 
     expect(setCalls).toHaveLength(1);
     expect(setCalls[0]["exam-answer-spec"]).toBe(JSON.stringify(q.answerSpec));
   });
+
+  it("updateQuestionContent：答案变更 → spec 重推断同步；改为文本 → 属性清空", async () => {
+    const setCalls: { block: string; attrs: Record<string, unknown> }[] = [];
+    let lastMd = "";
+    const client = {
+      updateBlock: async (_b: string, md: string) => {
+        lastMd = md;
+        return "ok";
+      },
+      getBlockKramdown: async () => lastMd, // 读回=写入的 markdown（含生成的 exam-id）
+      setExamAttrs: async (block: string, attrs: Record<string, unknown>) => {
+        setCalls.push({ block, attrs });
+      },
+    } as unknown as KernelApiClient;
+    const app = new ExamApp({ client, storage: new MemoryStorage() });
+    app.kernelOnline = true;
+    const q = {
+      ...makeQuestion({ type: "fill", stem: "速度？", options: [], answer: "340 m/s" }),
+      blockId: "b-1",
+    } as never as Parameters<ExamApp["updateQuestionContent"]>[0];
+    // 改为另一个数值+单位 → 重推断出新 spec（unit 变更）
+    const r1 = await app.updateQuestionContent(q, {
+      stem: "速度？", options: [], answer: "0.34 km/s", analysis: "", kp: "", difficulty: undefined,
+    });
+    expect(r1.answerSpec).toEqual({ v: 1, kind: "numeric", unit: "km/s" });
+    expect(setCalls).toHaveLength(1);
+    expect(setCalls[0].attrs["exam-answer-spec"]).toBe(JSON.stringify({ v: 1, kind: "numeric", unit: "km/s" }));
+    // 改为不可识别文本 → 属性清空（回旧字符串口径），避免陈旧数值 spec 全判错
+    const r2 = await app.updateQuestionContent({ ...r1, blockId: "b-1" }, {
+      stem: "速度？", options: [], answer: "三百四十米每秒", analysis: "", kp: "", difficulty: undefined,
+    });
+    expect(r2.answerSpec).toBeUndefined();
+    expect(setCalls).toHaveLength(2);
+    expect(setCalls[1].attrs["exam-answer-spec"]).toBe("");
+  });
+
+  it("updateQuestionContent：答案未变（只改题干）→ 不触碰 spec", async () => {
+    const setCalls: unknown[] = [];
+    let lastMd = "";
+    const client = {
+      updateBlock: async (_b: string, md: string) => {
+        lastMd = md;
+        return "ok";
+      },
+      getBlockKramdown: async () => lastMd,
+      setExamAttrs: async (_b: string, attrs: Record<string, unknown>) => {
+        setCalls.push(attrs);
+      },
+    } as unknown as KernelApiClient;
+    const app = new ExamApp({ client, storage: new MemoryStorage() });
+    app.kernelOnline = true;
+    const q = {
+      ...makeQuestion({ type: "fill", stem: "速度？", options: [], answer: "340 m/s" }),
+      blockId: "b-1",
+    } as never as Parameters<ExamApp["updateQuestionContent"]>[0];
+    await app.updateQuestionContent(q, {
+      stem: "声音在 15℃ 空气中的传播速度（填数值与单位）？", options: [], answer: "340 m/s", analysis: "", kp: "", difficulty: undefined,
+    });
+    expect(setCalls).toHaveLength(0);
+  });
 });

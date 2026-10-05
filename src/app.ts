@@ -9,6 +9,7 @@ import type { AttemptEvent, Question, ReplayResult, WrongItem, SessionState } fr
 import { replay, activeWrongItems } from "./core/replayer";
 import { PracticeSession, pickRandom, groupAdjacent } from "./core/session";
 import { randomSeedId, seededPickN } from "./core/random";
+import { inferAnswerSpec } from "./core/structuredAnswer";
 import { interleaveGroups } from "./core/interleave";
 import { deckNameForBank, selfRatingToRiffRating, pickSameKp, cramQueue, dailySet } from "./core/memory";
 import { SaveGate } from "./core/saveGate";
@@ -475,6 +476,17 @@ export class ExamApp {
     const kd = await this.deps.client.getBlockKramdown(q.blockId);
     if (!kd.includes(`exam-id="${q.id}"`) && !kd.includes(`exam-id='${q.id}'`)) {
       throw new Error("编辑读回异常：题目身份（exam-id）丢失，请勿关闭窗口并反馈诊断");
+    }
+    // 54/63-03：答案变更 → 结构化 spec 重推断并同步块属性（陈旧 spec 会让新答案全判错；
+    // 填空答案改为不可识别文本 → 清空属性回旧字符串口径）。答案未变（只改题干等）不触碰。
+    if (q.type === "fill" && answer !== q.answer) {
+      const spec = inferAnswerSpec("fill", answer);
+      next.answerSpec = spec;
+      try {
+        await this.deps.client.setExamAttrs(q.blockId, {
+          "exam-answer-spec": spec ? JSON.stringify(spec) : "",
+        });
+      } catch { /* 属性同步失败不影响题面编辑本身；读回时按块内旧属性如实判分 */ }
     }
     return next;
   }
