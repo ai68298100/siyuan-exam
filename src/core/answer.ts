@@ -3,6 +3,7 @@
 // 定案（TODO 26.1）：空白折叠、全角→半角、大小写策略按题型、多选按字母序
 // ============================================================
 import type { Question } from "./types";
+import { specOf, gradeWithSpec } from "./structuredAnswer";
 
 export const OPTION_LETTERS = "ABCDEFGHIJ";
 
@@ -48,13 +49,20 @@ export interface GradeResult {
   myAnswer: string | null;
 }
 
-/** 判分：myAnswer 为空/仅空白 → not_attempted（不计入正确率分母的口径见统计说明） */
+/** 判分：myAnswer 为空/仅空白 → not_attempted（不计入正确率分母的口径见统计说明）。
+ *  54-01/02：带 numeric answerSpec 的题走数值容差/单位判分（structuredAnswer），其余按字符串口径。 */
 export function grade(q: Question, myAnswerRaw: string | null | undefined): GradeResult {
   const myAnswer = myAnswerRaw == null || myAnswerRaw === "" ? null : myAnswerRaw;
   if (myAnswer == null) return { verdict: "not_attempted", myAnswer: null };
   if (q.type === "short") {
     // 简答题：机器不判分，作答即计入尝试；对错由自评/背诵回路决定，此处按 not_attempted 语义返回 correct-by-self 由 UI 决定
     return { verdict: "not_attempted", myAnswer };
+  }
+  // 54-01/02：结构化数值判分优先（无 spec → 旧口径，向后兼容）
+  const spec = specOf(q);
+  if (spec) {
+    const v = gradeWithSpec(q, myAnswer);
+    return { verdict: v.verdict, myAnswer };
   }
   const mine = normalizeAnswer(q.type, myAnswer);
   const want = normalizeAnswer(q.type, q.answer);
