@@ -4,6 +4,7 @@
 // ============================================================
 import type { Question, QuestionType } from "../core/types";
 import { normalizeAnswer, questionHash, foldText, OPTION_LETTERS } from "../core/answer";
+import { inferAnswerSpec } from "../core/structuredAnswer";
 import { newQuestionId, newBatchId } from "../core/ids";
 import { newGroupId } from "../core/cbt";
 
@@ -111,8 +112,11 @@ function build(
   raw: Omit<Question, "id" | "hash" | "origin" | "score"> & { score?: number },
   opt: ImportOptions,
 ): Question {
+  // 54 第三刀：填空答案的结构化识别（";;" 多空 / 纯数值±单位）→ answerSpec 随导入写块属性
+  const spec = inferAnswerSpec(raw.type, raw.answer);
   return {
     ...raw,
+    ...(spec ? { answerSpec: spec } : {}),
     id: newQuestionId(),
     score: raw.score ?? 1,
     origin: "imported",

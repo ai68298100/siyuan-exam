@@ -13,6 +13,7 @@ import { ttsSpeak } from "@/core/tts";
     import { groupAdjacent } from "../../core/session";
     import { makeQuestion } from "../../core/blockTemplate";
     import { normalizeAnswer, questionHash } from "../../core/answer";
+    import { specOf, splitBlanks, joinBlanks } from "../../core/structuredAnswer";
     import { validate } from "../../importer/pipeline";
     import { bankHealthReport, coverageStats, answerDistribution, unreviewedStats, type BankHealthReport } from "../../core/bankHealth";
     import { planBatchEdit, invertPlan, describeChange } from "../../core/batchEdit";
@@ -61,6 +62,9 @@ import { ttsSpeak } from "@/core/tts";
     let feedback = $state<null | { verdict: string; myAnswer: string | null }>(null);
     let selected = $state<string>("");
     let answerStart = $state(0);
+    /** 草稿的响应式镜像：session 类实例非响应式（$state 不代理类实例），提交键的禁用态
+     *  需要跟随草稿变化——三个作答框（数值/多空/文本）oninput 时同步此镜像 */
+    let draftLive = $state("");
     let sessionDone = $state<null | { total: number; correct: number; wrong: number }>(null);
     /** 已存错因回显（app.loadWrongReason；答错时载入，选择后即时高亮） */
     let savedReason = $state<string | undefined>(undefined);
@@ -114,6 +118,35 @@ import { ttsSpeak } from "@/core/tts";
       return () => clearInterval(t);
     });
     const qElapsedS = $derived.by(() => { void qTick; return answerStart <= 0 ? 0 : Math.max(0, Math.floor((Date.now() - answerStart) / 1000)); });
+    /** 会话推进版本号：PracticeSession 是类实例（$state 不代理类实例），其内部变更（next/submit）
+     *  不触发模板更新——会话读数（当前题/进度）的响应式来源是本计数器。
+     *  bump 点：提交后、切题后；session 变量赋值点（start/resume/discard）本身即响应式。 */
+    let sessionRev = $state(0);
+    const curQ = $derived.by(() => { void sessionRev; return session?.current ?? null; });
+    const curProgress = $derived.by(() => { void sessionRev; return session ? session.progress : { done: 0, total: 0 }; });
+    /** 54 第三刀：数值/多空作答框——curSpec 取当前题的结构化作答规则；多空草稿按 ";;" 切分为逐空输入 */
+    const curSpec = $derived.by(() => {
+      void sessionRev;
+      return view === "session" && session?.current ? specOf(session.current) : null;
+    });
+    let blankParts = $state<string[]>([]);
+    let blankPartsFor = $state("");
+    $effect(() => {
+      const q = session?.current;
+      const spec = curSpec;
+      if (view !== "session" || !q || spec?.kind !== "multiBlank") return;
+      if (blankPartsFor !== q.id) {
+        blankParts = splitBlanks(session.getDraft(q.id) ?? "", spec.blanks.length);
+        blankPartsFor = q.id;
+      }
+    });
+    function setBlank(i: number, v: string) {
+      const q = session?.current;
+      if (!q) return;
+      blankParts[i] = v;
+      draftLive = joinBlanks(blankParts);
+      session.setDraft(q.id, draftLive);
+    }
     const qTimeoutS = $derived(Math.max(0, Number(plugin.settingUtils?.get?.("perQuestionTimeoutS") ?? 0) || 0));
     /** 44-01：反馈时机策略（默认逐题即时；勾选=会话末复盘。作答事件两种模式完全一致） */
     const feedbackMode = $derived(
@@ -1706,12 +1739,14 @@ import { ttsSpeak } from "@/core/tts";
         return;
       }
       feedback = { verdict: g.verdict, myAnswer: g.myAnswer };
+      sessionRev++; // 类实例非响应式：提交后推进读数
     }
 
     function nextQuestion() {
-      feedback = null; selected = ""; confidenceSel = ""; materialExpanded = false; answerStart = Date.now();
+      feedback = null; selected = ""; draftLive = ""; confidenceSel = ""; materialExpanded = false; answerStart = Date.now();
       hideOptions = false; recallDraft = ""; leakPending = null; // 52-02：切题重置先回忆态（揭示/草稿不沿用上一题，U02 口径）；114-01 泄露待决随之作废
       if (!session.next()) { void finishSession(); return; }
+      sessionRev++; // 类实例非响应式：切题后刷新题面
       void app.saveSession();   // 游标推进随答随存
     }
 
@@ -2597,6 +2632,7 @@ import { ttsSpeak } from "@/core/tts";
     let materialHtml = $state("");
     let materialHtmlFor = $state("");
     $effect(() => {
+      void sessionRev; // 类实例非响应式：以推进版本号驱动题面重渲染
       const q = view === "session" ? session?.current : view === "recite" ? reciteQueue[reciteCursor] : null;
       if (!q) { stemHtml = ""; stemHtmlFor = ""; materialHtml = ""; materialHtmlFor = ""; return; }
       // 竞态防护（27 组）：异步返回时校验仍是当前题才应用
@@ -3124,14 +3160,14 @@ import { ttsSpeak } from "@/core/tts";
         </div>
       </div>
     {:else}
-      {@const q = session.current}
+      {@const q = curQ}
       {#if q}
         <div class="lv-pad lv-session-grid">
           <div class="lv-row lv-session-head">
             <button class="lv-btn lv-btn--ghost" onclick={exitSession}>← {t("session.exit")}</button>
             <div class="lv-row" style="flex:1;min-width:120px;gap:8px">
-              <div class="lv-progress" style="flex:1" role="progressbar" aria-label={t("session.progress")} aria-valuemin="0" aria-valuemax={session.progress.total} aria-valuenow={session.progress.done}><i style="width:{session.progress.total ? Math.round((session.progress.done / session.progress.total) * 100) : 0}%"></i></div>
-              <span class="num lv-muted">{session.progress.done}/{session.progress.total}</span>
+              <div class="lv-progress" style="flex:1" role="progressbar" aria-label={t("session.progress")} aria-valuemin="0" aria-valuemax={curProgress.total} aria-valuenow={curProgress.done}><i style="width:{curProgress.total ? Math.round((curProgress.done / curProgress.total) * 100) : 0}%"></i></div>
+              <span class="num lv-muted">{curProgress.done}/{curProgress.total}</span>
             </div>
             <span class="lv-chip lv-chip--acc">{t("qtype." + q.type)}</span>
             {#if q.group}
@@ -3199,10 +3235,29 @@ import { ttsSpeak } from "@/core/tts";
               </div>
               {/if}
             {:else}
-              <textarea class="lv-input lv-textarea" placeholder={t("session.answerPlaceholder")}
-                value={session.getDraft(q.id)}
-                oninput={(e) => session.setDraft(q.id, (e.target as HTMLTextAreaElement).value)}
-                disabled={!!feedback}></textarea>
+              {#if curSpec?.kind === "numeric"}
+                <!-- 54 第三刀：数值题专用作答框（单行 + 单位提示；宽容解析/容差判分在引擎） -->
+                <input class="lv-input lv-answer-num" type="text" inputmode="decimal"
+                  placeholder={curSpec.unit ? t("session.numericUnit").replace("{u}", curSpec.unit) : t("session.numericPlain")}
+                  value={session.getDraft(q.id)}
+                  oninput={(e) => { draftLive = (e.target as HTMLInputElement).value; session.setDraft(q.id, draftLive); }}
+                  disabled={!!feedback} />
+                {#if curSpec.unit}<div class="lv-row" style="margin:6px 0 0"><span class="lv-chip num">{t("session.unitLabel")}：{curSpec.unit}</span></div>{/if}
+              {:else if curSpec?.kind === "multiBlank"}
+                <!-- 54 第三刀：多空题逐空作答框（草稿按 ";;" 拼接，判分按位置对应） -->
+                <div class="lv-row" style="margin:0 0 6px"><span class="lv-muted" style="font-size:11.5px">{t("session.blankHint")}</span></div>
+                {#each blankParts as _p, i (i)}
+                  <input class="lv-input lv-answer-blank" placeholder={t("session.blankN").replace("{n}", String(i + 1))}
+                    value={blankParts[i]}
+                    oninput={(e) => setBlank(i, (e.target as HTMLInputElement).value)}
+                    disabled={!!feedback} />
+                {/each}
+              {:else}
+                <textarea class="lv-input lv-textarea" placeholder={t("session.answerPlaceholder")}
+                  value={session.getDraft(q.id)}
+                  oninput={(e) => { draftLive = (e.target as HTMLTextAreaElement).value; session.setDraft(q.id, draftLive); }}
+                  disabled={!!feedback}></textarea>
+              {/if}
             {/if}
 
             {#if feedback}
@@ -3233,7 +3288,7 @@ import { ttsSpeak } from "@/core/tts";
 
             <div class="lv-row lv-answer-actions">
               {#if !feedback}
-                <button class="lv-btn lv-btn--primary" onclick={submitAnswer} disabled={!selected && !session.getDraft(q.id)}>{t("session.submit")}</button>
+                <button class="lv-btn lv-btn--primary" onclick={submitAnswer} disabled={!selected && !draftLive}>{t("session.submit")}</button>
                 <button class="lv-btn lv-btn--ghost" onclick={requestHint} disabled={explainBusy}>{hintButtonLabel(q)}</button>
                 {#if q.type === "fill" || q.type === "short"}
                   <button class="lv-btn lv-btn--ghost" onclick={() => { submitAnswer(); }}>{t("session.skip")}</button>
@@ -4539,6 +4594,9 @@ import { ttsSpeak } from "@/core/tts";
   .lv-feedback.good { border-left-color: var(--lv-green); background: var(--lv-green-soft); color: var(--lv-green); }
   /* —— 作答动作区（原型 .answer-actions：上分隔线 + 层次） —— */
   .lv-answer-actions { margin-top: 14px; padding-top: 18px; border-top: 1px solid var(--lv-border); }
+  /* —— 结构化作答框（54 第三刀：数值单行 / 多空逐空） —— */
+  .lv-answer-num { min-height: 48px; font-size: 16px; font-variant-numeric: tabular-nums; }
+  .lv-answer-blank { min-height: 44px; margin-bottom: 10px; }
   .lv-analysis { border-left: 3px solid var(--lv-accent); background: var(--lv-surface-2); border-radius: 0 var(--lv-r-2) var(--lv-r-2) 0; padding: 12px 16px; font-size: 13.5px; color: var(--lv-text-2); margin-bottom: 10px; white-space: pre-wrap; }
   .lv-error { margin: 8px 0; padding: 10px 14px; border-radius: var(--lv-r-2); background: var(--lv-red-soft); color: var(--lv-red); font-size: 13px; }
   .lv-success { margin: 8px 0; padding: 10px 14px; border-radius: var(--lv-r-2); background: var(--lv-green-soft); color: var(--lv-green); font-size: 13px; font-weight: 650; }

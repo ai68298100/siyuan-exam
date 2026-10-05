@@ -47,6 +47,12 @@ const SEED_QUESTIONS = [
   q("seed-q08", "single", "纸笔回录的流水会以什么标记来源？", ["mode=paper", "mode=mock", "mode=recite", "source=paper"], "A", "打印/回录"),
   q("seed-q09", "single", "资料登记后支持哪些定位方式？", ["页码", "时间点", "链接锚点", "以上都是"], "D", "资料/定位"),
   q("seed-q10", "single", "考纲对照的「零题节点」用什么颜色提示？", ["红", "琥珀", "绿", "灰"], "A", "考纲/覆盖"),
+  q("seed-q11", "fill", "声音在 15℃ 空气中的传播速度约为多少（填数值与单位）？", [], "340 m/s", "物理/声学", {
+    "answer-spec": JSON.stringify({ v: 1, kind: "numeric", unit: "m/s" }),
+  }),
+  q("seed-q12", "fill", "写出两种天文学里的距离单位名称（用 ;; 分隔）。", [], "光年;;天文单位", "物理/单位", {
+    "answer-spec": JSON.stringify({ v: 1, kind: "multiBlank", blanks: [{ answers: ["光年"] }, { answers: ["天文单位"] }] }),
+  }),
 ];
 
 function sqlRowsFor(box) {
@@ -104,17 +110,18 @@ const mkEvent = (daysAgo, qid, kind, mode, verdict, extra = {}) => ({
   seq: seq,
   ...extra,
 });
-// 4 天前 3 对 1 错；3 天前 4 对（含 1 受助）；2 天前模考 6 题；昨天 5 对；今天 2 对 1 错
+// 4 天前 3 对 1 错；3 天前 4 对（含 1 受助）；2 天前模考 6 题；昨天 5 对；今天 2 对
+// 错题固定为 q11（数值）与 q12（多空）：错题重练可确定性触达 54 第三刀作答框
 [
   [4, "seed-q01", "practice", "daily", "correct", { confidence: "sure" }],
   [4, "seed-q02", "practice", "daily", "correct", { confidence: "fuzzy" }],
-  [4, "seed-q03", "practice", "daily", "wrong", { myAnswer: "C", confidence: "guess" }],
+  [4, "seed-q03", "practice", "daily", "correct", { confidence: "guess" }],
   [3, "seed-q04", "practice", "daily", "correct", { confidence: "sure" }],
   [3, "seed-q05", "practice", "daily", "correct", { help: "hint", confidence: "fuzzy" }],
   [3, "seed-q06", "practice", "daily", "correct", { confidence: "sure" }],
   [3, "seed-q07", "practice", "daily", "correct", { confidence: "sure" }],
   [2, "seed-q01", "mock", "paper", "correct", { examId: "seed-mock-1" }],
-  [2, "seed-q03", "mock", "paper", "wrong", { examId: "seed-mock-1", myAnswer: "D" }],
+  [2, "seed-q03", "mock", "paper", "correct", { examId: "seed-mock-1" }],
   [2, "seed-q05", "mock", "paper", "correct", { examId: "seed-mock-1" }],
   [2, "seed-q08", "mock", "paper", "not_attempted", { examId: "seed-mock-1" }],
   [2, "seed-q09", "mock", "paper", "correct", { examId: "seed-mock-1" }],
@@ -123,7 +130,9 @@ const mkEvent = (daysAgo, qid, kind, mode, verdict, extra = {}) => ({
   [1, "seed-q04", "practice", "daily", "correct", { confidence: "sure" }],
   [1, "seed-q06", "practice", "daily", "correct", { confidence: "fuzzy" }],
   [0, "seed-q09", "practice", "daily", "correct", { confidence: "sure" }],
-  [0, "seed-q10", "practice", "daily", "wrong", { myAnswer: "B", confidence: "guess" }],
+  [0, "seed-q10", "practice", "daily", "correct", { confidence: "guess" }],
+  [0, "seed-q11", "practice", "daily", "wrong", { myAnswer: "350 m/s", confidence: "fuzzy" }],
+  [0, "seed-q12", "practice", "daily", "wrong", { myAnswer: "光年;;秒差距", confidence: "guess" }],
 ].forEach(([d, qid, kind, mode, verdict, extra]) => seedEvents.push(mkEvent(d, qid, kind, mode, verdict, extra)));
 
 const memStorage = new Map([

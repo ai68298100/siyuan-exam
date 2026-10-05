@@ -115,12 +115,25 @@ export function questionFromBlock(input: FromBlockInput): Question | null {
   };
 }
 
-/** 54-01：块属性 JSON → answerSpec（宽容解析：非对象/缺 v/kind → undefined） */
+/** 54-01/03：块属性 JSON → answerSpec（宽容解析：非对象/缺 v/kind/形状不符 → undefined）。
+ *  numeric：{v,kind,unit?…}；multiBlank：blanks=非空数组（逐项含 answers 非空数组）。 */
 function parseAnswerSpecAttr(raw: string | undefined): Question["answerSpec"] {
   if (!raw) return undefined;
   try {
-    const obj = JSON.parse(raw) as { v?: number; kind?: string };
-    if (obj && obj.v === 1 && obj.kind === "numeric") return obj as Question["answerSpec"];
+    const obj = JSON.parse(raw) as {
+      v?: number;
+      kind?: string;
+      blanks?: { answers?: unknown }[];
+    };
+    if (!obj || obj.v !== 1) return undefined;
+    if (obj.kind === "numeric") return obj as unknown as Question["answerSpec"];
+    if (obj.kind === "multiBlank") {
+      const blanks = Array.isArray(obj.blanks)
+        ? obj.blanks.filter((b) => b && Array.isArray(b.answers) && b.answers.length > 0)
+        : [];
+      if (!blanks.length) return undefined;
+      return { v: 1, kind: "multiBlank", blanks: blanks.map((b) => ({ answers: (b.answers as string[]).map(String) })) };
+    }
     return undefined;
   } catch {
     return undefined;

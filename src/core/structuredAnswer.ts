@@ -72,7 +72,12 @@ export function gradeNumeric(
   expectedRaw: string,
   givenRaw: string,
 ): NumericVerdict {
-  const expected = parseNumeric(expectedRaw);
+  // 期望答案允许带主单位后缀（如导入识别 "340 m/s" → spec.unit="m/s"）：剥去后按纯数值比对
+  let expectedText = String(expectedRaw ?? "").trim();
+  if (spec.unit && expectedText.toLowerCase().endsWith(spec.unit.toLowerCase())) {
+    expectedText = expectedText.slice(0, expectedText.length - spec.unit.length).trim();
+  }
+  const expected = parseNumeric(expectedText);
   // given 可能带单位后缀（如 "1.5 km"）：剥末尾单位词再解析数值
   let givenText = String(givenRaw ?? "").trim();
   let givenUnit = spec.unit ?? "";
@@ -157,4 +162,49 @@ export function gradeMultiBlank(spec: MultiBlankSpec, given: string): MultiBlank
     filledCount: blanks.filter((b) => !b.empty).length,
     allCorrect: blanks.length > 0 && correctCount === blanks.length,
   };
+}
+
+// ============================================================
+// UI 面（54 第三刀）：作答框所需的纯函数 + 导入识别
+// ============================================================
+
+/** 草稿 → 逐空数组：按 ";;" 切分，不足 n 段补空串（判分按位置对应，多余段保留如实提交） */
+export function splitBlanks(draft: string, n: number): string[] {
+  const parts = String(draft ?? "").split(MULTI_BLANK_SEP);
+  while (parts.length < n) parts.push("");
+  return parts;
+}
+
+/** 逐空数组 → 草稿（session draft 单字符串存储；判分管线无感） */
+export function joinBlanks(parts: string[]): string {
+  return parts.join(MULTI_BLANK_SEP);
+}
+
+/** 导入识别（54-01/02/03 第三刀）：填空答案 → 结构化 spec；不匹配返回 undefined=旧字符串口径。
+ *  规则：① 含 ";;" 且 ≥2 段 → multiBlank（逐段为主答案候选）；
+ *        ② 纯数值（可带一个单位词，如 "9.8 m/s²"）→ numeric（无默认容差，exact+宽容解析口径）。
+ *  识别失败不影响导入；spec 随导入写入块属性（app.commitImport 既有链路）。 */
+export function inferAnswerSpec(
+  type: string,
+  answer: string,
+): NumericAnswerSpec | MultiBlankSpec | undefined {
+  if (type !== "fill") return undefined;
+  const text = String(answer ?? "").trim();
+  if (!text) return undefined;
+  if (text.includes(MULTI_BLANK_SEP)) {
+    const segs = text
+      .split(MULTI_BLANK_SEP)
+      .map((x) => x.trim())
+      .filter(Boolean);
+    if (segs.length >= 2) {
+      return { v: 1, kind: "multiBlank", blanks: segs.map((x) => ({ answers: [x] })) };
+    }
+  }
+  const m = text.match(/^([-+]?[\d.,]+)\s*(\S+)?$/);
+  if (m && parseNumeric(m[1]) !== null) {
+    const spec: NumericAnswerSpec = { v: 1, kind: "numeric" };
+    if (m[2]) spec.unit = m[2];
+    return spec;
+  }
+  return undefined;
 }
