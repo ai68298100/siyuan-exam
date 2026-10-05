@@ -358,7 +358,15 @@ export class ExamApp {
         break;
       }
       const docId = await this.ensureDoc(bankId, doc);
-      await this.deps.client.appendQuestions(docId, qs);
+      const writtenBlocks = await this.deps.client.appendQuestions(docId, qs);
+      // 54-01 lite：结构化作答规则随导入写入块属性（custom-exam-answer-spec）——往返不丢；失败不影响题目入库
+      for (const { qid, blockId } of writtenBlocks) {
+        const spec = qs.find((q) => q.id === qid)?.answerSpec;
+        if (!spec) continue;
+        try {
+          await this.deps.client.setExamAttrs(blockId, { "exam-answer-spec": JSON.stringify(spec) });
+        } catch { /* spec 写失败不影响题目入库；读回时该题按旧口径判分（如实降级） */ }
+      }
       written += qs.length;
       for (const q of qs) writtenIds.push(q.id);
       docs.push(doc);

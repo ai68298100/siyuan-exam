@@ -109,8 +109,22 @@ export function questionFromBlock(input: FromBlockInput): Question | null {
     review: attrs["exam-review"] as Question["review"],
     alt: attrs["exam-alt"] ? attrs["exam-alt"].split("|") : undefined,
     fav: attrs["exam-fav"] === "1",
+    /** 54-01：结构化作答规则（custom-exam-answer-spec JSON）；损坏/版本不符忽略，按旧口径判分 */
+    answerSpec: parseAnswerSpecAttr(attrs["exam-answer-spec"]),
     hash: questionHash(stem, denseOptions),
   };
+}
+
+/** 54-01：块属性 JSON → answerSpec（宽容解析：非对象/缺 v/kind → undefined） */
+function parseAnswerSpecAttr(raw: string | undefined): Question["answerSpec"] {
+  if (!raw) return undefined;
+  try {
+    const obj = JSON.parse(raw) as { v?: number; kind?: string };
+    if (obj && obj.v === 1 && obj.kind === "numeric") return obj as Question["answerSpec"];
+    return undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 const letterIdx = (L: string) => L.charCodeAt(0) - 65;
