@@ -7,6 +7,7 @@
 // ============================================================
 import type { Question, QuestionType } from "./types";
 import { OPTION_LETTERS, normalizeAnswer, questionHash } from "./answer";
+import { inferAnswerSpec } from "./structuredAnswer";
 import { newQuestionId, newBatchId } from "./ids";
 
 export const QUESTION_TYPES: QuestionType[] = ["single", "multiple", "judge", "fill", "short", "material"];
@@ -154,9 +155,13 @@ export function makeQuestion(p: {
   difficulty?: number;
   alt?: string[];
   group?: string;
+  /** 54 第三刀：显式指定结构化作答规则（缺省时填空题按答案自动识别：;;多空 / 纯数值±单位） */
+  answerSpec?: Question["answerSpec"];
 }): Question {
   const options = p.options ?? [];
   const answer = p.type === "material" ? "" : (normalizeAnswer(p.type, p.answer) ?? p.answer);
+  const answerSpec =
+    p.answerSpec ?? (p.type === "fill" ? inferAnswerSpec("fill", answer) : undefined);
   return {
     id: newQuestionId(),
     type: p.type,
@@ -173,6 +178,7 @@ export function makeQuestion(p: {
     batch: newBatchId(),
     review: "verified",
     alt: p.alt,
+    ...(answerSpec ? { answerSpec } : {}),
     hash: questionHash(p.stem, options),
   };
 }

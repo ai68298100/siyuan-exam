@@ -3508,6 +3508,12 @@ import { ttsSpeak } from "@/core/tts";
             <button class="lv-chip" class:acc={mAnswer === "对"} onclick={() => mAnswer = "对"}>对</button>
             <button class="lv-chip" class:acc={mAnswer === "错"} onclick={() => mAnswer = "错"}>错</button>
           </div>
+        {:else}
+          <!-- B1 编辑入口：填空/简答答案输入此前缺失（表单无法完成填空录题）；多空/数值自动识别 -->
+          <div class="lv-field"><span class="lv-muted">{t("manual.answer")}</span>
+            <textarea class="lv-input lv-textarea" style="min-height:44px" bind:value={mAnswer}
+              placeholder={t("manual.answerHint")} aria-label={t("manual.answer")}></textarea>
+          </div>
         {/if}
         <div class="lv-field"><span class="lv-muted">{t("manual.analysis")}</span>
           <textarea class="lv-input lv-textarea" style="min-height:52px" bind:value={mAnalysis} aria-label={t("manual.analysis")}></textarea>

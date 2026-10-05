@@ -1,7 +1,11 @@
-// 54 第三刀：填空答案的结构化识别（inferAnswerSpec）+ 作答框辅助函数
+// 54 第三刀：填空答案的结构化识别（inferAnswerSpec）+ 作答框辅助函数 + 手工录题入口
 import { describe, expect, it } from "vitest";
 import { grade } from "../src/core/answer";
 import { inferAnswerSpec, splitBlanks, joinBlanks, gradeWithSpec } from "../src/core/structuredAnswer";
+import { makeQuestion } from "../src/core/blockTemplate";
+import { ExamApp } from "../src/app";
+import { MemoryStorage } from "../src/core/attemptLog";
+import type { KernelApiClient } from "../src/kernel/client";
 
 describe("inferAnswerSpec（导入识别）", () => {
   it('多空：";;" ≥2 段 → multiBlank，逐段为主答案', () => {
@@ -58,5 +62,34 @@ describe("数值/多空题端到端判分口径（导入识别 → grade）", ()
     expect(grade(numericQ, "340").verdict).toBe("correct");
     expect(grade(numericQ, "340 m/s").verdict).toBe("correct");
     expect(grade(numericQ, "999").verdict).toBe("wrong");
+  });
+});
+
+describe("makeQuestion 推断 + 手工录题入口（B1 编辑入口）", () => {
+  it("数值填空自动附 numeric spec；多空附 multiBlank；文本/选择题不附", () => {
+    expect(makeQuestion({ type: "fill", stem: "v?", options: [], answer: "340 m/s" }).answerSpec).toEqual({
+      v: 1, kind: "numeric", unit: "m/s",
+    });
+    expect(makeQuestion({ type: "fill", stem: "u?", options: [], answer: "光年;;天文单位" }).answerSpec?.kind).toBe("multiBlank");
+    expect(makeQuestion({ type: "fill", stem: "x?", options: [], answer: "保留" }).answerSpec).toBeUndefined();
+    expect(makeQuestion({ type: "single", stem: "s?", options: ["1", "2"], answer: "A" }).answerSpec).toBeUndefined();
+  });
+
+  it("writeManualQuestion：带 spec 的手录题写入 exam-answer-spec 块属性", async () => {
+    const setCalls: Record<string, unknown>[] = [];
+    const client = {
+      createDocWithMd: async () => "doc-1",
+      appendQuestions: async (_doc: string, qs: { id: string }[]) => qs.map((q) => ({ qid: q.id, blockId: "b-" + q.id })),
+      setExamAttrs: async (_block: string, attrs: Record<string, unknown>) => {
+        setCalls.push(attrs);
+      },
+      sql: async () => [],
+    } as unknown as KernelApiClient;
+    const app = new ExamApp({ client, storage: new MemoryStorage() });
+    const q = makeQuestion({ type: "fill", stem: "速度？", options: [], answer: "340 m/s" });
+    expect(q.answerSpec).toBeDefined();
+    await app.writeManualQuestion("nb-1", q);
+    expect(setCalls).toHaveLength(1);
+    expect(setCalls[0]["exam-answer-spec"]).toBe(JSON.stringify(q.answerSpec));
   });
 });

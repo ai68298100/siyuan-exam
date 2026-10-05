@@ -728,7 +728,14 @@ export class ExamApp {
   /** 手工录题：按考点落文档（无考点 → /手工录入），写块入库 */
   async writeManualQuestion(bankId: string, q: Question): Promise<void> {
     const docId = await this.ensureDoc(bankId, q.kp ? `/${q.kp.split("/")[0]}` : "/手工录入");
-    await this.deps.client.appendQuestions(docId, [q]);
+    const writtenBlocks = await this.deps.client.appendQuestions(docId, [q]);
+    // 54 第三刀：手工录题的数值/多空 spec 与导入同口径写入块属性（失败不影响入库，读回降级）
+    const blockId = writtenBlocks[0]?.blockId;
+    if (blockId && q.answerSpec) {
+      try {
+        await this.deps.client.setExamAttrs(blockId, { "exam-answer-spec": JSON.stringify(q.answerSpec) });
+      } catch { /* 如实降级：读回按旧口径 */ }
+    }
     this.invalidate();
     // IAL 属性入 attributes 表有索引滞后（3.8.5 实测 1-3s），等待到账再返回
     if (this.kernelOnline) {
