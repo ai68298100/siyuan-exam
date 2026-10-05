@@ -101,6 +101,8 @@ export interface SessionState {
   bankId?: string;
   /** 材料组排序策略（44-03 lite）：adjacent=分块连排（默认）/ interleaved=交错打散；旧快照缺省 */
   order?: "adjacent" | "interleaved";
+  /** 随机种子（65-05 lite）：会话启动时生成并持久化——同 seed+同候选池可复现卷序；结算页展示 */
+  seed?: string;
   qids: string[];
   cursor: number;
   drafts: Record<string, string>;

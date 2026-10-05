@@ -69,6 +69,7 @@
     "quad.sig.guessedRight": "猜对比例偏高：部分「正确」可能含运气，建议对猜对的题安排重测",
     "quad.sig.noConfidence": "过半作答未记录信心：作答前顺手点一下信心，报告更可解释",
     "quad.byType": "按题型",
+    "session.seedLabel": "复现种子",
     "manual.answer": "答案",
     "manual.answerHint": "文本直接填写；多空用 ;; 分隔；纯数值+单位（如 340 m/s）自动识别为数值题",
     "report.changedTitle": "改答轨迹（首答 vs 终答）",

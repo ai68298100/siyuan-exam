@@ -8,6 +8,7 @@ import { AttemptLog } from "./core/attemptLog";
 import type { AttemptEvent, Question, ReplayResult, WrongItem, SessionState } from "./core/types";
 import { replay, activeWrongItems } from "./core/replayer";
 import { PracticeSession, pickRandom, groupAdjacent } from "./core/session";
+import { randomSeedId, seededPickN } from "./core/random";
 import { interleaveGroups } from "./core/interleave";
 import { deckNameForBank, selfRatingToRiffRating, pickSameKp, cramQueue, dailySet } from "./core/memory";
 import { SaveGate } from "./core/saveGate";
@@ -660,7 +661,7 @@ export class ExamApp {
     questions: Question[],
     mode: string,
     bankId?: string,
-    opts?: { interleave?: boolean },
+    opts?: { interleave?: boolean; seed?: string },
   ): Promise<PracticeSession> {
     if (this.activeSession && this.activeSession.phase === "running") {
       throw new Error("已有进行中的会话：请先继续或放弃");
@@ -671,6 +672,8 @@ export class ExamApp {
     this.activeSession = new PracticeSession(ordered, mode, undefined, this.deps.now ?? (() => Date.now()));
     if (bankId) this.activeSession.state.bankId = bankId; // 37-05：会话归属题库
     this.activeSession.state.order = opts?.interleave ? "interleaved" : "adjacent";
+    // 65-05 lite：seed 随 checkpoint 持久化（同 seed+同候选池=同卷序；结算页展示复现标识）
+    this.activeSession.state.seed = opts?.seed ?? randomSeedId();
     await this.saveSession();
     return this.activeSession;
   }
@@ -1490,8 +1493,9 @@ export class ExamApp {
     return wrongs.length ? wrongs : rest;
   }
 
-  quickDrill(questions: Question[], n: number): Question[] {
-    return pickRandom(questions, n);
+  quickDrill(questions: Question[], n: number, seed?: string): Question[] {
+    // 65-05 lite：带 seed 走确定性抽样（可复现）；缺省维持 Math.random
+    return seed ? seededPickN(questions, n, seed) : pickRandom(questions, n);
   }
 
   /** 举一反三：同考点变式题 */

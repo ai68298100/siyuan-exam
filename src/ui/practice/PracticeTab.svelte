@@ -16,6 +16,7 @@ import { ttsSpeak } from "@/core/tts";
     import { specOf, splitBlanks, joinBlanks } from "../../core/structuredAnswer";
     import { startTrail, recordEdit, trailValue, trailChanged, withLastEditReason, type AnswerTrail } from "../../core/answerTrail";
     import { helpFromExposure } from "../../core/exposure";
+    import { randomSeedId } from "../../core/random";
     import { validate } from "../../importer/pipeline";
     import { bankHealthReport, coverageStats, answerDistribution, unreviewedStats, type BankHealthReport } from "../../core/bankHealth";
     import { planBatchEdit, invertPlan, describeChange } from "../../core/batchEdit";
@@ -934,6 +935,7 @@ import { ttsSpeak } from "@/core/tts";
 
     /** rail 上下文导航项（全局三项在 Rail 组件内） */
     const at = (v: View) => view === v;
+    let sessionSeed = $state(""); // 65-05 lite：本次会话种子（结算页展示，可复现标识）
     let railOpen = $state(false);
     let menuBtn: HTMLButtonElement | null = null;
     function closeRail() { railOpen = false; menuBtn?.focus(); }
@@ -961,7 +963,8 @@ import { ttsSpeak } from "@/core/tts";
      *  40-05 活动会话协商：冲突时提供「放弃当前并新开」（旧会话有 checkpoint，可恢复） */
     async function negotiateStart(qs: Question[], mode: string): Promise<boolean> {
       try {
-        session = await app.startSession(qs, mode, activeBankId, { interleave: materialInterleave });
+        sessionSeed = sessionSeed || randomSeedId(); // 65-05：调用方可预置（快速刷题抽题与卷序同种子）
+        session = await app.startSession(qs, mode, activeBankId, { interleave: materialInterleave, seed: sessionSeed });
         trails.clear();
         answerStart = Date.now(); // 首题计时基线
         return true;
@@ -994,6 +997,7 @@ import { ttsSpeak } from "@/core/tts";
 
     async function startDrill(mode: string) {
       errorMsg = "";
+      sessionSeed = randomSeedId(); // 65-05：抽题与卷序共用同一种子
       const qs = (await loadQuestions()).filter((q) => q.type !== "material");
       if (!qs.length) { errorMsg = t("state.emptyBank"); return; }
       let picked: Question[];
@@ -1011,7 +1015,7 @@ import { ttsSpeak } from "@/core/tts";
         picked = app.dailyDrill(qs, [], Number.isFinite(goal) && goal > 0 ? goal : 10);
         if (!picked.length) { errorMsg = t("state.emptyBank"); return; }
       } else {
-        picked = app.quickDrill(qs, 20);
+        picked = app.quickDrill(qs, 20, sessionSeed);
       }
       await safeStart(groupAdjacent(picked), mode, () => {
         feedback = null; selected = ""; confidenceSel = ""; sessionDone = null;
@@ -3141,6 +3145,12 @@ import { ttsSpeak } from "@/core/tts";
           {#if session.state.order}
             <!-- 44-03：结算显示本次排序策略（同队列可重放，不能以单次正确率下学习结论） -->
             <p class="lv-muted" style="margin:2px 0">{t("session.orderLabel")}：{session.state.order === "interleaved" ? t("session.orderInter") : t("session.orderAdj")}</p>
+          {/if}
+          {#if session.state.seed}
+            <!-- 65-05 lite：可复现标识（同 seed+同候选池=同卷序；题库版本变化/缺题如实反映为队列差异） -->
+            <p class="lv-muted" style="margin:2px 0" role="status">
+              <Icon name="hourglass" size={12} /> {t("session.seedLabel")}：<span class="num">{session.state.seed}</span>
+            </p>
           {/if}
           {#if session.answered.length}
             <div class="lv-row" style="flex-wrap:wrap;gap:4px;margin:8px 0">

@@ -69,6 +69,7 @@
     "quad.sig.guessedRight": "High share of lucky guesses: some \"correct\" answers may be luck — consider retesting them",
     "quad.sig.noConfidence": "Over half of attempts have no confidence recorded: tapping it before answering makes reports more explainable",
     "quad.byType": "By type",
+    "session.seedLabel": "Repro seed",
     "manual.answer": "Answer",
     "manual.answerHint": "Plain text; use ;; to separate blanks; a value with unit (e.g. 340 m/s) is auto-detected as numeric",
     "report.changedTitle": "Answer changes (first vs final)",
