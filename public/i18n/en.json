@@ -72,6 +72,7 @@
     "session.seedLabel": "Repro seed",
     "manual.answer": "Answer",
     "manual.answerHint": "Plain text; use ;; to separate blanks; a value with unit (e.g. 340 m/s) is auto-detected as numeric",
+    "report.accuracyTrend": "Accuracy trend",
     "exposure.title": "Recent exposure (last 7 days)",
     "exposure.drill": "Query seen questions",
     "exposure.empty": "No exposure in the last 7 days (quick drill avoids them automatically)",

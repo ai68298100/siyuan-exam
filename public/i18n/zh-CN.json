@@ -72,6 +72,7 @@
     "session.seedLabel": "复现种子",
     "manual.answer": "答案",
     "manual.answerHint": "文本直接填写；多空用 ;; 分隔；纯数值+单位（如 340 m/s）自动识别为数值题",
+    "report.accuracyTrend": "正确率趋势",
     "exposure.title": "近期曝光（近 7 天）",
     "exposure.drill": "查询已见题",
     "exposure.empty": "近 7 天没有曝光记录（快速刷题会自动避开这些题）",

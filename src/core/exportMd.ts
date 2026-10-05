@@ -48,8 +48,15 @@ function reasonLabel(r: string): string {
 const csvJoin = (head: string[], rows: (string | number)[][]) =>
   "\uFEFF" + [head.join(","), ...rows.map((r) => r.map((v) => String(v))).map((r) => r.join(","))].join("\r\n");
 
-export function trendToCsv(trend: { date: string; attempts: number }[]): string {
-  return csvJoin(["日期", "作答题数"], trend.map((p) => [p.date, p.attempts]));
+export function trendToCsv(trend: { date: string; attempts: number; correct?: number }[]): string {
+  // 55-04 lite：正确率趋势列（当日 0 题则正确率留空，不出 0%）
+  return csvJoin(
+    ["日期", "作答题数", "答对", "正确率"],
+    trend.map((p) => {
+      const acc = p.attempts > 0 && p.correct != null ? Math.round((p.correct / p.attempts) * 100) + "%" : "";
+      return [p.date, p.attempts, p.correct ?? "", acc];
+    }),
+  );
 }
 
 export function heatmapToCsv(heat: { date: string; count: number }[]): string {

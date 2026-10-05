@@ -37,7 +37,7 @@
     let quadSignals = $state<string[]>([]);
     const typeByQid = new SvelteMap<string, string>();
     let openActionList = $state<ActionItem[]>([]);
-    let trend30 = $state<{ date: string; attempts: number }[]>([]);
+    let trend30 = $state<{ date: string; attempts: number; correct?: number }[]>([]);
     let errorMsg = $state("");
     let weekCmp = $state<ReturnType<typeof weekCompare> | null>(null);
     let reportBusy = $state(false);
@@ -458,6 +458,14 @@
     const maxHour = $derived(Math.max(1, ...hours));
     const hoursSvg = $derived(hours.map((n, i) => `${(i / 23) * 300},${40 - Math.round((n / maxHour) * 36)}`).join(" "));
     const maxTrend = $derived(Math.max(1, ...trend30.map((p) => p.attempts)));
+    /** 55-04 lite：正确率折线点——有作答日连成段（0 题日以 null 断开），比例尺 0-100% 对满高 */
+    const trendAccPoints = $derived(
+      trend30
+        .map((p, i) => (p.attempts > 0 ? { x: (i / 29) * 300, y: 42 - Math.round(((p.correct ?? 0) / p.attempts) * 38) } : null))
+        .filter((pt): pt is { x: number; y: number } => pt != null)
+        .map((pt) => `${pt.x},${pt.y}`)
+        .join(" "),
+    );
 
     // 44-02 lite：确定-错 下钻（展开时从流水实时取，随报告数据同源）
     let cwOpen = $state(false);
@@ -676,20 +684,23 @@
         <b>{t("report.trend30")}</b>
         <svg viewBox="0 0 300 46" style="width:100%;max-width:420px;display:block" role="img" aria-label={t("report.trend30")}>
           <polyline points={trend30.map((p, i) => `${(i / 29) * 300},${42 - Math.round((p.attempts / maxTrend) * 38)}`).join(" ")} fill="none" stroke="var(--lv-accent)" stroke-width="2" />
+          <!-- 55-04 lite：正确率曲线（有作答日连成段，0 题日断点；比例尺 0-100% 对满高） -->
+          <polyline points={trendAccPoints} fill="none" stroke="var(--lv-green)" stroke-width="1.6" stroke-dasharray="3 2" />
         </svg>
         <div class="lv-row" style="margin:4px 0 0">
           <span class="lv-chip num">{t("report.trendMax")} {maxTrend}</span>
           <span class="lv-chip num">{t("report.trendSum")} {trend30.reduce((n, p) => n + p.attempts, 0)}</span>
+          <span class="lv-chip lv-chip--grn">— {t("report.accuracyTrend")}</span>
           <!-- 45-08：SVG 图表的文本等价物 + CSV（同一数据快照，读屏/打印/导出数字一致） -->
           <button class="lv-btn sm lv-btn--ghost" onclick={() => tableOpen = tableOpen === "trend" ? "" : "trend"}>📋 {t("data.table")}</button>
           <button class="lv-btn sm lv-btn--ghost" onclick={() => downloadChartCsv(trendToCsv(trend30), "trend30")}><Icon name="export" size={13} /> CSV</button>
         </div>
         {#if tableOpen === "trend"}
           <table class="lv-dtable">
-            <thead><tr><th>{t("report.trendDay")}</th><th>{t("report.attempts")}</th></tr></thead>
+            <thead><tr><th>{t("report.trendDay")}</th><th>{t("report.attempts")}</th><th>{t("report.accuracy")}</th></tr></thead>
             <tbody>
               {#each trend30.filter((p) => p.attempts > 0) as p, _i (_i)}
-                <tr><td class="num">{p.date}</td><td class="num">{p.attempts}</td></tr>
+                <tr><td class="num">{p.date}</td><td class="num">{p.attempts}</td><td class="num">{Math.round(((p.correct ?? 0) / p.attempts) * 100)}%</td></tr>
               {/each}
             </tbody>
           </table>
