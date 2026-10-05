@@ -181,6 +181,7 @@ export default class LvExamPlugin extends Plugin {
 
     this.registerTabs();
     if (!this.isMobile) {
+      this.registerTopBar();
       this.registerDock();
       this.registerStatusBar();
     }
@@ -293,6 +294,16 @@ export default class LvExamPlugin extends Plugin {
     this.tabApps = {};
   }
 
+  /** 顶栏主入口（25-P1 首用可发现性）：此前插件仅有 Dock/状态栏/命令面板等隐蔽入口，
+   *  新装用户找不到进入方式；顶栏按钮是最醒目的一级入口。移动端无顶栏，维持块菜单+命令。 */
+  private registerTopBar() {
+    this.addTopBar({
+      icon: "iconExam",
+      title: this.i18n["tab.practice"],
+      callback: () => this.openPractice(),
+    });
+  }
+
   /** 状态栏迷你进度（TODO 18 组）：今日完成/连胜，点击打开练习台 */
   private registerStatusBar() {
     this.addStatusBar({
@@ -300,6 +311,9 @@ export default class LvExamPlugin extends Plugin {
         const el = document.createElement("div");
         el.classList.add("lv-statusbar", "fn__flex-center");
         el.style.cursor = "pointer";
+        // 25-P1：应用就绪前也保持可见占位（此前初始为空文本，元素不可见）
+        el.textContent = "📝 …";
+        el.title = this.i18n["tab.practice"];
         el.addEventListener("click", () => this.openPractice());
         return el;
       })(),
@@ -307,9 +321,13 @@ export default class LvExamPlugin extends Plugin {
   }
 
   refreshStatusBar() {
-    if (this.isMobile || !this.examApp) return;
+    if (this.isMobile) return;
     const el = document.querySelector(".lv-statusbar");
     if (!el) return;
+    if (!this.examApp) {
+      el.textContent = "📝 …"; // 初始化失败：保持占位不空白（25-P1）
+      return;
+    }
     const d = this.examApp.derived();
     const todayKey = (() => {
       const t = new Date();
@@ -370,9 +388,14 @@ export default class LvExamPlugin extends Plugin {
 
   /** 错题 Dock 实数据渲染（作答后由 Tab 调用） */
   refreshDock() {
-    if (this.isMobile || !this.examApp) return;
+    if (this.isMobile) return;
     const dockEl = document.querySelector<HTMLElement>(".lv-dock-body");
     if (!dockEl) return;
+    // 25-P1：应用未就绪（初始化失败）时给出可见原因，不再渲染空白面板
+    if (!this.examApp) {
+      dockEl.innerHTML = `<div class="lv-dock-empty">${escapeHtml(this.i18n["state.appNotReady"])}</div>`;
+      return;
+    }
     const items = this.examApp.wrongItems();
     // sanitize 政策（26.2 P0）：innerHTML 插值的动态文本一律 escapeHtml（qid 来自本地流水，纵深防御）
     const rows = items
@@ -454,6 +477,14 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
         }
         await this.settingUtils.save();
         showMessage(this.i18n["setting.resetDone"], 4000, "info");
+      },
+    });
+    this.addCommand({
+      langKey: "command.resetOnboarding",
+      // 25-P1：首用引导可跳过、可重置（清 47-02 的 localStorage 标记，重开练习台即再见）
+      callback: () => {
+        try { localStorage.removeItem("lv-exam-onboarded"); } catch { /* 忽略 */ }
+        showMessage(this.i18n["onboard.resetDone"], 3200, "info");
       },
     });
   }

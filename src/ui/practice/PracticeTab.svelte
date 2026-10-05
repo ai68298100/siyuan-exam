@@ -845,7 +845,8 @@ import { ttsSpeak } from "@/core/tts";
         banks = app.listBanks();
         activeBankId = b.id;
         newBankName = "";
-        view = "import"; // 建库后引导导入
+        // 25-P1 首用：建库自带示例题（app.createBank），留在入口视图由 47-02 首用引导接管——
+        // 最快首题路径是直接练示例题；导入/手工录题在下方动作区一步可达
       } catch (e) {
         errorMsg = offline ? t("state.offlineHint") : String(e instanceof Error ? e.message : e);
       } finally { creating = false; }
@@ -2887,10 +2888,13 @@ import { ttsSpeak } from "@/core/tts";
               {creating ? "…" : t("guard.create")}
             </button>
           </div>
+          <!-- 25-P1 首用三路入口：示例题建库即练 / 模板先行 / 直接导入 -->
+          <p class="lv-hint">🧭 {t("guard.sampleHint")}</p>
           <div class="lv-row lv-center-text"><span class="lv-muted">{t("guard.or")}</span></div>
-          <button class="lv-btn" style="width:100%" onclick={() => view = "import"}>
-            {t("import.title")}
-          </button>
+          <div class="lv-row">
+            <button class="lv-btn" style="flex:1" onclick={downloadTemplate}>⬇️ {t("import.template")}</button>
+            <button class="lv-btn" style="flex:1" onclick={() => view = "import"}>📥 {t("import.title")}</button>
+          </div>
           <p class="lv-hint">{t("guard.needBankFirst")}</p>
         </div>
       </div>
