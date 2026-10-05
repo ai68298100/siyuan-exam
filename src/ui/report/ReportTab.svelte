@@ -805,19 +805,19 @@
 </div>
 
 <style>
-  .lv-pad { padding: 12px 16px; overflow: auto; }
+  .lv-pad { padding: 16px 22px 48px; overflow: auto; }
   .lv-muted { color: var(--lv-text-3); font-size: 12.5px; }
   .lv-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
-  .lv-select { padding: 4px 10px; border-radius: 9px; border: 1px solid var(--lv-border); background: var(--lv-surface); color: var(--lv-text); font: inherit; font-size: 12.5px; }
-  .lv-card { background: var(--lv-surface); border: 1px solid var(--lv-border); border-radius: var(--lv-r-3); padding: 16px 18px; box-shadow: var(--lv-sh-1); margin-bottom: 12px; }
+  .lv-select { min-height: 44px; padding: 9px 12px; border-radius: 11px; border: 1px solid var(--lv-ctl-border); background: var(--lv-surface); color: var(--lv-text); font: inherit; font-size: 13px; }
+  .lv-card { background: var(--lv-surface); border: 1px solid var(--lv-border); border-radius: var(--lv-r-3); padding: 20px 22px; box-shadow: var(--lv-sh-1); margin-bottom: 14px; }
   .lv-row.low-sample { opacity: .55; }
-  .lv-section b { display: block; font-size: 13px; margin-bottom: 10px; }
-  .lv-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 550; color: var(--lv-text-2); background: var(--lv-surface-2); border: 1px solid var(--lv-border); }
-  .lv-chip.acc { color: var(--lv-accent); background: var(--lv-accent-soft); border-color: transparent; }
-  .lv-chip.lv-chip--red { color: var(--lv-red); background: var(--lv-red-soft); border-color: transparent; }
-  .lv-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
-  .lv-kpi .l { font-size: 12.5px; color: var(--lv-text-3); margin-bottom: 4px; }
-  .lv-kpi .v { font-size: 22px; font-weight: 750; }
+  .lv-section b { display: block; font-size: 15px; font-weight: 650; letter-spacing: -.2px; margin-bottom: 12px; }
+  .lv-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 7px; font-size: 12px; font-weight: 550; color: var(--lv-text-2); background: var(--lv-surface-2); border: 1px solid transparent; }
+  .lv-chip.acc { color: var(--lv-accent); background: var(--lv-accent-soft); }
+  .lv-chip.lv-chip--red { color: var(--lv-red); background: var(--lv-red-soft); }
+  .lv-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 14px; }
+  .lv-kpi .l { font-size: 12px; color: var(--lv-text-3); margin-bottom: 4px; }
+  .lv-kpi .v { font-size: 29px; font-weight: 650; letter-spacing: -.8px; line-height: 1.5; font-variant-numeric: tabular-nums; }
   .lv-heat { display: grid; grid-template-columns: repeat(53, 1fr); gap: 2.5px; }
   .lv-heat i { aspect-ratio: 1; border-radius: 2.5px; background: var(--lv-surface-2); }
   .lv-heat i.l1 { background: color-mix(in srgb, var(--lv-accent) 22%, var(--lv-surface-2)); }

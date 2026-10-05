@@ -2954,25 +2954,25 @@ import { ttsSpeak } from "@/core/tts";
         {/if}
         <div class="lv-modes">
           <button class="lv-mode" onclick={() => startDrill("single")}>
-            <b>⚡ {t("mode.quick")}</b><span class="lv-muted">{t("mode.quick.desc")}</span>
+            <span class="lv-mode-icon" aria-hidden="true">⚡</span><span class="lv-mode-body"><b>{t("mode.quick")}</b><span class="lv-muted">{t("mode.quick.desc")}</span></span>
           </button>
           <button class="lv-mode" onclick={() => startDrill("daily")}>
-            <b>📅 {t("mode.daily")}</b><span class="lv-muted">{t("mode.daily.desc")}</span>
+            <span class="lv-mode-icon" aria-hidden="true">📅</span><span class="lv-mode-body"><b>{t("mode.daily")}</b><span class="lv-muted">{t("mode.daily.desc")}</span></span>
           </button>
           <button class="lv-mode" onclick={() => startRecite()}>
-            <b>🔄 {t("mode.recite")}</b><span class="lv-muted">{t("mode.recite.desc")}</span>
+            <span class="lv-mode-icon" aria-hidden="true">🔄</span><span class="lv-mode-body"><b>{t("mode.recite")}</b><span class="lv-muted">{t("mode.recite.desc")}</span></span>
           </button>
           <button class="lv-mode" onclick={() => startDrill("wrong")}>
-            <b>❌ {t("mode.wrong")}</b><span class="lv-muted num">{app.wrongItems().length} {t("mode.wrong.unit")}</span>
+            <span class="lv-mode-icon" aria-hidden="true">❌</span><span class="lv-mode-body"><b>{t("mode.wrong")}</b><span class="lv-muted num">{app.wrongItems().length} {t("mode.wrong.unit")}</span></span>
           </button>
           <button class="lv-mode" onclick={() => startDrill("cram")}>
-            <b>🔥 {t("mode.cram")}</b><span class="lv-muted">{t("mode.cram.desc")}</span>
+            <span class="lv-mode-icon" aria-hidden="true">🔥</span><span class="lv-mode-body"><b>{t("mode.cram")}</b><span class="lv-muted">{t("mode.cram.desc")}</span></span>
           </button>
           <button class="lv-mode" onclick={() => startDrill("fav")}>
-            <b>⭐ {t("mode.fav")}</b><span class="lv-muted">{t("mode.fav.desc")}（<span class="num">{questions.filter((q) => q.fav).length}</span> {t("mode.wrong.unit")}）</span>
+            <span class="lv-mode-icon" aria-hidden="true">⭐</span><span class="lv-mode-body"><b>{t("mode.fav")}</b><span class="lv-muted">{t("mode.fav.desc")}（<span class="num">{questions.filter((q) => q.fav).length}</span> {t("mode.wrong.unit")}）</span></span>
           </button>
           <button class="lv-mode lv-mode--disabled" title={t("todo")}>
-            <b>🌲 {t("mode.special")}</b><span class="lv-muted">{t("todo")}</span>
+            <span class="lv-mode-icon" aria-hidden="true">🌲</span><span class="lv-mode-body"><b>{t("mode.special")}</b><span class="lv-muted">{t("todo")}</span></span>
           </button>
         </div>
         <div class="lv-row" style="margin-top:14px">
@@ -3105,7 +3105,7 @@ import { ttsSpeak } from "@/core/tts";
     {:else}
       {@const q = session.current}
       {#if q}
-        <div class="lv-pad">
+        <div class="lv-pad lv-pad--narrow">
           <div class="lv-row lv-session-head">
             <button class="lv-btn lv-btn--ghost" onclick={exitSession}>← {t("session.exit")}</button>
             <div class="lv-row" style="flex:1;min-width:120px;gap:8px">
@@ -3217,7 +3217,7 @@ import { ttsSpeak } from "@/core/tts";
               </div>
             {/if}
 
-            <div class="lv-row">
+            <div class="lv-row lv-answer-actions">
               {#if !feedback}
                 <button class="lv-btn lv-btn--primary" onclick={submitAnswer} disabled={!selected && !session.getDraft(q.id)}>{t("session.submit")}</button>
                 <button class="lv-btn lv-btn--ghost" onclick={requestHint} disabled={explainBusy}>{hintButtonLabel(q)}</button>
@@ -4414,14 +4414,14 @@ import { ttsSpeak } from "@/core/tts";
 </div>
 
 <style>
-  .lv-pad { padding: 12px 16px; overflow: auto; }
+  .lv-pad { padding: 16px 22px 48px; overflow: auto; }
   /* —— 入口 hero 卡（对齐原型 home 首屏；600px 下折叠单列） —— */
-  .lv-entry-hero { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 18px; align-items: center; padding: 22px 24px; }
+  .lv-entry-hero { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 24px; align-items: center; padding: 26px 28px; }
   .lv-entry-main { min-width: 0; }
-  .lv-entry-reason { font-size: 19px; font-weight: 650; letter-spacing: -.3px; margin: 8px 0; overflow-wrap: anywhere; }
-  .lv-entry-num { border-left: 1px solid var(--lv-border); padding: 4px 0 4px 18px; text-align: center; }
-  .lv-entry-count { font-size: 40px; font-weight: 650; letter-spacing: -1.5px; line-height: 1.1; font-variant-numeric: tabular-nums; }
-  .lv-entry-unit { font-size: 11px; margin-top: 4px; }
+  .lv-entry-reason { font-size: 22px; font-weight: 650; letter-spacing: -.4px; line-height: 1.5; margin: 10px 0; overflow-wrap: anywhere; }
+  .lv-entry-num { border-left: 1px solid var(--lv-border); padding: 5px 0 5px 24px; text-align: center; }
+  .lv-entry-count { font-size: 46px; font-weight: 600; letter-spacing: -2px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .lv-entry-unit { font-size: 11px; margin-top: 8px; display: block; color: var(--lv-text-3); }
   @media (max-width: 600px) {
     .lv-entry-hero { grid-template-columns: minmax(0,1fr); padding: 18px; }
     .lv-entry-num { border-left: 0; border-top: 1px solid var(--lv-border); padding: 12px 0 0; display: flex; align-items: baseline; gap: 10px; text-align: left; }
@@ -4431,9 +4431,12 @@ import { ttsSpeak } from "@/core/tts";
   .lv-green { color: var(--lv-green); font-weight: 650; }
   .lv-red { color: var(--lv-red); font-weight: 650; }
   .lv-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
-  .lv-seg { display: inline-flex; padding: 3px; border-radius: 10px; background: var(--lv-surface-2); border: 1px solid var(--lv-border); gap: 2px; }
-  .lv-seg button { padding: 5px 14px; border-radius: 8px; font-size: 13px; font-weight: 550; color: var(--lv-text-2); }
-  .lv-seg button.on { background: var(--lv-surface); color: var(--lv-text); box-shadow: var(--lv-sh-1); }
+  /* —— 视图切换（对齐原型 .subnav：文字 + 底部 2px 指示条，非按钮块） —— */
+  .lv-seg { display: inline-flex; padding: 0; border-radius: 0; background: transparent; border: 0; border-bottom: 1px solid var(--lv-border); gap: 18px; }
+  .lv-seg button { position: relative; min-height: 40px; padding: 8px 1px 12px; border-radius: 0; border: 0; background: transparent; font-size: 13px; font-weight: 500; color: var(--lv-text-3); }
+  .lv-seg button:hover { background: transparent; color: var(--lv-accent); }
+  .lv-seg button.on { background: transparent; color: var(--lv-accent); font-weight: 650; box-shadow: none; }
+  .lv-seg button.on::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--lv-accent); border-radius: 2px; }
   .lv-card { background: var(--lv-surface); border: 1px solid var(--lv-border); border-radius: var(--lv-r-3); padding: 20px 22px; box-shadow: var(--lv-sh-1); }
   .lv-pad-card { margin: 8px 0; }
   .lv-guard { max-width: 460px; width: 100%; }
@@ -4441,25 +4444,29 @@ import { ttsSpeak } from "@/core/tts";
   .lv-guard p { margin: 6px 0; }
   .lv-center-text { justify-content: center; }
   .lv-hint { font-size: 12px; color: var(--lv-text-3); text-align: center; }
-  .lv-input { padding: 8px 12px; border-radius: 10px; border: 1px solid var(--lv-border); background: var(--lv-surface); color: var(--lv-text); font: inherit; font-size: 13.5px; flex: 1; min-width: 140px; }
+  .lv-input { min-height: 44px; padding: 9px 12px; border-radius: 11px; border: 1px solid var(--lv-ctl-border); background: var(--lv-surface); color: var(--lv-text); font: inherit; font-size: 13.5px; flex: 1; min-width: 140px; }
   .lv-input:focus { border-color: var(--lv-accent); box-shadow: var(--lv-ring); outline: none; }
-  .lv-textarea { width: 100%; min-height: 90px; resize: vertical; line-height: 1.65; margin: 6px 0; }
-  .lv-btn { display: inline-flex; align-items: center; gap: 7px; padding: 9px 18px; border-radius: 10px; font-size: 14px; font-weight: 600; border: 1px solid var(--lv-border); background: var(--lv-surface); color: var(--lv-text); cursor: pointer; transition: all var(--lv-dur-micro) ease; }
-  .lv-btn:hover:not(:disabled) { border-color: var(--lv-border); box-shadow: var(--lv-sh-1); transform: translateY(-1px); }
-  .lv-btn:disabled { opacity: .5; cursor: not-allowed; }
-  .lv-btn--primary { background: var(--lv-accent-grad); border-color: transparent; color: var(--b3-theme-on-primary, #fff); box-shadow: var(--lv-glow, none); }
+  .lv-textarea { width: 100%; min-height: 90px; resize: vertical; line-height: 1.8; padding: 12px; margin: 6px 0; }
+  .lv-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 9px 16px; border-radius: 11px; font-size: 14px; font-weight: 550; border: 1px solid var(--lv-ctl-border); background: var(--lv-surface); color: var(--lv-text); cursor: pointer; transition: background-color var(--lv-dur-micro) ease, border-color var(--lv-dur-micro) ease, box-shadow var(--lv-dur-micro) ease; }
+  .lv-btn:hover:not(:disabled) { border-color: var(--lv-accent); background: var(--lv-accent-soft); transform: none; }
+  .lv-btn:disabled { opacity: .62; cursor: not-allowed; }
+  .lv-btn--primary { background: var(--lv-accent); border-color: var(--lv-accent); color: var(--b3-theme-on-primary, #fff); box-shadow: var(--lv-btn-primary-shadow); }
+  .lv-btn--primary:hover:not(:disabled) { background: var(--lv-accent); filter: brightness(.95); }
   .lv-btn--ghost { border-color: transparent; color: var(--lv-text-2); background: transparent; }
   .lv-btn--ghost.acc-btn { color: var(--lv-accent); background: var(--lv-accent-soft); }
+  .lv-btn.sm { min-height: 34px; padding: 5px 12px; font-size: 12.5px; border-radius: 9px; }
   .lv-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 550; color: var(--lv-text-2); background: var(--lv-surface-2); border: 1px solid var(--lv-border); }
   .lv-chip.acc { color: var(--lv-accent); background: var(--lv-accent-soft); border-color: transparent; }
   .lv-chip--acc { color: var(--lv-accent); background: var(--lv-accent-soft); border-color: transparent; }
   .lv-chip--grn { color: var(--lv-green); background: var(--lv-green-soft); border-color: transparent; }
   .lv-chip--red { color: var(--lv-red); background: var(--lv-red-soft); border-color: transparent; }
   .lv-chip--amb { color: var(--lv-amber); background: var(--lv-amber-soft); border-color: transparent; }
-  .lv-modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-  .lv-mode { padding: 16px; border-radius: var(--lv-r-3); text-align: left; background: var(--lv-surface); border: 1px solid var(--lv-border); cursor: pointer; transition: all .18s ease; display: flex; flex-direction: column; gap: 4px; }
-  .lv-mode:hover:not(.lv-mode--disabled) { transform: translateY(-2px); box-shadow: var(--lv-sh-2); border-color: var(--lv-accent); }
-  .lv-mode b { font-size: 14px; }
+  .lv-modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .lv-mode { padding: 16px 17px; border-radius: var(--lv-r-3); text-align: left; background: var(--lv-surface); border: 1px solid var(--lv-border); cursor: pointer; transition: background-color .16s ease, border-color .16s ease, box-shadow .16s ease; display: flex; align-items: flex-start; gap: 12px; }
+  .lv-mode:hover:not(.lv-mode--disabled) { box-shadow: var(--lv-sh-2); border-color: var(--lv-accent); }
+  .lv-mode .lv-mode-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 13px; background: var(--lv-accent-soft); flex-shrink: 0; font-size: 19px; }
+  .lv-mode .lv-mode-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .lv-mode b { font-size: 14px; font-weight: 650; }
   .lv-mode--disabled { opacity: .55; cursor: not-allowed; }
   .lv-resume { display: flex; gap: 14px; align-items: center; }
   .lv-resume > div:first-child { flex: 1; }
@@ -4467,24 +4474,26 @@ import { ttsSpeak } from "@/core/tts";
   .lv-pure .lv-stem, .lv-pure .lv-opt > span:not(.key) { display: none; }
   .lv-pure .lv-opt .key { filter: none; }
   .lv-pure .lv-opt { justify-content: center; }
-  .lv-question { margin-top: 6px; }
-  .lv-stem { font-size: 16px; line-height: 1.75; margin-bottom: 14px; white-space: pre-wrap; }
-  .lv-opt { display: flex; gap: 12px; align-items: flex-start; width: 100%; text-align: left; padding: 11px 14px; border-radius: var(--lv-r-2); border: 1.5px solid var(--lv-border); margin-bottom: 8px; cursor: pointer; background: var(--lv-surface); font: inherit; color: inherit; transition: all var(--lv-dur-micro) ease; }
-  .lv-opt:hover:not([disabled]) { border-color: var(--lv-accent); background: var(--lv-accent-soft); }
-  .lv-opt .key { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; flex: none; font-size: 12.5px; font-weight: 700; background: var(--lv-surface-2); color: var(--lv-text-2); border: 1px solid var(--lv-border); }
+  .lv-question { margin-top: 10px; }
+  .lv-stem { font-size: 19.5px; line-height: 1.8; letter-spacing: -.2px; margin-bottom: 16px; white-space: pre-wrap; }
+  .lv-opt { display: flex; gap: 13px; align-items: center; width: 100%; text-align: left; padding: 15px 17px; border-radius: var(--lv-r-2); border: 1px solid var(--lv-ctl-border); margin-bottom: 10px; cursor: pointer; background: var(--lv-surface); font: inherit; color: inherit; transition: background-color var(--lv-dur-micro) ease, border-color var(--lv-dur-micro) ease; }
+  .lv-opt:hover:not([disabled]) { border-color: var(--lv-accent); background: var(--lv-surface-2); }
+  .lv-opt .key { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; flex: none; font-size: 12px; font-weight: 550; background: var(--lv-surface); color: var(--lv-text-2); border: 1px solid var(--lv-ctl-border); }
   .lv-opt.sel { border-color: var(--lv-accent); background: var(--lv-accent-soft); }
   .lv-opt.sel .key { background: var(--lv-accent); border-color: var(--lv-accent); color: var(--b3-theme-on-primary, #fff); }
   .lv-opt.right { border-color: var(--lv-green); background: var(--lv-green-soft); }
   .lv-opt.right .key { background: var(--lv-green); border-color: var(--lv-green); color: var(--b3-theme-on-primary, #fff); }
   .lv-opt.wrong { border-color: var(--lv-red); background: var(--lv-red-soft); }
   .lv-opt.wrong .key { background: var(--lv-red); border-color: var(--lv-red); color: var(--b3-theme-on-primary, #fff); }
-  .lv-feedback { margin: 12px 0; padding: 10px 14px; border-radius: var(--lv-r-2); font-weight: 650; font-size: 14px; background: var(--lv-red-soft); color: var(--lv-red); }
-  .lv-feedback.good { background: var(--lv-green-soft); color: var(--lv-green); }
-  .lv-analysis { border-left: 3px solid var(--lv-accent); background: var(--lv-surface-2); border-radius: 0 var(--lv-r-2) var(--lv-r-2) 0; padding: 10px 14px; font-size: 13.5px; color: var(--lv-text-2); margin-bottom: 10px; white-space: pre-wrap; }
+  .lv-feedback { margin: 16px 0 12px; padding: 15px 18px; border: 1px solid var(--lv-border); border-left: 3px solid var(--lv-red); border-radius: var(--lv-r-2); font-weight: 650; font-size: 14px; background: var(--lv-red-soft); color: var(--lv-red); }
+  .lv-feedback.good { border-left-color: var(--lv-green); background: var(--lv-green-soft); color: var(--lv-green); }
+  /* —— 作答动作区（原型 .answer-actions：上分隔线 + 层次） —— */
+  .lv-answer-actions { margin-top: 14px; padding-top: 18px; border-top: 1px solid var(--lv-border); }
+  .lv-analysis { border-left: 3px solid var(--lv-accent); background: var(--lv-surface-2); border-radius: 0 var(--lv-r-2) var(--lv-r-2) 0; padding: 12px 16px; font-size: 13.5px; color: var(--lv-text-2); margin-bottom: 10px; white-space: pre-wrap; }
   .lv-error { margin: 8px 0; padding: 10px 14px; border-radius: var(--lv-r-2); background: var(--lv-red-soft); color: var(--lv-red); font-size: 13px; }
   .lv-success { margin: 8px 0; padding: 10px 14px; border-radius: var(--lv-r-2); background: var(--lv-green-soft); color: var(--lv-green); font-size: 13px; font-weight: 650; }
   .lv-error-row { font-size: 12.5px; color: var(--lv-red); padding: 4px 2px; border-bottom: 1px dashed var(--lv-border); }
-  .lv-empty { border: 1.5px dashed var(--lv-border); border-radius: 14px; padding: 26px; text-align: center; color: var(--lv-text-3); }
+  .lv-empty { border-radius: var(--lv-r-3); padding: 56px 24px; text-align: center; color: var(--lv-text-3); font-size: 13.5px; }
   .lv-skeleton { height: 180px; border-radius: var(--lv-r-3); background: linear-gradient(100deg, var(--lv-surface-2) 40%, var(--lv-surface) 50%, var(--lv-surface-2) 60%); background-size: 200% 100%; animation: lv-shimmer 1.4s infinite; border: 1px solid var(--lv-border); }
   @keyframes lv-shimmer { to { background-position: -200% 0; } }
   .lv-qrow { padding: 12px 16px; margin-bottom: 8px; }

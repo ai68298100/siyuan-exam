@@ -25,40 +25,99 @@
   }
 }
 
-/* —— 徽章（默认 / accent / 语义三色） —— */
+/* —— 徽章（默认 / accent / 语义三色；对齐原型 .pill：7px 小圆角贴纸，非胶囊） —— */
 .lv-chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 3px 10px;
-  border-radius: 999px;
+  padding: 3px 9px;
+  border-radius: 7px;
   font-size: 12px;
   font-weight: 550;
+  line-height: 1.6;
   color: var(--lv-text-2);
   background: var(--lv-surface-2);
-  border: 1px solid var(--lv-border);
+  border: 1px solid transparent;
   white-space: nowrap;
 
   &--acc {
     color: var(--lv-accent);
     background: var(--lv-accent-soft);
-    border-color: transparent;
   }
   &--grn {
     color: var(--lv-green);
     background: var(--lv-green-soft);
-    border-color: transparent;
   }
   &--red {
     color: var(--lv-red);
     background: var(--lv-red-soft);
-    border-color: transparent;
   }
   &--amb {
     color: var(--lv-amber);
     background: var(--lv-amber-soft);
-    border-color: transparent;
   }
+}
+
+/* —— 图标位（原型 .tile-icon：44px 圆角 soft 底 accent 图标容器） —— */
+.lv-tile-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
+  background: var(--lv-accent-soft);
+  color: var(--lv-accent);
+  flex-shrink: 0;
+  font-size: 19px;
+}
+
+/* —— 分区标题（原型 .section-title：标题 + 右侧动作，两端对齐） —— */
+.lv-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 20px 0 12px;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.2px;
+
+  > .lv-muted {
+    font-weight: 400;
+    font-size: 12px;
+  }
+}
+
+/* —— 屏头（原型 .screen-head：大标题 + muted 副标） —— */
+.lv-screen-head {
+  margin: 4px 0 22px;
+
+  h1,
+  .lv-h1 {
+    margin: 0;
+    font-size: 24px;
+    line-height: 1.4;
+    font-weight: 650;
+    letter-spacing: -0.5px;
+  }
+  p {
+    margin: 8px 0 0;
+    max-width: 650px;
+    color: var(--lv-text-3);
+    font-size: 13px;
+  }
+}
+
+/* —— Tab 内容公共容器：居中限宽 + 视图入场动画（原型 main-wrap/screen-enter） —— */
+.lv-pad {
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 16px 22px 48px;
+  animation: lv-appear 0.18s ease-out;
+}
+.lv-pad--narrow {
+  max-width: 680px;
 }
 
 /* —— 选项行四态（默认 / 选中 / 正确 / 错误） —— */
@@ -159,11 +218,11 @@
   }
 }
 
-/* —— 进度条（含 sheen 扫光） —— */
+/* —— 进度条（含 sheen 扫光；轨道用 border 色保证在页底上可见） —— */
 .lv-progress {
   height: 7px;
   border-radius: 999px;
-  background: var(--lv-surface-2);
+  background: var(--lv-border);
   overflow: hidden;
   position: relative;
 

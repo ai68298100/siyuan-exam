@@ -844,28 +844,29 @@
 </div>
 
 <style>
-  .lv-pad { padding: 12px 16px; overflow: auto; }
+  .lv-pad { padding: 16px 22px 48px; overflow: auto; }
   .lv-muted { color: var(--lv-text-3); font-size: 12.5px; }
   .lv-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
-  .lv-input { padding: 6px 10px; border-radius: 9px; border: 1px solid var(--lv-border); background: var(--lv-surface); color: var(--lv-text); font: inherit; font-size: 13px; }
+  .lv-input { min-height: 44px; padding: 9px 12px; border-radius: 11px; border: 1px solid var(--lv-ctl-border); background: var(--lv-surface); color: var(--lv-text); font: inherit; font-size: 13px; }
   .lv-input:focus { border-color: var(--lv-accent); box-shadow: var(--lv-ring); outline: none; }
   .lv-input.num { width: 72px; }
-  .lv-select { padding: 6px 10px; border-radius: 9px; border: 1px solid var(--lv-border); background: var(--lv-surface); color: var(--lv-text); font: inherit; font-size: 13px; }
+  .lv-select { min-height: 44px; padding: 9px 12px; border-radius: 11px; border: 1px solid var(--lv-ctl-border); background: var(--lv-surface); color: var(--lv-text); font: inherit; font-size: 13px; }
   .lv-textarea { width: 100%; min-height: 80px; resize: vertical; }
-  .lv-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 10px; font-size: 13.5px; font-weight: 600; border: 1px solid var(--lv-border); background: var(--lv-surface); color: var(--lv-text); cursor: pointer; transition: all var(--lv-dur-micro) ease; }
-  .lv-btn:hover:not(:disabled) { box-shadow: var(--lv-sh-1); transform: translateY(-1px); }
-  .lv-btn:disabled { opacity: .5; cursor: not-allowed; }
-  .lv-btn--primary { background: var(--lv-accent-grad); border-color: transparent; color: var(--b3-theme-on-primary, #fff); }
+  .lv-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 9px 16px; border-radius: 11px; font-size: 14px; font-weight: 550; border: 1px solid var(--lv-ctl-border); background: var(--lv-surface); color: var(--lv-text); cursor: pointer; transition: background-color var(--lv-dur-micro) ease, border-color var(--lv-dur-micro) ease, box-shadow var(--lv-dur-micro) ease; }
+  .lv-btn:hover:not(:disabled) { border-color: var(--lv-accent); background: var(--lv-accent-soft); }
+  .lv-btn:disabled { opacity: .62; cursor: not-allowed; }
+  .lv-btn--primary { background: var(--lv-accent); border-color: var(--lv-accent); color: var(--b3-theme-on-primary, #fff); box-shadow: var(--lv-btn-primary-shadow); }
+  .lv-btn--primary:hover:not(:disabled) { background: var(--lv-accent); filter: brightness(.95); }
   .lv-btn--ghost { border-color: transparent; background: transparent; color: var(--lv-text-2); }
-  .lv-btn.sm { padding: 5px 12px; font-size: 12.5px; }
-  .lv-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 550; color: var(--lv-text-2); background: var(--lv-surface-2); border: 1px solid var(--lv-border); }
-  .lv-chip.grn { color: var(--lv-green); background: var(--lv-green-soft); border-color: transparent; }
-  .lv-chip.red { color: var(--lv-red); background: var(--lv-red-soft); border-color: transparent; }
+  .lv-btn.sm { min-height: 34px; padding: 5px 12px; font-size: 12.5px; border-radius: 9px; }
+  .lv-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 7px; font-size: 12px; font-weight: 550; color: var(--lv-text-2); background: var(--lv-surface-2); border: 1px solid transparent; }
+  .lv-chip.grn { color: var(--lv-green); background: var(--lv-green-soft); }
+  .lv-chip.red { color: var(--lv-red); background: var(--lv-red-soft); }
   .lv-card { background: var(--lv-surface); border: 1px solid var(--lv-border); border-radius: var(--lv-r-3); padding: 18px 20px; box-shadow: var(--lv-sh-1); }
-  .lv-stem { font-size: 16px; line-height: 1.75; margin-bottom: 14px; white-space: pre-wrap; }
-  .lv-opt { display: flex; gap: 12px; width: 100%; text-align: left; padding: 11px 14px; border-radius: var(--lv-r-2); border: 1.5px solid var(--lv-border); margin-bottom: 8px; cursor: pointer; background: var(--lv-surface); font: inherit; color: inherit; transition: all var(--lv-dur-micro) ease; }
-  .lv-opt:hover { border-color: var(--lv-accent); background: var(--lv-accent-soft); }
-  .lv-opt .key { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; flex: none; font-size: 12.5px; font-weight: 700; background: var(--lv-surface-2); border: 1px solid var(--lv-border); }
+  .lv-stem { font-size: 19px; line-height: 1.8; letter-spacing: -.2px; margin-bottom: 16px; white-space: pre-wrap; }
+  .lv-opt { display: flex; gap: 13px; align-items: center; width: 100%; text-align: left; padding: 14px 17px; border-radius: var(--lv-r-2); border: 1px solid var(--lv-ctl-border); margin-bottom: 10px; cursor: pointer; background: var(--lv-surface); font: inherit; color: inherit; transition: background-color var(--lv-dur-micro) ease, border-color var(--lv-dur-micro) ease; }
+  .lv-opt:hover { border-color: var(--lv-accent); background: var(--lv-surface-2); }
+  .lv-opt .key { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; flex: none; font-size: 12px; font-weight: 550; background: var(--lv-surface); color: var(--lv-text-2); border: 1px solid var(--lv-ctl-border); }
   .lv-opt.sel { border-color: var(--lv-accent); background: var(--lv-accent-soft); }
   .lv-opt.sel .key { background: var(--lv-accent); border-color: var(--lv-accent); color: var(--b3-theme-on-primary, #fff); }
   .lv-bp-table { border: 1px solid var(--lv-border); border-radius: 12px; overflow: hidden; margin: 10px 0; }

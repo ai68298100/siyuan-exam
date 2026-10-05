@@ -27,6 +27,8 @@
   --lv-surface: var(--b3-theme-surface);
   --lv-surface-2: var(--b3-theme-background);
   --lv-border: var(--b3-border-color);
+  /* 必要控件边界（V01/原型 control-border）：比分隔线深一档，用于按钮/输入框/选项边界 */
+  --lv-ctl-border: color-mix(in srgb, var(--b3-theme-on-background) 26%, transparent);
   --lv-text: var(--b3-theme-on-background);
   --lv-text-2: color-mix(in srgb, var(--b3-theme-on-background) 70%, transparent);
   --lv-text-3: color-mix(in srgb, var(--b3-theme-on-background) 45%, transparent);
@@ -52,6 +54,20 @@
   --lv-sh-1: 0 1px 1px rgba(18, 25, 38, 0.03), 0 2px 6px -2px rgba(18, 25, 38, 0.06);
   --lv-sh-2: 0 1px 2px rgba(18, 25, 38, 0.05), 0 12px 36px -12px rgba(18, 25, 38, 0.16);
   --lv-sh-pop: 0 2px 4px rgba(18, 25, 38, 0.06), 0 20px 48px -16px rgba(18, 25, 38, 0.22);
+  /* 主按钮投影（原型 .primary: 0 3px 7px accent/20；accent alpha 由 color-mix 生成，无硬编码主题色） */
+  --lv-btn-primary-shadow: 0 3px 7px color-mix(in srgb, var(--b3-theme-primary) 20%, transparent);
+}
+
+/* 视图入场（原型 .screen-enter appear .18s；reduced-motion 全局禁用） */
+@keyframes lv-appear {
+  from {
+    opacity: 0.75;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 body.dark,

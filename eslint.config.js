@@ -8,7 +8,7 @@ import prettier from "eslint-config-prettier";
 import globals from "globals";
 
 export default tseslint.config(
-  { ignores: ["dist/", "node_modules/", "output/", "coverage/", "*.d.ts", "design/prototype/prototype.js"] },
+  { ignores: ["dist/", "node_modules/", "output/", "coverage/", "*.d.ts", "design/prototype/prototype.js", "scripts/visual-harness/"] },
   js.configs.recommended,
   ...tseslint.config({
     files: ["**/*.ts"],
