@@ -1493,9 +1493,17 @@ export class ExamApp {
     return wrongs.length ? wrongs : rest;
   }
 
-  quickDrill(questions: Question[], n: number, seed?: string): Question[] {
+  quickDrill(questions: Question[], n: number, seed?: string, opts?: { avoid?: Set<string> }): Question[] {
     // 65-05 lite：带 seed 走确定性抽样（可复现）；缺省维持 Math.random
-    return seed ? seededPickN(questions, n, seed) : pickRandom(questions, n);
+    // 65-06 lite：opts.avoid = 近期已见 qid——池充足时优先未见过的新题；不足则回退全量（如实）
+    const avoid = opts?.avoid;
+    const pool =
+      avoid && avoid.size
+        ? questions.filter((q) => !avoid.has(q.id)).length >= n
+          ? questions.filter((q) => !avoid.has(q.id))
+          : questions
+        : questions;
+    return seed ? seededPickN(pool, n, seed) : pickRandom(pool, n);
   }
 
   /** 举一反三：同考点变式题 */

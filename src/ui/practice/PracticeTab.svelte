@@ -17,6 +17,7 @@ import { ttsSpeak } from "@/core/tts";
     import { startTrail, recordEdit, trailValue, trailChanged, withLastEditReason, type AnswerTrail } from "../../core/answerTrail";
     import { helpFromExposure } from "../../core/exposure";
     import { randomSeedId } from "../../core/random";
+    import { recentlySeen } from "../../core/exposure";
     import { validate } from "../../importer/pipeline";
     import { bankHealthReport, coverageStats, answerDistribution, unreviewedStats, type BankHealthReport } from "../../core/bankHealth";
     import { planBatchEdit, invertPlan, describeChange } from "../../core/batchEdit";
@@ -1015,7 +1016,9 @@ import { ttsSpeak } from "@/core/tts";
         picked = app.dailyDrill(qs, [], Number.isFinite(goal) && goal > 0 ? goal : 10);
         if (!picked.length) { errorMsg = t("state.emptyBank"); return; }
       } else {
-        picked = app.quickDrill(qs, 20, sessionSeed);
+        // 65-06 lite：快速刷题避开近 3 天已见题（跨模式；池不足回退全量）
+        const seen = recentlySeen(app.attempts.all(), 3 * 86_400_000, Date.now());
+        picked = app.quickDrill(qs, 20, sessionSeed, { avoid: seen });
       }
       await safeStart(groupAdjacent(picked), mode, () => {
         feedback = null; selected = ""; confidenceSel = ""; sessionDone = null;

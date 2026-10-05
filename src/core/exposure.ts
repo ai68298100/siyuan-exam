@@ -37,3 +37,60 @@ export function exposureNodeCounts(events: readonly { exposure?: string[] }[]): 
   }
   return counts;
 }
+
+// ============================================================
+// 65-06 lite：跨模式曝光索引——「最近看过什么」可查、可用
+// ============================================================
+
+import type { AttemptEvent } from "./types";
+
+export interface SeenEntry {
+  /** 最近一次见到的时刻 */
+  lastTs: number;
+  /** 见于哪些模式（practice/mock/recite…——65-06「可声明模式例外」的查询面） */
+  kinds: Set<string>;
+  /** 经历过的暴露节点（布尔事实） */
+  nodes: Set<string>;
+  /** 窗口内见到的次数 */
+  count: number;
+}
+
+/** 时间窗内曝光索引：qid → SeenEntry。「作答本身」也是一次曝光（跨模式共享）。 */
+export function seenIndex(
+  events: readonly AttemptEvent[],
+  windowMs: number,
+  now: number,
+): Map<string, SeenEntry> {
+  const cutoff = windowMs > 0 ? now - windowMs : 0;
+  const index = new Map<string, SeenEntry>();
+  for (const e of events) {
+    if (e.verdict === "not_attempted") continue;
+    if (e.ts < cutoff) continue;
+    const cur = index.get(e.qid) ?? { lastTs: 0, kinds: new Set<string>(), nodes: new Set<string>(), count: 0 };
+    cur.lastTs = Math.max(cur.lastTs, e.ts);
+    cur.kinds.add(e.kind);
+    for (const n of e.exposure ?? []) cur.nodes.add(n);
+    cur.count++;
+    index.set(e.qid, cur);
+  }
+  return index;
+}
+
+/** 快速刷题去重：时间窗内已见过的 qid 集合（practice/mock 跨模式共享）。 */
+export function recentlySeen(events: readonly AttemptEvent[], windowMs: number, now: number): Set<string> {
+  return new Set(seenIndex(events, windowMs, now).keys());
+}
+
+/** 65-06 查询面（lite）：近期曝光条目倒序（最近优先），供报告面板逐题展示。
+ *  kinds/nodes 为布尔事实集合；不包含任何题目内容。 */
+export function recentExposureList(
+  events: readonly AttemptEvent[],
+  windowMs: number,
+  now: number,
+  limit = 30,
+): { qid: string; lastTs: number; kinds: string[]; nodes: string[]; count: number }[] {
+  return [...seenIndex(events, windowMs, now).entries()]
+    .map(([qid, v]) => ({ qid, lastTs: v.lastTs, kinds: [...v.kinds], nodes: [...v.nodes], count: v.count }))
+    .sort((a, b) => b.lastTs - a.lastTs)
+    .slice(0, limit);
+}

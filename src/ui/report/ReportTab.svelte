@@ -9,6 +9,7 @@
     import type { ExamApp } from "../../app";
     import Rail from "../shared/Rail.svelte";
     import { changedAnswerList } from "../../core/answerTrail";
+    import { recentExposureList } from "../../core/exposure";
     import Icon from "../shared/Icon.svelte";
     import { heatmap, masteryByKp, weakTop, hourly, calibration, confidentWrongList, uncertainCorrectList, delayedRecall, exposureStats, type CalibrationReport } from "@/core/report";
     import { trendToCsv, heatmapToCsv, hourlyToCsv } from "@/core/exportMd";
@@ -448,6 +449,8 @@
     let cwOpen = $state(false);
     let caOpen = $state(false);
     const caList = $derived(caOpen && app ? changedAnswerList(app.attempts.all()) : []);
+    let expOpen = $state(false);
+    const expList = $derived(expOpen && app ? recentExposureList(app.attempts.all(), 7 * 86_400_000, Date.now()) : []);
     const cwList = $derived(cwOpen && app ? confidentWrongList(app.attempts.all()) : []);
     // 44-02 lite 对偶：不确定-对 下钻
     let ucOpen = $state(false);
@@ -599,6 +602,32 @@
               </table>
             </div>
           {/if}
+        {/if}
+      </div>
+    {/if}
+
+    {#if expOpen}
+      <!-- 63-02/65-06：近期曝光查询（近 7 天 lite；布尔事实，不含题面内容） -->
+      <div class="lv-card lv-section" style="margin-bottom:12px">
+        <b>{t("exposure.title")}</b>
+        <button class="lv-btn sm lv-btn--ghost" style="margin:4px 0" onclick={() => expOpen = !expOpen}>
+          {expOpen ? "▾" : "▸"} {t("exposure.drill")}
+        </button>
+        {#if expOpen}
+          <div class="lv-muted">{t("exposure.empty")}</div>
+        {:else}
+          <div class="lv-row" style="margin:6px 0 0;flex-direction:column;align-items:stretch;gap:4px">
+            {#each expList as x (x.qid + x.lastTs)}
+              {@const stem = questions.find((q) => q.id === x.qid)?.stem}
+              <div class="lv-error-row" style="white-space:normal" title={stem ?? x.qid}>
+                <b class="num">👁</b> {stem ? stem.slice(0, 60) : x.qid}
+                <span class="lv-muted num"> · {new Date(x.lastTs).toLocaleString()}</span>
+                <span class="lv-chip num">×{x.count}</span>
+                {#each x.kinds as k (k)}<span class="lv-chip">{t("qk." + k, k)}</span>{/each}
+                {#each x.nodes as n (n)}<span class="lv-chip lv-chip--amb">{t("exposure.node." + n, n)}</span>{/each}
+              </div>
+            {/each}
+          </div>
         {/if}
       </div>
     {/if}
