@@ -1,0 +1,21 @@
+### Result
+{"cases":120,"failures":[],"errors":[],"external":[]}
+### Ran Playwright code
+```js
+await (async (page) => {
+ await page.reload();
+ const routes=['home','project','sources','reader','import','bank','practice','review','mock-setup','mock','debrief','report','assets','ai','settings'];
+ const errors=[],external=[],failures=[]; let count=0;
+ page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(!r.url().startsWith('http://127.0.0.1:8765/')&&!r.url().startsWith('data:'))external.push(r.url());});
+ await page.emulateMedia({reducedMotion:'reduce'});
+ for(const theme of ['light','dark'])for(const width of [1440,960,390,320]){await page.setViewportSize({width,height:1000});for(const route of routes){
+  await page.goto('http://127.0.0.1:8765/index.html#'+route); await page.evaluate(t=>setTheme(t),theme);
+  const check=await page.evaluate(()=>{const visible=e=>e.getClientRects().length&&!e.closest('[inert]');const small=[...document.querySelectorAll('button,input:not([type=checkbox]):not([type=radio]),select')].filter(visible).map(e=>({label:e.getAttribute('aria-label')||e.textContent.slice(0,45),height:e.getBoundingClientRect().height,width:e.getBoundingClientRect().width})).filter(r=>r.height<43.9||r.width<43.9);return {overflow:document.documentElement.scrollWidth>innerWidth,small};});count++;if(check.overflow||check.small.length)failures.push({theme,width,route,...check});
+ }}
+ await page.setViewportSize({width:1440,height:1000});await page.goto('http://127.0.0.1:8765/index.html#home');await page.emulateMedia({reducedMotion:'no-preference'});
+ return {cases:count,failures,errors,external};
+})(page);
+```
+### Page
+- Page URL: http://127.0.0.1:8765/index.html#home
+- Page Title: 小驴考试 · 备考工作台交互原型 v5

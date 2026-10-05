@@ -1,0 +1,9 @@
+### Result
+{"cases":10,"failures":[]}
+### Ran Playwright code
+```js
+await (async(page)=>{const failures=[];let count=0;await page.emulateMedia({forcedColors:'active',reducedMotion:'reduce'});for(const width of [1440,320]){await page.setViewportSize({width,height:1000});for(const route of ['home','reader','practice','ai','report']){await page.goto('http://127.0.0.1:8765/index.html#'+route);const data=await page.evaluate(()=>({overflow:document.documentElement.scrollWidth>innerWidth,animation:getComputedStyle(document.querySelector('.screen')).animationName,transition:getComputedStyle(document.querySelector('button')).transitionDuration}));count++;if(data.overflow||data.animation!=='none'||data.transition!=='0s')failures.push({width,route,...data});}}await page.emulateMedia({forcedColors:'none',reducedMotion:'no-preference'});return{cases:count,failures};})(page);
+```
+### Page
+- Page URL: http://127.0.0.1:8765/index.html#report
+- Page Title: 小驴考试 · 备考工作台交互原型 v5
