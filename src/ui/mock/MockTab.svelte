@@ -318,6 +318,7 @@
           await app.saveMockResult({
             id: bp.id, runId: effectiveRunId, name: bp.name, startedAt, total: score.total, full: score.full, percent: score.percent, pass: score.pass,
             sections: score.sections.map((s) => ({ name: s.name, score: s.score, full: s.full, correct: s.correct, total: s.total })),
+            extraTimeS: session.state.extraTimeS,
           });
           history = await app.listMockResults();
         }
@@ -510,6 +511,13 @@
     <span class="fn__flex-1"></span>
     {#if view === "exam"}
       <span class="lv-chip num">⏱ {remainText()}</span>
+      {#if (session?.state.extraTimeS ?? 0) > 0}
+        <span class="lv-chip lv-chip--amb num" title={t("mock.extraTip")}>⏱+{Math.round((session!.state.extraTimeS ?? 0) / 60)}{t("entry.minutes")}</span>
+      {/if}
+      <!-- 55-06 lite：单次条件覆盖——延时入快照与成绩记录，原卷不变 -->
+      <button class="lv-chip" title={t("mock.extraTip")} onclick={() => { session?.extendTime(300); }}>
+        ⏱+5{t("entry.minutes")}
+      </button>
     {/if}
   </div>
 
@@ -753,6 +761,10 @@
       <span class="lv-chip num">🚩 {score.flagsUsed}</span>
       <span class="lv-chip num">{t("mock.changes")} {score.changes}</span>
       <span class="lv-chip num">{t("mock.last20")} {score.last20min.correct}/{score.last20min.attempted}</span>
+      {#if session?.state.extraTimeS}
+        <!-- 55-06 lite：单次条件覆盖明示（同卷不同条件不混排比较的依据） -->
+        <span class="lv-chip lv-chip--amb num" title={t("mock.extraTip")}>⏱+{Math.round(session.state.extraTimeS / 60)}{t("entry.minutes")}</span>
+      {/if}
     </div>
     {#if history.length >= 2}
       <div class="lv-card" style="margin:12px 0">

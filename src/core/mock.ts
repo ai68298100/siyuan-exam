@@ -144,6 +144,8 @@ export interface MockState {
   qids: string[];
   startedAt: number; // wall clock
   finishedAt?: number;
+  /** 55-06 lite：累计延时秒（单次条件覆盖；随快照持久化，成绩单明示） */
+  extraTimeS?: number;
 }
 
 export class MockSession {
@@ -199,17 +201,25 @@ export class MockSession {
     return Math.max(0, now - this.state.startedAt);
   }
 
-  /** 剩余总时长 ms（负数=已超时） */
+  /** 剩余总时长 ms（负数=已超时）；55-06 lite：含累计延时 */
   remaining(now: number): number {
-    return this.bp.durationS * 1000 - this.elapsed(now);
+    return this.bp.durationS * 1000 + (this.state.extraTimeS ?? 0) * 1000 - this.elapsed(now);
   }
 
-  /** 当前段剩余（分段计时模式）：按该段题量折算份额；归零即应跳段 */
+  /** 55-06 lite：单次条件覆盖——延长本次考试 N 秒（已交卷拒绝）；返回累计延时秒。
+   *  条件入快照，成绩单明示；原蓝图与冻结卷面不变。 */
+  extendTime(seconds: number): number | null {
+    if (this.submitted || seconds <= 0) return null;
+    this.state.extraTimeS = (this.state.extraTimeS ?? 0) + seconds;
+    return this.state.extraTimeS;
+  }
+
+  /** 当前段剩余（分段计时模式）：按该段题量折算份额（含延时按比例摊入）；归零即应跳段 */
   sectionRemaining(section: string, now: number): number | null {
     if (!this.bp.sectionTimed) return null;
     const totalQ = this.state.qids.length || 1;
     const secQ = this.state.qids.filter((id) => this.sectionOf.get(id) === section).length || 1;
-    const budget = (this.bp.durationS * 1000 * secQ) / totalQ;
+    const budget = ((this.bp.durationS + (this.state.extraTimeS ?? 0)) * 1000 * secQ) / totalQ;
     const spent = this.elapsed(now) - (this.sectionStart[section] ?? 0);
     return budget - spent;
   }
@@ -397,6 +407,8 @@ export class MockSession {
       finishedAt: this.state.finishedAt,
       /** 55-07 lite：开考冻结题版（旧快照无此字段 → 恢复后 drift 不可知，如实不标注） */
       qVersions: Object.fromEntries(this.qVersions),
+      /** 55-06 lite：累计延时秒（未延时缺省不写字段） */
+      ...(this.state.extraTimeS ? { extraTimeS: this.state.extraTimeS } : {}),
     };
   }
 
@@ -438,6 +450,8 @@ export class MockSession {
       session.qVersions.clear();
       for (const [qid, ver] of Object.entries(snap.qVersions)) session.qVersions.set(qid, ver);
     }
+    // 55-06 lite：延时条件随快照恢复
+    if (snap.extraTimeS) session.state.extraTimeS = snap.extraTimeS;
     return { session, missingQids, alreadySubmitted: !!snap.finishedAt };
   }
 }
@@ -487,6 +501,8 @@ export interface MockRunSnapshot {
   finishedAt?: number; // 已交卷（恢复时直接进报告，不重考）
   /** 55-07 lite：开考冻结题版（qid → hash+answer）；旧快照缺省 */
   qVersions?: Record<string, { hash: string; answer: string }>;
+  /** 55-06 lite：累计延时秒（单次条件覆盖；成绩单明示「延时 N 分钟」，旧快照缺省） */
+  extraTimeS?: number;
 }
 
 /** 恢复报告：missingQids = 卷面有但题库已读不到的题（改题/删题后如实降级，不静默补题） */

@@ -443,6 +443,7 @@
     "health.distStarvedTip": "These letters are never the answer — those options are dead weight",
     "health.unreviewed": "AI unreviewed: {n} ({r}%)",
     "health.unreviewedTip": "AI-generated questions without a verified review mark — they are used in practice/assembly as-is; review them first",
+    "mock.extraTip": "Single-run override: extra time applies to this attempt only and is recorded with the score (same paper, different conditions are compared separately)",
     "mock.exportToDoc": "📚 Write to bank docs",
     "challenge.copied": "✓ Challenge copied (answers included, friendly mode)",
     "challenge.importTitle": "Import challenge code",

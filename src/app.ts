@@ -115,6 +115,8 @@ export interface MockRecord {
   pass: boolean;
   /** 分模块明细（历史详情回看；旧记录无此字段需容错） */
   sections?: { name: string; score: number; full: number; correct: number; total: number }[];
+  /** 55-06 lite：累计延时秒（单次条件覆盖；成绩分组比较时"同卷不同条件"的明示依据；旧记录无此字段） */
+  extraTimeS?: number;
 }
 
 const MOCK_RESULTS_KEY = "mock/results";

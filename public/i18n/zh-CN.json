@@ -459,6 +459,7 @@
     "health.distStarvedTip": "这些字母从未成为答案——形同虚设的选项",
     "health.unreviewed": "AI 未审校 {n} 题（{r}%）",
     "health.unreviewedTip": "AI 生成且未标记审校通过的题——出题/组卷会照常使用，建议先审校",
+    "mock.extraTip": "单次条件覆盖：延时仅对本次考试生效并记入成绩记录（同卷不同条件不混排比较）",
     "mock.exportToDoc": "📚 写入题库导出文档",
     "challenge.copied": "✓ 挑战码已复制，发给朋友吧（含答案，友谊赛模式）",
     "challenge.importTitle": "导入挑战码",
