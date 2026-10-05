@@ -81,11 +81,23 @@
     /** 39-06 lite：统计日期范围（0=全部）。口径：作答量/正确率/时段/校准按范围过滤；
      *  消灭错题与连续天数为状态类指标保持全局；掌握度按题库范围（reloadBankScope） */
     let rangeDays = $state(0);
+    /** 69-03：聚合结果 memo——追加式流水 → (rangeDays, 条数, 末位 eid) 命中即免重算。
+     *  报告页每次挂载/切日期范围都调 computeReport；重开面板不再付全量聚合成本。 */
+    const reportMemo = new SvelteMap<string, { kpi: typeof kpi; hours: number[]; calib: CalibrationReport | null; quad: QuadrantReport | null; quadSignals: string[]; trend30: { date: string; attempts: number }[] }>();
     function computeReport() {
       if (!app) return;
       const d = app.derived();
+      const all = app.attempts.all();
+      const last = all[all.length - 1];
+      const memoKey = `${rangeDays}|${all.length}|${last ? last.eid : "-"}|${typeByQid.size}`;
+      const cached = reportMemo.get(memoKey);
+      if (cached) {
+        kpi = cached.kpi; hours = cached.hours; calib = cached.calib;
+        quad = cached.quad; quadSignals = cached.quadSignals; trend30 = cached.trend30;
+        return;
+      }
       const cutoff = rangeDays > 0 ? Date.now() - rangeDays * 86_400_000 : 0;
-      const events = app.attempts.all().filter((e) => !cutoff || e.ts >= cutoff);
+      const events = all.filter((e) => !cutoff || e.ts >= cutoff);
       let attempts = 0, correct = 0;
       for (const e of events) {
         if (e.verdict === "not_attempted") continue;
@@ -104,6 +116,8 @@
       quadSignals = quadrantSignals(quad);
       const cutoffDate = cutoff ? new Date(cutoff).toISOString().slice(0, 10) : "";
       trend30 = cutoff ? dailyTrend(d.days).filter((p) => p.date >= cutoffDate) : dailyTrend(d.days);
+      reportMemo.set(memoKey, { kpi, hours, calib, quad, quadSignals, trend30 });
+      if (reportMemo.size > 8) reportMemo.delete(reportMemo.keys().next().value as string); // FIFO 上限
     }
 
     // ---------- AI 报告解读（117-01 T11：只解释确定性统计，事实全部来自 report.ts 既有聚合） ----------

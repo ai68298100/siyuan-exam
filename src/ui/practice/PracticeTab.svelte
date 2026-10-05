@@ -1736,7 +1736,6 @@ import { ttsSpeak } from "@/core/tts";
       showMessage(t("reflection.saved"), 2000, "info");
     }
     /** 114-01：本会话受助标记（qid → 讲解模式；reveal=查看被拦泄露提示）；同题再答时随 attempt 落 help 字段 */
-    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- 函数内累加 Map（非组件遍历状态）
     // 63-02：暴露集合（同题多暴露保全；help 字段由 helpFromExposure 派生，向后兼容）
     const exposures = new SvelteMap<string, SvelteSet<string>>();
     function addExposure(qid: string, node: string) {
