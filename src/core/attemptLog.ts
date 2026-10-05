@@ -35,6 +35,9 @@ export interface AppendInput {
   selfRating?: number;
   examId?: string | null;
   changes?: number;
+  /** 63-03 改答轨迹：首答 + 每次修改（终答=myAnswer）；上限截断如实标注 */
+  firstAnswer?: string;
+  edits?: AttemptEvent["edits"];
   confidence?: AttemptEvent["confidence"];
   help?: AttemptEvent["help"];
   recall?: AttemptEvent["recall"];
@@ -130,6 +133,8 @@ export class AttemptLog {
       device: this.device,
       seq: ++this.seq,
       changes: input.changes,
+      firstAnswer: input.firstAnswer,
+      edits: input.edits,
       confidence: input.confidence,
       help: input.help,
       recall: input.recall,

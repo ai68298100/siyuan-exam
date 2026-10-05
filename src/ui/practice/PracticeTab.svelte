@@ -14,6 +14,7 @@ import { ttsSpeak } from "@/core/tts";
     import { makeQuestion } from "../../core/blockTemplate";
     import { normalizeAnswer, questionHash } from "../../core/answer";
     import { specOf, splitBlanks, joinBlanks } from "../../core/structuredAnswer";
+    import { startTrail, recordEdit, trailValue, trailChanged, withLastEditReason, type AnswerTrail } from "../../core/answerTrail";
     import { validate } from "../../importer/pipeline";
     import { bankHealthReport, coverageStats, answerDistribution, unreviewedStats, type BankHealthReport } from "../../core/bankHealth";
     import { planBatchEdit, invertPlan, describeChange } from "../../core/batchEdit";
@@ -29,6 +30,7 @@ import { ttsSpeak } from "@/core/tts";
     import { probeGlean, listLaterClips, formatClipsForSource, markClipDone, type GleanClip } from "@/core/gleanBridge";
     import { onExamEvent, emitExamEvent } from "@/core/bus";
     import Icon from "../shared/Icon.svelte";
+    import { SvelteMap } from "svelte/reactivity";
     import Rail from "../shared/Rail.svelte";
     import { escapeHtml } from "../../libs/sanitize";
     import { questionFingerprint } from "@/ai/task";
@@ -65,6 +67,32 @@ import { ttsSpeak } from "@/core/tts";
     /** 草稿的响应式镜像：session 类实例非响应式（$state 不代理类实例），提交键的禁用态
      *  需要跟随草稿变化——三个作答框（数值/多空/文本）oninput 时同步此镜像 */
     let draftLive = $state("");
+
+    /** 63-03 改答轨迹：qid → {首答, 每次修改}。非响应式存储（仅提交时读取）；
+     *  原因弹层可见性是 UI 态单独管理。上限截断/取消不记等语义在 answerTrail.ts */
+    const trails = new SvelteMap<string, AnswerTrail>();
+    let reasonPromptQid = $state("");
+    function trailInput(qid: string, value: string) {
+      const v = String(value ?? "");
+      if (!v) return;
+      const existing = trails.get(qid);
+      if (!existing) {
+        trails.set(qid, startTrail(v));
+        return;
+      }
+      const before = trailValue(existing);
+      if (v === before) return; // 取消/重复：不产生轨迹事件（63-03 边界）
+      const next = recordEdit(existing, v);
+      if (next !== existing) {
+        trails.set(qid, next);
+        if (next.edits.length > existing.edits.length) reasonPromptQid = qid; // 真实修改 → 询问原因
+      }
+    }
+    function setEditReason(qid: string, reason: "unsure" | "evidence" | "misclick") {
+      const t = trails.get(qid);
+      if (t) trails.set(qid, withLastEditReason(t, reason));
+      reasonPromptQid = "";
+    }
     let sessionDone = $state<null | { total: number; correct: number; wrong: number }>(null);
     /** 已存错因回显（app.loadWrongReason；答错时载入，选择后即时高亮） */
     let savedReason = $state<string | undefined>(undefined);
@@ -933,6 +961,7 @@ import { ttsSpeak } from "@/core/tts";
     async function negotiateStart(qs: Question[], mode: string): Promise<boolean> {
       try {
         session = await app.startSession(qs, mode, activeBankId, { interleave: materialInterleave });
+        trails.clear();
         answerStart = Date.now(); // 首题计时基线
         return true;
       } catch (e) {
@@ -1729,6 +1758,11 @@ import { ttsSpeak } from "@/core/tts";
         confidence: confidenceSel || undefined,   // U12：答前快照随 attempt；未选=如实缺省
         help: helpShown.get(q.id),               // 114-01：本题曾被讲解/提示 → 受助作答如实标记
         recall: recallUsed.has(q.id) || undefined, // 52-02：先回忆模式揭示可追溯
+        ...((): Pick<import("../../core/types").AttemptEvent, "firstAnswer" | "edits"> => {
+          const t = trails.get(q.id);
+          if (!t || !trailChanged(t)) return {}; // 63-03：终答==首答（含取消回退）→ 不带轨迹，报告口径「未改答」
+          return { firstAnswer: t.first, edits: t.edits };
+        })(),
       });
       plugin.refreshDock?.();
       void app.saveSession();   // 37-05 checkpoint：作答即存（SaveGate 同键合并，重载不重复作答）
@@ -3227,6 +3261,7 @@ import { ttsSpeak } from "@/core/tts";
                       } else {
                         selected = L;
                       }
+                      if (!feedback) trailInput(q.id, selected);
                     }}>
                     <span class="key">{L}</span>
                     <span>{opt}</span>
@@ -3241,6 +3276,7 @@ import { ttsSpeak } from "@/core/tts";
                   placeholder={curSpec.unit ? t("session.numericUnit").replace("{u}", curSpec.unit) : t("session.numericPlain")}
                   value={session.getDraft(q.id)}
                   oninput={(e) => { draftLive = (e.target as HTMLInputElement).value; session.setDraft(q.id, draftLive); }}
+                  onchange={(e) => trailInput(q.id, (e.target as HTMLInputElement).value)}
                   disabled={!!feedback} />
                 {#if curSpec.unit}<div class="lv-row" style="margin:6px 0 0"><span class="lv-chip num">{t("session.unitLabel")}：{curSpec.unit}</span></div>{/if}
               {:else if curSpec?.kind === "multiBlank"}
@@ -3250,12 +3286,14 @@ import { ttsSpeak } from "@/core/tts";
                   <input class="lv-input lv-answer-blank" placeholder={t("session.blankN").replace("{n}", String(i + 1))}
                     value={blankParts[i]}
                     oninput={(e) => setBlank(i, (e.target as HTMLInputElement).value)}
+                  onchange={() => trailInput(q.id, joinBlanks(blankParts))}
                     disabled={!!feedback} />
                 {/each}
               {:else}
                 <textarea class="lv-input lv-textarea" placeholder={t("session.answerPlaceholder")}
                   value={session.getDraft(q.id)}
                   oninput={(e) => { draftLive = (e.target as HTMLTextAreaElement).value; session.setDraft(q.id, draftLive); }}
+                onchange={(e) => trailInput(q.id, (e.target as HTMLTextAreaElement).value)}
                   disabled={!!feedback}></textarea>
               {/if}
             {/if}
@@ -3286,6 +3324,15 @@ import { ttsSpeak } from "@/core/tts";
               </div>
             {/if}
 
+            {#if reasonPromptQid === q.id && !feedback}
+              <div class="lv-row lv-reason" role="group" aria-label={t("trail.reasonTitle")}>
+                <span class="lv-muted" style="font-size:11.5px">{t("trail.reasonTitle")}</span>
+                <button class="lv-chip" onclick={() => setEditReason(q.id, "unsure")}>{t("trail.reason.unsure")}</button>
+                <button class="lv-chip" onclick={() => setEditReason(q.id, "evidence")}>{t("trail.reason.evidence")}</button>
+                <button class="lv-chip" onclick={() => setEditReason(q.id, "misclick")}>{t("trail.reason.misclick")}</button>
+                <button class="lv-chip lv-btn--ghost" onclick={() => (reasonPromptQid = "")}>{t("trail.reason.skip")}</button>
+              </div>
+            {/if}
             <div class="lv-row lv-answer-actions">
               {#if !feedback}
                 <button class="lv-btn lv-btn--primary" onclick={submitAnswer} disabled={!selected && !draftLive}>{t("session.submit")}</button>
@@ -4594,6 +4641,8 @@ import { ttsSpeak } from "@/core/tts";
   .lv-feedback.good { border-left-color: var(--lv-green); background: var(--lv-green-soft); color: var(--lv-green); }
   /* —— 作答动作区（原型 .answer-actions：上分隔线 + 层次） —— */
   .lv-answer-actions { margin-top: 14px; padding-top: 18px; border-top: 1px solid var(--lv-border); }
+  /* —— 改答原因弹层（63-03：轻量内联，不阻断作答） —— */
+  .lv-reason { margin: 8px 0 0; padding: 8px 12px; border-radius: var(--lv-r-2); background: var(--lv-surface-2); }
   /* —— 结构化作答框（54 第三刀：数值单行 / 多空逐空） —— */
   .lv-answer-num { min-height: 48px; font-size: 16px; font-variant-numeric: tabular-nums; }
   .lv-answer-blank { min-height: 44px; margin-bottom: 10px; }

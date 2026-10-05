@@ -8,6 +8,7 @@
     import { quadrantReport, quadrantSignals, type QuadrantReport } from "@/core/quadrant";
     import type { ExamApp } from "../../app";
     import Rail from "../shared/Rail.svelte";
+    import { changedAnswerList } from "../../core/answerTrail";
     import Icon from "../shared/Icon.svelte";
     import { heatmap, masteryByKp, weakTop, hourly, calibration, confidentWrongList, uncertainCorrectList, delayedRecall, exposureStats, type CalibrationReport } from "@/core/report";
     import { trendToCsv, heatmapToCsv, hourlyToCsv } from "@/core/exportMd";
@@ -445,6 +446,8 @@
 
     // 44-02 lite：确定-错 下钻（展开时从流水实时取，随报告数据同源）
     let cwOpen = $state(false);
+    let caOpen = $state(false);
+    const caList = $derived(caOpen && app ? changedAnswerList(app.attempts.all()) : []);
     const cwList = $derived(cwOpen && app ? confidentWrongList(app.attempts.all()) : []);
     // 44-02 lite 对偶：不确定-对 下钻
     let ucOpen = $state(false);
@@ -596,6 +599,31 @@
               </table>
             </div>
           {/if}
+        {/if}
+      </div>
+    {/if}
+
+    {#if caList.length || caOpen}
+      <!-- 63-03：改答题清单（首答 → 终答 分离；报告口径：终答==首答不列） -->
+      <div class="lv-card lv-section" style="margin-bottom:12px">
+        <b>{t("report.changedTitle")}</b>
+        <button class="lv-btn sm lv-btn--ghost" style="margin-top:4px" onclick={() => caOpen = !caOpen}>
+          {caOpen ? "▾" : "▸"} {t("report.changedDrill")}（<span class="num">{caList.length}</span>）
+        </button>
+        {#if caOpen}
+          <div class="lv-row" style="margin:6px 0 0;flex-direction:column;align-items:stretch;gap:4px">
+            {#each caList as c, _ci (_ci)}
+              {@const stem = questions.find((x) => x.id === c.qid)?.stem}
+              <div class="lv-error-row" style="white-space:normal" title={stem ?? c.qid}>
+                <b class="num">↺</b> {stem ? stem.slice(0, 60) : c.qid}
+                <span class="lv-muted"> · {t("report.changedFirst")}: {c.first} → {c.final}</span>
+                <span class="lv-chip num" style="margin-left:4px">{c.editCount}</span>
+                {#if c.reasons.length}<span class="lv-muted"> · {c.reasons.map((r) => t("trail.reason." + r)).join("、")}</span>{/if}
+              </div>
+            {:else}
+              <span class="lv-muted num">{t("report.changedEmpty")}</span>
+            {/each}
+          </div>
         {/if}
       </div>
     {/if}

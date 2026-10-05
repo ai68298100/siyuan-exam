@@ -67,6 +67,10 @@ export interface AttemptEvent {
   device: string; // 设备 ID（分片合并键）
   seq: number; // 设备内单调序号（乱序回放排序键）
   changes?: number; // 改答次数
+  /** 改答轨迹（63-03）：首答与每次修改（终答=myAnswer）。可选 additive 字段；edits 上限截断如实标注。
+   *  边界：不以改答次数判定能力或粗心；输入框取消（值回到已记录值）不产生轨迹事件 */
+  firstAnswer?: string;
+  edits?: { to: string; reason?: "unsure" | "evidence" | "misclick" }[];
   confidence?: "sure" | "fuzzy" | "guess"; // 置信度自评
   /** 受助标记（114-01）：本次作答前该题已被讲解/提示过（同会话内）；reveal=查看被守卫拦截的疑似泄题提示（G6 正式揭示）。受助表现与独立正确分开统计的依据 */
   help?: "explain" | "hint" | "socratic" | "reveal";
