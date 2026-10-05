@@ -81,6 +81,49 @@ export function recentlySeen(events: readonly AttemptEvent[], windowMs: number, 
   return new Set(seenIndex(events, windowMs, now).keys());
 }
 
+// ============================================================
+// 63-02 边界前推：放弃会话的曝光持久化
+// 看过提示/材料/讲解但未提交就退出会话——这些节点是真实事实，随
+// exposure-only 事件落库（verdict=not_attempted，与「跳过」同形不新造语义）。
+// 已提交的题其曝光已随作答事件落库，不重复。查询口径分层如实：
+// 逐节点计数（exposureNodeCounts）计入；exposureStats/四象限/seenIndex
+// 不计入（非完成作答）。
+// ============================================================
+
+/** 放弃会话时的 exposure-only 事件输入（未提交且确有暴露节点的题）：
+ *  verdict=not_attempted / myAnswer=null 与「跳过」同形，不新造语义、不伪造已完成作答 */
+export interface AbandonedExposureInput {
+  qid: string;
+  kind: AttemptEvent["kind"];
+  mode: string;
+  sessionId: string;
+  verdict: "not_attempted";
+  myAnswer: null;
+  exposure: string[];
+}
+
+export function abandonedExposureInputs(
+  answeredQids: readonly string[],
+  exposures: ReadonlyMap<string, ReadonlySet<string>>,
+  opts: { kind: AttemptEvent["kind"]; mode: string; sessionId: string },
+): AbandonedExposureInput[] {
+  const answered = new Set(answeredQids);
+  const out: AbandonedExposureInput[] = [];
+  for (const [qid, nodes] of exposures) {
+    if (answered.has(qid) || nodes.size === 0) continue;
+    out.push({
+      qid,
+      kind: opts.kind,
+      mode: opts.mode,
+      sessionId: opts.sessionId,
+      verdict: "not_attempted",
+      myAnswer: null,
+      exposure: [...nodes],
+    });
+  }
+  return out;
+}
+
 /** 65-06 查询面（lite）：近期曝光条目倒序（最近优先），供报告面板逐题展示。
  *  kinds/nodes 为布尔事实集合；不包含任何题目内容。 */
 export function recentExposureList(

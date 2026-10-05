@@ -16,6 +16,7 @@ import { ttsSpeak } from "@/core/tts";
     import { specOf, splitBlanks, joinBlanks } from "../../core/structuredAnswer";
     import { startTrail, recordEdit, trailValue, trailChanged, withLastEditReason, type AnswerTrail } from "../../core/answerTrail";
     import { helpFromExposure } from "../../core/exposure";
+    import { abandonedExposureInputs } from "../../core/exposure";
     import { randomSeedId } from "../../core/random";
     import { recentlySeen } from "../../core/exposure";
     import { validate } from "../../importer/pipeline";
@@ -1871,6 +1872,14 @@ import { ttsSpeak } from "@/core/tts";
         const { confirmDialogSync } = await import("../../libs/dialog");
         if (!(await confirmDialogSync({ title: t("session.exit"), content: t("session.exitConfirm") }))) return;
       }
+      // 63-02 边界前推：看过提示/材料但未提交就退出——曝光是真实事实，落 exposure-only 事件
+      //（verdict=not_attempted 与跳过同形；不伪造已完成作答；已提交的题不重复）
+      for (const input of abandonedExposureInputs(
+        session.answered.map((a) => a.qid), exposures,
+        { kind: "practice", mode: session.state.mode, sessionId: session.id },
+      )) {
+        try { app.recordAttempt(input); } catch { /* 尽力而为：放弃会话不因曝光落库失败而中断 */ }
+      }
       await app.saveSession();
       await app.flush();
       session = null; feedback = null; selected = ""; confidenceSel = ""; sessionDone = null;
@@ -3020,7 +3029,18 @@ import { ttsSpeak } from "@/core/tts";
               <div class="lv-muted">{t("resume.progress")}: {session.progress.done}/{session.progress.total}</div>
             </div>
             <button class="lv-btn lv-btn--primary" onclick={resume}>{t("resume.continue")}</button>
-            <button class="lv-btn lv-btn--ghost" onclick={async () => { await app.discardSession(); session = null; }}>{t("resume.discard")}</button>
+            <button class="lv-btn lv-btn--ghost" onclick={async () => {
+          if (session) {
+            for (const input of abandonedExposureInputs(
+              session.answered.map((a) => a.qid), exposures,
+              { kind: "practice", mode: session.state.mode, sessionId: session.id },
+            )) {
+              try { app.recordAttempt(input); } catch { /* 尽力而为 */ }
+            }
+          }
+          await app.discardSession();
+          session = null;
+        }}>{t("resume.discard")}</button>
           </div>
         </div>
       {/if}

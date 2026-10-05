@@ -1,6 +1,6 @@
 // 63-02：暴露记录测试（节点集合保全/向后兼容 help 派生/逐节点计数/布尔事实口径）
 import { describe, expect, it } from "vitest";
-import { helpFromExposure, exposureNodeCounts } from "../src/core/exposure";
+import { abandonedExposureInputs, helpFromExposure, exposureNodeCounts } from "../src/core/exposure";
 import { exposureStats } from "../src/core/report";
 import type { AttemptEvent } from "../src/core/types";
 
@@ -55,5 +55,27 @@ describe("exposureStats 扩展（节点计数并入三口径）", () => {
     expect(r.independent).toBe(1);
     expect(r.assisted).toBe(1);
     expect(r.nodes).toEqual({ material: 1, analysis: 1, hint: 1 });
+  });
+});
+
+describe("abandonedExposureInputs（63-02 边界前推）", () => {
+  const exposures = new Map<string, Set<string>>([
+    ["q-hint", new Set(["hint", "material"])],
+    ["q-done", new Set(["analysis"])], // 已提交 → 不重复落
+    ["q-empty", new Set()], // 无暴露 → 不落
+  ]);
+  const answered = ["q-done"];
+
+  it("只生成未提交且确有暴露的 exposure-only 事件", () => {
+    const out = abandonedExposureInputs(answered, exposures, { kind: "practice", mode: "daily", sessionId: "s-1" });
+    expect(out).toHaveLength(1);
+    expect(out[0]).toEqual({
+      qid: "q-hint", kind: "practice", mode: "daily", sessionId: "s-1",
+      verdict: "not_attempted", myAnswer: null, exposure: ["hint", "material"],
+    });
+  });
+
+  it("全空 exposures → 零事件", () => {
+    expect(abandonedExposureInputs([], new Map(), { kind: "practice", mode: "daily", sessionId: "s" })).toEqual([]);
   });
 });
