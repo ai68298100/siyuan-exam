@@ -28,6 +28,7 @@ import { ttsSpeak } from "@/core/tts";
     import { probeGlean, listLaterClips, formatClipsForSource, markClipDone, type GleanClip } from "@/core/gleanBridge";
     import { onExamEvent, emitExamEvent } from "@/core/bus";
     import Icon from "../shared/Icon.svelte";
+    import Rail from "../shared/Rail.svelte";
     import { escapeHtml } from "../../libs/sanitize";
     import { questionFingerprint } from "@/ai/task";
     import { summarizeLoad } from "@/ai/flashCandidates";
@@ -868,6 +869,21 @@ import { ttsSpeak } from "@/core/tts";
     const materialInterleave = $derived(
       plugin.settingUtils?.get?.("materialInterleave") === true || plugin.settingUtils?.get?.("materialInterleave") === "true",
     );
+
+    /** rail 上下文导航项（全局三项在 Rail 组件内） */
+    const at = (v: View) => view === v;
+    const railItems = $derived([
+      { icon: "table", name: t("mode.browse"), on: at("browse"), onclick: () => { view = "browse"; void loadQuestions(); } },
+      { icon: "import", name: t("import.title"), on: at("import"), onclick: () => view = "import" },
+      { icon: "pencil", name: t("entry.manual"), on: at("manual"), onclick: () => view = "manual" },
+      { icon: "sparkles", name: t("ai.title"), on: at("ai"), onclick: () => view = "ai" },
+      { icon: "book", name: t("materials.title"), on: at("materials"), onclick: () => { view = "materials"; loadMaterials(); } },
+    ]);
+    function onRailNav(target: "practice" | "mock" | "report") {
+      if (target === "practice") view = "entry";
+      else if (target === "mock") plugin.openMock?.();
+      else plugin.openReport?.();
+    }
 
     /** 47-02 lite：首用引导（有题库 + 零作答记录 + 未跳过时显示；产生首个作答后自动消失） */
     let onboardingDismissed = $state(false);
@@ -2867,18 +2883,7 @@ import { ttsSpeak } from "@/core/tts";
       {#if hasBank}<span class="lv-chip">{t("bank.label")} {bankName}</span><button class="lv-chip" title={t("bank.removeTitle")} onclick={removeActiveBank}>✕</button>{/if}
   </div>
   <div class="lv-shell">
-    <aside class="lv-rail" aria-label={t("tab.practice")}>
-      <div class="lv-brand"><span class="lv-brand-mark" aria-hidden="true">驴</span><span class="lv-brand-name">小驴考试<span class="lv-brand-sub">LV EXAM</span></span></div>
-      <nav class="lv-rail-nav">
-        <button class="lv-rail-btn" class:on={view === "entry"} onclick={() => view = "entry"}><Icon name="home" size={16} /> {t("mode.practice")}</button>
-        <button class="lv-rail-btn" class:on={view === "browse"} onclick={() => { view = "browse"; void loadQuestions(); }}><Icon name="table" size={16} /> {t("mode.browse")}</button>
-        <button class="lv-rail-btn" class:on={view === "import"} onclick={() => view = "import"}><Icon name="import" size={16} /> {t("import.title")}</button>
-        <button class="lv-rail-btn" class:on={view === "manual"} onclick={() => view = "manual"}><Icon name="pencil" size={16} /> {t("entry.manual")}</button>
-        <button class="lv-rail-btn" class:on={view === "ai"} onclick={() => view = "ai"}><Icon name="sparkles" size={16} /> {t("ai.title")}</button>
-        <button class="lv-rail-btn" class:on={view === "materials"} onclick={() => { view = "materials"; loadMaterials(); }}><Icon name="book" size={16} /> {t("materials.title")}</button>
-      </nav>
-      <div class="lv-rail-note">{t("rail.note")}</div>
-    </aside>
+    <Rail active="practice" {plugin} items={railItems} onnavigate={onRailNav} />
     <div class="lv-main">
   {#if loading}
     <div class="lv-pad"><div class="lv-skeleton"></div></div>
@@ -4451,24 +4456,6 @@ import { ttsSpeak } from "@/core/tts";
 
 <style>
   .lv-pad { padding: 16px 22px 48px; overflow: auto; }
-  /* —— 侧栏导航 rail（原型 .sidebar/.nav-btn：品牌位+图标导航+选中指示条） —— */
-  .lv-shell { flex: 1; display: grid; grid-template-columns: 212px minmax(0, 1fr); min-height: 0; }
-  .lv-rail { border-right: 1px solid var(--lv-border); background: color-mix(in srgb, var(--lv-text) 3%, var(--lv-surface-2)); padding: 18px 12px 14px; display: flex; flex-direction: column; gap: 20px; overflow: auto; }
-  .lv-brand { display: flex; align-items: center; gap: 10px; padding: 0 8px; }
-  .lv-brand-mark { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--lv-accent); color: var(--b3-theme-on-primary, #fff); font-family: Georgia, "Songti SC", serif; font-size: 19px; box-shadow: var(--lv-btn-primary-shadow); flex-shrink: 0; }
-  .lv-brand-name { font-size: 15px; font-weight: 650; line-height: 1.25; }
-  .lv-brand-sub { display: block; font-size: 9px; letter-spacing: 2px; color: var(--lv-text-3); font-weight: 500; }
-  .lv-rail-nav { display: grid; gap: 4px; }
-  .lv-rail-btn { position: relative; display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 10px 12px; border: 1px solid transparent; border-radius: var(--lv-r-2); background: transparent; color: var(--lv-text-2); font-size: 13px; min-height: 40px; cursor: pointer; transition: background-color var(--lv-dur-micro) ease, color var(--lv-dur-micro) ease; }
-  .lv-rail-btn:hover { background: var(--lv-surface); color: var(--lv-text); }
-  .lv-rail-btn.on { background: var(--lv-surface); color: var(--lv-accent); border-color: var(--lv-border); font-weight: 600; box-shadow: var(--lv-sh-1); }
-  .lv-rail-btn.on::before { content: ""; position: absolute; left: -1px; top: 9px; bottom: 9px; width: 3px; background: var(--lv-accent); border-radius: 0 3px 3px 0; }
-  .lv-rail-note { margin-top: auto; padding: 10px 8px 0; font-size: 11px; line-height: 1.8; color: var(--lv-text-3); }
-  .lv-main { min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; align-items: stretch; }
-  .lv-main > :global(*) { flex-shrink: 0; }
-  /* 桌面端 rail 承担导航：返回按钮隐藏；窄屏隐藏 rail、显示返回 */
-  @media (min-width: 1024px) { .lv-mobile-back { display: none !important; } }
-  @media (max-width: 1023px) { .lv-rail { display: none; } .lv-shell { grid-template-columns: minmax(0, 1fr); } }
   /* —— 会话屏右栏（原型 practice 布局：主纸面 + 条件卡） —— */
   .lv-session-grid { display: grid; grid-template-columns: minmax(0, 1fr) 248px; gap: 20px; align-items: start; max-width: 1040px; }
   .lv-session-grid .lv-session-head { grid-column: 1 / -1; }

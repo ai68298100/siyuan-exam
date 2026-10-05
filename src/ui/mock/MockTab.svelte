@@ -6,6 +6,7 @@
     /** 切屏计数（docs/11 S6：失焦计次进报告，不阻断） */
     function onBlur() { if (view === "exam" && session && !session.submitted) session.screenSwitches++; }
     import type { ExamApp } from "../../app";
+    import Rail from "../shared/Rail.svelte";
     import type { Question } from "../../core/types";
     import { showMessage } from "siyuan";
     import { assemble, blueprintTotals, dedupeSectionNames, MockSession, validateBlueprint, type Blueprint, type BlueprintSection, type MockRunSnapshot, type MockScore } from "../../core/mock";
@@ -502,7 +503,10 @@
 
 <svelte:window onblur={onBlur} onkeydown={onExamKey} />
 
-<div class="fn__flex-1 lv-pad">
+<div class="fn__flex-1 lv-shell">
+  <Rail active="mock" {plugin} />
+  <div class="lv-main">
+  <div class="fn__flex-1 lv-pad">
   <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.mock.eyebrow")}</span><h1 class="lv-h1">{t("head.mock.title")}</h1><p>{t("head.mock.desc")}</p></div>
   <div class="block__icons">
     <div class="block__logo">
@@ -843,6 +847,8 @@
       <button class="lv-btn" onclick={() => { view = "config"; }}><Icon name="rotate" size={15} /> {t("mock.again")}</button>
     </div>
   {/if}
+</div>
+  </div>
 </div>
 
 <style>

@@ -5,6 +5,7 @@
     import { showMessage } from "siyuan";
     import { weeklyAggregates, weekCompare, dailyTrend } from "@/core/weekly";
     import type { ExamApp } from "../../app";
+    import Rail from "../shared/Rail.svelte";
     import Icon from "../shared/Icon.svelte";
     import { heatmap, masteryByKp, weakTop, hourly, calibration, confidentWrongList, uncertainCorrectList, delayedRecall, exposureStats, type CalibrationReport } from "@/core/report";
     import { trendToCsv, heatmapToCsv, hourlyToCsv } from "@/core/exportMd";
@@ -446,7 +447,10 @@
     }
 </script>
 
-<div class="fn__flex-1 lv-pad">
+<div class="fn__flex-1 lv-shell">
+  <Rail active="report" {plugin} />
+  <div class="lv-main">
+  <div class="fn__flex-1 lv-pad">
   <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.report.eyebrow")}</span><h1 class="lv-h1">{t("head.report.title")}</h1><p>{t("head.report.desc")}</p></div>
   <div class="block__icons">
     <div class="block__logo">
@@ -470,10 +474,10 @@
     <span class="fn__flex-1"></span>
     <!-- 117-01 T11 / 117-02：AI 解读与 AI 下一行动（按当前统计范围；只解释/建议，不重算不虚构） -->
     <button class="lv-btn sm" onclick={() => void runReportExplain()} disabled={explainBusy}>
-      🧪 {explainBusy ? "…" : t("reportExplain.ask")}
+      <Icon name="sparkles" size={13} /> {explainBusy ? "…" : t("reportExplain.ask")}
     </button>
     <button class="lv-btn sm" onclick={() => void runNextAction()} disabled={nextActionBusy}>
-      🧭 {nextActionBusy ? "…" : t("nextAction.ask")}
+      <Icon name="target" size={13} /> {nextActionBusy ? "…" : t("nextAction.ask")}
     </button>
     <span class="lv-chip">{t("report.dataFromLog")}</span>
   </div>
@@ -497,7 +501,7 @@
   {:else if nextActionText}
     <div class="lv-card" style="margin:0 0 10px;padding:10px 14px">
       <div class="lv-row" style="margin:0 0 4px">
-        <b style="font-size:13px">🧭 {t("nextAction.title")}</b>
+        <b style="font-size:13px"><Icon name="target" size={14} /> {t("nextAction.title")}</b>
         <span class="fn__flex-1"></span>
         <button class="lv-btn sm lv-btn--ghost" onclick={() => { nextActionText = ""; }}>{t("edit.cancel")}</button>
       </div>
@@ -804,6 +808,8 @@
       {/if}
     </div>
   {/if}
+</div>
+  </div>
 </div>
 
 <style>

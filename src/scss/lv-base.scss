@@ -375,6 +375,39 @@ input[type="range"] {
   }
 }
 
+/* —— Tab shell（原型 .shell：rail + main；三 Tab 共用，rail 组件见 ui/shared/Rail） —— */
+.lv-shell {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 212px minmax(0, 1fr);
+  min-height: 0;
+}
+.lv-main {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.lv-main > * {
+  flex-shrink: 0;
+}
+/* 桌面端 rail 承担导航：返回按钮隐藏；窄屏隐藏 rail、显示返回（V04 lite） */
+@media (min-width: 1024px) {
+  .lv-mobile-back {
+    display: none !important;
+  }
+}
+@media (max-width: 1023px) {
+  .lv-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lv-shell .lv-rail {
+    display: none;
+  }
+}
+
 /* —— 长文本溢出（V08：无空格英文/URL/公式不撑破布局） —— */
 :where(.lv-exam-tab, .lv-pad, .lv-detail, .lv-qrow-stem) {
   overflow-wrap: anywhere;
