@@ -1,17 +1,14 @@
 // ============================================================
 // docs/17 真机冒烟·数据生命周期脚本（F 段 30/31/33/34 步的 API 级自动化）
-// 用法：SIYUAN_TOKEN=... node scripts/smoke-data.mjs [baseUrl] [token]
+// 用法：SIYUAN_TOKEN=... SIYUAN_BASE_URL=http://127.0.0.1:6807 node scripts/smoke-data.mjs [baseUrl] [token]
 // 覆盖：建库 → 分两批导入 → 读回确认 → 先导语义（跳过已确认）→ 批量改考点
 //       → SQL 验证属性 → 批次回滚（deleteBlock）→ 验证批1消失/批2保留 → 自清理
 // 退出码：0 = 全过；1 = 存在 FAIL。临时笔记本自清理。
+// 防呆：写型冒烟拒打共享内核（存在非临时笔记本即退出）；豁免见 SIYUAN_E2E_ALLOW_SHARED。
 // ============================================================
+import { resolveTarget, sweepOrphans, guardScratch } from "./lib/smoke-kernel.mjs";
 
-const BASE = process.argv[2] ?? "http://127.0.0.1:6806";
-const TOKEN = process.argv[3] ?? process.env.SIYUAN_TOKEN ?? "";
-if (!TOKEN) {
-  console.error("✗ 缺少思源 token：请传入第二个参数或设置 SIYUAN_TOKEN；不会使用默认 token");
-  process.exit(1);
-}
+const { base: BASE, token: TOKEN } = resolveTarget({ baseArg: process.argv[2], tokenArg: process.argv[3] });
 
 const results = [];
 function record(name, ok, note = "") {
@@ -80,19 +77,21 @@ async function readback(notebookId, expectedIds) {
 }
 
 async function main() {
-  // ---------- 0. 内核可达 ----------
+  // ---------- 0. 内核可达 + 靶场防呆 ----------
   try {
     await api("/api/system/version");
   } catch (e) {
     console.log(`SKIP  数据生命周期冒烟需要运行中的思源内核（${BASE}）：${String(e).slice(0, 80)}`);
     return 0;
   }
+  await sweepOrphans(api); // 清上次崩溃残留的临时库（只动冒烟前缀）
+  await guardScratch(api, { base: BASE }); // 共享内核（非空工作区）拒跑
 
   // ---------- 1. 建临时库 ----------
   // eslint-disable-next-line no-useless-assignment
   let notebookId = "";
   try {
-    const nb = await api("/api/notebook/createNotebook", { name: `小驴考试-数据冒烟-${Date.now().toString(36)}` });
+    const nb = await api("/api/notebook/createNotebook", { name: `lv-exam-smoke-data-${Date.now().toString(36)}` });
     notebookId = typeof nb.data === "string" ? nb.data : String(nb.data?.notebook?.id ?? "");
     if (!notebookId) throw new Error(`createNotebook 未返回 id: ${JSON.stringify(nb.data).slice(0, 80)}`);
     record("建临时库（三形态 id 解析）", true, notebookId);

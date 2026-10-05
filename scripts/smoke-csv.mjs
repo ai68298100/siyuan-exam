@@ -7,13 +7,11 @@
 //      → 按 CSV 行重新 insertBlock（模拟导入路径）→ 读回比对题干/答案一致
 //   B. 题库包——exportNotebookSY 导出 zip → importSY 导入 → 克隆库可检索 → 双库清理
 // 退出码：0 = 全过；1 = 存在 FAIL
+// 防呆：写型冒烟拒打共享内核（存在非临时笔记本即退出）；豁免见 SIYUAN_E2E_ALLOW_SHARED。
 // ============================================================
-const BASE = process.argv[2] ?? "http://127.0.0.1:6806";
-const TOKEN = process.argv[3] ?? process.env.SIYUAN_TOKEN ?? "";
-if (!TOKEN) {
-  console.error("✗ 缺少思源 token：请传入第二个参数或设置 SIYUAN_TOKEN；不会使用默认 token");
-  process.exit(1);
-}
+import { resolveTarget, sweepOrphans, guardScratch } from "./lib/smoke-kernel.mjs";
+
+const { base: BASE, token: TOKEN } = resolveTarget({ baseArg: process.argv[2], tokenArg: process.argv[3] });
 const H = { Authorization: `Token ${TOKEN}`, "Content-Type": "application/json" };
 
 async function api(path, body) {
@@ -84,8 +82,11 @@ const listQuestions = async (box) => {
 
 let tempNb = null, cloneNb = null;
 try {
+  // ---------- 靶场防呆（写型冒烟不直打共享内核） ----------
+  await sweepOrphans(api); // 清上次崩溃残留的临时库（只动冒烟前缀）
+  await guardScratch(api, { base: BASE });
   // ---------- A. CSV 往返 ----------
-  const nb = await api("/api/notebook/createNotebook", { name: "冒烟-CSV往返-" + Date.now() });
+  const nb = await api("/api/notebook/createNotebook", { name: "lv-exam-smoke-csv-" + Date.now().toString(36) });
   tempNb = nb.data?.notebook?.id ?? nb.data;
   const doc = await api("/api/filetree/createDocWithMd", { notebook: tempNb, path: "/冒烟CSV", markdown: "# 冒烟CSV\n" });
   for (let i = 0; i < QUESTIONS.length; i++) {

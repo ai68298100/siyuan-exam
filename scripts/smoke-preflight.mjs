@@ -1,17 +1,15 @@
 // ============================================================
 // docs/17 真机冒烟·预检脚本（可脚本化的 26 步中内核 API 部分）
-// 用法：SIYUAN_TOKEN=... node scripts/smoke-preflight.mjs [baseUrl] [token]
+// 用法：SIYUAN_TOKEN=... SIYUAN_BASE_URL=http://127.0.0.1:6807 node scripts/smoke-preflight.mjs [baseUrl] [token]
 // 行为：创建临时笔记本 → 端点逐一验证 → 删除临时笔记本（自清理）
 // 退出码：0 = 全过；1 = 存在 FAIL
+// 防呆：写型预检拒打共享内核（存在非临时笔记本即退出）；豁免见 SIYUAN_E2E_ALLOW_SHARED。
+//       AI 端点检查默认跳过（避免向已配置模型发请求），SIYUAN_E2E_AI=1 启用。
 // ============================================================
 import { unlinkSync } from "node:fs";
+import { resolveTarget, sweepOrphans, guardScratch } from "./lib/smoke-kernel.mjs";
 
-const BASE = process.argv[2] ?? "http://127.0.0.1:6806";
-const TOKEN = process.argv[3] ?? process.env.SIYUAN_TOKEN ?? "";
-if (!TOKEN) {
-  console.error("✗ 缺少思源 token：请传入第二个参数或设置 SIYUAN_TOKEN；不会使用默认 token");
-  process.exit(1);
-}
+const { base: BASE, token: TOKEN } = resolveTarget({ baseArg: process.argv[2], tokenArg: process.argv[3] });
 
 const results = [];
 let tempNotebook = null;
@@ -59,6 +57,10 @@ await step("system/version 内核可达", async () => {
   if (r.code !== 0) throw new Error("code=" + r.code);
   return "SiYuan " + r.data;
 });
+
+// ---------- 1.5 靶场防呆（写型预检不直打共享内核） ----------
+await sweepOrphans(api); // 清上次崩溃残留的临时库（只动冒烟前缀）
+await guardScratch(api, { base: BASE });
 
 // ---------- 2. lute/md2html（renderStem 依赖；3.8.5 实测 data 为 {html} 包裹） ----------
 await step('lute/md2html mode:"" 返回块 DOM', async () => {
@@ -196,28 +198,33 @@ await step("export/exportNotebookSY", async () => {
   return typeof exportedZip === "string" ? exportedZip.split("/").pop() : "";
 });
 
-// ---------- 9. AI 端点存在性（可选：未配置模型时 WARN） ----------
-recordOpt(
-  "ai/chatGPT 端点可达（未配置模型则 WARN）",
-  await (async () => {
-    try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 15_000);
-      const r = await fetch(BASE + "/api/ai/chatGPT", {
-        method: "POST",
-        headers: { Authorization: `Token ${TOKEN}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ msg: "ping" }),
-        signal: ctrl.signal,
-      });
-      clearTimeout(t);
-      const j = await r.json().catch(() => ({}));
-      return r.ok && (j.code === 0 || /模型|model|config/i.test(j.msg ?? ""));
-    } catch {
-      return false;
-    }
-  })(),
-  "未配置 AI 模型时此项为 WARN，不影响其余结论",
-);
+// ---------- 9. AI 端点存在性（默认跳过：内核若已配置模型会真实外发请求；
+//            需要验证时设 SIYUAN_E2E_AI=1 显式启用） ----------
+if (process.env.SIYUAN_E2E_AI === "1") {
+  recordOpt(
+    "ai/chatGPT 端点可达（未配置模型则 WARN）",
+    await (async () => {
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 15_000);
+        const r = await fetch(BASE + "/api/ai/chatGPT", {
+          method: "POST",
+          headers: { Authorization: `Token ${TOKEN}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ msg: "ping" }),
+          signal: ctrl.signal,
+        });
+        clearTimeout(t);
+        const j = await r.json().catch(() => ({}));
+        return r.ok && (j.code === 0 || /模型|model|config/i.test(j.msg ?? ""));
+      } catch {
+        return false;
+      }
+    })(),
+    "未配置 AI 模型时此项为 WARN，不影响其余结论",
+  );
+} else {
+  console.log("…  ai/chatGPT 端点检查  — 跳过（默认不向已配置模型发请求；SIYUAN_E2E_AI=1 启用）");
+}
 
 // ---------- 10. 清理：删临时卡组/笔记本 + 导出包 ----------
 await step("清理：riff/removeRiffDeck + notebook/removeNotebook", async () => {

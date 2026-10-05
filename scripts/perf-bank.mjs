@@ -1,12 +1,15 @@
 // ============================================================
 // 万题级性能基准脚本（TODO 0 组：性能基准脚本）
-// 用法：SIYUAN_TOKEN=... node scripts/perf-bank.mjs [baseUrl] [token] [题量=500]
+// 用法：SIYUAN_TOKEN=... SIYUAN_BASE_URL=http://127.0.0.1:6807 node scripts/perf-bank.mjs [baseUrl] [token] [题量=500]
 // 行为：临时笔记本写入合成题 → 计时 写入/SQL 检索/渲染 → 自清理
 // 离线（内核不可达）：打印 SKIP 并以退出码 0 结束（与 preflight 的必过语义不同）。
 // 阈值只作 WARN 参考不计失败——性能受机器差异影响大，看趋势不看绝对值。
+// 防呆：写型基准拒打共享内核（存在非临时笔记本即退出）；豁免见 SIYUAN_E2E_ALLOW_SHARED。
 // ============================================================
+import { sweepOrphans, guardScratch } from "./lib/smoke-kernel.mjs";
 
-const BASE = process.argv[2] ?? "http://127.0.0.1:6806";
+// 注意：本脚本缺 token 走 SKIP 退出 0（可选脚本语义），故不用 resolveTarget 的硬退出
+const BASE = (process.argv[2] ?? process.env.SIYUAN_BASE_URL ?? "http://127.0.0.1:6806").replace(/\/+$/, "");
 const TOKEN = process.argv[3] ?? process.env.SIYUAN_TOKEN ?? "";
 const N = Math.max(50, Math.min(5000, parseInt(process.argv[4] ?? "500", 10) || 500));
 
@@ -56,7 +59,10 @@ async function main() {
   }
   console.log(`[lv-exam] 性能基准 · SiYuan ${version} · 合成题 ${N} 道`);
 
-  const nb = await api("/api/notebook/createNotebook", { name: `小驴考试-性能基准-${Date.now().toString(36)}` });
+  await sweepOrphans(api); // 清上次崩溃残留的临时库（只动冒烟前缀）
+  await guardScratch(api, { base: BASE }); // 共享内核拒跑：500+ 题写入会真实搅动索引与事件
+
+  const nb = await api("/api/notebook/createNotebook", { name: `lv-exam-smoke-perf-${Date.now().toString(36)}` });
   const notebookId = parseNotebookId(nb);
   // eslint-disable-next-line no-useless-assignment
   let docId = "";
