@@ -458,10 +458,6 @@
   <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.report.eyebrow")}</span><h1 class="lv-h1">{t("head.report.title")}</h1><p>{t("head.report.desc")}</p></div>
   <div class="block__icons">
     <button class="lv-menu-btn" aria-label={t("menu.open")} bind:this={menuBtn} onclick={() => railOpen = true}><Icon name="menu" size={16} /></button>
-    <div class="block__logo">
-      <svg class="block__logoicon"><use xlink:href="#iconReport"></use></svg>
-      {t("tab.report")}
-    </div>
     {#if app}<SaveStatus gate={app.saves} {t} />{/if}
     <!-- 39-06 lite：统计日期范围（消灭错题/连续天数为状态类指标保持全局） -->
     <select class="lv-select" bind:value={rangeDays} onchange={computeReport} title={t("report.rangeTip")}>

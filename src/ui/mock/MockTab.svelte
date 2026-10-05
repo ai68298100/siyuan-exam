@@ -514,10 +514,6 @@
   <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.mock.eyebrow")}</span><h1 class="lv-h1">{t("head.mock.title")}</h1><p>{t("head.mock.desc")}</p></div>
   <div class="block__icons">
     <button class="lv-menu-btn" aria-label={t("menu.open")} bind:this={menuBtn} onclick={() => railOpen = true}><Icon name="menu" size={16} /></button>
-    <div class="block__logo">
-      <svg class="block__logoicon"><use xlink:href="#iconMock"></use></svg>
-      {t("tab.mock")}
-    </div>
     <SaveStatus gate={app.saves} {t} />
     <span class="fn__flex-1"></span>
     {#if view === "exam"}
