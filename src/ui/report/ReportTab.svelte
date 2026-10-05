@@ -2,8 +2,10 @@
     // 报告中心（S8 lite）：KPI / 热力图 / 考点掌握度 / 薄弱 Top10 / 时段分布
     // 数据全部来自流水重算（可离线）；聚合逻辑见 src/core/report.ts
     import { onMount } from "svelte";
+    import { SvelteMap } from "svelte/reactivity";
     import { showMessage } from "siyuan";
     import { weeklyAggregates, weekCompare, dailyTrend } from "@/core/weekly";
+    import { quadrantReport, quadrantSignals, type QuadrantReport } from "@/core/quadrant";
     import type { ExamApp } from "../../app";
     import Rail from "../shared/Rail.svelte";
     import Icon from "../shared/Icon.svelte";
@@ -29,6 +31,9 @@
     let hours = $state<number[]>(new Array(24).fill(0));
     let mockHistory = $state<any[]>([]);
     let calib = $state<CalibrationReport | null>(null);
+    let quad = $state<QuadrantReport | null>(null);
+    let quadSignals = $state<string[]>([]);
+    const typeByQid = new SvelteMap<string, string>();
     let openActionList = $state<ActionItem[]>([]);
     let trend30 = $state<{ date: string; attempts: number }[]>([]);
     let errorMsg = $state("");
@@ -88,6 +93,13 @@
       kpi = { ...kpi, attempts, accuracy: attempts ? Math.round((correct / attempts) * 100) : 0 };
       hours = hourly(events);
       calib = calibration(events);
+      // 63-01：信心×结果四象限聚合（独立练习口径；typeByQid 来自各题库读回）
+      quad = quadrantReport(
+        events.filter((e) => e.kind === "practice"),
+        (qid) => typeByQid.get(qid) ?? "",
+        rangeDays,
+      );
+      quadSignals = quadrantSignals(quad);
       const cutoffDate = cutoff ? new Date(cutoff).toISOString().slice(0, 10) : "";
       trend30 = cutoff ? dailyTrend(d.days).filter((p) => p.date >= cutoffDate) : dailyTrend(d.days);
     }
@@ -250,8 +262,15 @@
         openActionList = await app.listOpenActions();
         bankOptions = app.listBanks();
         bankId = bankOptions[0]?.id ?? "";
+        // 63-01：qid→题型映射全库加载（四象限按题型下钻；单库失败跳过）
+        for (const b of bankOptions) {
+          try {
+            for (const q of await app.listQuestions(b.id)) typeByQid.set(q.id, q.type);
+          } catch { /* 单库读取失败跳过 */ }
+        }
         mockHistory = await app.listMockResults();
         await reloadBankScope(d);
+        computeReport();
       } catch (e) {
         errorMsg = String(e instanceof Error ? e.message : e);
       } finally { loading = false; }
@@ -536,6 +555,48 @@
             <span class="lv-chip lv-chip--red">↓</span>
           {/if}
         </div>
+      </div>
+    {/if}
+
+    {#if quad}
+      <!-- 63-01：信心×结果四象限（独立练习口径；置信度缺失不补猜测） -->
+      <div class="lv-card lv-section" style="margin-bottom:12px">
+        <b>{t("quad.title")}</b>
+        {#if quad.denominator === 0}
+          <div class="lv-muted">{t("quad.empty")}</div>
+        {:else}
+          <div class="lv-quad-grid">
+            <div class="lv-quad lv-quad--grn"><span class="v num">{quad.cells.sureRight}</span><span class="l">{t("quad.sureRight")}</span></div>
+            <div class="lv-quad lv-quad--red"><span class="v num">{quad.cells.sureWrong}</span><span class="l">{t("quad.sureWrong")}</span></div>
+            <div class="lv-quad lv-quad--amb"><span class="v num">{quad.cells.guessedRight}</span><span class="l">{t("quad.guessedRight")}</span></div>
+            <div class="lv-quad"><span class="v num">{quad.cells.fuzzyRight}</span><span class="l">{t("quad.fuzzyRight")}</span></div>
+          </div>
+          {#if quad.cells.noConfidence}
+            <div class="lv-row lv-muted" style="font-size:11.5px;margin:8px 0 0">{t("quad.noConf").replace("{n}", String(quad.cells.noConfidence))}</div>
+          {/if}
+          {#if quad.lowSample}
+            <div class="lv-row" style="margin:8px 0 0"><span class="lv-chip lv-chip--amb">{t("quad.lowSample")}</span></div>
+          {/if}
+          {#if quadSignals.length}
+            <div class="lv-row" style="margin:10px 0 0;align-items:flex-start">
+              {#each quadSignals as sig (sig)}
+                <span class="lv-chip lv-chip--amb" style="white-space:normal;text-align:left">{t("quad.sig." + sig)}</span>
+              {/each}
+            </div>
+          {/if}
+          {#if quad.byType.length > 1}
+            <div class="lv-dtable" style="margin-top:12px">
+              <table>
+                <thead><tr><th>{t("quad.byType")}</th><th>{t("quad.sureRight")}</th><th>{t("quad.sureWrong")}</th><th>{t("quad.guessedRight")}</th><th>{t("quad.fuzzyRight")}</th></tr></thead>
+                <tbody>
+                  {#each quad.byType as row (row.type)}
+                    <tr><td>{row.type}</td><td class="num">{row.cells.sureRight}</td><td class="num">{row.cells.sureWrong}</td><td class="num">{row.cells.guessedRight}</td><td class="num">{row.cells.fuzzyRight}</td></tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+          {/if}
+        {/if}
       </div>
     {/if}
 
@@ -828,6 +889,15 @@
   .lv-kpi .l { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--lv-text-3); margin-bottom: 4px; }
   .lv-kpi .l :global(.lv-icon) { color: var(--lv-accent); }
   .lv-kpi .v { font-size: 29px; font-weight: 650; letter-spacing: -.8px; line-height: 1.5; font-variant-numeric: tabular-nums; }
+  /* —— 63-01 四象限（原型 .metric 风格的象限格） —— */
+  .lv-quad-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .lv-quad { border: 1px solid var(--lv-border); border-radius: var(--lv-r-2); padding: 12px 14px; background: var(--lv-surface-2); display: flex; flex-direction: column; gap: 4px; }
+  .lv-quad .v { font-size: 22px; font-weight: 650; letter-spacing: -.4px; font-variant-numeric: tabular-nums; }
+  .lv-quad .l { font-size: 11.5px; color: var(--lv-text-3); }
+  .lv-quad--grn { background: var(--lv-green-soft); border-color: transparent; } .lv-quad--grn .v, .lv-quad--grn .l { color: var(--lv-green); }
+  .lv-quad--red { background: var(--lv-red-soft); border-color: transparent; } .lv-quad--red .v, .lv-quad--red .l { color: var(--lv-red); }
+  .lv-quad--amb { background: var(--lv-amber-soft); border-color: transparent; } .lv-quad--amb .v, .lv-quad--amb .l { color: var(--lv-amber); }
+  @media (max-width: 960px) { .lv-quad-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   .lv-heat { display: grid; grid-template-columns: repeat(53, 1fr); gap: 2.5px; }
   .lv-heat i { aspect-ratio: 1; border-radius: 2.5px; background: var(--lv-surface-2); }
   .lv-heat i.l1 { background: color-mix(in srgb, var(--lv-accent) 22%, var(--lv-surface-2)); }
