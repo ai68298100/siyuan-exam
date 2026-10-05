@@ -71,6 +71,20 @@
   font-size: 19px;
 }
 
+/* —— 线性图标（V03：与文字基线对齐，currentColor 取色） —— */
+.lv-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  line-height: 1;
+  vertical-align: -3px;
+
+  svg {
+    display: block;
+  }
+}
+
 /* —— 分区标题（原型 .section-title：标题 + 右侧动作，两端对齐） —— */
 .lv-section-title {
   display: flex;
@@ -317,6 +331,20 @@ input[type="range"] {
 .lv-hero {
   background: linear-gradient(115deg, var(--lv-surface), color-mix(in srgb, var(--lv-accent) 6%, var(--lv-surface)));
   box-shadow: var(--lv-sh-2);
+}
+
+/* —— 背诵纸面（原型 .paper：serif 纸页、居中、纸阴影；背诵模式专属） —— */
+.lv-paper {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 30px 34px;
+  font-family: Georgia, "Songti SC", SimSun, serif;
+
+  .lv-stem {
+    font-size: 16.5px;
+    line-height: 2.05;
+    letter-spacing: 0.2px;
+  }
 }
 .lv-focus-label {
   display: flex;

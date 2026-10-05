@@ -27,6 +27,7 @@ import { ttsSpeak } from "@/core/tts";
     import { probeCheckinApi, syncCheckin, localDateKeyOf, bridgeEnabled, fetchStreak } from "@/core/checkinBridge";
     import { probeGlean, listLaterClips, formatClipsForSource, markClipDone, type GleanClip } from "@/core/gleanBridge";
     import { onExamEvent, emitExamEvent } from "@/core/bus";
+    import Icon from "../shared/Icon.svelte";
     import { escapeHtml } from "../../libs/sanitize";
     import { questionFingerprint } from "@/ai/task";
     import { summarizeLoad } from "@/ai/flashCandidates";
@@ -111,7 +112,7 @@ import { ttsSpeak } from "@/core/tts";
       const t = setInterval(() => { qTick++; }, 1000);
       return () => clearInterval(t);
     });
-    const qElapsedS = $derived.by(() => { void qTick; return Math.max(0, Math.floor((Date.now() - answerStart) / 1000)); });
+    const qElapsedS = $derived.by(() => { void qTick; return answerStart <= 0 ? 0 : Math.max(0, Math.floor((Date.now() - answerStart) / 1000)); });
     const qTimeoutS = $derived(Math.max(0, Number(plugin.settingUtils?.get?.("perQuestionTimeoutS") ?? 0) || 0));
     /** 44-01：反馈时机策略（默认逐题即时；勾选=会话末复盘。作答事件两种模式完全一致） */
     const feedbackMode = $derived(
@@ -880,6 +881,7 @@ import { ttsSpeak } from "@/core/tts";
     async function negotiateStart(qs: Question[], mode: string): Promise<boolean> {
       try {
         session = await app.startSession(qs, mode, activeBankId, { interleave: materialInterleave });
+        answerStart = Date.now(); // 首题计时基线
         return true;
       } catch (e) {
         const msg = String(e instanceof Error ? e.message : e);
@@ -1476,6 +1478,7 @@ import { ttsSpeak } from "@/core/tts";
         s.advancePastAnswered();
         if (s.allAnswered()) sessionDone = s.finish();
         session = s; feedback = null; selected = ""; confidenceSel = ""; view = "session";
+        answerStart = Date.now(); // 首题计时基线（否则 qElapsedS 从 0 基线算出纪元秒）
         if (app.lastResumeMissing.length) showMessage(t("resume.missing").replace("{n}", String(app.lastResumeMissing.length)), 4200, "info");
       }
     }
@@ -2842,8 +2845,8 @@ import { ttsSpeak } from "@/core/tts";
     <span class="fn__flex-1"></span>
     {#if offline}<span class="lv-chip lv-chip--amb">{t("state.offline")}</span>{/if}
     {#if plan}
-      {#if plan.mode === "sprint"}<span class="lv-chip lv-chip--red num">🔥 {t("entry.sprint")} D-{plan.daysToExam}</span>
-      {:else if plan.daysToExam != null}<span class="lv-chip amb num">⏱ {t("entry.examIn")} {plan.daysToExam} {t("entry.days")}</span>{/if}
+      {#if plan.mode === "sprint"}<span class="lv-chip lv-chip--red num"><Icon name="flame" size={12} /> {t("entry.sprint")} D-{plan.daysToExam}</span>
+      {:else if plan.daysToExam != null}<span class="lv-chip amb num"><Icon name="clock" size={12} /> {t("entry.examIn")} {plan.daysToExam} {t("entry.days")}</span>{/if}
       {#if examProfileList.filter((p) => p.days != null && p.days >= 0).length > 1}
         <!-- 53-02 lite：多考期并存展示（计划锚定最近，其余一目了然） -->
         {#each examProfileList.filter((p) => p.days != null && p.days >= 0) as p, _pi (_pi)}
@@ -2854,18 +2857,18 @@ import { ttsSpeak } from "@/core/tts";
         <!-- 44-05 lite：连续缺席提醒（配额恒定不爆量，仅可见性） -->
         <span class="lv-chip lv-chip--amb num" title={t("entry.absentTip")}>⚠ {t("entry.absent").replace("{n}", String(planTrace.absentStreak))}</span>
       {:else if planTrace && planTrace.planned > 0 && planTrace.done >= 0}
-        <span class="lv-chip num" title={t("entry.yesterdayTip")}>📅 {t("entry.yesterday").replace("{p}", String(planTrace.planned)).replace("{d}", String(planTrace.done))}</span>
+        <span class="lv-chip num" title={t("entry.yesterdayTip")}><Icon name="calendar" size={12} /> {t("entry.yesterday").replace("{p}", String(planTrace.planned)).replace("{d}", String(planTrace.done))}</span>
       {/if}
       {#if planTime && view !== "entry"}
         <!-- 53-01 lite：分钟预算 chip（入口页已在 hero 卡内展示，避免重复） -->
         <span class="lv-chip num" title={planTime.sourced ? t("entry.timeSourced") : t("entry.timeDefault")}>
-          ⏳ ~{planTime.minutes} {t("entry.minutes")}（{planTime.low}-{planTime.high}）
+          <Icon name="hourglass" size={12} /> ~{planTime.minutes} {t("entry.minutes")}（{planTime.low}-{planTime.high}）
         </span>
       {/if}
     {/if}
       {#if checkinStreak != null && checkinStreak > 0}
         <!-- 48-04 lite：打卡→考试只读投影（连续数由打卡单一实现计算，考试侧不自算） -->
-        <span class="lv-chip num" title={t("entry.checkinStreakTip")}>🔥 {t("entry.checkinStreak").replace("{n}", String(checkinStreak))}</span>
+        <span class="lv-chip num" title={t("entry.checkinStreakTip")}><Icon name="flame" size={12} /> {t("entry.checkinStreak").replace("{n}", String(checkinStreak))}</span>
       {/if}
       {#if hasBank}<span class="lv-chip">{t("bank.label")} {bankName}</span><button class="lv-chip" title={t("bank.removeTitle")} onclick={removeActiveBank}>✕</button>{/if}
   </div>
@@ -2892,8 +2895,8 @@ import { ttsSpeak } from "@/core/tts";
           <p class="lv-hint">🧭 {t("guard.sampleHint")}</p>
           <div class="lv-row lv-center-text"><span class="lv-muted">{t("guard.or")}</span></div>
           <div class="lv-row">
-            <button class="lv-btn" style="flex:1" onclick={downloadTemplate}>⬇️ {t("import.template")}</button>
-            <button class="lv-btn" style="flex:1" onclick={() => view = "import"}>📥 {t("import.title")}</button>
+            <button class="lv-btn" style="flex:1" onclick={downloadTemplate}><Icon name="import" size={15} /> {t("import.template")}</button>
+            <button class="lv-btn" style="flex:1" onclick={() => view = "import"}><Icon name="import" size={15} /> {t("import.title")}</button>
           </div>
           <p class="lv-hint">{t("guard.needBankFirst")}</p>
         </div>
@@ -2939,7 +2942,7 @@ import { ttsSpeak } from "@/core/tts";
               <div class="lv-entry-reason">{plan.reason}</div>
               {#if planTime}
                 <span class="lv-chip num" title={planTime.sourced ? t("entry.timeSourced") : t("entry.timeDefault")}>
-                  ⏳ ~{planTime.minutes} {t("entry.minutes")}（{planTime.low}-{planTime.high}）
+                  <Icon name="hourglass" size={13} /> ~{planTime.minutes} {t("entry.minutes")}（{planTime.low}-{planTime.high}）
                 </span>
               {/if}
             </div>
@@ -2948,42 +2951,44 @@ import { ttsSpeak } from "@/core/tts";
               <div class="lv-muted lv-entry-unit">{t("browse.count")}</div>
             </div>
           </div>
-          <div class="lv-row" style="margin:0 0 12px">
-            <button class="lv-btn lv-btn--primary" onclick={startToday}>▶ {t("entry.startToday")}</button>
+          <div class="lv-row" style="margin:0 0 18px">
+            <button class="lv-btn lv-btn--primary" onclick={startToday}><Icon name="play" size={16} /> {t("entry.startToday")}</button>
           </div>
         {/if}
+        <div class="lv-section-title"><span>{t("entry.modes")}</span></div>
         <div class="lv-modes">
           <button class="lv-mode" onclick={() => startDrill("single")}>
-            <span class="lv-mode-icon" aria-hidden="true">⚡</span><span class="lv-mode-body"><b>{t("mode.quick")}</b><span class="lv-muted">{t("mode.quick.desc")}</span></span>
+            <span class="lv-mode-icon"><Icon name="zap" /></span><span class="lv-mode-body"><b>{t("mode.quick")}</b><span class="lv-muted">{t("mode.quick.desc")}</span></span>
           </button>
           <button class="lv-mode" onclick={() => startDrill("daily")}>
-            <span class="lv-mode-icon" aria-hidden="true">📅</span><span class="lv-mode-body"><b>{t("mode.daily")}</b><span class="lv-muted">{t("mode.daily.desc")}</span></span>
+            <span class="lv-mode-icon"><Icon name="calendar" /></span><span class="lv-mode-body"><b>{t("mode.daily")}</b><span class="lv-muted">{t("mode.daily.desc")}</span></span>
           </button>
           <button class="lv-mode" onclick={() => startRecite()}>
-            <span class="lv-mode-icon" aria-hidden="true">🔄</span><span class="lv-mode-body"><b>{t("mode.recite")}</b><span class="lv-muted">{t("mode.recite.desc")}</span></span>
+            <span class="lv-mode-icon"><Icon name="rotate" /></span><span class="lv-mode-body"><b>{t("mode.recite")}</b><span class="lv-muted">{t("mode.recite.desc")}</span></span>
           </button>
           <button class="lv-mode" onclick={() => startDrill("wrong")}>
-            <span class="lv-mode-icon" aria-hidden="true">❌</span><span class="lv-mode-body"><b>{t("mode.wrong")}</b><span class="lv-muted num">{app.wrongItems().length} {t("mode.wrong.unit")}</span></span>
+            <span class="lv-mode-icon"><Icon name="xcircle" /></span><span class="lv-mode-body"><b>{t("mode.wrong")}</b><span class="lv-muted num">{app.wrongItems().length} {t("mode.wrong.unit")}</span></span>
           </button>
           <button class="lv-mode" onclick={() => startDrill("cram")}>
-            <span class="lv-mode-icon" aria-hidden="true">🔥</span><span class="lv-mode-body"><b>{t("mode.cram")}</b><span class="lv-muted">{t("mode.cram.desc")}</span></span>
+            <span class="lv-mode-icon"><Icon name="flame" /></span><span class="lv-mode-body"><b>{t("mode.cram")}</b><span class="lv-muted">{t("mode.cram.desc")}</span></span>
           </button>
           <button class="lv-mode" onclick={() => startDrill("fav")}>
-            <span class="lv-mode-icon" aria-hidden="true">⭐</span><span class="lv-mode-body"><b>{t("mode.fav")}</b><span class="lv-muted">{t("mode.fav.desc")}（<span class="num">{questions.filter((q) => q.fav).length}</span> {t("mode.wrong.unit")}）</span></span>
+            <span class="lv-mode-icon"><Icon name="star" /></span><span class="lv-mode-body"><b>{t("mode.fav")}</b><span class="lv-muted">{t("mode.fav.desc")}（<span class="num">{questions.filter((q) => q.fav).length}</span> {t("mode.wrong.unit")}）</span></span>
           </button>
           <button class="lv-mode lv-mode--disabled" title={t("todo")}>
-            <span class="lv-mode-icon" aria-hidden="true">🌲</span><span class="lv-mode-body"><b>{t("mode.special")}</b><span class="lv-muted">{t("todo")}</span></span>
+            <span class="lv-mode-icon"><Icon name="layers" /></span><span class="lv-mode-body"><b>{t("mode.special")}</b><span class="lv-muted">{t("todo")}</span></span>
           </button>
         </div>
-        <div class="lv-row" style="margin-top:14px">
-          <button class="lv-btn" onclick={() => view = "import"}>📥 {t("import.title")}</button>
-          <button class="lv-btn" onclick={() => view = "ai"}>✨ {t("ai.title")}</button>
-          <button class="lv-btn" onclick={() => view = "manual"}>✏️ {t("entry.manual")}</button>
-          <button class="lv-btn" onclick={() => { view = "materials"; loadMaterials(); }}>📚 {t("materials.title")}</button>
-          <button class="lv-btn" onclick={copyChallengeCode}>🎯 {t("challenge.copy")}</button>
-          <button class="lv-btn" onclick={importChallengeCode}>📥 {t("challenge.import")}</button>
+        <div class="lv-section-title" style="margin-top:22px"><span>{t("entry.tools")}</span></div>
+        <div class="lv-row" style="margin-top:0">
+          <button class="lv-btn lv-btn--ghost acc-btn" onclick={() => view = "import"}><Icon name="import" size={16} /> {t("import.title")}</button>
+          <button class="lv-btn lv-btn--ghost acc-btn" onclick={() => view = "ai"}><Icon name="sparkles" size={16} /> {t("ai.title")}</button>
+          <button class="lv-btn lv-btn--ghost acc-btn" onclick={() => view = "manual"}><Icon name="pencil" size={16} /> {t("entry.manual")}</button>
+          <button class="lv-btn lv-btn--ghost acc-btn" onclick={() => { view = "materials"; loadMaterials(); }}><Icon name="book" size={16} /> {t("materials.title")}</button>
+          <button class="lv-btn" onclick={copyChallengeCode}><Icon name="target" size={16} /> {t("challenge.copy")}</button>
+          <button class="lv-btn" onclick={importChallengeCode}><Icon name="import" size={16} /> {t("challenge.import")}</button>
           <details class="lv-export-fold">
-            <summary class="lv-btn">📤 {t("export.wrongbook")}</summary>
+            <summary class="lv-btn"><Icon name="export" size={16} /> {t("export.wrongbook")}</summary>
             <div class="lv-card" style="padding:10px 12px;margin-top:6px">
               <div class="lv-row" style="margin:4px 0">
                 <span class="lv-chip">{t("manual.kp")}</span>
@@ -3005,10 +3010,10 @@ import { ttsSpeak } from "@/core/tts";
                   <option value={30}>30{t("entry.days")}</option>
                 </select>
               </div>
-              <button class="lv-btn sm lv-btn--primary" onclick={exportWrong}>📤 {t("export.run")}</button>
+              <button class="lv-btn sm lv-btn--primary" onclick={exportWrong}><Icon name="export" size={14} /> {t("export.run")}</button>
               <div class="lv-row" style="margin:6px 0 0">
                 <button class="lv-btn sm" disabled={offline} onclick={exportBank}>📦 {t("share.export")}</button>
-                <label class="lv-btn sm" class:disabled={offline} style={offline ? "opacity:.5;pointer-events:none" : ""}>📥 {t("share.import")}<input type="file" accept=".sy.zip,.zip" style="display:none" onchange={importBank} /></label>
+                <label class="lv-btn sm" class:disabled={offline} style={offline ? "opacity:.5;pointer-events:none" : ""}><Icon name="import" size={14} /> {t("share.import")}<input type="file" accept=".sy.zip,.zip" style="display:none" onchange={importBank} /></label>
                 <span class="lv-muted">{t("share.desktopOnly")}</span>
               </div>
             </div>
@@ -3026,7 +3031,7 @@ import { ttsSpeak } from "@/core/tts";
           {#if checkinStatus && checkinStatus !== "disabled" && checkinStatus !== "below-threshold" && checkinStatus !== "no-api"}
             <!-- 48-03 lite：打卡桥状态（未配置/未达标/打卡未装时安静不显） -->
             <p class="lv-muted" style="margin:2px 0" role="status">
-              📅 {t("checkin.status." + checkinStatus)}{#if checkinStatus === "pending" && checkinNote}<span class="num">（{checkinNote}）</span>{/if}
+              <Icon name="calendar" size={12} /> {t("checkin.status." + checkinStatus)}{#if checkinStatus === "pending" && checkinNote}<span class="num">（{checkinNote}）</span>{/if}
             </p>
           {/if}
           {#if session.state.order}
@@ -3043,7 +3048,7 @@ import { ttsSpeak } from "@/core/tts";
           {/if}
           {#if sessionDone.wrong > 0}
             <button class="lv-btn" style="width:100%" onclick={sameKpSession}>🔁 {t("memory.sameKp")}</button>
-            <button class="lv-btn" style="width:100%;margin-top:6px" onclick={wrongsToCard}>🎴 {t("session.wrongsToCard")}</button>
+            <button class="lv-btn" style="width:100%;margin-top:6px" onclick={wrongsToCard}><Icon name="layers" size={16} /> {t("session.wrongsToCard")}</button>
             <button class="lv-btn" style="width:100%;margin-top:6px" disabled={actionBusy} onclick={wrongsToActions}>
               📌 {actionBusy ? "…" : t("action.addWrong")}
             </button>
@@ -3116,11 +3121,11 @@ import { ttsSpeak } from "@/core/tts";
             {#if q.group}
               {@const sibs = questions.filter((x) => x.group === q.group)}
               {@const pos = sibs.findIndex((x) => x.id === q.id) + 1}
-              <span class="lv-chip num">🔗 {t("session.groupPos")} {pos}/{sibs.length}</span>
+              <span class="lv-chip num"><Icon name="link" size={12} /> {t("session.groupPos")} {pos}/{sibs.length}</span>
             {/if}
-            <button class="lv-chip" title={t("tts.read")} onclick={() => ttsSpeak([q.stem, ...q.options].join(" "))}>🔊</button>
-            <button class="lv-chip" class:acc={pureListen} title={t("tts.pureListen")} onclick={togglePureListen}>🙈</button>
-            <button class="lv-chip" class:acc={!!q.fav} title="E" onclick={() => toggleFavCurrent()}>⭐</button>
+            <button class="lv-chip" title={t("tts.read")} onclick={() => ttsSpeak([q.stem, ...q.options].join(" "))}><Icon name="volume" size={13} /></button>
+            <button class="lv-chip" class:acc={pureListen} title={t("tts.pureListen")} onclick={togglePureListen}><Icon name="eyeoff" size={13} /></button>
+            <button class="lv-chip" class:acc={!!q.fav} title="E" onclick={() => toggleFavCurrent()}><Icon name="star" size={13} /></button>
           </div>
           <div class="lv-card lv-question" class:lv-pure={pureListen}>
             {#if materialContext}
@@ -3204,7 +3209,7 @@ import { ttsSpeak } from "@/core/tts";
                   <button class="lv-chip" class:acc={confidenceSel === c} title={`Key ${["sure", "fuzzy", "guess"].indexOf(c) + 1}`} onclick={() => confidenceSel = c as "sure" | "fuzzy" | "guess"}>{t("confidence." + c)}</button>
                 {/each}
                 <span class="lv-chip num" class:lv-chip--red={qTimeoutS > 0 && qElapsedS >= qTimeoutS} title={qTimeoutS > 0 ? t("session.timeoutHint").replace("{n}", String(qTimeoutS)) : ""}>
-                  ⏱ {qElapsedS}s{qTimeoutS > 0 && qElapsedS >= qTimeoutS ? " ⚠" : ""}
+                  <Icon name="clock" size={12} /> {qElapsedS}s{qTimeoutS > 0 && qElapsedS >= qTimeoutS ? " ⚠" : ""}
                 </span>
               </div>
               <div class="lv-row lv-muted" style="font-size:11px;gap:6px;flex-wrap:wrap">
@@ -3227,9 +3232,9 @@ import { ttsSpeak } from "@/core/tts";
               {:else}
                 <button class="lv-btn lv-btn--primary" onclick={nextQuestion}>{t("session.next")} →</button>
                 {#if feedback.verdict === "wrong"}
-                  <button class="lv-btn" onclick={toCard}>🎴 {t("memory.toCard")}</button>
+                  <button class="lv-btn" onclick={toCard}><Icon name="layers" size={16} /> {t("memory.toCard")}</button>
                   {#if cardResult}<span class="lv-muted">{cardResult}</span>{/if}
-                  <button class="lv-btn" onclick={() => explainCurrent("explain")} disabled={explainBusy}>🤖 {explainBusy ? "…" : t("explain.ask")}</button>
+                  <button class="lv-btn" onclick={() => explainCurrent("explain")} disabled={explainBusy}><Icon name="sparkles" size={16} /> {explainBusy ? "…" : t("explain.ask")}</button>
                   <button class="lv-btn" onclick={requestHint} disabled={explainBusy}>{hintButtonLabel(q)}</button>
                   <button class="lv-btn" onclick={() => explainCurrent("socratic")} disabled={explainBusy}>🧠 {t("explain.socratic")}</button>
                 {/if}
@@ -3265,42 +3270,42 @@ import { ttsSpeak } from "@/core/tts";
       {/if}
     {/if}
   {:else if view === "recite"}
-    <!-- ===== S4 背诵（lite）：盖答案 → 四级自评 ===== -->
-    <div class="lv-pad">
+    <!-- ===== S4 背诵（lite）：盖答案 → 四级自评；纸面质感（原型 .paper） ===== -->
+    <div class="lv-pad lv-pad--narrow">
       <div class="lv-row">
         <button class="lv-btn lv-btn--ghost" onclick={exitRecite}>← {t("recite.exit")}</button>
         <span class="lv-chip num">{reciteCursor + 1}/{reciteQueue.length}</span>
         <span class="lv-chip">{t("recite.mode")}</span>
         {#if (reciteQueue[reciteCursor] as any)?.blockId && (reciteQueue[reciteCursor] as any)?.rootId}
-          <button class="lv-chip" title={t("recite.jumpSource")} onclick={jumpToSource}>📍 {t("recite.jumpSource")}</button>
+          <button class="lv-chip" title={t("recite.jumpSource")} onclick={jumpToSource}><Icon name="pin" size={12} /> {t("recite.jumpSource")}</button>
         {/if}
         {#if reciteQueue[reciteCursor]?.group}
-          <span class="lv-chip num">🔗 {t("session.groupPos")}</span>
+          <span class="lv-chip num"><Icon name="link" size={12} /> {t("session.groupPos")}</span>
         {/if}
         {#if reciteQueue[reciteCursor]}
-          <button class="lv-chip" title={t("tts.read")} onclick={() => ttsSpeak(reciteQueue[reciteCursor].stem)}>🔊</button>
+          <button class="lv-chip" title={t("tts.read")} onclick={() => ttsSpeak(reciteQueue[reciteCursor].stem)}><Icon name="volume" size={13} /></button>
         {/if}
       </div>
       {#if reciteDone}
         <div class="lv-card lv-guard">
-          <div class="lv-guard-title">🏁 {t("recite.done")}</div>
+          <div class="lv-guard-title"><Icon name="trophy" size={17} /> {t("recite.done")}</div>
           <p class="num lv-muted">{t("recite.dist")}：{t("rate.1")} {reciteRatings.filter((x) => x === 1).length} · {t("rate.2")} {reciteRatings.filter((x) => x === 2).length} · {t("rate.3")} {reciteRatings.filter((x) => x === 3).length} · {t("rate.4")} {reciteRatings.filter((x) => x === 4).length}</p>
           <p class="lv-muted" style="font-size:12px">{t("recite.doneHint")}</p>
           <button class="lv-btn lv-btn--primary" style="width:100%" onclick={exitRecite}>{t("session.back")}</button>
         </div>
       {:else if reciteQueue[reciteCursor]}
         {@const q = reciteQueue[reciteCursor]}
-        <div class="lv-card lv-question">
+        <div class="lv-card lv-question lv-paper">
           {#if reciteMaterial}
             <div class="lv-analysis" style="margin-bottom:12px"><b>📎 共用材料：</b>{reciteMaterial}</div>
           {/if}
           {#if stemHtml}<div class="lv-stem lv-rich b3-typography">{@html stemHtml}</div>{:else}<div class="lv-stem">{q.stem}</div>{/if}
           {#if !reciteRevealed}
             {#if q.kp}
-              <div class="lv-row"><button class="lv-chip" onclick={() => reciteHint = 1}>💡 {t("recite.hint1")}：{q.kp}</button></div>
+              <div class="lv-row"><button class="lv-chip" onclick={() => reciteHint = 1}><Icon name="bulb" size={12} /> {t("recite.hint1")}：{q.kp}</button></div>
             {/if}
             {#if reciteHint >= 2 && q.analysis}
-              <div class="lv-row"><span class="lv-chip">💡 {t("recite.hint2")}：{q.analysis.slice(0, 24)}…</span></div>
+              <div class="lv-row"><span class="lv-chip"><Icon name="bulb" size={12} /> {t("recite.hint2")}：{q.analysis.slice(0, 24)}…</span></div>
             {/if}
             <div class="lv-row" style="justify-content:center">
               <button class="lv-btn lv-btn--primary" onclick={() => reciteRevealed = true}>{t("recite.reveal")}</button>
@@ -3389,7 +3394,7 @@ import { ttsSpeak } from "@/core/tts";
     <div class="lv-pad">
       <div class="lv-row">
         <button class="lv-btn lv-btn--ghost" onclick={() => view = "entry"}>← {t("mode.practice")}</button>
-        <span class="lv-chip">✨ {t("ai.title")}</span>
+        <span class="lv-chip"><Icon name="sparkles" size={12} /> {t("ai.title")}</span>
         <span class="fn__flex-1"></span>
         {#if aiCustomEndpointSet}
           <span class="lv-chip lv-chip--amb" title={t("ai.endpointTitle") + " · " + t("setting.aiEndpoint.desc")}>{t("ai.channel.openai")}</span>
@@ -3404,9 +3409,9 @@ import { ttsSpeak } from "@/core/tts";
           {#if gleanAvailable}
             <!-- 60-01 lite：拾遗稍后读 → 出题素材（只读；不写拾遗状态） -->
             <div class="lv-row" style="margin:4px 0 0">
-              <button class="lv-btn sm lv-btn--ghost" disabled={gleanBusy} onclick={() => void importGleanClips()}>
-                📚 {gleanBusy ? "…" : t("ai.gleanLater")}
-              </button>
+                <button class="lv-btn sm lv-btn--ghost" disabled={gleanBusy} onclick={() => void importGleanClips()}>
+                  <Icon name="book" size={14} /> {gleanBusy ? "…" : t("ai.gleanLater")}
+                </button>
               <span class="lv-muted" style="font-size:11.5px">{t("ai.gleanHint")}</span>
             </div>
             {#if gleanPendingDone.length && aiQueue.length}
@@ -3451,7 +3456,7 @@ import { ttsSpeak } from "@/core/tts";
         </div>
         <div class="lv-row">
         <button class="lv-btn lv-btn--primary" onclick={runAiGenerate} disabled={aiBusy || !aiSource.trim()}>
-          {aiBusy ? t("ai.generating") : "✨ " + t("ai.generate")}
+          {aiBusy ? t("ai.generating") : t("ai.generate")}
         </button>
         {#if aiBusy}
           <button class="lv-btn sm" onclick={cancelAiGenerate}>✕ {t("ai.cancel")}</button>
@@ -3547,7 +3552,7 @@ import { ttsSpeak } from "@/core/tts";
     <div class="lv-pad">
       <div class="lv-row">
         <button class="lv-btn lv-btn--ghost" onclick={() => view = "entry"}>← {t("import.back")}</button>
-        <b>📚 {t("materials.title")}</b>
+        <b><Icon name="book" size={15} /> {t("materials.title")}</b>
         {#if app.materialsReadonly}<span class="lv-chip lv-chip--amb">{t("materials.readonly")}</span>{/if}
         <span class="lv-chip num">{materialsList.length}</span>
       </div>
@@ -3650,13 +3655,13 @@ import { ttsSpeak } from "@/core/tts";
       <div class="lv-row">
         <button class="lv-btn lv-btn--ghost" onclick={() => view = "entry"}>← {t("mode.practice")}</button>
         <span class="lv-chip num">{shownQuestions.length}/{questions.length} {t("browse.count")}</span>
-        <button class="lv-chip" class:acc={favOnly} onclick={() => favOnly = !favOnly}>⭐ {t("browse.favOnly")}</button>
+        <button class="lv-chip" class:acc={favOnly} onclick={() => favOnly = !favOnly}><Icon name="star" size={12} /> {t("browse.favOnly")}</button>
         <button class="lv-chip" class:acc={sectionOpen} onclick={() => void toggleSectionTree()}>📑 {t("browse.sectionTree")}</button>
         <button class="lv-chip" class:acc={kpOpen} onclick={() => { kpOpen = !kpOpen; }}>🧭 {t("kp.title")}</button>
         <button class="lv-chip" class:acc={healthOpen} onclick={() => healthOpen = !healthOpen}>🩺 {t("health.title")}</button>
         <button class="lv-chip" class:acc={errataOpen} onclick={() => errataOpen = !errataOpen}>📄 {t("errata.title")}</button>
         <button class="lv-chip" class:acc={batchMode} onclick={() => { batchMode = !batchMode; if (!batchMode) selectedIds = {}; }}>{t("batch.mode")}</button>
-        <button class="lv-chip" title={t("browse.exportCsvTitle")} onclick={exportBankCsv}>⬇️ CSV</button>
+        <button class="lv-chip" title={t("browse.exportCsvTitle")} onclick={exportBankCsv}><Icon name="export" size={13} /> CSV</button>
         <!-- 68-01 lite：题册/答案册分离打印（作用于当前筛选全集；题册不含答案与解析） -->
         <button class="lv-chip" title={t("print.qSheetTip")} onclick={printQuestionSheet}>🖨 {t("print.qSheet")}</button>
         <button class="lv-chip" title={t("print.aSheetTip")} onclick={printAnswerSheet}>🖨 {t("print.aSheet")}</button>
@@ -3803,7 +3808,7 @@ import { ttsSpeak } from "@/core/tts";
                     {:else}&nbsp;<span class="num" title={t("syl.learnedTip")}>✓{learned}</span>{/if}
                   </button>
                 {/each}
-                <button class="lv-btn sm lv-btn--ghost" onclick={downloadSyllabusGaps}>⬇️ {t("syl.exportGaps")}</button>
+                <button class="lv-btn sm lv-btn--ghost" onclick={downloadSyllabusGaps}><Icon name="export" size={13} /> {t("syl.exportGaps")}</button>
               </div>
             {/if}
             {#if !sylDoc.roots.length || sylPreviewRoots}
@@ -3863,7 +3868,7 @@ import { ttsSpeak } from "@/core/tts";
             <span class="lv-muted" style="font-size:11.5px">{t("errata.hint")}</span>
           </div>
           <div class="lv-row" style="margin:6px 0 0">
-            <button class="lv-btn sm lv-btn--ghost" onclick={exportErrataTemplate}>⬇️ {t("errata.template")}</button>
+            <button class="lv-btn sm lv-btn--ghost" onclick={exportErrataTemplate}><Icon name="export" size={13} /> {t("errata.template")}</button>
             <label class="lv-btn sm">
               📥 {t("errata.import")}
               <input type="file" accept=".csv,.tsv,.txt" style="display:none" onchange={onErrataFile} disabled={errataBusy} />
@@ -3970,7 +3975,7 @@ import { ttsSpeak } from "@/core/tts";
           {#if unreviewed && unreviewed.count}
             <!-- 67-03 lite：AI 未审校比例（origin=ai 且 review=pending） -->
             <div class="lv-row" style="margin:4px 0 0">
-              <span class="lv-chip lv-chip--amb num" title={t("health.unreviewedTip")}>🤖 {t("health.unreviewed").replace("{n}", String(unreviewed.count)).replace("{r}", String(unreviewed.ratio ?? 0))}</span>
+              <span class="lv-chip lv-chip--amb num" title={t("health.unreviewedTip")}><Icon name="sparkles" size={12} /> {t("health.unreviewed").replace("{n}", String(unreviewed.count)).replace("{r}", String(unreviewed.ratio ?? 0))}</span>
             </div>
           {/if}
           {#if coverage}
@@ -4082,8 +4087,8 @@ import { ttsSpeak } from "@/core/tts";
                   {/if}
                   <div class="lv-row">
                     <button class="lv-btn sm" onclick={() => openEditForm(q)}>✎ {t("edit.open")}</button>
-                    <button class="lv-btn sm" onclick={() => openInSiYuan((q as any).rootId)}>📍 {t("browse.openDoc")}</button>
-                    <button class="lv-btn sm" onclick={() => void loadBacklinks(q.blockId)}>🔗 {t("browse.backlinks")}</button>
+                    <button class="lv-btn sm" onclick={() => openInSiYuan((q as any).rootId)}><Icon name="pin" size={13} /> {t("browse.openDoc")}</button>
+                    <button class="lv-btn sm" onclick={() => void loadBacklinks(q.blockId)}><Icon name="link" size={13} /> {t("browse.backlinks")}</button>
                     {#if links}
                       {#if links.length === 0}<span class="lv-muted">{t("browse.noBacklinks")}</span>
                       {:else}{#each links as l, _i (_i)}<span class="lv-chip" title={l.content}>📎 {l.title}</span>{/each}{/if}
@@ -4095,12 +4100,12 @@ import { ttsSpeak } from "@/core/tts";
                       <span class="lv-chip">📄 {qrefView[q.id]!.title}{#if qrefView[q.id]!.label} · {qrefView[q.id]!.label}{/if}</span>
                       {#if qrefView[q.id]!.stale}<span class="lv-chip lv-chip--amb" title={t("materials.relocateTip")}>{t("materials.relocate")}</span>{/if}
                       <button class="lv-btn sm" onclick={() => openQref(q.id)}>↗ {t("materials.openAt")}</button>
-                      <button class="lv-btn sm lv-btn--ghost" onclick={() => startQrefForm(q.id)}>🔗 {t("qref.relink")}</button>
+                      <button class="lv-btn sm lv-btn--ghost" onclick={() => startQrefForm(q.id)}><Icon name="link" size={13} /> {t("qref.relink")}</button>
                       <button class="lv-btn sm lv-btn--ghost" onclick={() => void removeQref(q.id)}>✕</button>
                     </div>
                   {:else}
                     <div class="lv-row" style="font-size:11.5px">
-                      <button class="lv-btn sm lv-btn--ghost" onclick={() => startQrefForm(q.id)}>🔗 {t("qref.link")}</button>
+                      <button class="lv-btn sm lv-btn--ghost" onclick={() => startQrefForm(q.id)}><Icon name="link" size={13} /> {t("qref.link")}</button>
                     </div>
                   {/if}
                   {#if qrefFormFor === q.id}
@@ -4143,7 +4148,7 @@ import { ttsSpeak } from "@/core/tts";
                             {#if e.myAnswer}<span class="lv-chip num">{t("session.myAnswer")}: {e.myAnswer}</span>{/if}
                             {#if e.confidence}<span class="lv-chip">{t("confidence." + e.confidence)}</span>{/if}
                             {#if e.help}<span class="lv-chip lv-chip--amb">🫱 {t("receipt.help")}</span>{/if}
-                            {#if e.recall}<span class="lv-chip">🙈 {t("receipt.recall")}</span>{/if}
+                            {#if e.recall}<span class="lv-chip"><Icon name="eyeoff" size={11} /> {t("receipt.recall")}</span>{/if}
                             {#if e.timeMs}<span class="lv-chip num">{Math.round(e.timeMs / 1000)}s</span>{/if}
                             {#if e.verdict === "wrong"}
                               <button class="lv-btn sm lv-btn--ghost" disabled={receiptBusy === rkey}
@@ -4212,7 +4217,7 @@ import { ttsSpeak } from "@/core/tts";
         <div class="lv-card lv-pad-card">
           <div class="lv-row">
             <label class="lv-btn">📁 {t("import.pickExcel")}<input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange={onExcelFile} /></label>
-            <button class="lv-btn sm" onclick={downloadTemplate}>⬇️ {t("import.template")}</button>
+            <button class="lv-btn sm" onclick={downloadTemplate}><Icon name="import" size={15} /> {t("import.template")}</button>
             <span class="lv-muted">{t("import.orPaste")}</span>
           </div>
           <textarea class="lv-input lv-textarea" rows="8" placeholder={t("import.placeholder")} bind:value={importText}></textarea>

@@ -5,6 +5,7 @@
     import { showMessage } from "siyuan";
     import { weeklyAggregates, weekCompare, dailyTrend } from "@/core/weekly";
     import type { ExamApp } from "../../app";
+    import Icon from "../shared/Icon.svelte";
     import { heatmap, masteryByKp, weakTop, hourly, calibration, confidentWrongList, uncertainCorrectList, delayedRecall, exposureStats, type CalibrationReport } from "@/core/report";
     import { trendToCsv, heatmapToCsv, hourlyToCsv } from "@/core/exportMd";
     import type { ActionItem } from "@/core/actions";
@@ -511,10 +512,10 @@
   {:else}
     <p class="lv-muted" style="margin:0 0 8px;font-size:11.5px">{t("report.scopeAll")}</p>
     <div class="lv-kpis">
-      <div class="lv-card lv-kpi"><div class="l">⚡ {t("report.attempts")}</div><div class="v num">{kpi.attempts}</div></div>
-      <div class="lv-card lv-kpi"><div class="l">◎ {t("report.accuracy")}</div><div class="v num">{kpi.accuracy}%</div></div>
-      <div class="lv-card lv-kpi"><div class="l">❌ {t("report.eliminated")}</div><div class="v num">{kpi.eliminated}</div></div>
-      <div class="lv-card lv-kpi"><div class="l">🔥 {t("report.streak")}</div><div class="v num">{kpi.streak} {t("entry.days")}</div></div>
+      <div class="lv-card lv-kpi"><div class="l"><Icon name="zap" size={13} /> {t("report.attempts")}</div><div class="v num">{kpi.attempts}</div></div>
+      <div class="lv-card lv-kpi"><div class="l"><Icon name="target" size={13} /> {t("report.accuracy")}</div><div class="v num">{kpi.accuracy}%</div></div>
+      <div class="lv-card lv-kpi"><div class="l"><Icon name="xcircle" size={13} /> {t("report.eliminated")}</div><div class="v num">{kpi.eliminated}</div></div>
+      <div class="lv-card lv-kpi"><div class="l"><Icon name="flame" size={13} /> {t("report.streak")}</div><div class="v num">{kpi.streak} {t("entry.days")}</div></div>
     </div>
 
     {#if weekCmp}
@@ -543,7 +544,7 @@
           <span class="lv-chip num">{t("report.trendSum")} {trend30.reduce((n, p) => n + p.attempts, 0)}</span>
           <!-- 45-08：SVG 图表的文本等价物 + CSV（同一数据快照，读屏/打印/导出数字一致） -->
           <button class="lv-btn sm lv-btn--ghost" onclick={() => tableOpen = tableOpen === "trend" ? "" : "trend"}>📋 {t("data.table")}</button>
-          <button class="lv-btn sm lv-btn--ghost" onclick={() => downloadChartCsv(trendToCsv(trend30), "trend30")}>⬇️ CSV</button>
+          <button class="lv-btn sm lv-btn--ghost" onclick={() => downloadChartCsv(trendToCsv(trend30), "trend30")}><Icon name="export" size={13} /> CSV</button>
         </div>
         {#if tableOpen === "trend"}
           <table class="lv-dtable">
@@ -567,7 +568,7 @@
       </div>
       <div class="lv-row" style="margin:6px 0 0">
         <button class="lv-btn sm lv-btn--ghost" onclick={() => tableOpen = tableOpen === "heat" ? "" : "heat"}>📋 {t("data.table")}</button>
-        <button class="lv-btn sm lv-btn--ghost" onclick={() => downloadChartCsv(heatmapToCsv(heat), "heatmap")}>⬇️ CSV</button>
+        <button class="lv-btn sm lv-btn--ghost" onclick={() => downloadChartCsv(heatmapToCsv(heat), "heatmap")}><Icon name="export" size={13} /> CSV</button>
       </div>
       {#if tableOpen === "heat"}
         <div class="lv-row" style="margin:6px 0 0;flex-direction:column;align-items:stretch;gap:2px;max-height:180px;overflow:auto">
@@ -742,7 +743,7 @@
       </svg>
       <div class="lv-row" style="margin:4px 0 0">
         <button class="lv-btn sm lv-btn--ghost" onclick={() => tableOpen = tableOpen === "hourly" ? "" : "hourly"}>📋 {t("data.table")}</button>
-        <button class="lv-btn sm lv-btn--ghost" onclick={() => downloadChartCsv(hourlyToCsv(hours), "hourly")}>⬇️ CSV</button>
+        <button class="lv-btn sm lv-btn--ghost" onclick={() => downloadChartCsv(hourlyToCsv(hours), "hourly")}><Icon name="export" size={13} /> CSV</button>
       </div>
       {#if tableOpen === "hourly"}
         <div class="lv-row" style="margin:6px 0 0;flex-direction:column;align-items:stretch;gap:2px;max-height:180px;overflow:auto">
@@ -752,7 +753,7 @@
         </div>
       {/if}
       <button class="lv-btn sm" style="margin-top:8px" disabled={reportBusy} onclick={writeDaily}>
-        📄 {reportBusy ? "…" : t("report.writeDaily")}
+        <Icon name="table" size={14} /> {reportBusy ? "…" : t("report.writeDaily")}
       </button>
       <button class="lv-btn sm lv-btn--ghost" style="margin-top:8px" onclick={exportDiagnostics}>
         🩰 {t("diag.export")}
@@ -786,7 +787,7 @@
         </div>
       {/if}
       <button class="lv-btn sm lv-btn--ghost" style="margin-top:8px" onclick={() => void exportAllData()}>
-        ⬇️ {t("data.export")}
+        <Icon name="export" size={14} /> {t("data.export")}
       </button>
       <button class="lv-btn sm" style="margin-top:8px" disabled={purgeBusy} onclick={() => void purgeAllData()}>
         {purgeBusy ? "…" : `🗑 ${t("data.purge")}`}

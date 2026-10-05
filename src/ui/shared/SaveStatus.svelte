@@ -4,6 +4,7 @@
     import { onMount, onDestroy } from "svelte";
     import { showMessage } from "siyuan";
     import type { SaveGate } from "../../core/saveGate";
+    import Icon from "./Icon.svelte";
 
     let { gate, t }: { gate: SaveGate; t: (k: string, fb?: string) => string } = $props();
 
@@ -27,10 +28,9 @@
 
 {#if worst}
     <button class="lv-save-status lv-save-{worst}" onclick={detail} title={t("save.detailTitle")}>
-        💾 {t("save." + worst)} {count}
+        <Icon name="save" size={13} /> {t("save." + worst)} {count}
     </button>
 {/if}
-
 <style>
     .lv-save-status { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 550; border: 1px solid var(--lv-border); cursor: pointer; background: var(--lv-surface-2); color: var(--lv-text-2); }
     .lv-save-failed { color: var(--lv-red); background: var(--lv-red-soft); border-color: transparent; }

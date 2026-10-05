@@ -11,6 +11,7 @@
     import { assemble, blueprintTotals, dedupeSectionNames, MockSession, validateBlueprint, type Blueprint, type BlueprintSection, type MockRunSnapshot, type MockScore } from "../../core/mock";
     import { newRunId } from "../../core/ids";
     import { estimateScore } from "../../core/estimate";
+    import Icon from "../shared/Icon.svelte";
     import SaveStatus from "../shared/SaveStatus.svelte";
     import { mockSectionsToCsv, mockHistoryToCsv } from "../../core/exportMd";
     
@@ -510,13 +511,13 @@
     <SaveStatus gate={app.saves} {t} />
     <span class="fn__flex-1"></span>
     {#if view === "exam"}
-      <span class="lv-chip num">⏱ {remainText()}</span>
+      <span class="lv-chip num"><Icon name="clock" size={13} /> {remainText()}</span>
       {#if (session?.state.extraTimeS ?? 0) > 0}
-        <span class="lv-chip lv-chip--amb num" title={t("mock.extraTip")}>⏱+{Math.round((session!.state.extraTimeS ?? 0) / 60)}{t("entry.minutes")}</span>
+        <span class="lv-chip lv-chip--amb num" title={t("mock.extraTip")}><Icon name="clock" size={13} />+{Math.round((session!.state.extraTimeS ?? 0) / 60)}{t("entry.minutes")}</span>
       {/if}
       <!-- 55-06 lite：单次条件覆盖——延时入快照与成绩记录，原卷不变 -->
       <button class="lv-chip" title={t("mock.extraTip")} onclick={() => { session?.extendTime(300); }}>
-        ⏱+5{t("entry.minutes")}
+        <Icon name="clock" size={13} />+5{t("entry.minutes")}
       </button>
     {/if}
   </div>
@@ -578,9 +579,9 @@
     </div>
     {#if !bp.sections.length}<div class="lv-empty">{t("mock.needSec")}</div>{/if}
     <div class="lv-row">
-      <button class="lv-btn lv-btn--primary" onclick={startExam} disabled={!bp.sections.length}>▶ {t("mock.start")}</button>
-      <button class="lv-btn sm" onclick={saveBlueprint}>💾 {t("mock.bpSave")}</button>
-      <button class="lv-btn sm" onclick={restoreBlueprint}>📂 {t("mock.bpRestore")}</button>
+      <button class="lv-btn lv-btn--primary" onclick={startExam} disabled={!bp.sections.length}><Icon name="play" size={16} /> {t("mock.start")}</button>
+      <button class="lv-btn sm" onclick={saveBlueprint}><Icon name="save" size={14} /> {t("mock.bpSave")}</button>
+      <button class="lv-btn sm" onclick={restoreBlueprint}><Icon name="folder" size={14} /> {t("mock.bpRestore")}</button>
     </div>
     <!-- 考后估分 -->
     <details class="lv-card lv-pad-card" style="padding:12px 16px">
@@ -639,7 +640,7 @@
       {#if bp.sectionTimed}
         {@const sr = session.sectionRemaining(currentSection, Date.now())}
         <span class="lv-chip num" class:lv-chip--red={sr !== null && sr < 60_000}>
-          ⏱ 段 {sr !== null ? `${Math.max(0, Math.floor(sr / 60_000))}:${String(Math.floor((sr % 60_000) / 1000)).padStart(2, "0")}` : "--"}
+          <Icon name="clock" size={13} /> 段 {sr !== null ? `${Math.max(0, Math.floor(sr / 60_000))}:${String(Math.floor((sr % 60_000) / 1000)).padStart(2, "0")}` : "--"}
         </span>
       {/if}
       <span class="lv-chip num">{cursor + 1}/{session.state.qids.length}</span>
@@ -682,7 +683,7 @@
     </div>
     <div class="lv-row">
       <button class="lv-btn sm" onclick={() => goto(bp.lockout ? cursor + 1 : cursor - 1)} disabled={bp.lockout ? false : cursor === 0}>◀</button>
-      <button class="lv-btn sm" onclick={() => goto(cursor + 1)} disabled={cursor >= session.state.qids.length - 1}>▶</button>
+      <button class="lv-btn sm" onclick={() => goto(cursor + 1)} disabled={cursor >= session.state.qids.length - 1}><Icon name="play" size={14} /></button>
     </div>
   {:else if view === "report" && score}
     <!-- ===== S7 成绩单 ===== -->
@@ -727,9 +728,9 @@
     <!-- 45-08 收口：分段/历史图表的文本等价物 + CSV（同一数据快照） -->
     <div class="lv-row" style="margin:6px 0">
       <button class="lv-btn sm lv-btn--ghost" onclick={() => mockTableOpen = !mockTableOpen}>📋 {t("data.table")}</button>
-      <button class="lv-btn sm lv-btn--ghost" onclick={() => downloadMockCsv(mockSectionsToCsv(score.sections), "sections")}>⬇️ CSV</button>
+      <button class="lv-btn sm lv-btn--ghost" onclick={() => downloadMockCsv(mockSectionsToCsv(score.sections), "sections")}><Icon name="export" size={13} /> CSV</button>
       {#if history.length}
-        <button class="lv-btn sm lv-btn--ghost" onclick={() => downloadMockCsv(mockHistoryToCsv(history), "history")}>⬇️ CSV {t("mock.history")}</button>
+        <button class="lv-btn sm lv-btn--ghost" onclick={() => downloadMockCsv(mockHistoryToCsv(history), "history")}><Icon name="export" size={13} /> CSV {t("mock.history")}</button>
       {/if}
     </div>
     {#if mockTableOpen}
@@ -763,7 +764,7 @@
       <span class="lv-chip num">{t("mock.last20")} {score.last20min.correct}/{score.last20min.attempted}</span>
       {#if session?.state.extraTimeS}
         <!-- 55-06 lite：单次条件覆盖明示（同卷不同条件不混排比较的依据） -->
-        <span class="lv-chip lv-chip--amb num" title={t("mock.extraTip")}>⏱+{Math.round(session.state.extraTimeS / 60)}{t("entry.minutes")}</span>
+        <span class="lv-chip lv-chip--amb num" title={t("mock.extraTip")}><Icon name="clock" size={13} />+{Math.round(session.state.extraTimeS / 60)}{t("entry.minutes")}</span>
       {/if}
     </div>
     {#if history.length >= 2}
@@ -827,7 +828,7 @@
       </div>
     {/if}
     <div class="lv-row">
-      <button class="lv-btn ghost sm" onclick={exportScoreMd}>📄 {t("mock.exportScore")}</button>
+      <button class="lv-btn ghost sm" onclick={exportScoreMd}><Icon name="table" size={13} /> {t("mock.exportScore")}</button>
       {#if activeBankId}
         <button class="lv-btn ghost sm" onclick={async () => {
           if (!score) return;
@@ -837,8 +838,8 @@
           showMessage(t("report.dailyDone"), 3200, "info");
         }}>📚 {t("mock.exportToDoc")}</button>
       {/if}
-      <button class="lv-btn lv-btn--primary" onclick={rewrongDrill}>❌ {t("mock.rewrong")}</button>
-      <button class="lv-btn" onclick={() => { view = "config"; }}>▶ {t("mock.again")}</button>
+      <button class="lv-btn lv-btn--primary" onclick={rewrongDrill}><Icon name="xcircle" size={15} /> {t("mock.rewrong")}</button>
+      <button class="lv-btn" onclick={() => { view = "config"; }}><Icon name="rotate" size={15} /> {t("mock.again")}</button>
     </div>
   {/if}
 </div>
