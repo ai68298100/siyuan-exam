@@ -26,8 +26,8 @@
     "zh-CN": "小驴考试"
   },
   "description": {
-    "default": "Local-first exam question bank in SiYuan: import (Excel/GIFT/Anki apkg/AI), practice, recite, mock exam, wrongbook, FSRS flashcards, AI explain & generate. Your question bank lives in your knowledge base.",
-    "zh-CN": "本地题库学习管理大杂烩：题库导入（Excel/GIFT/Anki 包/AI 录题）、刷题、背诵、模考、错题本、FSRS 闪卡记忆、AI 讲解与出题——题库长在你的知识库里。"
+    "default": "Local-first exam question bank in SiYuan: import (Excel/CSV/TSV/GIFT/Aiken/native package), practice, recite, mock exam, wrongbook, FSRS flashcards, and reviewable AI assistance. Your question bank lives in your knowledge base.",
+    "zh-CN": "本地题库学习工作台：导入 Excel/CSV/TSV/GIFT/Aiken/思源原生包，刷题、背诵、模考、错题本、FSRS 闪卡与可审核的 AI 辅助——题库长在你的知识库里。"
   },
   "readme": {
     "default": "README.md",

@@ -8,14 +8,18 @@
 //   37     actions/items schema
 //   38     ai/explain-history + ai/usage schema
 //   48-03  checkin 桥 pending/事件痕迹（exam: 前缀是否已出现在打卡侧）
-// 用法：node scripts/smoke-e2e.mjs [--json]
+// 用法：SIYUAN_WORKSPACE="<workspace>" node scripts/smoke-e2e.mjs [--json] [workspace]
 // 退出码：0 = 所有关键面通过或"尚未产生数据"（待用户使用后复跑）；
 //         1 = 存在的数据不符合 schema（真缺陷）
 // ============================================================
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const WORKSPACE = "D:/小飞驴的SIYUAN";
+const WORKSPACE = process.env.SIYUAN_WORKSPACE ?? process.argv.slice(2).find((arg) => !arg.startsWith("--")) ?? "";
+if (!WORKSPACE) {
+  console.error("✗ 缺少思源工作区：请设置 SIYUAN_WORKSPACE 或传入工作区路径；不会使用固定路径");
+  process.exit(1);
+}
 const PETAL = join(WORKSPACE, "storage/petal/siyuan-exam");
 
 const results = [];

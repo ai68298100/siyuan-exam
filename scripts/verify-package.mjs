@@ -21,13 +21,17 @@ if (!existsSync("package.zip")) {
 }
 let out;
 try {
-  out = execSync("unzip -Z1 package.zip", { encoding: "utf8" });
-} catch {
-  // Git Bash 无 unzip 时退回 powershell
-  out = execSync(
-    'powershell -NoProfile -Command "Add-Type -AssemblyName System.IO.Compression.FileSystem; [IO.Compression.ZipFile]::OpenRead(\\"package.zip\\").Entries.FullName -join \\"`n\\""',
-    { encoding: "utf8" },
-  );
+  if (process.platform === "win32") {
+    out = execSync(
+      'powershell -NoProfile -Command "Add-Type -AssemblyName System.IO.Compression.FileSystem; [IO.Compression.ZipFile]::OpenRead(\\"package.zip\\").Entries.FullName -join \\"`n\\""',
+      { encoding: "utf8" },
+    );
+  } else {
+    out = execSync("unzip -Z1 package.zip", { encoding: "utf8" });
+  }
+} catch (error) {
+  console.error(`✗ 无法读取 package.zip：${error instanceof Error ? error.message : String(error)}`);
+  process.exit(1);
 }
 const names = out
   .split(/\r?\n/)

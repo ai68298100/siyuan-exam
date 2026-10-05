@@ -1,6 +1,6 @@
 // ============================================================
 // docs/17 真机冒烟·CSV 往返与题库包（39-40 脚本化部分）
-// 用法：node scripts/smoke-csv.mjs [baseUrl] [token]
+// 用法：SIYUAN_TOKEN=... node scripts/smoke-csv.mjs [baseUrl] [token]
 // 行为：
 //   A. CSV 往返——临时库插 3 题（custom-exam-* IAL）→ listQuestions SQL 读回
 //      → 按官方模板列序构建 CSV（与 core/bankCsv 同规则）→ 整批回滚（同 smoke-data）
@@ -9,7 +9,11 @@
 // 退出码：0 = 全过；1 = 存在 FAIL
 // ============================================================
 const BASE = process.argv[2] ?? "http://127.0.0.1:6806";
-const TOKEN = process.argv[3] ?? "ppt68298100";
+const TOKEN = process.argv[3] ?? process.env.SIYUAN_TOKEN ?? "";
+if (!TOKEN) {
+  console.error("✗ 缺少思源 token：请传入第二个参数或设置 SIYUAN_TOKEN；不会使用默认 token");
+  process.exit(1);
+}
 const H = { Authorization: `Token ${TOKEN}`, "Content-Type": "application/json" };
 
 async function api(path, body) {

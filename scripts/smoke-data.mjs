@@ -1,13 +1,17 @@
 // ============================================================
 // docs/17 真机冒烟·数据生命周期脚本（F 段 30/31/33/34 步的 API 级自动化）
-// 用法：node scripts/smoke-data.mjs [baseUrl] [token]
+// 用法：SIYUAN_TOKEN=... node scripts/smoke-data.mjs [baseUrl] [token]
 // 覆盖：建库 → 分两批导入 → 读回确认 → 先导语义（跳过已确认）→ 批量改考点
 //       → SQL 验证属性 → 批次回滚（deleteBlock）→ 验证批1消失/批2保留 → 自清理
 // 退出码：0 = 全过；1 = 存在 FAIL。临时笔记本自清理。
 // ============================================================
 
 const BASE = process.argv[2] ?? "http://127.0.0.1:6806";
-const TOKEN = process.argv[3] ?? "ppt68298100";
+const TOKEN = process.argv[3] ?? process.env.SIYUAN_TOKEN ?? "";
+if (!TOKEN) {
+  console.error("✗ 缺少思源 token：请传入第二个参数或设置 SIYUAN_TOKEN；不会使用默认 token");
+  process.exit(1);
+}
 
 const results = [];
 function record(name, ok, note = "") {

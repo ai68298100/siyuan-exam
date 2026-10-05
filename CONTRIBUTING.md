@@ -9,7 +9,7 @@
 pnpm install                       # 安装依赖
 pnpm make-link                     # 软链到思源工作空间（需按提示选择目录/授权）
 pnpm dev                           # 监听构建（思源设置-集市重载插件或重启生效）
-pnpm preflight                     # 活内核 API 预检（17 项，需思源运行中）
+SIYUAN_TOKEN=... pnpm preflight    # 活内核 API 预检（17 项，需思源运行中）
 ```
 
 真机手工验证按 [docs/17 真机冒烟清单](docs/17-真机冒烟清单.md) 的 40 步执行（A–E 覆盖 v0.5.x，+F 覆盖 v0.6-dev）。
@@ -17,10 +17,11 @@ pnpm preflight                     # 活内核 API 预检（17 项，需思源�
 ## 2. 门禁（提交前必跑）
 
 ```bash
-pnpm guard        # 六检：类型 → svelte(0错0警) → i18n 键对齐 → 架构 37 项 → 全量测试 → （构建另跑）
+pnpm guard        # 七组：类型 → svelte(0错0警) → i18n → 架构42项 → 样式 → ESLint → 全量测试
 pnpm build        # 生产构建 + 打包
 pnpm verify:package  # package.zip 白名单校验
-pnpm smoke        # 真机套件（需思源运行）：preflight 17 项 → 数据生命周期 6 步 → 性能基线
+SIYUAN_TOKEN=... pnpm smoke        # 真机套件（需思源运行）：preflight 17 项 → 数据生命周期 6 步 → 性能基线
+SIYUAN_WORKSPACE=... pnpm e2e      # 只读数据层走查（工作区路径必须显式提供）
 ```
 
 约定俗成的硬约束（`scripts/check-arch.mjs` 会拦）：

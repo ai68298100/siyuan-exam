@@ -56,19 +56,20 @@ jobs:
           echo "Release version validated: $tag_version"
 
       - name: Check source
-        run: pnpm check
+        run: pnpm guard
 
       - name: Build production package
         run: |
           pnpm build
-          cd dist
-          zip -r ../package.zip ./*
+          pnpm verify:package
+          pnpm release:check
+          sha256sum package.zip > SHA256SUMS
 
       - name: Release
         uses: ncipollo/release-action@v1
         with:
           allowUpdates: true
           artifactErrorsFailBuild: true
-          artifacts: "package.zip"
+          artifacts: "package.zip,SHA256SUMS"
           token: ${{ secrets.GITHUB_TOKEN }}
           prerelease: false

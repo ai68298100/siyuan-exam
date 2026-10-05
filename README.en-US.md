@@ -9,7 +9,7 @@
 
 [![Release](https://img.shields.io/github/v/release/ai68298100/siyuan-exam?logo=github)](https://github.com/ai68298100/siyuan-exam/releases)
 [![CI](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml/badge.svg)](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml)
-[![Tests](https://img.shields.io/badge/tests-151%20passed-brightgreen)](#-development)
+[![Tests](https://img.shields.io/badge/tests-479%20passed-brightgreen)](#-development)
 [![SiYuan](https://img.shields.io/badge/SiYuan-%3E%3D%203.8.0-blue)](https://github.com/siyuan-note/siyuan)
 [![License](https://img.shields.io/badge/license-MIT-green)](#-license)
 
@@ -32,7 +32,7 @@
 
 ## 📦 Feature overview (v0.7.0; journey checks ongoing)
 
-Everything below is implemented in source with automated tests in the CI gate. "Journey checks ongoing" means per-screen manual walkthroughs are still in progress — see the [release checklist](docs/23-发版检查清单.md) for known unverified items.
+The capabilities below have source implementations and automated coverage where stated. "Journey checks ongoing" means per-screen manual walkthroughs are still in progress — see the [release checklist](docs/23-发版检查清单.md) for known unverified items.
 
 | Module | Capabilities |
 |---|---|
@@ -47,7 +47,7 @@ Everything below is implemented in source with automated tests in the CI gate. "
 | 🗺️ **Syllabus & governance** | Paste-outline syllabus import · coverage per node (questions / independently mastered / missing source) · gap CSV export · KP governance (merge/rename/fill) · errata import by question ID · relation contract validation (cycles/invalid nodes/cross-version diff) |
 | 🧮 **Structured grading (foundation)** | `answerSpec` v1: numeric questions with tolerance/equivalent-units/scientific notation, multi-blank ";;" per-blank grading — legacy string answers fully compatible; answer UI and template columns land in 0.8 |
 | 🖨️ **Print & export** | Question sheet / answer sheet separated printing (question sheet never contains answers) · CSV exports (bank/wrongbook/mock/charts) · JSON data export |
-| 🤖 **AI tasks (8 templates)** | All through one task envelope (context fingerprint / budget / strictMock gate / audit & usage accounting): generate · review · repair · layered explain · one-layer hint · Socratic · error analysis · report explanation · next actions · flashcard candidates — SiYuan built-in model or your own OpenAI-compatible endpoint |
+| 🤖 **AI tasks** | Seven runtime explanation/review tasks use one task envelope (context fingerprint / budget / strictMock gate / audit & usage accounting); a separate generate/review/repair pipeline handles question candidates — SiYuan built-in model or your own OpenAI-compatible endpoint |
 | 🔗 **SiYuan integration** | Block attribute contract · query-embed drill · section tree · event bus (envelope v1) · check-in bridge · widget · Glean source bridge · `window.siyuanExam` public API · bank sharing via `.sy.zip` |
 | 🔊 **Listen & learn** | TTS read-aloud · pure-listening mode · cover-answer self-rating |
 
@@ -81,9 +81,9 @@ Everything below is implemented in source with automated tests in the CI gate. "
 
 ## 🏗️ Engineering quality
 
-- **151 unit tests** (grader / import parsers / event replayer / FSRS mapping / AI pipeline / kernel response-shape regression locks)
-- **Six commit gates**: TypeScript strict → svelte-check (0 warnings) → i18n parity + usage coverage → 28 architecture assertions → build + package allowlist → pre-push hook
-- **Live-kernel preflight**: `pnpm preflight` asserts 17 kernel API behaviors against a running SiYuan (notebook lifecycle / block write & attribute indexing / full FSRS chain / .sy.zip export) — 17/17 on SiYuan 3.8.5, which surfaced and fixed 4 real kernel API drifts
+- **479 unit tests in 91 files** (grader / import parsers / event replayer / FSRS mapping / AI pipeline / kernel response-shape regression locks; run on 2026-10-05)
+- **Guard gates**: TypeScript strict → svelte-check (0 warnings) → i18n parity + usage coverage → 42 architecture assertions → style audit → ESLint → Vitest
+- **Live-kernel preflight**: `pnpm preflight` asserts 17 kernel API behaviors against a running SiYuan. The current recorded contract run targets SiYuan 3.8.6; UI journey and mobile evidence remain separate manual checks.
 
 ## 🗺️ Documentation map
 
@@ -93,11 +93,12 @@ Everything below is implemented in source with automated tests in the CI gate. "
 | [docs/19 Consolidated plan](docs/19-待办融合与分阶段执行规划.md) · [docs/20 Full mapping](docs/20-全量待办归并索引.md) | Merge decisions, dependency corrections, S0–S4 stages, 8 proposed slices and unique ownership for all 620 IDs |
 | [docs/01 PRD](docs/01-功能全景PRD.md) · [docs/02 data model](docs/02-数据模型设计.md) · [docs/03 architecture](docs/03-技术架构.md) | Product / data / architecture (03 includes the live-verified kernel API table) — in Chinese |
 | [docs/04 roadmap](docs/04-版本路线图.md) · [CHANGELOG](CHANGELOG.md) | Version plan and changelog |
-| [docs/11 UI spec](docs/11-UI原型与交互规范.md) · [design/prototype](design/prototype/index.html) | 14-screen hi-fi prototype (open in a browser) |
+| [docs/11 UI spec](docs/11-UI原型与交互规范.md) · [design/prototype](design/prototype/index.html) | 15-scene hi-fi prototype (open in a browser) |
 | [docs/17 smoke checklist](docs/17-真机冒烟清单.md) | 40-step acceptance list (A–E for v0.5.x, +F for v0.6-dev); automatable steps covered by `pnpm smoke` |
 | [docs/18 AI agent and prompt specification](docs/18-AI智能体与提示词模板规范.md) | 13 task template bodies, 19 task entries, exam/subject/media overlays and permission/evidence contracts; runtime prompts and agent capabilities have not been updated |
 | [docs/adr](docs/adr) | 11 architecture decision records |
 | [FAQ](docs/FAQ.md) · [CONTRIBUTING](CONTRIBUTING.md) | Where data lives / zero-telemetry & AI data flow / FSRS; local dev, gates and commit conventions |
+| [Product status and backlog](docs/25-产品现状评审与精品化待办.md) | v0.7.0 evidence levels, priorities, and productization backlog |
 | [research](research) · [research/16 AI and SiYuan agents](research/16-AI全流程与思源智能体融合调研.md) | 17 reports covering competitive products, implementation/API review, UX/ecosystem flows, content lifecycle, learning evidence, product positioning, exams/sources, intellectual property and AI across the learning journey; agent integration still requires capability and version checks |
 
 ## 🧑‍💻 Development
@@ -108,7 +109,7 @@ pnpm dev              # watch build + livereload
 pnpm make-link        # symlink into <workspace>/data/plugins/siyuan-exam/
 pnpm check            # typecheck + svelte + i18n + arch checks
 pnpm guard            # full pre-push gate chain
-pnpm test             # vitest (151)
+pnpm test             # vitest (479 tests / 91 files at v0.7.0)
 pnpm preflight        # live-kernel API preflight (17 checks; needs SiYuan running)
 pnpm build            # dist/ + package.zip
 pnpm make-install     # build and install into a local SiYuan plugin dir

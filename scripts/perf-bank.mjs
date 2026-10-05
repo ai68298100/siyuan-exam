@@ -1,13 +1,13 @@
 // ============================================================
 // 万题级性能基准脚本（TODO 0 组：性能基准脚本）
-// 用法：node scripts/perf-bank.mjs [baseUrl] [token] [题量=500]
+// 用法：SIYUAN_TOKEN=... node scripts/perf-bank.mjs [baseUrl] [token] [题量=500]
 // 行为：临时笔记本写入合成题 → 计时 写入/SQL 检索/渲染 → 自清理
 // 离线（内核不可达）：打印 SKIP 并以退出码 0 结束（与 preflight 的必过语义不同）。
 // 阈值只作 WARN 参考不计失败——性能受机器差异影响大，看趋势不看绝对值。
 // ============================================================
 
 const BASE = process.argv[2] ?? "http://127.0.0.1:6806";
-const TOKEN = process.argv[3] ?? "ppt68298100";
+const TOKEN = process.argv[3] ?? process.env.SIYUAN_TOKEN ?? "";
 const N = Math.max(50, Math.min(5000, parseInt(process.argv[4] ?? "500", 10) || 500));
 
 async function api(path, body) {
@@ -39,6 +39,10 @@ function synthQuestion(i) {
 }
 
 async function main() {
+  if (!TOKEN) {
+    console.log("SKIP  性能基准需要 SIYUAN_TOKEN（不会使用默认 token）");
+    return 0;
+  }
   // ---------- 0. 内核可达（离线 → SKIP） ----------
   // eslint-disable-next-line no-useless-assignment
   let version = "";

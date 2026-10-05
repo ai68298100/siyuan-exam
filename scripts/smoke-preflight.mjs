@@ -1,13 +1,17 @@
 // ============================================================
 // docs/17 真机冒烟·预检脚本（可脚本化的 26 步中内核 API 部分）
-// 用法：node scripts/smoke-preflight.mjs [baseUrl] [token]
+// 用法：SIYUAN_TOKEN=... node scripts/smoke-preflight.mjs [baseUrl] [token]
 // 行为：创建临时笔记本 → 端点逐一验证 → 删除临时笔记本（自清理）
 // 退出码：0 = 全过；1 = 存在 FAIL
 // ============================================================
 import { unlinkSync } from "node:fs";
 
 const BASE = process.argv[2] ?? "http://127.0.0.1:6806";
-const TOKEN = process.argv[3] ?? "ppt68298100";
+const TOKEN = process.argv[3] ?? process.env.SIYUAN_TOKEN ?? "";
+if (!TOKEN) {
+  console.error("✗ 缺少思源 token：请传入第二个参数或设置 SIYUAN_TOKEN；不会使用默认 token");
+  process.exit(1);
+}
 
 const results = [];
 let tempNotebook = null;
