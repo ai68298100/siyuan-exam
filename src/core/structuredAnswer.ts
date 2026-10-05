@@ -10,8 +10,8 @@ import type { Question } from "./types";
 
 export const ANSWER_SPEC_VERSION = 1;
 
-/** v1 支持的 spec：数值题。unit=答案主单位；altUnits=等价单位换算（值×factor→主单位）；
- *  absTol/relTolerance 二选一或并用（并用时取更宽者，判分解释见 verdictReason） */
+/** v1 spec：数值题（54-02）与多空题（54-03）。unit=答案主单位；altUnits=等价单位换算（值×factor→主单位）；
+ *  absTol/relTolerance 二选一或并用（并用时取更宽者）。 */
 export interface NumericAnswerSpec {
   v: 1;
   kind: "numeric";
@@ -21,13 +21,24 @@ export interface NumericAnswerSpec {
   altUnits?: { unit: string; factor: number }[];
 }
 
-export type AnswerSpec = NumericAnswerSpec;
+/** 多空题（54-03）：逐空独立身份=数组下标；answers=候选（首项主答案）；大小写策略逐空可配。
+ *  作答分段符 ";;"（按位置对应空位）；顺序政策（可交换空位）待 v2，本版按位置对应。 */
+export interface MultiBlankSpec {
+  v: 1;
+  kind: "multiBlank";
+  blanks: { answers: string[]; caseSensitive?: boolean }[];
+}
+
+export type AnswerSpec = NumericAnswerSpec | MultiBlankSpec;
 
 /** 从题目取 spec（未带/版本不符/未知 kind → null = 按旧字符串口径） */
-export function specOf(q: Question): NumericAnswerSpec | null {
+export function specOf(
+  q: Question,
+): NumericAnswerSpec | MultiBlankSpec | null {
   const spec = (q as { answerSpec?: { v?: number; kind?: string } }).answerSpec;
-  if (!spec || spec.v !== ANSWER_SPEC_VERSION || spec.kind !== "numeric") return null;
-  return spec as unknown as NumericAnswerSpec;
+  if (!spec || spec.v !== ANSWER_SPEC_VERSION) return null;
+  if (spec.kind !== "numeric" && spec.kind !== "multiBlank") return null;
+  return spec as unknown as NumericAnswerSpec | MultiBlankSpec;
 }
 
 /** 宽容数值解析：全角小数点/句号、千分位逗号、负号变体、科学计数法（1e-3 / ×10^）；失败 null */
@@ -96,11 +107,54 @@ export function gradeNumeric(
   return { correct: false, reason: "no-spec", value: converted };
 }
 
-/** grade() 接线：带 numeric spec 的题走数值判分（在 answer.grade 开头调用） */
-export function gradeWithSpec(q: Question, myAnswer: string): { verdict: "correct" | "wrong"; reason: NumericVerdict["reason"] } | null {
+/** grade() 接线：带 spec 的题走结构化判分（在 answer.grade 开头调用） */
+export function gradeWithSpec(
+  q: Question,
+  myAnswer: string,
+): { verdict: "correct" | "wrong"; reason: string } | null {
   const spec = specOf(q);
   if (!spec) return null;
-  // 答案可能含单位后缀（题库答案按主单位存数值文本即可）
-  const v = gradeNumeric(spec, q.answer, myAnswer);
-  return { verdict: v.correct ? "correct" : "wrong", reason: v.reason };
+  if (spec.kind === "numeric") {
+    const v = gradeNumeric(spec, q.answer, myAnswer);
+    return { verdict: v.correct ? "correct" : "wrong", reason: v.reason };
+  }
+  const mb = gradeMultiBlank(spec, myAnswer);
+  return { verdict: mb.allCorrect ? "correct" : "wrong", reason: `multi-blank ${mb.correctCount}/${mb.blanks.length}` };
+}
+
+// ---------- 多空题（54-03） ----------
+
+export const MULTI_BLANK_SEP = ";;";
+
+export interface BlankResult {
+  index: number;
+  given: string;
+  correct: boolean;
+  /** 空白/缺答（未提供该空作答） */
+  empty: boolean;
+}
+
+export interface MultiBlankVerdict {
+  blanks: BlankResult[];
+  correctCount: number;
+  filledCount: number;
+  allCorrect: boolean;
+}
+
+/** 逐空判分：作答按 ";;" 分段、按位置对应空位；缺段=空白（incorrect+empty，部分作答可逐空解释） */
+export function gradeMultiBlank(spec: MultiBlankSpec, given: string): MultiBlankVerdict {
+  const parts = given.split(MULTI_BLANK_SEP).map((s) => s.trim());
+  const blanks: BlankResult[] = spec.blanks.map((b, i) => {
+    const g = parts[i] ?? "";
+    const empty = g === "";
+    const correct = !empty && b.answers.some((a) => (b.caseSensitive ? a === g : a.toLowerCase() === g.toLowerCase()));
+    return { index: i, given: g, correct, empty };
+  });
+  const correctCount = blanks.filter((b) => b.correct).length;
+  return {
+    blanks,
+    correctCount,
+    filledCount: blanks.filter((b) => !b.empty).length,
+    allCorrect: blanks.length > 0 && correctCount === blanks.length,
+  };
 }

@@ -31,16 +31,18 @@ export interface Question {
   batch?: string; // 导入批次
   review?: "pending" | "verified" | "edited" | "rejected";
   alt?: string[]; // fill/short 可接受答案别名
-  /** 结构化作答规则（54-01 v1 信封；kind="numeric"=数值容差/单位判分，54-02）。
+  /** 结构化作答规则（54-01 v1 信封；kind="numeric"=数值容差/单位判分（54-02），kind="multiBlank"=多空逐空判分（54-03））。
    *  无 spec = 旧字符串口径。规则属于题面：修订 spec 视为改题（fingerprint 接线见 55-07 扩展，本批如实标注） */
-  answerSpec?: {
-    v: 1;
-    kind: "numeric";
-    unit?: string;
-    absTol?: number;
-    relTolerance?: number;
-    altUnits?: { unit: string; factor: number }[];
-  };
+  answerSpec?:
+    | {
+        v: 1;
+        kind: "numeric";
+        unit?: string;
+        absTol?: number;
+        relTolerance?: number;
+        altUnits?: { unit: string; factor: number }[];
+      }
+    | { v: 1; kind: "multiBlank"; blanks: { answers: string[]; caseSensitive?: boolean }[] };
   confidence?: number; // AI 二遍核验置信度 0-1（ Quanta 范式：≥0.90 可信）
   fav?: boolean; // 收藏（exam-fav="1"，docs/02 §2.4）
   group?: string; // 共用题干组 ID（材料与子题共享，cbt 引擎）

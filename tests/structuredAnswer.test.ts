@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseNumeric, gradeNumeric, gradeWithSpec } from "../src/core/structuredAnswer";
+import { parseNumeric, gradeNumeric, gradeWithSpec, gradeMultiBlank } from "../src/core/structuredAnswer";
 import { grade } from "../src/core/answer";
 import type { Question } from "../src/core/types";
 
@@ -79,5 +79,45 @@ describe("54-01 grade 接线与向后兼容", () => {
     const future = { ...numQ("1"), answerSpec: { v: 2, kind: "numeric", absTol: 0.01 } as unknown as Question["answerSpec"] };
     expect(gradeWithSpec(future, "1")).toBeNull();
     expect(grade(future, "1").verdict).toBe("correct");
+  });
+});
+
+describe("54-03 多空题逐空判分", () => {
+  const mbSpec = {
+    v: 1 as const,
+    kind: "multiBlank" as const,
+    blanks: [
+      { answers: ["H2O"] },
+      { answers: ["氧", "O"], caseSensitive: false },
+      { answers: ["2"] },
+    ],
+  };
+  const mbQ: Question = { ...numQ(";;"), answerSpec: mbSpec, stem: "水的化学式是____，由氢和____组成，一个分子含____个氢原子。", options: [] };
+
+  it("全对 → correct；逐空明细齐备", () => {
+    const v = gradeMultiBlank(mbSpec, "H2O;;氧;;2");
+    expect(v.allCorrect).toBe(true);
+    expect(v.correctCount).toBe(3);
+    expect(v.blanks.map((b) => b.correct)).toEqual([true, true, true]);
+  });
+
+  it("部分作答可逐空解释：缺段=空白 incorrect；大小写策略与别名生效", () => {
+    const v = gradeMultiBlank(mbSpec, "H2O;;o;;"); // 第 2 空别名小写命中、第 3 空空白
+    expect(v.allCorrect).toBe(false);
+    expect(v.filledCount).toBe(2);
+    expect(v.blanks[1].correct).toBe(true); // 别名 O + 大小写不敏感
+    expect(v.blanks[2].correct).toBe(false);
+    expect(v.blanks[2].empty).toBe(true);
+  });
+
+  it("多空 spec 经 grade 接线：全对 correct、部分 wrong（逐空解释在 gradeMultiBlank）", () => {
+    expect(grade(mbQ, "H2O;;氧;;2").verdict).toBe("correct");
+    expect(grade(mbQ, "CO2;;氧;;2").verdict).toBe("wrong");
+  });
+
+  it("54-01：版本不符的 multiBlank spec 不误判（回退旧口径）", () => {
+    const future = { ...mbQ, answerSpec: { v: 2, kind: "multiBlank", blanks: [] } as unknown as Question["answerSpec"] };
+    // 回退旧口径：fill 按整串匹配 → wrong（而非抛错或误判 correct）
+    expect(grade(future, "H2O;;氧;;2").verdict).toBe("wrong");
   });
 });
