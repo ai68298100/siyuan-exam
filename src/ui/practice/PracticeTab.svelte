@@ -758,6 +758,7 @@ import { ttsSpeak } from "@/core/tts";
       const m = ref ? app.listMaterials().find((x) => x.id === ref.materialId) : null;
       const url = locatedUrl(m ? app.resolveMaterialUrlOf(m, window.location.origin) : null, ref?.locator ?? null);
       if (!url) { showMessage(t("materials.cannotOpen"), 2400, "error"); return; }
+      if (m) { void gatedOpen(url, m); return; } // 73-02：link 类经隐私闸
       window.open(url, "_blank", "noopener");
     }
 
@@ -2451,11 +2452,29 @@ import { ttsSpeak } from "@/core/tts";
       } finally { materialsBusy = false; }
     }
 
-    /** 120-06 最低查看：assets → 内核静态 URL（浏览器原生看 PDF/播媒体）；link → 原样打开 */
+    /** 120-06 最低查看：assets → 内核静态 URL（浏览器原生看 PDF/播媒体）；link → 经隐私闸打开 */
+    /** 73-02 lite：外链隐私闸——link 类素材打开前显示完整目的地，默认不自动请求；
+     *  资产类（本地内核静态文件）不受闸。取消时复制链接，可到外部浏览器打开。 */
+    async function gatedOpen(url: string, _m: import("../../core/materials").MaterialDoc): Promise<void> {
+      // 外部判定：http(s) 且非当前来源（内核静态资产=同来源，不受闸）
+      const external = /^https?:///i.test(url) && !url.startsWith(window.location.origin);
+      if (!external) { window.open(url, "_blank", "noopener"); return; }
+      const { confirmDialogSync } = await import("../../libs/dialog");
+      const ok = await confirmDialogSync({
+        title: t("gate.linkTitle"),
+        content:
+          "<div style='word-break:break-all;font-size:12.5px'>" +
+          escapeHtml(url) +
+          "</div><p class='lv-hint' style='text-align:left'>" + t("gate.linkDesc") + "</p>",
+      });
+      if (ok) { window.open(url, "_blank", "noopener"); return; }
+      try { await navigator.clipboard.writeText(url); showMessage(t("gate.linkCopied"), 2400, "info"); } catch { /* 剪贴板不可用则静默 */ }
+    }
+
     function openMaterial(m: import("../../core/materials").MaterialDoc) {
       const url = app.resolveMaterialUrlOf(m, window.location.origin);
       if (!url) { materialsNote = t("materials.cannotOpen"); return; }
-      window.open(url, "_blank", "noopener");
+      void gatedOpen(url, m);
     }
 
     async function removeMaterialEntry(m: import("../../core/materials").MaterialDoc) {
@@ -2541,7 +2560,7 @@ import { ttsSpeak } from "@/core/tts";
       const base = app.resolveMaterialUrlOf(m, window.location.origin);
       const url = locatedUrl(base, n.locator);
       if (!url) { materialsNote = t("materials.cannotOpen"); return; }
-      window.open(url, "_blank", "noopener");
+      void gatedOpen(url, m);
     }
 
     // ---------- 映射保存/复用（2.3/38-02） ----------
