@@ -872,6 +872,9 @@ import { ttsSpeak } from "@/core/tts";
 
     /** rail 上下文导航项（全局三项在 Rail 组件内） */
     const at = (v: View) => view === v;
+    let railOpen = $state(false);
+    let menuBtn: HTMLButtonElement | null = null;
+    function closeRail() { railOpen = false; menuBtn?.focus(); }
     const railItems = $derived([
       { icon: "table", name: t("mode.browse"), on: at("browse"), onclick: () => { view = "browse"; void loadQuestions(); } },
       { icon: "import", name: t("import.title"), on: at("import"), onclick: () => view = "import" },
@@ -2847,6 +2850,7 @@ import { ttsSpeak } from "@/core/tts";
 
 <div class="fn__flex-1 lv-exam-tab" role="region" aria-label={t("tab.practice")}>
   <div class="block__icons">
+    <button class="lv-menu-btn" aria-label={t("menu.open")} bind:this={menuBtn} onclick={() => railOpen = true}><Icon name="menu" size={16} /></button>
     <div class="block__logo">
       <svg class="block__logoicon"><use xlink:href="#iconExam"></use></svg>
       {t("tab.practice")}
@@ -2883,7 +2887,7 @@ import { ttsSpeak } from "@/core/tts";
       {#if hasBank}<span class="lv-chip">{t("bank.label")} {bankName}</span><button class="lv-chip" title={t("bank.removeTitle")} onclick={removeActiveBank}>✕</button>{/if}
   </div>
   <div class="lv-shell">
-    <Rail active="practice" {plugin} items={railItems} onnavigate={onRailNav} />
+    <Rail active="practice" {plugin} items={railItems} onnavigate={onRailNav} open={railOpen} onclose={closeRail} />
     <div class="lv-main">
   {#if loading}
     <div class="lv-pad"><div class="lv-skeleton"></div></div>

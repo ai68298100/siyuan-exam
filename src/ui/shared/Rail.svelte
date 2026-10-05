@@ -1,6 +1,9 @@
 <script lang="ts">
   // 侧栏导航 rail（原型 .sidebar shell 的共享实现）：品牌位 + 全局三项导航 +
   // 各 Tab 上下文导航项（可选）+ 底部隐私说明。三 Tab（练习/模考/报告）共用。
+  // V04：窄屏抽屉契约——open 时 fixed 抽屉 + 遮罩；Esc/遮罩/关闭钮关闭；
+  // 打开聚焦关闭钮，Tab 焦点循环锁在 rail 内，关闭后由父级归还焦点。
+  import { tick } from "svelte";
   import Icon from "./Icon.svelte";
 
   let {
@@ -8,6 +11,8 @@
     plugin,
     items = [],
     onnavigate,
+    open = false,
+    onclose,
   }: {
     active: "practice" | "mock" | "report";
     plugin: any;
@@ -15,9 +20,50 @@
     items?: { icon: string; name: string; on: boolean; onclick: () => void }[];
     /** 全局项点击的 Tab 内接管（缺省走 plugin.openPractice/openMock/openReport） */
     onnavigate?: (target: "practice" | "mock" | "report") => void;
+    /** 窄屏抽屉开合（桌面端常显，不受影响） */
+    open?: boolean;
+    onclose?: () => void;
   } = $props();
 
   const t = (k: string, fb = "") => ((plugin?.i18n as Record<string, string>) ?? {})[k] ?? fb;
+
+  let asideEl: HTMLElement | null = null;
+  let closeBtn: HTMLButtonElement | null = null;
+
+  // 打开时聚焦关闭钮（焦点移入抽屉）
+  $effect(() => {
+    if (open) tick().then(() => closeBtn?.focus());
+  });
+
+  function onKeydown(e: KeyboardEvent) {
+    if (!open) return;
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      onclose?.();
+      return;
+    }
+    // V04 焦点循环：Tab 锁在抽屉内（仅抽屉打开时接管）
+    if (e.key === "Tab" && asideEl) {
+      const focusables = [...asideEl.querySelectorAll<HTMLElement>("button:not([disabled])")];
+      if (!focusables.length) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const idx = focusables.indexOf(document.activeElement as HTMLElement);
+      if (e.shiftKey && (idx <= 0)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (idx === focusables.length - 1 || idx === -1)) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  }
+
+  function nav(item: { onclick: () => void }) {
+    item.onclick();
+    // 窄屏抽屉内完成导航后自动收回
+    if (open) onclose?.();
+  }
 
   function go(target: "practice" | "mock" | "report") {
     if (onnavigate) return onnavigate(target);
@@ -33,21 +79,28 @@
   ];
 </script>
 
-<aside class="lv-rail" aria-label="Lv Exam">
+<svelte:window onkeydown={onKeydown} />
+{#if open}
+  <button class="lv-nav-backdrop" aria-label={t("menu.closeNav", "关闭导航")} onclick={() => onclose?.()}></button>
+{/if}
+<aside class="lv-rail" class:open bind:this={asideEl} aria-label="Lv Exam">
   <div class="lv-brand">
     <span class="lv-brand-mark" aria-hidden="true">驴</span>
     <span class="lv-brand-name">小驴考试<span class="lv-brand-sub">LV EXAM</span></span>
+    <button class="lv-drawer-close" bind:this={closeBtn} aria-label={t("menu.close", "关闭")} onclick={() => onclose?.()}>
+      <Icon name="close" size={15} />
+    </button>
   </div>
   <nav class="lv-rail-nav">
     {#each globals as g (g.target)}
-      <button class="lv-rail-btn" class:on={active === g.target} onclick={() => go(g.target)} aria-current={active === g.target ? "page" : undefined}>
+      <button class="lv-rail-btn" class:on={active === g.target} onclick={() => { go(g.target); if (open) onclose?.(); }} aria-current={active === g.target ? "page" : undefined}>
         <Icon name={g.icon} size={16} /> {g.label}
       </button>
     {/each}
     {#if items.length}
       <div class="lv-rail-divider" role="separator"></div>
       {#each items as it (it.name)}
-        <button class="lv-rail-btn lv-rail-btn--sub" class:on={it.on} onclick={it.onclick} aria-current={it.on ? "page" : undefined}>
+        <button class="lv-rail-btn lv-rail-btn--sub" class:on={it.on} onclick={() => nav(it)} aria-current={it.on ? "page" : undefined}>
           <Icon name={it.icon} size={16} /> {it.name}
         </button>
       {/each}
@@ -155,5 +208,33 @@
     font-size: 11px;
     line-height: 1.8;
     color: var(--lv-text-3);
+  }
+  /* V04 抽屉件：遮罩 + 关闭钮（窄屏） */
+  .lv-nav-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 89;
+    background: var(--lv-overlay);
+    border: 0;
+    padding: 0;
+    cursor: default;
+  }
+  .lv-drawer-close {
+    display: none;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    border: 1px solid var(--lv-border);
+    background: var(--lv-surface);
+    color: var(--lv-text-2);
+    cursor: pointer;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+  @media (max-width: 1023px) {
+    .lv-drawer-close {
+      display: grid;
+    }
   }
 </style>

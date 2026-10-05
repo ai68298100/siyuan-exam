@@ -407,6 +407,35 @@ input[type="range"] {
     display: none;
   }
 }
+/* V04 抽屉态：窄屏 rail 以 fixed 抽屉唤出（Rail.svelte open 类） */
+@media (max-width: 1023px) {
+  .lv-shell .lv-rail.open {
+    display: flex;
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(280px, calc(100vw - 36px));
+    z-index: 90;
+    box-shadow: var(--lv-sh-pop);
+  }
+}
+/* 抽屉触发按钮（窄屏显示；置于各 Tab 头部） */
+.lv-menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  border: 1px solid var(--lv-ctl-border);
+  background: var(--lv-surface);
+  color: var(--lv-text-2);
+  cursor: pointer;
+}
+@media (max-width: 1023px) {
+  .lv-menu-btn {
+    display: inline-flex;
+  }
+}
 
 /* —— 长文本溢出（V08：无空格英文/URL/公式不撑破布局） —— */
 :where(.lv-exam-tab, .lv-pad, .lv-detail, .lv-qrow-stem) {

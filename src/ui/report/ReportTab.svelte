@@ -16,6 +16,10 @@
     const i18n = $derived(plugin?.i18n ?? {});
     const t = (k: string, fb = "") => i18n[k] ?? fb;
 
+    let railOpen = $state(false);
+    let menuBtn: HTMLButtonElement | null = null;
+    function closeRail() { railOpen = false; menuBtn?.focus(); }
+
     let loading = $state(true);
     let questions = $state<any[]>([]);
     let kpi = $state({ attempts: 0, accuracy: 0, eliminated: 0, streak: 0 });
@@ -448,11 +452,12 @@
 </script>
 
 <div class="fn__flex-1 lv-shell">
-  <Rail active="report" {plugin} />
+  <Rail active="report" {plugin} open={railOpen} onclose={closeRail} />
   <div class="lv-main">
   <div class="fn__flex-1 lv-pad">
   <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.report.eyebrow")}</span><h1 class="lv-h1">{t("head.report.title")}</h1><p>{t("head.report.desc")}</p></div>
   <div class="block__icons">
+    <button class="lv-menu-btn" aria-label={t("menu.open")} bind:this={menuBtn} onclick={() => railOpen = true}><Icon name="menu" size={16} /></button>
     <div class="block__logo">
       <svg class="block__logoicon"><use xlink:href="#iconReport"></use></svg>
       {t("tab.report")}

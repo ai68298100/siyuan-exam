@@ -20,6 +20,10 @@
     const i18n = $derived(plugin?.i18n ?? {});
     const t = (k: string, fb = "") => i18n[k] ?? fb;
 
+    let railOpen = $state(false);
+    let menuBtn: HTMLButtonElement | null = null;
+    function closeRail() { railOpen = false; menuBtn?.focus(); }
+
     type View = "config" | "exam" | "report";
     let view: View = $state("config");
     let loading = $state(true);
@@ -504,11 +508,12 @@
 <svelte:window onblur={onBlur} onkeydown={onExamKey} />
 
 <div class="fn__flex-1 lv-shell">
-  <Rail active="mock" {plugin} />
+  <Rail active="mock" {plugin} open={railOpen} onclose={closeRail} />
   <div class="lv-main">
   <div class="fn__flex-1 lv-pad">
   <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.mock.eyebrow")}</span><h1 class="lv-h1">{t("head.mock.title")}</h1><p>{t("head.mock.desc")}</p></div>
   <div class="block__icons">
+    <button class="lv-menu-btn" aria-label={t("menu.open")} bind:this={menuBtn} onclick={() => railOpen = true}><Icon name="menu" size={16} /></button>
     <div class="block__logo">
       <svg class="block__logoicon"><use xlink:href="#iconMock"></use></svg>
       {t("tab.mock")}
@@ -650,7 +655,7 @@
       {/if}
       <span class="lv-chip num">{cursor + 1}/{session.state.qids.length}</span>
       <span class="fn__flex-1"></span>
-      <button class="lv-btn sm" onclick={() => { session?.toggleFlag(current); persistRun(); }}>🚩 {session.flags.has(current) ? "✓" : ""}</button>
+      <button class="lv-btn sm" onclick={() => { session?.toggleFlag(current); persistRun(); }}><Icon name="pin" size={14} /> {session.flags.has(current) ? "✓" : ""}</button>
       <button class="lv-btn sm" title={t("mock.fullscreen")} onclick={(e) => {
         const el = (e.target as HTMLElement).closest(".lv-pad");
         if (!document.fullscreenElement) el?.requestFullscreen?.();
@@ -764,7 +769,7 @@
       </div>
     {/if}
     <div class="lv-row">
-      <span class="lv-chip num">🚩 {score.flagsUsed}</span>
+      <span class="lv-chip num"><Icon name="pin" size={12} /> {score.flagsUsed}</span>
       <span class="lv-chip num">{t("mock.changes")} {score.changes}</span>
       <span class="lv-chip num">{t("mock.last20")} {score.last20min.correct}/{score.last20min.attempted}</span>
       {#if session?.state.extraTimeS}
@@ -823,7 +828,7 @@
           {#if wrongList.length > 12}<span class="lv-muted num">… +{wrongList.length - 12}</span>{/if}
         </div>
         <div class="lv-row" style="margin:8px 0 0">
-          <button class="lv-btn sm" disabled={mockActionBusy} onclick={wrongsToActions}>📌 {mockActionBusy ? "…" : t("action.addWrong")}</button>
+          <button class="lv-btn sm" disabled={mockActionBusy} onclick={wrongsToActions}><Icon name="pin" size={13} /> {mockActionBusy ? "…" : t("action.addWrong")}</button>
           <span class="lv-muted">{t("session.reason")}:</span>
           {#each ["careless", "unknown", "trap"] as r, _i (_i)}
             <button class="lv-chip" onclick={() => bulkWrongReason(r as "careless" | "unknown" | "trap")}>{t("reason." + r)}</button>
