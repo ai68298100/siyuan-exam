@@ -30,7 +30,7 @@
 | AI explanations behind a paywall | **Bring your own AI**: generation, per-option explanations, Socratic follow-ups — via SiYuan's built-in AI or your own OpenAI-compatible endpoint, with explicit data-flow consent |
 | Half-baked mock exams | **CBT engine**: blueprint assembly, section timing, answer-sheet flags, indefinite-question partial credit, answer lockout, post-exam scoring |
 
-## 📦 Feature overview (0.7.0 in preparation; journey checks ongoing)
+## 📦 Feature overview (v0.7.0; journey checks ongoing)
 
 Everything below is implemented in source with automated tests in the CI gate. "Journey checks ongoing" means per-screen manual walkthroughs are still in progress — see the [release checklist](docs/23-发版检查清单.md) for known unverified items.
 
@@ -45,6 +45,7 @@ Everything below is implemented in source with automated tests in the CI gate. "
 | 📊 **Reports** | KPIs · date-range filter · heatmap/trend/hourly with data-table & CSV · confidence calibration · delayed independent recall · AI report explanation · AI next-action suggestions |
 | 📚 **Study materials** | Register PDF/audio/video/links (copied into workspace assets or by link) · open & locate (page / timestamp) · personal notes per material · question↔material linking with located open |
 | 🗺️ **Syllabus & governance** | Paste-outline syllabus import · coverage per node (questions / independently mastered / missing source) · gap CSV export · KP governance (merge/rename/fill) · errata import by question ID · relation contract validation (cycles/invalid nodes/cross-version diff) |
+| 🧮 **Structured grading (foundation)** | `answerSpec` v1: numeric questions with tolerance/equivalent-units/scientific notation, multi-blank ";;" per-blank grading — legacy string answers fully compatible; answer UI and template columns land in 0.8 |
 | 🖨️ **Print & export** | Question sheet / answer sheet separated printing (question sheet never contains answers) · CSV exports (bank/wrongbook/mock/charts) · JSON data export |
 | 🤖 **AI tasks (8 templates)** | All through one task envelope (context fingerprint / budget / strictMock gate / audit & usage accounting): generate · review · repair · layered explain · one-layer hint · Socratic · error analysis · report explanation · next actions · flashcard candidates — SiYuan built-in model or your own OpenAI-compatible endpoint |
 | 🔗 **SiYuan integration** | Block attribute contract · query-embed drill · section tree · event bus (envelope v1) · check-in bridge · widget · Glean source bridge · `window.siyuanExam` public API · bank sharing via `.sy.zip` |

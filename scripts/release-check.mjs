@@ -42,11 +42,17 @@ try {
 }
 check("依赖审计（pnpm audit --prod）", auditOk, auditNote);
 
-// 4. CHANGELOG：用户可读摘要存在（0.7.0 发版说明草稿）
+// 4. CHANGELOG：用户可读摘要存在——查 Unreleased 段；发版定稿后（Unreleased 为空）查最新版本节
 const changelog = readFileSync("CHANGELOG.md", "utf8");
-const unreleased = changelog.slice(changelog.indexOf("## Unreleased"), changelog.indexOf("## 0.6.0"));
-check("CHANGELOG 含用户可读摘要", unreleased.includes("用户可读摘要") && unreleased.includes("发版说明草稿"),
-  `${(unreleased.match(/^- /gm) ?? []).length} 条详情 + 摘要段`);
+const unreleasedStart = changelog.indexOf("## Unreleased");
+const firstRelease = changelog.search(/^## \d+\.\d+\.\d+/m);
+const unreleasedBody = unreleasedStart >= 0 ? changelog.slice(unreleasedStart, changelog.indexOf("\n## ", unreleasedStart + 5)) : "";
+const hasUnreleasedContent = unreleasedBody.trim().length > "## Unreleased".length + 10;
+const sectionToCheck = hasUnreleasedContent
+  ? { label: "Unreleased", body: unreleasedBody }
+  : { label: changelog.slice(firstRelease, changelog.indexOf("\n", firstRelease)).replace("## ", ""), body: changelog.slice(firstRelease, changelog.indexOf("\n## ", firstRelease + 5)) };
+check("CHANGELOG 含用户可读摘要", sectionToCheck.body.includes("用户可读摘要") || sectionToCheck.body.includes("发版说明"),
+  `${sectionToCheck.label}：${(sectionToCheck.body.match(/^- /gm) ?? []).length} 条详情`);
 
 // 5. 生产构建产物与白名单
 check("生产构建产物存在", existsSync("dist/index.js") && existsSync("dist/plugin.json") && existsSync("dist/i18n/zh-CN.json"));
