@@ -2291,13 +2291,13 @@ import { ttsSpeak } from "@/core/tts";
       materialsList = app.listMaterials();
     }
 
-    function materialIcon(kind: string): string {
-      if (kind === "pdf") return "📕";
-      if (kind === "video") return "🎬";
-      if (kind === "audio") return "🎧";
-      if (kind === "image") return "🖼";
-      if (kind === "doc") return "📄";
-      return "📦";
+    function matIconName(kind: string): string {
+      if (kind === "pdf") return "table";
+      if (kind === "video") return "play";
+      if (kind === "audio") return "volume";
+      if (kind === "image") return "file";
+      if (kind === "doc") return "file";
+      return "folder";
     }
 
     async function onMaterialFile(e: Event) {
@@ -2341,7 +2341,7 @@ import { ttsSpeak } from "@/core/tts";
       const { confirmDialogSync } = await import("../../libs/dialog");
       const ok = await confirmDialogSync({
         title: t("materials.removeTitle"),
-        content: `${materialIcon(m.kind)} ${escapeHtml(m.title)}<br><span style="font-size:12px;color:var(--b3-theme-on-surface-light, #888)">${t("materials.removeNote")}</span>`,
+        content: `${escapeHtml(m.title)}<br><span style="font-size:12px;color:var(--b3-theme-on-surface-light, #888)">${t("materials.removeNote")}</span>`,
       });
       if (!ok) return;
       materialsBusy = true; materialsNote = "";
@@ -2836,12 +2836,6 @@ import { ttsSpeak } from "@/core/tts";
       {t("tab.practice")}
     </div>
     <SaveStatus gate={app.saves} {t} />
-    {#if view === "entry" && hasBank}
-      <div class="seg lv-seg">
-        <button class="on">{t("mode.practice")}</button>
-        <button onclick={() => { view = "browse"; void loadQuestions(); }}>{t("mode.browse")}</button>
-      </div>
-    {/if}
     <span class="fn__flex-1"></span>
     {#if offline}<span class="lv-chip lv-chip--amb">{t("state.offline")}</span>{/if}
     {#if plan}
@@ -2872,7 +2866,20 @@ import { ttsSpeak } from "@/core/tts";
       {/if}
       {#if hasBank}<span class="lv-chip">{t("bank.label")} {bankName}</span><button class="lv-chip" title={t("bank.removeTitle")} onclick={removeActiveBank}>✕</button>{/if}
   </div>
-
+  <div class="lv-shell">
+    <aside class="lv-rail" aria-label={t("tab.practice")}>
+      <div class="lv-brand"><span class="lv-brand-mark" aria-hidden="true">驴</span><span class="lv-brand-name">小驴考试<span class="lv-brand-sub">LV EXAM</span></span></div>
+      <nav class="lv-rail-nav">
+        <button class="lv-rail-btn" class:on={view === "entry"} onclick={() => view = "entry"}><Icon name="home" size={16} /> {t("mode.practice")}</button>
+        <button class="lv-rail-btn" class:on={view === "browse"} onclick={() => { view = "browse"; void loadQuestions(); }}><Icon name="table" size={16} /> {t("mode.browse")}</button>
+        <button class="lv-rail-btn" class:on={view === "import"} onclick={() => view = "import"}><Icon name="import" size={16} /> {t("import.title")}</button>
+        <button class="lv-rail-btn" class:on={view === "manual"} onclick={() => view = "manual"}><Icon name="pencil" size={16} /> {t("entry.manual")}</button>
+        <button class="lv-rail-btn" class:on={view === "ai"} onclick={() => view = "ai"}><Icon name="sparkles" size={16} /> {t("ai.title")}</button>
+        <button class="lv-rail-btn" class:on={view === "materials"} onclick={() => { view = "materials"; loadMaterials(); }}><Icon name="book" size={16} /> {t("materials.title")}</button>
+      </nav>
+      <div class="lv-rail-note">{t("rail.note")}</div>
+    </aside>
+    <div class="lv-main">
   {#if loading}
     <div class="lv-pad"><div class="lv-skeleton"></div></div>
   {:else if errorMsg && view !== "session"}
@@ -3110,7 +3117,7 @@ import { ttsSpeak } from "@/core/tts";
     {:else}
       {@const q = session.current}
       {#if q}
-        <div class="lv-pad lv-pad--narrow">
+        <div class="lv-pad lv-session-grid">
           <div class="lv-row lv-session-head">
             <button class="lv-btn lv-btn--ghost" onclick={exitSession}>← {t("session.exit")}</button>
             <div class="lv-row" style="flex:1;min-width:120px;gap:8px">
@@ -3127,6 +3134,7 @@ import { ttsSpeak } from "@/core/tts";
             <button class="lv-chip" class:acc={pureListen} title={t("tts.pureListen")} onclick={togglePureListen}><Icon name="eyeoff" size={13} /></button>
             <button class="lv-chip" class:acc={!!q.fav} title="E" onclick={() => toggleFavCurrent()}><Icon name="star" size={13} /></button>
           </div>
+          <div class="lv-session-main">
           <div class="lv-card lv-question" class:lv-pure={pureListen}>
             {#if materialContext}
               <div class="lv-analysis lv-rich b3-typography" style="margin-bottom:12px">
@@ -3212,14 +3220,6 @@ import { ttsSpeak } from "@/core/tts";
                   <Icon name="clock" size={12} /> {qElapsedS}s{qTimeoutS > 0 && qElapsedS >= qTimeoutS ? " ⚠" : ""}
                 </span>
               </div>
-              <div class="lv-row lv-muted" style="font-size:11px;gap:6px;flex-wrap:wrap">
-                <span class="lv-kbd">A</span>-<span class="lv-kbd">J</span> {t("session.choose")} ·
-                <span class="lv-kbd">1</span>-<span class="lv-kbd">3</span> {t("confidence.shortcut")} ·
-                <span class="lv-kbd">Enter</span> {t("session.submit")} ·
-                <span class="lv-kbd">J</span>/<span class="lv-kbd">K</span> {t("session.next")}/{t("session.kbdPrev")} ·
-                <span class="lv-kbd">E</span> ⭐ ·
-                <span class="lv-kbd">Esc</span> {t("session.exit")}
-              </div>
             {/if}
 
             <div class="lv-row lv-answer-actions">
@@ -3266,6 +3266,29 @@ import { ttsSpeak } from "@/core/tts";
               {/if}
             </div>
           </div>
+          </div>
+          <aside class="lv-session-side">
+            <div class="lv-card lv-side-card">
+              <b class="lv-side-title">{t("session.side.q")}</b>
+              <div class="lv-side-rows">
+                {#if q.kp}<span class="lv-chip"><Icon name="layers" size={11} /> {q.kp}</span>{/if}
+                {#if q.source}<span class="lv-chip num" title={t("manual.source")}>{q.source}</span>{/if}
+                {#if q.difficulty}<span class="lv-chip num">★ {q.difficulty}</span>{/if}
+                {#if q.score}<span class="lv-chip num">{t("manual.score")} {q.score}</span>{/if}
+              </div>
+            </div>
+            <div class="lv-card lv-side-card">
+              <b class="lv-side-title">{t("session.side.kbd")}</b>
+              <div class="lv-row lv-muted" style="font-size:11px;gap:6px;flex-wrap:wrap;margin:0">
+                <span class="lv-kbd">A</span>-<span class="lv-kbd">J</span> {t("session.choose")} ·
+                <span class="lv-kbd">1</span>-<span class="lv-kbd">3</span> {t("confidence.shortcut")} ·
+                <span class="lv-kbd">Enter</span> {t("session.submit")} ·
+                <span class="lv-kbd">J</span>/<span class="lv-kbd">K</span> {t("session.next")}/{t("session.kbdPrev")} ·
+                <span class="lv-kbd">E</span> ⭐ ·
+                <span class="lv-kbd">Esc</span> {t("session.exit")}
+              </div>
+            </div>
+          </aside>
         </div>
       {/if}
     {/if}
@@ -3338,7 +3361,7 @@ import { ttsSpeak } from "@/core/tts";
     <div class="lv-pad">
       <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.manual.eyebrow")}</span><h1 class="lv-h1">{t("head.manual.title")}</h1><p>{t("head.manual.desc")}</p></div>
       <div class="lv-row">
-        <button class="lv-btn lv-btn--ghost" onclick={() => view = "entry"}>← {t("mode.practice")}</button>
+        <button class="lv-btn lv-btn--ghost lv-mobile-back" onclick={() => view = "entry"}>← {t("mode.practice")}</button>
         <span class="lv-chip">{t("manual.title")}</span>
         {#if draftRestored}<span class="lv-chip lv-chip--amb">{t("manual.draftRestored")}</span>{/if}
         {#if mSaved}<span class="lv-chip lv-chip--grn num">✓ {mSaved}</span>{/if}
@@ -3396,7 +3419,7 @@ import { ttsSpeak } from "@/core/tts";
     <div class="lv-pad">
       <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.ai.eyebrow")}</span><h1 class="lv-h1">{t("head.ai.title")}</h1><p>{t("head.ai.desc")}</p></div>
       <div class="lv-row">
-        <button class="lv-btn lv-btn--ghost" onclick={() => view = "entry"}>← {t("mode.practice")}</button>
+        <button class="lv-btn lv-btn--ghost lv-mobile-back" onclick={() => view = "entry"}>← {t("mode.practice")}</button>
         <span class="lv-chip"><Icon name="sparkles" size={12} /> {t("ai.title")}</span>
         <span class="fn__flex-1"></span>
         {#if aiCustomEndpointSet}
@@ -3555,7 +3578,7 @@ import { ttsSpeak } from "@/core/tts";
     <div class="lv-pad">
       <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.materials.eyebrow")}</span><h1 class="lv-h1">{t("head.materials.title")}</h1><p>{t("head.materials.desc")}</p></div>
       <div class="lv-row">
-        <button class="lv-btn lv-btn--ghost" onclick={() => view = "entry"}>← {t("import.back")}</button>
+        <button class="lv-btn lv-btn--ghost lv-mobile-back" onclick={() => view = "entry"}>← {t("import.back")}</button>
         <b><Icon name="book" size={15} /> {t("materials.title")}</b>
         {#if app.materialsReadonly}<span class="lv-chip lv-chip--amb">{t("materials.readonly")}</span>{/if}
         <span class="lv-chip num">{materialsList.length}</span>
@@ -3593,7 +3616,7 @@ import { ttsSpeak } from "@/core/tts";
         {#each materialsFiltered as m (m.id)}
           <div class="lv-card" style="margin-top:8px">
             <div class="lv-row" style="flex-wrap:wrap">
-              <b>{materialIcon(m.kind)} {m.title}</b>
+              <b class="lv-mat-title"><Icon name={matIconName(m.kind)} size={15} /> {m.title}</b>
               <span class="lv-chip">{t("mkind." + m.kind)}</span>
               {#if m.subject}<span class="lv-chip">{m.subject}</span>{/if}
               {#if m.chapter}<span class="lv-chip">{m.chapter}</span>{/if}
@@ -3658,7 +3681,7 @@ import { ttsSpeak } from "@/core/tts";
     <div class="lv-pad">
       <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.browse.eyebrow")}</span><h1 class="lv-h1">{t("head.browse.title")}</h1><p>{t("head.browse.desc")}</p></div>
       <div class="lv-row">
-        <button class="lv-btn lv-btn--ghost" onclick={() => view = "entry"}>← {t("mode.practice")}</button>
+        <button class="lv-btn lv-btn--ghost lv-mobile-back" onclick={() => view = "entry"}>← {t("mode.practice")}</button>
         <span class="lv-chip num">{shownQuestions.length}/{questions.length} {t("browse.count")}</span>
         <button class="lv-chip" class:acc={favOnly} onclick={() => favOnly = !favOnly}><Icon name="star" size={12} /> {t("browse.favOnly")}</button>
         <button class="lv-chip" class:acc={sectionOpen} onclick={() => void toggleSectionTree()}>📑 {t("browse.sectionTree")}</button>
@@ -4214,7 +4237,7 @@ import { ttsSpeak } from "@/core/tts";
     <div class="lv-pad">
       <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.import.eyebrow")}</span><h1 class="lv-h1">{t("head.import.title")}</h1><p>{t("head.import.desc")}</p></div>
       <div class="lv-row">
-        <button class="lv-btn lv-btn--ghost" onclick={() => view = hasBank ? "entry" : "entry"}>← {t("import.back")}</button>
+        <button class="lv-btn lv-btn--ghost lv-mobile-back" onclick={() => view = hasBank ? "entry" : "entry"}>← {t("import.back")}</button>
         <span class="lv-chip">{t("import.title")}</span>
       </div>
       {#if !hasBank}
@@ -4422,10 +4445,40 @@ import { ttsSpeak } from "@/core/tts";
       {/if}
     </div>
   {/if}
+    </div>
+  </div>
 </div>
 
 <style>
   .lv-pad { padding: 16px 22px 48px; overflow: auto; }
+  /* —— 侧栏导航 rail（原型 .sidebar/.nav-btn：品牌位+图标导航+选中指示条） —— */
+  .lv-shell { flex: 1; display: grid; grid-template-columns: 212px minmax(0, 1fr); min-height: 0; }
+  .lv-rail { border-right: 1px solid var(--lv-border); background: color-mix(in srgb, var(--lv-text) 3%, var(--lv-surface-2)); padding: 18px 12px 14px; display: flex; flex-direction: column; gap: 20px; overflow: auto; }
+  .lv-brand { display: flex; align-items: center; gap: 10px; padding: 0 8px; }
+  .lv-brand-mark { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--lv-accent); color: var(--b3-theme-on-primary, #fff); font-family: Georgia, "Songti SC", serif; font-size: 19px; box-shadow: var(--lv-btn-primary-shadow); flex-shrink: 0; }
+  .lv-brand-name { font-size: 15px; font-weight: 650; line-height: 1.25; }
+  .lv-brand-sub { display: block; font-size: 9px; letter-spacing: 2px; color: var(--lv-text-3); font-weight: 500; }
+  .lv-rail-nav { display: grid; gap: 4px; }
+  .lv-rail-btn { position: relative; display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 10px 12px; border: 1px solid transparent; border-radius: var(--lv-r-2); background: transparent; color: var(--lv-text-2); font-size: 13px; min-height: 40px; cursor: pointer; transition: background-color var(--lv-dur-micro) ease, color var(--lv-dur-micro) ease; }
+  .lv-rail-btn:hover { background: var(--lv-surface); color: var(--lv-text); }
+  .lv-rail-btn.on { background: var(--lv-surface); color: var(--lv-accent); border-color: var(--lv-border); font-weight: 600; box-shadow: var(--lv-sh-1); }
+  .lv-rail-btn.on::before { content: ""; position: absolute; left: -1px; top: 9px; bottom: 9px; width: 3px; background: var(--lv-accent); border-radius: 0 3px 3px 0; }
+  .lv-rail-note { margin-top: auto; padding: 10px 8px 0; font-size: 11px; line-height: 1.8; color: var(--lv-text-3); }
+  .lv-main { min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; align-items: stretch; }
+  .lv-main > :global(*) { flex-shrink: 0; }
+  /* 桌面端 rail 承担导航：返回按钮隐藏；窄屏隐藏 rail、显示返回 */
+  @media (min-width: 1024px) { .lv-mobile-back { display: none !important; } }
+  @media (max-width: 1023px) { .lv-rail { display: none; } .lv-shell { grid-template-columns: minmax(0, 1fr); } }
+  /* —— 会话屏右栏（原型 practice 布局：主纸面 + 条件卡） —— */
+  .lv-session-grid { display: grid; grid-template-columns: minmax(0, 1fr) 248px; gap: 20px; align-items: start; max-width: 1040px; }
+  .lv-session-grid .lv-session-head { grid-column: 1 / -1; }
+  .lv-session-main { min-width: 0; }
+  .lv-session-main .lv-card { max-width: 660px; }
+  .lv-side-card { padding: 16px 18px; margin-bottom: 14px; }
+  .lv-mat-title { display: inline-flex; align-items: center; gap: 7px; }
+  .lv-side-title { display: block; font-size: 14px; font-weight: 650; margin-bottom: 10px; }
+  .lv-side-rows { display: flex; flex-wrap: wrap; gap: 6px; }
+  @media (max-width: 960px) { .lv-session-grid { grid-template-columns: minmax(0, 1fr); } .lv-session-side { order: 2; } }
   /* —— 入口 hero 卡（对齐原型 home 首屏；600px 下折叠单列） —— */
   .lv-entry-hero { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 24px; align-items: center; padding: 26px 28px; }
   .lv-entry-main { min-width: 0; }
@@ -4443,11 +4496,6 @@ import { ttsSpeak } from "@/core/tts";
   .lv-red { color: var(--lv-red); font-weight: 650; }
   .lv-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
   /* —— 视图切换（对齐原型 .subnav：文字 + 底部 2px 指示条，非按钮块） —— */
-  .lv-seg { display: inline-flex; padding: 0; border-radius: 0; background: transparent; border: 0; border-bottom: 1px solid var(--lv-border); gap: 18px; }
-  .lv-seg button { position: relative; min-height: 40px; padding: 8px 1px 12px; border-radius: 0; border: 0; background: transparent; font-size: 13px; font-weight: 500; color: var(--lv-text-3); }
-  .lv-seg button:hover { background: transparent; color: var(--lv-accent); }
-  .lv-seg button.on { background: transparent; color: var(--lv-accent); font-weight: 650; box-shadow: none; }
-  .lv-seg button.on::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--lv-accent); border-radius: 2px; }
   .lv-card { background: var(--lv-surface); border: 1px solid var(--lv-border); border-radius: var(--lv-r-3); padding: 20px 22px; box-shadow: var(--lv-sh-1); }
   .lv-pad-card { margin: 8px 0; }
   .lv-guard { max-width: 460px; width: 100%; }
