@@ -503,6 +503,7 @@
 <svelte:window onblur={onBlur} onkeydown={onExamKey} />
 
 <div class="fn__flex-1 lv-pad">
+  <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.mock.eyebrow")}</span><h1 class="lv-h1">{t("head.mock.title")}</h1><p>{t("head.mock.desc")}</p></div>
   <div class="block__icons">
     <div class="block__logo">
       <svg class="block__logoicon"><use xlink:href="#iconMock"></use></svg>

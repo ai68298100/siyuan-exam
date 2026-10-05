@@ -3272,6 +3272,7 @@ import { ttsSpeak } from "@/core/tts";
   {:else if view === "recite"}
     <!-- ===== S4 背诵（lite）：盖答案 → 四级自评；纸面质感（原型 .paper） ===== -->
     <div class="lv-pad lv-pad--narrow">
+      <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.recite.eyebrow")}</span><h1 class="lv-h1">{t("head.recite.title")}</h1><p>{t("head.recite.desc")}</p></div>
       <div class="lv-row">
         <button class="lv-btn lv-btn--ghost" onclick={exitRecite}>← {t("recite.exit")}</button>
         <span class="lv-chip num">{reciteCursor + 1}/{reciteQueue.length}</span>
@@ -3335,6 +3336,7 @@ import { ttsSpeak } from "@/core/tts";
   {:else if view === "manual"}
     <!-- ===== S10 手工录题表单 ===== -->
     <div class="lv-pad">
+      <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.manual.eyebrow")}</span><h1 class="lv-h1">{t("head.manual.title")}</h1><p>{t("head.manual.desc")}</p></div>
       <div class="lv-row">
         <button class="lv-btn lv-btn--ghost" onclick={() => view = "entry"}>← {t("mode.practice")}</button>
         <span class="lv-chip">{t("manual.title")}</span>
@@ -3392,6 +3394,7 @@ import { ttsSpeak } from "@/core/tts";
   {:else if view === "ai"}
     <!-- ===== S11 AI 出题（Inbox 式：永不直接入库） ===== -->
     <div class="lv-pad">
+      <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.ai.eyebrow")}</span><h1 class="lv-h1">{t("head.ai.title")}</h1><p>{t("head.ai.desc")}</p></div>
       <div class="lv-row">
         <button class="lv-btn lv-btn--ghost" onclick={() => view = "entry"}>← {t("mode.practice")}</button>
         <span class="lv-chip"><Icon name="sparkles" size={12} /> {t("ai.title")}</span>
@@ -3550,6 +3553,7 @@ import { ttsSpeak } from "@/core/tts";
   {:else if view === "materials"}
     <!-- ===== 学习资料（120-01/02/06 lite）：登记 / 列表 / 最低查看 ===== -->
     <div class="lv-pad">
+      <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.materials.eyebrow")}</span><h1 class="lv-h1">{t("head.materials.title")}</h1><p>{t("head.materials.desc")}</p></div>
       <div class="lv-row">
         <button class="lv-btn lv-btn--ghost" onclick={() => view = "entry"}>← {t("import.back")}</button>
         <b><Icon name="book" size={15} /> {t("materials.title")}</b>
@@ -3652,6 +3656,7 @@ import { ttsSpeak } from "@/core/tts";
   {:else if view === "browse"}
     <!-- ===== S3 浏览 ===== -->
     <div class="lv-pad">
+      <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.browse.eyebrow")}</span><h1 class="lv-h1">{t("head.browse.title")}</h1><p>{t("head.browse.desc")}</p></div>
       <div class="lv-row">
         <button class="lv-btn lv-btn--ghost" onclick={() => view = "entry"}>← {t("mode.practice")}</button>
         <span class="lv-chip num">{shownQuestions.length}/{questions.length} {t("browse.count")}</span>
@@ -4207,6 +4212,7 @@ import { ttsSpeak } from "@/core/tts";
   {:else if view === "import"}
     <!-- ===== S9 导入 ===== -->
     <div class="lv-pad">
+      <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.import.eyebrow")}</span><h1 class="lv-h1">{t("head.import.title")}</h1><p>{t("head.import.desc")}</p></div>
       <div class="lv-row">
         <button class="lv-btn lv-btn--ghost" onclick={() => view = hasBank ? "entry" : "entry"}>← {t("import.back")}</button>
         <span class="lv-chip">{t("import.title")}</span>

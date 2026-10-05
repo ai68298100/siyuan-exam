@@ -18,10 +18,29 @@ class Setting {
   constructor(opts = {}) {
     this.element = document.createElement("div");
     this.items = [];
+    this.element = null;
   }
   addItem(item) { this.items.push(item); }
-  open() {}
-  close() {}
+  // 仿真思源设置渲染：b3-label 行（标题/描述 + 右侧控件），供设置页视觉核对
+  open() {
+    if (this.element) this.element.remove();
+    const el = document.createElement("div");
+    el.className = "setting-preview";
+    el.innerHTML = `<div class="b3-dialog__title">小驴考试 · 设置（宿主渲染仿真）</div>` + this.items.map((it) => {
+      const control = it.createActionElement ? it.createActionElement() : it.actionElement;
+      const wrap = document.createElement("div");
+      wrap.className = "b3-label setting-row";
+      wrap.innerHTML = `<div class="setting-text"><b>${it.title ?? ""}</b>${it.description ? `<em class="setting-desc">${it.description}</em>` : ""}</div>`;
+      const ctl = document.createElement("div");
+      ctl.className = it.direction === "column" ? "setting-ctl setting-ctl--col" : "setting-ctl";
+      ctl.appendChild(control);
+      wrap.appendChild(ctl);
+      return wrap.outerHTML;
+    }).join("");
+    document.getElementById("app").appendChild(el);
+    this.element = el;
+  }
+  close() { this.element?.remove(); this.element = null; }
 }
 
 export class Plugin {

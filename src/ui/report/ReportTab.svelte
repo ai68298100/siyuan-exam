@@ -447,6 +447,7 @@
 </script>
 
 <div class="fn__flex-1 lv-pad">
+  <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.report.eyebrow")}</span><h1 class="lv-h1">{t("head.report.title")}</h1><p>{t("head.report.desc")}</p></div>
   <div class="block__icons">
     <div class="block__logo">
       <svg class="block__logoicon"><use xlink:href="#iconReport"></use></svg>
@@ -512,10 +513,10 @@
   {:else}
     <p class="lv-muted" style="margin:0 0 8px;font-size:11.5px">{t("report.scopeAll")}</p>
     <div class="lv-kpis">
-      <div class="lv-card lv-kpi"><div class="l"><Icon name="zap" size={13} /> {t("report.attempts")}</div><div class="v num">{kpi.attempts}</div></div>
-      <div class="lv-card lv-kpi"><div class="l"><Icon name="target" size={13} /> {t("report.accuracy")}</div><div class="v num">{kpi.accuracy}%</div></div>
-      <div class="lv-card lv-kpi"><div class="l"><Icon name="xcircle" size={13} /> {t("report.eliminated")}</div><div class="v num">{kpi.eliminated}</div></div>
-      <div class="lv-card lv-kpi"><div class="l"><Icon name="flame" size={13} /> {t("report.streak")}</div><div class="v num">{kpi.streak} {t("entry.days")}</div></div>
+      <div class="lv-card lv-kpi"><div class="l"><span>{t("report.attempts")}</span><Icon name="zap" size={15} /></div><div class="v num">{kpi.attempts}</div></div>
+      <div class="lv-card lv-kpi"><div class="l"><span>{t("report.accuracy")}</span><Icon name="target" size={15} /></div><div class="v num">{kpi.accuracy}%</div></div>
+      <div class="lv-card lv-kpi"><div class="l"><span>{t("report.eliminated")}</span><Icon name="xcircle" size={15} /></div><div class="v num">{kpi.eliminated}</div></div>
+      <div class="lv-card lv-kpi"><div class="l"><span>{t("report.streak")}</span><Icon name="flame" size={15} /></div><div class="v num">{kpi.streak} {t("entry.days")}</div></div>
     </div>
 
     {#if weekCmp}
@@ -817,7 +818,8 @@
   .lv-chip.acc { color: var(--lv-accent); background: var(--lv-accent-soft); }
   .lv-chip.lv-chip--red { color: var(--lv-red); background: var(--lv-red-soft); }
   .lv-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 14px; }
-  .lv-kpi .l { font-size: 12px; color: var(--lv-text-3); margin-bottom: 4px; }
+  .lv-kpi .l { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--lv-text-3); margin-bottom: 4px; }
+  .lv-kpi .l :global(.lv-icon) { color: var(--lv-accent); }
   .lv-kpi .v { font-size: 29px; font-weight: 650; letter-spacing: -.8px; line-height: 1.5; font-variant-numeric: tabular-nums; }
   .lv-heat { display: grid; grid-template-columns: repeat(53, 1fr); gap: 2.5px; }
   .lv-heat i { aspect-ratio: 1; border-radius: 2.5px; background: var(--lv-surface-2); }

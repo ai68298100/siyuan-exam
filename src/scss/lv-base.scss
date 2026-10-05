@@ -102,17 +102,28 @@
   }
 }
 
-/* —— 屏头（原型 .screen-head：大标题 + muted 副标） —— */
+/* —— 屏头（原型 .screen-head：eyebrow + 大标题 + muted 副标） —— */
 .lv-screen-head {
   margin: 4px 0 22px;
+
+  .lv-eyebrow,
+  .eyebrow {
+    display: block;
+    font-size: 10px;
+    letter-spacing: 2px;
+    font-weight: 650;
+    color: var(--lv-accent);
+    margin-bottom: 10px;
+    text-transform: uppercase;
+  }
 
   h1,
   .lv-h1 {
     margin: 0;
-    font-size: 24px;
+    font-size: 26px;
     line-height: 1.4;
     font-weight: 650;
-    letter-spacing: -0.5px;
+    letter-spacing: -0.6px;
   }
   p {
     margin: 8px 0 0;

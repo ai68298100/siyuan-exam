@@ -52,6 +52,19 @@
       .block__logoicon { width: 16px; height: 16px; fill: var(--b3-theme-primary); }
       /* 思源工具类近似 */
       .fn__flex-1 { flex: 1; min-width: 0; min-height: 0; }
+      /* 设置页宿主渲染仿真（b3-label 结构近似） */
+      .setting-preview { width: 100%; max-width: 760px; margin: 0 auto; padding: 18px 26px 60px; }
+      .b3-dialog__title { font-size: 17px; font-weight: 650; margin: 6px 0 16px; }
+      .b3-label { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 0; border-bottom: 1px solid var(--b3-border-color); }
+      .setting-text b { display: block; font-size: 13.5px; font-weight: 550; }
+      .setting-desc { display: block; font-style: normal; font-size: 12px; color: var(--lv-text-3, #888); margin-top: 2px; max-width: 420px; }
+      .setting-ctl { flex-shrink: 0; }
+      .setting-ctl--col { width: 100%; margin-top: 8px; }
+      .setting-ctl--col .b3-text-field { width: 100%; }
+      .b3-text-field, .b3-select { min-height: 36px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--b3-border-color); background: var(--b3-theme-surface); color: var(--b3-theme-on-background); font: inherit; font-size: 13px; }
+      .b3-switch { width: 34px; height: 19px; accent-color: var(--b3-theme-primary); }
+      .b3-slider { accent-color: var(--b3-theme-primary); width: 200px; }
+      .fn__size200 { width: 200px; }
       * { box-sizing: border-box; }
       body { margin: 0; background: var(--b3-theme-background); color: var(--b3-theme-on-background); font: 14px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
       #bar { display: flex; gap: 8px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--b3-border-color); background: var(--b3-theme-surface); font-size: 12px; }

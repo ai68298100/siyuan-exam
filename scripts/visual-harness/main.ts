@@ -141,12 +141,38 @@ await app.init("harness-device");
 
 const plugin = {
   i18n,
+  data: {} as Record<string, any>,
+  loadData: async () => undefined,
+  saveData: async () => undefined,
   settingUtils: {
-    get: (k) => ({ sprintDays: 14, dailyGoal: 10, reciteGroupSize: 15, perQuestionTimeoutS: 0, desiredRetention: 0.9 })[k],
+    get: (k: string) => ({ sprintDays: 14, dailyGoal: 10, reciteGroupSize: 15, perQuestionTimeoutS: 0, desiredRetention: 0.9 })[k],
     settings: new Map(),
   },
   openReport: () => window.__show("report"),
 };
+
+// 设置页预览：真实 SettingUtils + 真实 i18n 文案（宿主 Setting 渲染由桩仿真）
+import { SettingUtils } from "@/libs/setting-utils";
+const realSettings = new SettingUtils({ plugin: plugin as any });
+([
+  ["setting.examDate.title", "setting.examDate.desc", "textinput", "examDate", ""],
+  ["setting.sprintDays.title", "setting.sprintDays.desc", "number", "sprintDays", 14],
+  ["setting.dailyGoal.title", "setting.dailyGoal.desc", "number", "dailyGoal", 10],
+  ["setting.reciteGroup.title", "setting.reciteGroup.desc", "number", "reciteGroupSize", 15],
+  ["setting.perQuestionTimeout.title", "setting.perQuestionTimeout.desc", "number", "perQuestionTimeoutS", 0],
+  ["setting.feedbackTiming.title", "setting.feedbackTiming.desc", "checkbox", "feedbackEndReview", false],
+  ["setting.materialInterleave.title", "setting.materialInterleave.desc", "checkbox", "materialInterleave", false],
+  ["setting.examProfiles.title", "setting.examProfiles.desc", "textarea", "examProfiles", ""],
+  ["setting.checkinItemId.title", "setting.checkinItemId.desc", "textinput", "checkinItemId", ""],
+  ["setting.checkinThreshold.title", "setting.checkinThreshold.desc", "number", "checkinThreshold", 0],
+  ["setting.retention.title", "setting.retention.desc", "slider", "desiredRetention", 0.9],
+  ["setting.aiEndpoint.title", "setting.aiEndpoint.desc", "textinput", "aiEndpoint", ""],
+  ["setting.aiModel.title", "setting.aiModel.desc", "textinput", "aiModel", "gpt-4o-mini"],
+  ["setting.aiCustomHint.title", "setting.aiCustomHint.desc", "textarea", "aiCustomHint", ""],
+  ["setting.aiKey.title", "setting.aiKey.desc", "textinput", "aiKey", ""],
+] as const).forEach(([title, description, type, key, value]) =>
+  realSettings.addItem({ title: i18n[title] ?? title, description: i18n[description] ?? description, type: type as any, key, value, direction: key === "examProfiles" || key === "aiCustomHint" ? "column" : "row" } as any),
+);
 
 let instance = null;
 window.__show = (name) => {
@@ -166,6 +192,7 @@ window.__theme = (dark) => {
   document.getElementById("theme").textContent = dark ? "☀️ 亮" : "🌙 暗";
 };
 window.__app = app;
+window.__settings = () => (plugin as any).setting.open("settings");
 
 document.querySelectorAll("#bar [data-tab]").forEach((b) =>
   b.addEventListener("click", () => window.__show(b.dataset.tab)),

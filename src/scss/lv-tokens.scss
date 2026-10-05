@@ -31,7 +31,8 @@
   --lv-ctl-border: color-mix(in srgb, var(--b3-theme-on-background) 26%, transparent);
   --lv-text: var(--b3-theme-on-background);
   --lv-text-2: color-mix(in srgb, var(--b3-theme-on-background) 70%, transparent);
-  --lv-text-3: color-mix(in srgb, var(--b3-theme-on-background) 45%, transparent);
+  /* 辅助小字对比档：52% 起（浅色实测 ≥4.5:1，V01 口径） */
+  --lv-text-3: color-mix(in srgb, var(--b3-theme-on-background) 54%, transparent);
 
   /* —— 圆角体系（r-3=卡片，对齐原型 .card 18px） —— */
   --lv-r-1: 8px;
