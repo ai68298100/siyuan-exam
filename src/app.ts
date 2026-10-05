@@ -27,6 +27,7 @@ import {
   type ActionKind,
 } from "./core/actions";
 import type { ImportReport } from "./importer/pipeline";
+import { sanitizeRichHtml } from "./libs/sanitize";
 import {
   canCopyIntoAssets,
   assetsPathFor,
@@ -1462,7 +1463,9 @@ export class ExamApp {
     if (this.renderCache.has(q.id)) return this.renderCache.get(q.id)!;
     if (!this.kernelOnline) return "";
     try {
-      const html = await this.deps.client.renderMarkdown(q.stem);
+      const raw = await this.deps.client.renderMarkdown(q.stem);
+      // P0-07：题干来自导入（不可信源），内核 md2html 透传裸 HTML——渲染产物必须过白名单
+      const html = sanitizeRichHtml(raw);
       this.renderCache.set(q.id, html);
       return html;
     } catch {

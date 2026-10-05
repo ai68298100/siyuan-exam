@@ -130,7 +130,7 @@ import { ttsSpeak } from "@/core/tts";
       const { confirmDialogSync } = await import("../../libs/dialog");
       if (!(await confirmDialogSync({
         title: t("import.rollback"),
-        content: t("import.rollbackConfirm").replace("{n}", String(n)).replace("{b}", batch.slice(0, 16)),
+        content: t("import.rollbackConfirm").replace("{n}", String(n)).replace("{b}", escapeHtml(batch.slice(0, 16))),
       }))) return;
       rollbackBusy = batch;
       try {
@@ -824,7 +824,7 @@ import { ttsSpeak } from "@/core/tts";
       const { confirmDialogSync } = await import("../../libs/dialog");
       const ok = await confirmDialogSync({
         title: t("flash.confirmTitle").replace("{n}", String(result.cards.length)),
-        content: result.cards.map((c) => `・${c.front}`).join("<br>"),
+        content: result.cards.map((c) => `・${escapeHtml(c.front)}`).join("<br>"),
       });
       if (!ok) return;
       flashBusy = q.id;
@@ -856,7 +856,7 @@ import { ttsSpeak } from "@/core/tts";
     async function removeActiveBank() {
       if (!activeBankId) return;
       const { confirmDialogSync } = await import("../../libs/dialog");
-      if (!(await confirmDialogSync({ title: t("bank.removeTitle"), content: t("bank.removeConfirm").replace("{name}", bankName) }))) return;
+      if (!(await confirmDialogSync({ title: t("bank.removeTitle"), content: t("bank.removeConfirm").replace("{name}", escapeHtml(bankName)) }))) return;
       (app as any).removeBank(activeBankId);
       banks = app.listBanks();
       activeBankId = banks[0]?.id ?? "";
@@ -2338,7 +2338,7 @@ import { ttsSpeak } from "@/core/tts";
       const { confirmDialogSync } = await import("../../libs/dialog");
       const ok = await confirmDialogSync({
         title: t("materials.removeTitle"),
-        content: `${materialIcon(m.kind)} ${m.title}<br><span style="font-size:12px;color:var(--b3-theme-on-surface-light, #888)">${t("materials.removeNote")}</span>`,
+        content: `${materialIcon(m.kind)} ${escapeHtml(m.title)}<br><span style="font-size:12px;color:var(--b3-theme-on-surface-light, #888)">${t("materials.removeNote")}</span>`,
       });
       if (!ok) return;
       materialsBusy = true; materialsNote = "";
@@ -2403,7 +2403,7 @@ import { ttsSpeak } from "@/core/tts";
     }
     async function removeNoteEntry(m: import("../../core/materials").MaterialDoc, n: import("../../core/materialNotes").MaterialNote) {
       const { confirmDialogSync } = await import("../../libs/dialog");
-      if (!(await confirmDialogSync({ title: t("materials.noteDelTitle"), content: n.text.slice(0, 80) }))) return;
+      if (!(await confirmDialogSync({ title: t("materials.noteDelTitle"), content: escapeHtml(n.text.slice(0, 80)) }))) return;
       materialsBusy = true;
       try {
         await app.deleteMaterialNote(n.id);

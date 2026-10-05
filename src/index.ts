@@ -665,11 +665,13 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
       });
       return;
     }
+    // 兜底项（25-P1 移动端入口）：移动端无顶栏/Dock/状态栏，块菜单是唯一稳定入口——
+    // 点击直接打开练习台（应用未就绪时练习台会显示 appNotReady 原因，不再死胡同）
     detail.menu.addItem({
       iconHTML: "<svg><use xlink:href='#iconExam'></use></svg>",
       label: this.i18n["blockMenu.addToPractice"],
       click: () => {
-        showMessage(this.i18n["blockMenu.practiceHint"], 3600, "info");
+        this.openPractice();
       },
     });
   }
