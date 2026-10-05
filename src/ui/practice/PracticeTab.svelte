@@ -15,6 +15,7 @@ import { ttsSpeak } from "@/core/tts";
     import { normalizeAnswer, questionHash } from "../../core/answer";
     import { specOf, splitBlanks, joinBlanks } from "../../core/structuredAnswer";
     import { startTrail, recordEdit, trailValue, trailChanged, withLastEditReason, type AnswerTrail } from "../../core/answerTrail";
+    import { helpFromExposure } from "../../core/exposure";
     import { validate } from "../../importer/pipeline";
     import { bankHealthReport, coverageStats, answerDistribution, unreviewedStats, type BankHealthReport } from "../../core/bankHealth";
     import { planBatchEdit, invertPlan, describeChange } from "../../core/batchEdit";
@@ -30,7 +31,7 @@ import { ttsSpeak } from "@/core/tts";
     import { probeGlean, listLaterClips, formatClipsForSource, markClipDone, type GleanClip } from "@/core/gleanBridge";
     import { onExamEvent, emitExamEvent } from "@/core/bus";
     import Icon from "../shared/Icon.svelte";
-    import { SvelteMap } from "svelte/reactivity";
+    import { SvelteMap, SvelteSet } from "svelte/reactivity";
     import Rail from "../shared/Rail.svelte";
     import { escapeHtml } from "../../libs/sanitize";
     import { questionFingerprint } from "@/ai/task";
@@ -1451,6 +1452,7 @@ import { ttsSpeak } from "@/core/tts";
 
     async function sendFollowUp() {
       const q = session?.current;
+      if (q) addExposure(q.id, "followup");
       const history = explainHistory[q?.id ?? ""];
       if (!q || !history?.length || explainBusy || !explainFollowUp.trim()) return;
       explainBusy = true;
@@ -1728,7 +1730,21 @@ import { ttsSpeak } from "@/core/tts";
     }
     /** 114-01：本会话受助标记（qid → 讲解模式；reveal=查看被拦泄露提示）；同题再答时随 attempt 落 help 字段 */
     // eslint-disable-next-line svelte/prefer-svelte-reactivity -- 函数内累加 Map（非组件遍历状态）
-    const helpShown = new Map<string, "explain" | "hint" | "socratic" | "reveal">();
+    // 63-02：暴露集合（同题多暴露保全；help 字段由 helpFromExposure 派生，向后兼容）
+    const exposures = new SvelteMap<string, SvelteSet<string>>();
+    function addExposure(qid: string, node: string) {
+      let set = exposures.get(qid);
+      if (!set) { set = new SvelteSet(); exposures.set(qid, set); }
+      set.add(node);
+    }
+    /** 114-01 兼容读法：本题是否有受助暴露（提示/讲解/揭示任一） */
+    const helpShown = {
+      set(qid: string, mode: "explain" | "hint" | "socratic" | "reveal") { addExposure(qid, mode); },
+      get(qid: string) {
+        const set = exposures.get(qid);
+        return set && (set.has("explain") || set.has("socratic") || set.has("hint") || set.has("reveal")) ? (helpFromExposure(set) ?? "hint") : undefined;
+      },
+    }
     /** 114-01：一次一层提示——qid → 已展示层级（0=未申请）；已展示层文本供后续层去重 */
     // eslint-disable-next-line svelte/prefer-svelte-reactivity -- 函数内累加 Map（非组件遍历状态）
     const hintLevels = new Map<string, 0 | 1 | 2 | 3>();
@@ -1751,6 +1767,7 @@ import { ttsSpeak } from "@/core/tts";
         return;
       }
       const g = r.grade;
+      if (q.analysis) addExposure(q.id, "analysis"); // 63-02：反馈态必然展示解析（布尔事实）
       app.recordAttempt({
         qid: q.id, kind: "practice", mode: session.state.mode,
         verdict: g.verdict, myAnswer: g.myAnswer, sessionId: session.id,
@@ -1758,6 +1775,7 @@ import { ttsSpeak } from "@/core/tts";
         confidence: confidenceSel || undefined,   // U12：答前快照随 attempt；未选=如实缺省
         help: helpShown.get(q.id),               // 114-01：本题曾被讲解/提示 → 受助作答如实标记
         recall: recallUsed.has(q.id) || undefined, // 52-02：先回忆模式揭示可追溯
+        exposure: (() => { const set = exposures.get(q.id); return set && set.size ? [...set] : undefined; })(), // 63-02：布尔事实
         ...((): Pick<import("../../core/types").AttemptEvent, "firstAnswer" | "edits"> => {
           const t = trails.get(q.id);
           if (!t || !trailChanged(t)) return {}; // 63-03：终答==首答（含取消回退）→ 不带轨迹，报告口径「未改答」
@@ -3219,7 +3237,7 @@ import { ttsSpeak } from "@/core/tts";
               <div class="lv-analysis lv-rich b3-typography" style="margin-bottom:12px">
                 <b>📎 共用材料：</b>{@html materialLong && !materialExpanded ? materialShown : (materialHtml || materialShown)}
                 {#if materialLong}
-                  <button class="lv-chip num" style="margin-left:6px" onclick={() => materialExpanded = !materialExpanded}>
+                  <button class="lv-chip num" style="margin-left:6px" onclick={() => { materialExpanded = !materialExpanded; if (materialExpanded && !feedback) addExposure(q.id, "material"); }}>
                     {materialExpanded ? t("material.fold") : t("material.expand")}
                   </button>
                 {/if}

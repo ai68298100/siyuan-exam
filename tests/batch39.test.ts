@@ -90,6 +90,6 @@ describe("暴露三口径分栏（52-02/114-01 呈现端，五一批）", () => 
   });
 
   it("空流水归零", () => {
-    expect(exposureStats([])).toEqual({ attempts: 0, independent: 0, assisted: 0, recallFirst: 0 });
+    expect(exposureStats([])).toEqual({ attempts: 0, independent: 0, assisted: 0, recallFirst: 0, nodes: {} });
   });
 });

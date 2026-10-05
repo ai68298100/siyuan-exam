@@ -208,6 +208,8 @@ export interface ExposureStats {
   assisted: number;
   /** 先回忆作答（藏选项模式下作答，AttemptEvent.recall） */
   recallFirst: number;
+  /** 63-02：逐暴露节点计数（布尔事实；旧事件无 exposure 字段则无键） */
+  nodes: Record<string, number>;
 }
 
 /** 暴露三口径分栏（52-02/114-01 呈现端，六三批）：独立/受助/先回忆互不混算——
@@ -217,6 +219,7 @@ export function exposureStats(events: readonly AttemptEvent[]): ExposureStats {
   let independent = 0;
   let assisted = 0;
   let recallFirst = 0;
+  const nodes: Record<string, number> = {};
   for (const e of events) {
     if (e.verdict === "not_attempted") continue;
     if (e.kind !== "practice" && e.kind !== "mock") continue;
@@ -224,8 +227,10 @@ export function exposureStats(events: readonly AttemptEvent[]): ExposureStats {
     if (e.help) assisted++;
     if (e.recall) recallFirst++;
     if (!e.help && !e.recall) independent++;
+    // 63-02：逐暴露节点计数（布尔事实；既有事件无 exposure 字段则如实为空）
+    for (const node of e.exposure ?? []) nodes[node] = (nodes[node] ?? 0) + 1;
   }
-  return { attempts, independent, assisted, recallFirst };
+  return { attempts, independent, assisted, recallFirst, nodes };
 }
 
 export interface DelayedRecallReport {

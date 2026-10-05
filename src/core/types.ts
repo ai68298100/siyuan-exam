@@ -76,6 +76,9 @@ export interface AttemptEvent {
   help?: "explain" | "hint" | "socratic" | "reveal";
   /** 先回忆标记（52-02 lite）：本次作答使用了「藏选项先回忆」模式；揭示可追溯，无选项回忆与选择题正确率分开报告的地基 */
   recall?: boolean;
+  /** 暴露节点（63-02 lite）：本次作答前/后真实经历的暴露布尔事实（讲解/提示/揭示/材料展开/解析已见/AI 追问）。
+   *  只记节点名不记内容；help 字段为受助节点的向后兼容派生 */
+  exposure?: string[];
 }
 
 /** 错题派生条目（可随时从流水重建的物化视图） */

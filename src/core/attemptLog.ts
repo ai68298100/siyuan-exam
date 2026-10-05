@@ -41,6 +41,7 @@ export interface AppendInput {
   confidence?: AttemptEvent["confidence"];
   help?: AttemptEvent["help"];
   recall?: AttemptEvent["recall"];
+  exposure?: AttemptEvent["exposure"];
 }
 
 export class AttemptLog {
@@ -138,6 +139,7 @@ export class AttemptLog {
       confidence: input.confidence,
       help: input.help,
       recall: input.recall,
+      exposure: input.exposure,
     };
     if (this.seen.has(e.eid)) return e;
     this.detectClockAnomaly(e.ts);
