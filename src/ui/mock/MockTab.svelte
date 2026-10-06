@@ -729,6 +729,10 @@
         <span style="width:70px">{sec.name}</span>
         <div class="progress" style="flex:1"><i style="width:{percentBar(sec.score, sec.full)}%"></i></div>
         <span class="num lv-muted">{sec.score}/{sec.full} · {t("mock.correct")} {sec.correct}/{sec.total} · {Math.round(sec.timeSpentMs / 1000)}s</span>
+        {#if sec.short}
+          <!-- 40-02：短缺段如实标注（要求 N 实际 M；满分已按实际题数计） -->
+          <span class="lv-chip lv-chip--amb num" title={t("mock.shortSecTip").replace("{n}", String(sec.required))}>{t("mock.shortSec").replace("{n}", String(sec.required))}</span>
+        {/if}
       </div>
     {/each}
     <!-- 45-08 收口：分段/历史图表的文本等价物 + CSV（同一数据快照） -->

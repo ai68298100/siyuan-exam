@@ -313,7 +313,8 @@ export class MockSession {
     this.submitted = true;
   }
 
-  /** 结算（docs/11 S7 四维）：未作答按 not_attempted 计 0 分 */
+  /** 结算（docs/11 S7 四维）：未作答按 not_attempted 计 0 分。
+   *  40-02 逐段满分标注：full 按实际卷面题数计（短缺段不再虚高），required/short 如实标注短缺。 */
   score(): MockScore {
     const sections = new Map<
       string,
@@ -321,22 +322,34 @@ export class MockSession {
         name: string;
         score: number;
         full: number;
+        required: number;
+        short: boolean;
         correct: number;
         total: number;
         timeSpentMs: number;
         overtimeQ: number;
       }
     >();
-    for (const s of this.bp.sections) {
-      sections.set(s.name, {
-        name: s.name,
-        score: 0,
-        full: s.count * s.scoreEach,
-        correct: 0,
-        total: 0,
-        timeSpentMs: 0,
-        overtimeQ: 0,
-      });
+    // 逐段实际卷面（state.qids）：actual full = 该段实际题的分值合计（短缺段不虚高）
+    for (const qid of this.state.qids) {
+      const name = this.sectionOf.get(qid);
+      if (!name) continue;
+      if (!sections.has(name)) {
+        const bpSec = this.bp.sections.find((s) => s.name === name);
+        sections.set(name, {
+          name,
+          score: 0,
+          full: 0,
+          required: bpSec?.count ?? 0,
+          short: false,
+          correct: 0,
+          total: 0,
+          timeSpentMs: 0,
+          overtimeQ: 0,
+        });
+      }
+      const sec = sections.get(name)!;
+      sec.full += this.scoreOf.get(qid) ?? 0;
     }
     for (const [qid, a] of this.answers) {
       const name = this.sectionOf.get(qid);
@@ -355,6 +368,12 @@ export class MockSession {
       const name = this.sectionOf.get(qid);
       const sec = name ? sections.get(name) : undefined;
       if (sec && !this.answers.has(qid)) sec.total++;
+    }
+    // 40-02：required/short 在 total 统计完成后判定（提前算 total=0 会全段误标短缺）
+    for (const s of sections.values()) {
+      const bpSec = this.bp.sections.find((x) => x.name === s.name);
+      s.required = bpSec?.count ?? s.total;
+      s.short = s.total < s.required;
     }
     const last20 = this.last20min();
     const total = [...sections.values()].reduce((n, s) => n + s.score, 0);
@@ -465,6 +484,10 @@ export interface MockScore {
     name: string;
     score: number;
     full: number;
+    /** 40-02：蓝图要求题数（短缺标注用） */
+    required: number;
+    /** 40-02：实际卷面 < 要求 → 短路段如实标注 */
+    short: boolean;
     correct: number;
     total: number;
     timeSpentMs: number;

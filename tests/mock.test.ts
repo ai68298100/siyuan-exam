@@ -115,12 +115,30 @@ describe("模考会话", () => {
     }
     s.submit(start + 3_599_000);
     const score = s.score();
-    expect(score.full).toBeCloseTo(6.4);
+    expect(score.full).toBeCloseTo(5.4); // 40-02：实际卷面（判断段短缺 1 题，不再按蓝图 6.4 虚高）
     expect(score.total).toBeCloseTo(0.8 + 2.0);
     expect(score.pass).toBe(false);
     expect(score.sections.find((x) => x.name === "言语")!.total).toBe(3);
     expect(score.last20min.attempted).toBeGreaterThanOrEqual(0);
     expect(score.flagsUsed).toBe(0);
+  });
+
+  it("40-02 逐段满分标注：短缺段 full 按实际卷面 + required/short 如实", () => {
+    const { s, r, start } = build();
+    for (const q of r.paper) s.setAnswer(q.id, q.answer, start + 1000); // 全部答对
+    s.submit(start + 3_599_000);
+    const score = s.score();
+    const judge = score.sections.find((x) => x.name === "判断")!;
+    expect(judge.required).toBe(4);
+    expect(judge.total).toBe(3);
+    expect(judge.short).toBe(true);
+    expect(judge.full).toBeCloseTo(3); // 实际 3×1，不再按蓝图 4 虚高
+    expect(judge.short).toBe(true);
+    expect(judge.full).toBeCloseTo(3); // 实际 3×1，不再按蓝图 4 虚高
+    const yan = score.sections.find((x) => x.name === "言语")!;
+    expect(yan.short).toBe(false);
+    expect(yan.required).toBe(3);
+    expect(score.full).toBeCloseTo(5.4);
   });
 
   it("自动交卷边界", () => {

@@ -102,6 +102,8 @@
     "rev.empty": "暂无修订记录（编辑答案后自动落一条）",
     "rev.restored": "已恢复到所选版本",
     "rev.specChanged": "规格变更",
+    "mock.shortSec": "短缺：要求 {n} 题",
+    "mock.shortSecTip": "题库该来源/考点可用题不足蓝图要求，本段满分已按实际卷面计分",
     "qk.practice": "练习",
     "qk.mock": "模考",
     "qk.recite": "背诵",
