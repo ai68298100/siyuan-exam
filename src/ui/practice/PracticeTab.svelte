@@ -1917,6 +1917,12 @@ import { ttsSpeak } from "@/core/tts";
     let mKp = $state("");
     let mSource = $state("");
     let mGroup = $state("");
+    /** 54-02 作者设置：数值判分规格（填空题型显示；留空=自动识别/exact 口径） */
+    let mSpecOpen = $state(false);
+    let mSpecUnit = $state("");
+    let mSpecAbsTol = $state("");
+    let mSpecRelPct = $state("");
+    let mSpecAltUnits = $state("");
     let mSaving = $state(false);
     let mSaved = $state("");
 
@@ -1945,6 +1951,24 @@ import { ttsSpeak } from "@/core/tts";
       return () => { if (draftTimer) clearTimeout(draftTimer); };
     });
 
+    /** 54-02 作者设置：表单字段 → 判分规格（abs 与 rel 可并用取更宽；无任何容差=exact 口径） */
+    function buildAuthorSpec(): import("../../core/structuredAnswer").NumericAnswerSpec | undefined {
+      const abs = parseFloat(mSpecAbsTol);
+      const rel = parseFloat(mSpecRelPct) / 100;
+      const unit = mSpecUnit.trim();
+      const alts = mSpecAltUnits.split(/[，,;；]/).map((x) => x.trim()).filter(Boolean);
+      if (!Number.isFinite(abs) && !Number.isFinite(rel) && !unit && !alts.length) return undefined; // 全空=自动识别
+      const spec: import("../../core/structuredAnswer").NumericAnswerSpec = { v: 1, kind: "numeric" };
+      if (Number.isFinite(abs) && abs > 0) spec.absTol = abs;
+      if (Number.isFinite(rel) && rel > 0) spec.relTolerance = rel;
+      if (unit) spec.unit = unit;
+      if (alts.length) {
+        const factor = 1; // 作者换算表 lite：等价单位同值换算（倍率编辑待完整面），按同值处理
+        spec.altUnits = alts.map((u) => ({ unit: u, factor }));
+      }
+      return spec;
+    }
+
     async function saveManual() {
       if (mSaving || !mStem.trim()) return;
       mSaving = true; mSaved = ""; errorMsg = "";
@@ -1955,10 +1979,12 @@ import { ttsSpeak } from "@/core/tts";
           options: mType === "single" || mType === "multiple" ? mOptions.filter((o) => o.trim()) : [],
           answer: mAnswer, analysis: mAnalysis, kp: mKp, source: mSource,
           group: mGroup.trim() || undefined,
+          ...(mType === "fill" && mSpecOpen ? { answerSpec: buildAuthorSpec() } : {}),
         });
         await app.writeManualQuestion(activeBankId, q);
         mSaved = q.id;
         mStem = ""; mOptions = ["", ""]; mAnswer = ""; mAnalysis = "";
+        mSpecUnit = ""; mSpecAbsTol = ""; mSpecRelPct = ""; mSpecAltUnits = "";
         draftRestored = false;
         void (app as any).deps.storage.save(MANUAL_DRAFT_KEY, null); // 45-06：提交成功清理草稿
       } catch (e) {
@@ -3603,6 +3629,30 @@ import { ttsSpeak } from "@/core/tts";
             <textarea class="lv-input lv-textarea" style="min-height:44px" bind:value={mAnswer}
               placeholder={t("manual.answerHint")} aria-label={t("manual.answer")}></textarea>
           </div>
+          {#if mType === "fill"}
+            <!-- 54-02 作者设置：数值判分规格（可折叠；留空=自动识别/exact） -->
+            <div class="lv-row" style="margin:4px 0 0">
+              <button class="lv-btn sm lv-btn--ghost" onclick={() => (mSpecOpen = !mSpecOpen)}>
+                ⚙ {t("spec.authorSection")}{#if mSpecOpen} ▾{/if}
+              </button>
+            </div>
+            {#if mSpecOpen}
+              <div class="lv-row" style="margin:4px 0 0;align-items:flex-end">
+                <label class="lv-field" style="max-width:160px"><span class="lv-muted">{t("spec.unit")}</span>
+                  <input class="lv-input" bind:value={mSpecUnit} placeholder="m/s" />
+                </label>
+                <label class="lv-field" style="max-width:150px"><span class="lv-muted">{t("spec.absTol")}</span>
+                  <input class="lv-input num" bind:value={mSpecAbsTol} placeholder="0.5" inputmode="decimal" />
+                </label>
+                <label class="lv-field" style="max-width:150px"><span class="lv-muted">{t("spec.relPct")}</span>
+                  <input class="lv-input num" bind:value={mSpecRelPct} placeholder="5" inputmode="decimal" />
+                </label>
+                <label class="lv-field" style="flex:1;min-width:180px"><span class="lv-muted">{t("spec.altUnits")}</span>
+                  <input class="lv-input" bind:value={mSpecAltUnits} placeholder="km/h, cm/s" />
+                </label>
+              </div>
+            {/if}
+          {/if}
         {/if}
         <div class="lv-field"><span class="lv-muted">{t("manual.analysis")}</span>
           <textarea class="lv-input lv-textarea" style="min-height:52px" bind:value={mAnalysis} aria-label={t("manual.analysis")}></textarea>
