@@ -20,6 +20,9 @@
     const i18n = $derived(plugin?.i18n ?? {});
     const t = (k: string, fb = "") => i18n[k] ?? fb;
 
+    /** 侧栏项目卡显示名：当前题库（无题库时回退建库引导文案） */
+    const railBankName = $derived(((app?.listBanks?.() ?? [])[0])?.name || t("guard.title"));
+
     let railOpen = $state(false);
     let menuBtn: HTMLButtonElement | null = null;
     function closeRail() { railOpen = false; menuBtn?.focus(); }
@@ -508,12 +511,18 @@
 <svelte:window onblur={onBlur} onkeydown={onExamKey} />
 
 <div class="fn__flex-1 lv-shell">
-  <Rail active="mock" {plugin} open={railOpen} onclose={closeRail} />
+  <Rail active="mock" {plugin} open={railOpen} onclose={closeRail}
+    project={{ name: railBankName || t("guard.title"), kicker: t("rail.projectKicker") }} onproject={() => plugin.openPractice?.()} />
   <div class="lv-main">
   <div class="fn__flex-1 lv-pad">
   <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.mock.eyebrow")}</span><h1 class="lv-h1">{t("head.mock.title")}</h1><p>{t("head.mock.desc")}</p></div>
   <div class="block__icons">
     <button class="lv-menu-btn" aria-label={t("menu.open")} bind:this={menuBtn} onclick={() => railOpen = true}><Icon name="menu" size={16} /></button>
+    <div class="lv-crumbs">
+      <span class="lv-crumb">{railBankName}</span>
+      <span class="lv-crumb-sep" aria-hidden="true">/</span>
+      <span class="lv-crumb-current">{t("tab.mock")}</span>
+    </div>
     <SaveStatus gate={app.saves} {t} />
     <span class="fn__flex-1"></span>
     {#if view === "exam"}

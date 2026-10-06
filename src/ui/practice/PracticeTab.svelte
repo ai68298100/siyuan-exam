@@ -3051,9 +3051,11 @@ import { ttsSpeak } from "@/core/tts";
 <div class="fn__flex-1 lv-exam-tab" role="region" aria-label={t("tab.practice")}>
   <div class="block__icons">
     <button class="lv-menu-btn" aria-label={t("menu.open")} bind:this={menuBtn} onclick={() => railOpen = true}><Icon name="menu" size={16} /></button>
-    <div class="block__logo">
-      <svg class="block__logoicon"><use xlink:href="#iconExam"></use></svg>
-      {t("tab.practice")}
+    <!-- 原型 .breadcrumbs：题库 / 当前页（muted/当前 双色导航语境） -->
+    <div class="lv-crumbs">
+      <span class="lv-crumb">{bankName || t("guard.title")}</span>
+      <span class="lv-crumb-sep" aria-hidden="true">/</span>
+      <span class="lv-crumb-current">{t("tab.practice")}</span>
     </div>
     <SaveStatus gate={app.saves} {t} />
     <span class="fn__flex-1"></span>
@@ -3087,7 +3089,8 @@ import { ttsSpeak } from "@/core/tts";
       {#if hasBank}<span class="lv-chip">{t("bank.label")} {bankName}</span><button class="lv-chip" title={t("bank.removeTitle")} onclick={removeActiveBank}>✕</button>{/if}
   </div>
   <div class="lv-shell">
-    <Rail active="practice" {plugin} items={railItems} onnavigate={onRailNav} open={railOpen} onclose={closeRail} />
+    <Rail active="practice" {plugin} items={railItems} onnavigate={onRailNav} open={railOpen} onclose={closeRail}
+      project={{ name: bankName || t("guard.title"), kicker: t("rail.projectKicker") }} onproject={() => (view = "entry")} />
     <div class="lv-main">
   {#if loading}
     <div class="lv-pad"><div class="lv-skeleton"></div></div>
@@ -3162,8 +3165,13 @@ import { ttsSpeak } from "@/core/tts";
         </div>
       {/if}
       <div class="lv-pad">
+        <div class="lv-screen-head">
+          <span class="lv-eyebrow">{t("head.entry.eyebrow")}</span>
+          <h1 class="lv-h1">{t("head.entry.title")}</h1>
+          <p>{t("head.entry.desc")}</p>
+        </div>
         {#if plan}
-          <div class="lv-card lv-hero lv-entry-hero" style="margin-bottom:12px">
+          <div class="lv-card lv-hero lv-entry-hero" style="margin-bottom:18px">
             <div class="lv-entry-main">
               <span class="lv-focus-label">{t("entry.today")}</span>
               <div class="lv-entry-reason">{plan.reason}</div>
@@ -3172,14 +3180,15 @@ import { ttsSpeak } from "@/core/tts";
                   <Icon name="hourglass" size={13} /> ~{planTime.minutes} {t("entry.minutes")}（{planTime.low}-{planTime.high}）
                 </span>
               {/if}
+              <!-- 原型：主操作在 hero 卡内部，与上下文成组 -->
+              <div class="lv-hero-actions">
+                <button class="lv-btn lv-btn--primary" onclick={startToday}><Icon name="play" size={16} /> {t("entry.startToday")}</button>
+              </div>
             </div>
             <div class="lv-entry-num">
               <div class="num lv-entry-count">{plan.queue.length}</div>
               <div class="lv-muted lv-entry-unit">{t("browse.count")}</div>
             </div>
-          </div>
-          <div class="lv-row" style="margin:0 0 18px">
-            <button class="lv-btn lv-btn--primary" onclick={startToday}><Icon name="play" size={16} /> {t("entry.startToday")}</button>
           </div>
         {/if}
         <div class="lv-section-title"><span>{t("entry.modes")}</span></div>
@@ -4797,6 +4806,9 @@ import { ttsSpeak } from "@/core/tts";
   .lv-entry-num { border-left: 1px solid var(--lv-border); padding: 5px 0 5px 24px; text-align: center; }
   .lv-entry-count { font-size: 46px; font-weight: 600; letter-spacing: -2px; line-height: 1.1; font-variant-numeric: tabular-nums; }
   .lv-entry-unit { font-size: 11px; margin-top: 8px; display: block; color: var(--lv-text-3); }
+  /* 原型 .hero-actions：主操作在 hero 卡内部 */
+  .lv-hero-actions { margin-top: 18px; }
+  .lv-hero-actions .lv-btn--primary { box-shadow: 0 3px 10px color-mix(in srgb, var(--b3-theme-primary) 24%, transparent); }
   @media (max-width: 600px) {
     .lv-entry-hero { grid-template-columns: minmax(0,1fr); padding: 18px; }
     .lv-entry-num { border-left: 0; border-top: 1px solid var(--lv-border); padding: 12px 0 0; display: flex; align-items: baseline; gap: 10px; text-align: left; }

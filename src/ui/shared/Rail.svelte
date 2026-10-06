@@ -13,6 +13,8 @@
     onnavigate,
     open = false,
     onclose,
+    project,
+    onproject,
   }: {
     active: "practice" | "mock" | "report";
     plugin: any;
@@ -23,6 +25,9 @@
     /** 窄屏抽屉开合（桌面端常显，不受影响） */
     open?: boolean;
     onclose?: () => void;
+    /** 73-02/原型 project-switch：当前题库上下文卡（品牌位下方） */
+    project?: { name: string; kicker: string };
+    onproject?: () => void;
   } = $props();
 
   const t = (k: string, fb = "") => ((plugin?.i18n as Record<string, string>) ?? {})[k] ?? fb;
@@ -91,21 +96,32 @@
       <Icon name="close" size={15} />
     </button>
   </div>
-  <nav class="lv-rail-nav">
-    {#each globals as g (g.target)}
-      <button class="lv-rail-btn" class:on={active === g.target} onclick={() => { go(g.target); if (open) onclose?.(); }} aria-current={active === g.target ? "page" : undefined}>
-        <Icon name={g.icon} size={16} /> {g.label}
-      </button>
-    {/each}
-    {#if items.length}
-      <div class="lv-rail-divider" role="separator"></div>
-      {#each items as it (it.name)}
-        <button class="lv-rail-btn lv-rail-btn--sub" class:on={it.on} onclick={() => nav(it)} aria-current={it.on ? "page" : undefined}>
-          <Icon name={it.icon} size={16} /> {it.name}
+  {#if project}
+    <!-- 原型 .project-switch：当前题库上下文卡（surface 底+阴影；点击回入口/练习台） -->
+    <button class="lv-project" onclick={() => onproject?.()} title={project.name}>
+      <span class="lv-project-kicker">{project.kicker}</span>
+      <span class="lv-project-name">{project.name}</span>
+      <span class="lv-project-go">↗</span>
+    </button>
+  {/if}
+  <div>
+    <p class="lv-nav-label">{t("rail.workbench", "")}</p>
+    <nav class="lv-rail-nav">
+      {#each globals as g (g.target)}
+        <button class="lv-rail-btn" class:on={active === g.target} onclick={() => { go(g.target); if (open) onclose?.(); }} aria-current={active === g.target ? "page" : undefined}>
+          <Icon name={g.icon} size={16} /> {g.label}
         </button>
       {/each}
-    {/if}
-  </nav>
+      {#if items.length}
+        <div class="lv-rail-divider" role="separator"></div>
+        {#each items as it (it.name)}
+          <button class="lv-rail-btn lv-rail-btn--sub" class:on={it.on} onclick={() => nav(it)} aria-current={it.on ? "page" : undefined}>
+            <Icon name={it.icon} size={16} /> {it.name}
+          </button>
+        {/each}
+      {/if}
+    </nav>
+  </div>
   <div class="lv-rail-note">{t("rail.note", "")}</div>
 </aside>
 
@@ -153,6 +169,55 @@
   .lv-rail-nav {
     display: grid;
     gap: 4px;
+  }
+  /* 原型 .project-switch：当前题库上下文卡 */
+  .lv-project {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 12px 14px;
+    background: var(--lv-surface);
+    border: 1px solid var(--lv-border);
+    border-radius: var(--lv-r-2);
+    box-shadow: var(--lv-sh-1);
+    cursor: pointer;
+    transition:
+      box-shadow var(--lv-dur-micro) ease,
+      border-color var(--lv-dur-micro) ease;
+  }
+  .lv-project:hover {
+    border-color: var(--lv-accent);
+    box-shadow: var(--lv-sh-2);
+  }
+  .lv-project-kicker {
+    display: block;
+    color: var(--lv-text-3);
+    font-size: 10px;
+    font-weight: 400;
+    letter-spacing: 0.6px;
+    margin-bottom: 4px;
+  }
+  .lv-project-name {
+    display: block;
+    font-size: 13.5px;
+    font-weight: 600;
+    line-height: 1.5;
+    color: var(--lv-text);
+    overflow-wrap: anywhere;
+  }
+  .lv-project-go {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--lv-text-3);
+  }
+  /* 原型 .nav-label：10px 字距分组标签 */
+  .lv-nav-label {
+    font-size: 10px;
+    letter-spacing: 0.6px;
+    color: var(--lv-text-3);
+    padding: 0 13px;
+    margin: 2px 0 10px;
   }
   .lv-rail-btn {
     position: relative;

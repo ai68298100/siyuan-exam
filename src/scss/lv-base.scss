@@ -102,6 +102,31 @@
   }
 }
 
+/* —— 面包屑（原型 .breadcrumbs：muted 上级 / 当前页 550 字重双色） —— */
+.lv-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--lv-text-3);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.lv-crumb {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lv-crumb-sep {
+  color: var(--lv-ctl-border);
+  font-size: 15px;
+}
+.lv-crumb-current {
+  color: var(--lv-text);
+  font-weight: 550;
+}
+
 /* —— 屏头（原型 .screen-head：eyebrow + 大标题 + muted 副标） —— */
 .lv-screen-head {
   margin: 4px 0 22px;
@@ -340,7 +365,7 @@ input[type="range"] {
 
 /* —— Hero 卡（原型 home 首屏：渐变纸面 + focus-label 引导 + 大数字预算位） —— */
 .lv-hero {
-  background: linear-gradient(115deg, var(--lv-surface), color-mix(in srgb, var(--lv-accent) 6%, var(--lv-surface)));
+  background: linear-gradient(115deg, var(--lv-surface), color-mix(in srgb, var(--lv-accent) 9%, var(--lv-surface)));
   box-shadow: var(--lv-sh-2);
 }
 
