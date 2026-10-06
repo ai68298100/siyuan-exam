@@ -459,7 +459,16 @@ export class ExamApp {
    *  exam-id IAL 不变即身份不变；写后 kramdown 读回核验 exam-id 仍在（丢失则抛错，不冒充成功） */
   async updateQuestionContent(
     q: Question & { blockId: string },
-    draft: { stem: string; options: string[]; answer: string; analysis: string; kp: string; difficulty?: number },
+    draft: {
+      stem: string;
+      options: string[];
+      answer: string;
+      analysis: string;
+      kp: string;
+      difficulty?: number;
+      /** 54-02 作者规格：显式提供时优先生效并写块属性；未提供走既有推断/保留规则 */
+      answerSpec?: import("./core/structuredAnswer").NumericAnswerSpec | import("./core/structuredAnswer").MultiBlankSpec | null;
+    },
   ): Promise<Question> {
     if (!this.kernelOnline) throw new Error("离线：题目编辑需要内核可写");
     const answer = q.type === "material" ? "" : normalizeAnswer(q.type, draft.answer) ?? draft.answer;
@@ -480,10 +489,18 @@ export class ExamApp {
     if (!kd.includes(`exam-id="${q.id}"`) && !kd.includes(`exam-id='${q.id}'`)) {
       throw new Error("编辑读回异常：题目身份（exam-id）丢失，请勿关闭窗口并反馈诊断");
     }
-    // 54/63-03：答案变更 → 结构化 spec 重推断并同步块属性（陈旧 spec 会让新答案全判错；
-    // 填空答案改为不可识别文本 → 清空属性回旧字符串口径）。答案未变（只改题干等）不触碰。
+    // 54/63-03：规格同步。优先级：作者显式规格 > 答案变更重推断 > 不触碰。
+    // （陈旧 spec 会让新答案全判错；填空答案改为不可识别文本 → 清空属性回旧字符串口径）
     let specWasChanged = false;
-    if (q.type === "fill" && answer !== q.answer) {
+    if (q.type === "fill" && draft.answerSpec) {
+      next.answerSpec = draft.answerSpec;
+      specWasChanged = specChanged(q.answerSpec, draft.answerSpec);
+      try {
+        await this.deps.client.setExamAttrs(q.blockId, {
+          "exam-answer-spec": JSON.stringify(draft.answerSpec),
+        });
+      } catch { /* 属性同步失败不影响题面编辑本身；读回时按块内旧属性如实判分 */ }
+    } else if (q.type === "fill" && answer !== q.answer) {
       const spec = inferAnswerSpec("fill", answer);
       specWasChanged = specChanged(q.answerSpec, spec);
       next.answerSpec = spec;

@@ -527,7 +527,32 @@ import { ttsSpeak } from "@/core/tts";
     let editingId = $state("");
     let editBusy = $state(false);
     let editError = $state("");
-    let editDraft = $state<{ stem: string; options: string[]; answer: string; analysis: string; kp: string; difficulty: string } | null>(null);
+    let editDraft = $state<{ stem: string; options: string[]; answer: string; analysis: string; kp: string; difficulty: string; answerSpec?: import("../../core/structuredAnswer").NumericAnswerSpec } | null>(null);
+    let editSpecOpen = $state(false);
+    let editSpecUnit = $state("");
+    let editSpecAbsTol = $state("");
+    let editSpecRelPct = $state("");
+    let editSpecAltUnits = $state("");
+    /** 规格字段 ↔ spec 对象（编辑表单用；作者留空且原无 spec → undefined 保持自动识别） */
+    function specFromEditFields(): import("../../core/structuredAnswer").NumericAnswerSpec | undefined {
+      const abs = parseFloat(editSpecAbsTol);
+      const rel = parseFloat(editSpecRelPct) / 100;
+      const unit = editSpecUnit.trim();
+      const alts = editSpecAltUnits.split(/[，,;；]/).map((x) => x.trim()).filter(Boolean);
+      if (!Number.isFinite(abs) && !Number.isFinite(rel) && !unit && !alts.length) return undefined;
+      const spec: import("../../core/structuredAnswer").NumericAnswerSpec = { v: 1, kind: "numeric" };
+      if (Number.isFinite(abs) && abs > 0) spec.absTol = abs;
+      if (Number.isFinite(rel) && rel > 0) spec.relTolerance = rel;
+      if (unit) spec.unit = unit;
+      if (alts.length) spec.altUnits = alts.map((u) => ({ unit: u, factor: 1 }));
+      return spec;
+    }
+    function loadSpecFields(spec: import("../../core/structuredAnswer").AnswerSpec | undefined) {
+      editSpecUnit = spec?.kind === "numeric" ? (spec.unit ?? "") : "";
+      editSpecAbsTol = spec?.kind === "numeric" && spec.absTol != null ? String(spec.absTol) : "";
+      editSpecRelPct = spec?.kind === "numeric" && spec.relTolerance != null ? String(Math.round(spec.relTolerance * 10000) / 100) : "";
+      editSpecAltUnits = spec?.kind === "numeric" ? (spec.altUnits?.map((a) => a.unit).join(", ") ?? "") : "";
+    }
 
     function openEditForm(q: Question) {
       editError = "";
@@ -539,7 +564,11 @@ import { ttsSpeak } from "@/core/tts";
         analysis: q.analysis ?? "",
         kp: q.kp ?? "",
         difficulty: q.difficulty != null ? String(q.difficulty) : "",
+        // 编辑表单只编辑数值规格；多空规格原样保留（specFromEditFields 不产出 multiBlank）
+        answerSpec: q.answerSpec?.kind === "numeric" ? q.answerSpec : undefined,
       };
+      loadSpecFields(q.answerSpec);
+      editSpecOpen = !!q.answerSpec;
     }
     function closeEditForm() {
       editingId = ""; editDraft = null; editError = "";
@@ -557,6 +586,8 @@ import { ttsSpeak } from "@/core/tts";
           analysis: editDraft.analysis.trim(),
           kp: editDraft.kp.trim(),
           difficulty: editDraft.difficulty ? parseInt(editDraft.difficulty, 10) || undefined : undefined,
+          // 54-02：编辑表单的作者规格（打开时自现有 spec 读入；留空字段=清除回自动识别）
+          answerSpec: specFromEditFields(),
         });
         questions = questions.map((x) => (x.id === q.id ? { ...x, ...next } : x));
         closeEditForm();
@@ -4352,6 +4383,30 @@ import { ttsSpeak } from "@/core/tts";
                       {#each [1, 2, 3, 4, 5] as d, _i (_i)}<option value={String(d)}>{d}</option>{/each}
                     </select>
                   </div>
+                  {#if q.type === "fill"}
+                    <!-- 54-02：编辑表单的判分规格区（打开时自现有 spec 读入；留空=清除回自动识别） -->
+                    <div class="lv-row" style="margin:6px 0 4px">
+                      <button class="lv-btn sm lv-btn--ghost" onclick={() => (editSpecOpen = !editSpecOpen)}>
+                        ⚙ {t("spec.authorSection")}{#if editSpecOpen} ▾{/if}
+                      </button>
+                    </div>
+                    {#if editSpecOpen}
+                      <div class="lv-row" style="margin:4px 0 0;align-items:flex-end">
+                        <label class="lv-field" style="max-width:140px"><span class="lv-muted">{t("spec.unit")}</span>
+                          <input class="lv-input" bind:value={editSpecUnit} placeholder="m/s" />
+                        </label>
+                        <label class="lv-field" style="max-width:130px"><span class="lv-muted">{t("spec.absTol")}</span>
+                          <input class="lv-input num" bind:value={editSpecAbsTol} placeholder="0.5" inputmode="decimal" />
+                        </label>
+                        <label class="lv-field" style="max-width:130px"><span class="lv-muted">{t("spec.relPct")}</span>
+                          <input class="lv-input num" bind:value={editSpecRelPct} placeholder="5" inputmode="decimal" />
+                        </label>
+                        <label class="lv-field" style="flex:1;min-width:160px"><span class="lv-muted">{t("spec.altUnits")}</span>
+                          <input class="lv-input" bind:value={editSpecAltUnits} placeholder="km/h, cm/s" />
+                        </label>
+                      </div>
+                    {/if}
+                  {/if}
                   <textarea class="lv-input lv-textarea" rows="2" bind:value={editDraft.analysis} placeholder={t("manual.analysis")}></textarea>
                   {#if editError}<div class="lv-error">{editError}</div>{/if}
                   <div class="lv-row">
