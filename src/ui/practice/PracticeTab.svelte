@@ -1069,9 +1069,10 @@ import { ttsSpeak } from "@/core/tts";
         picked = app.dailyDrill(qs, [], Number.isFinite(goal) && goal > 0 ? goal : 10);
         if (!picked.length) { errorMsg = t("state.emptyBank"); return; }
       } else {
-        // 65-06 lite：快速刷题避开近 3 天已见题（跨模式；池不足回退全量）
-        const seen = recentlySeen(app.attempts.all(), 3 * 86_400_000, Date.now());
-        picked = app.quickDrill(qs, 20, sessionSeed, { avoid: seen });
+        // 65-06 lite：去重窗口走设置（默认 3 天，0=关闭）；跨模式；池不足回退全量
+        const avoidDays = Number(plugin.settingUtils?.get?.("quickAvoidDays") ?? 3);
+        const seen = avoidDays > 0 ? recentlySeen(app.attempts.all(), avoidDays * 86_400_000, Date.now()) : undefined;
+        picked = seen ? app.quickDrill(qs, 20, sessionSeed, { avoid: seen }) : app.quickDrill(qs, 20, sessionSeed);
       }
       await safeStart(groupAdjacent(picked), mode, () => {
         feedback = null; selected = ""; confidenceSel = ""; sessionDone = null;

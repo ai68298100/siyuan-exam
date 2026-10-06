@@ -80,6 +80,8 @@
     "report.accuracyTrend": "正确率趋势",
     "report.refresh": "刷新数据",
     "report.refreshTip": "重新聚合统计（报告打开期间新作的答题不会自动进入当前视图）",
+    "setting.quickAvoidDays.title": "快速刷题去重窗口（天）",
+    "setting.quickAvoidDays.desc": "快速刷题避开近 N 天已做过的题（含模考；0=关闭去重）。默认 3。",
     "gate.linkTitle": "打开外部链接？",
     "gate.linkDesc": "这是外部链接：将离开思源在浏览器打开，目的站可能记录访问。取消可复制链接后自行打开。",
     "gate.linkCopied": "链接已复制到剪贴板",

@@ -121,6 +121,15 @@ export default class LvExamPlugin extends Plugin {
       direction: "column",
     });
     this.settingUtils.addItem({
+      // 65-06 lite：快速刷题去重窗口（天；0=关闭去重）
+      title: this.i18n["setting.quickAvoidDays.title"],
+      description: this.i18n["setting.quickAvoidDays.desc"],
+      type: "number",
+      key: "quickAvoidDays",
+      value: 3,
+      direction: "row",
+    });
+    this.settingUtils.addItem({
       title: this.i18n["setting.checkinItemId.title"],
       description: this.i18n["setting.checkinItemId.desc"],
       type: "textinput",
