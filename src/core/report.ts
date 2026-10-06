@@ -29,6 +29,14 @@ export interface KpMastery {
   /** FSRS 风格留存率：R=(1+F·t/S)^DECAY，S 由该考点平均间隔粗估 */
   retention: number;
   mastery: number; // mastery = accuracy × retention
+  /** 39-07：独立题数（去重 qid）——同题重复不等于多道独立题 */
+  uniqueQids: number;
+  /** 39-07：独立题口径的掌握（最近一次作答正确的去重题数） */
+  independentCorrect: number;
+  /** 39-07：覆盖率 = 已练独立题 / 该考点全部题数（题库无该考点题时 -1=未知） */
+  coverage: number;
+  /** 39-07：证据时间（最近一次作答 ts；0=无） */
+  evidenceAt: number;
 }
 
 const DECAY = -0.1542;
@@ -42,8 +50,16 @@ export function masteryByKp(
   now: number = Date.now(),
 ): KpMastery[] {
   const kpOf = new Map<string, string>();
-  for (const q of questions) if (q.kp) kpOf.set(q.id, q.kp);
+  const rootTotals = new Map<string, number>(); // 39-07：覆盖率分母（题库该考点全部题数）
+  for (const q of questions)
+    if (q.kp) {
+      kpOf.set(q.id, q.kp);
+      const root = q.kp.split("/")[0];
+      rootTotals.set(root, (rootTotals.get(root) ?? 0) + 1);
+    }
   const agg = new Map<string, { t: number; c: number; last: number; gaps: number[]; lastTs: number[] }>();
+  const qids = new Map<string, Set<string>>(); // 39-07：考点 → 独立题集合（去重）
+  const lastVerdict = new Map<string, "correct" | "wrong" | "not_attempted">(); // 39-07：每题最近一次判定
   const ordered = [...events]
     .filter((e) => e.verdict !== "not_attempted" && e.kind !== "card")
     .sort((a, b) => a.ts - b.ts);
@@ -61,11 +77,27 @@ export function masteryByKp(
     a.last = Math.max(a.last, e.ts);
     a.lastTs.push(e.ts);
     agg.set(root, a);
+    // 39-07：独立题集合与每题最近判定（时序遍历，后写覆盖）
+    let set = qids.get(root);
+    if (!set) { set = new Set(); qids.set(root, set); }
+    set.add(e.qid);
+    lastVerdict.set(e.qid, e.verdict);
   }
   const out: KpMastery[] = [];
   for (const [root, a] of agg) {
+    // 39-07：独立题口径（去重 qid；最近判定 correct 才算独立掌握）
+    const set = qids.get(root) ?? new Set<string>();
+    const uniqueQids = set.size;
+    let independentCorrect = 0;
+    for (const qid of set) if (lastVerdict.get(qid) === "correct") independentCorrect++;
+    // 覆盖率：已练独立题 / 该考点全部题数（题库无该考点题时 -1=未知）
+    const rootTotalQ = rootTotals.get(root);
+    const coverage = rootTotalQ && rootTotalQ > 0 ? Math.min(1, uniqueQids / rootTotalQ) : -1;
     if (a.t < 3) {
-      out.push({ root, total: a.t, accuracy: 0, retention: 0, mastery: -1 });
+      out.push({
+        root, total: a.t, accuracy: 0, retention: 0, mastery: -1,
+        uniqueQids, independentCorrect, coverage, evidenceAt: a.last,
+      });
       continue;
     }
     const accuracy = a.c / a.t;
@@ -78,6 +110,10 @@ export function masteryByKp(
       accuracy,
       retention: Math.max(0, Math.min(1, retention)),
       mastery: accuracy * retention,
+      uniqueQids,
+      independentCorrect,
+      coverage,
+      evidenceAt: a.last,
     });
   }
   return out.sort((x, y) => y.mastery - x.mastery);

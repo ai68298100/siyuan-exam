@@ -743,6 +743,10 @@
 
     <div class="lv-card lv-section">
       <b>{t("report.mastery")}</b>
+      {#if mastery.length}
+        <!-- 39-07：算法与口径标注（启发式估计；非真实 FSRS 卡片状态） -->
+        <div class="lv-row lv-muted" style="font-size:11px;margin:2px 0 6px">{t("report.masteryNote")}</div>
+      {/if}
       {#if !mastery.length}
         <p class="lv-muted">{t("report.noData")}</p>
       {:else}
@@ -755,6 +759,8 @@
             </div>
             <span class="num lv-muted">{m.mastery < 0 ? t("report.insufficient") : Math.round(m.mastery * 100) + "%"}</span>
             <span class="num lv-muted" style="width:56px">{m.total} {t("browse.count")}</span>
+            <!-- 39-07：独立题/覆盖率（覆盖率 -1=题库无该考点题，不显示） -->
+            <span class="num lv-muted" style="width:110px" title={t("report.uniqueTip")}>{t("report.uniqueQ")} {m.uniqueQids}{#if m.coverage >= 0} · {t("report.coverage")} {Math.round(m.coverage * 100)}%{/if}</span>
           </div>
         {/each}
       {/if}
