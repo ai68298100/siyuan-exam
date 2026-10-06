@@ -73,6 +73,8 @@
     "manual.answer": "答案",
     "manual.answerHint": "文本直接填写；多空用 ;; 分隔；纯数值+单位（如 340 m/s）自动识别为数值题",
     "report.accuracyTrend": "正确率趋势",
+    "report.refresh": "刷新数据",
+    "report.refreshTip": "重新聚合统计（报告打开期间新作的答题不会自动进入当前视图）",
     "gate.linkTitle": "打开外部链接？",
     "gate.linkDesc": "这是外部链接：将离开思源在浏览器打开，目的站可能记录访问。取消可复制链接后自行打开。",
     "gate.linkCopied": "链接已复制到剪贴板",

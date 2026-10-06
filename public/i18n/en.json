@@ -73,6 +73,8 @@
     "manual.answer": "Answer",
     "manual.answerHint": "Plain text; use ;; to separate blanks; a value with unit (e.g. 340 m/s) is auto-detected as numeric",
     "report.accuracyTrend": "Accuracy trend",
+    "report.refresh": "Refresh",
+    "report.refreshTip": "Re-aggregate statistics (answers recorded while this report is open are not auto-merged into the current view)",
     "gate.linkTitle": "Open external link?",
     "gate.linkDesc": "This is an external link: it will open in your browser outside SiYuan; the destination may log the visit. Cancel to copy the link and open it yourself.",
     "gate.linkCopied": "Link copied to clipboard",

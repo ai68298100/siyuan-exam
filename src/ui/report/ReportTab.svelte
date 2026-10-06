@@ -36,6 +36,7 @@
     let quad = $state<QuadrantReport | null>(null);
     let quadSignals = $state<string[]>([]);
     const typeByQid = new SvelteMap<string, string>();
+    let exposureNodes = $state<Record<string, number>>({});
     let openActionList = $state<ActionItem[]>([]);
     let trend30 = $state<{ date: string; attempts: number; correct?: number }[]>([]);
     let errorMsg = $state("");
@@ -114,6 +115,7 @@
         rangeDays,
       );
       quadSignals = quadrantSignals(quad);
+      exposureNodes = exposureStats(events).nodes;
       const cutoffDate = cutoff ? new Date(cutoff).toISOString().slice(0, 10) : "";
       trend30 = cutoff ? dailyTrend(d.days).filter((p) => p.date >= cutoffDate) : dailyTrend(d.days);
       reportMemo.set(memoKey, { kpi, hours, calib, quad, quadSignals, trend30 });
@@ -513,6 +515,10 @@
       <option value={7}>{t("report.range7")}</option>
       <option value={30}>{t("report.range30")}</option>
     </select>
+    <!-- 69-04 lite：陈旧态显式控制——流水可能在报告打开期间新增，强制刷新清 memo 重算 -->
+    <button class="lv-btn sm lv-btn--ghost" onclick={() => { reportMemo.clear(); computeReport(); }} title={t("report.refreshTip")}>
+      <Icon name="rotate" size={14} /> {t("report.refresh")}
+    </button>
     {#if bankOptions.length > 1}
       <select class="lv-select" style="max-width:200px" bind:value={bankId} disabled={scopeLoading} onchange={onBankChange}>
         {#each bankOptions as b, _i (_i)}<option value={b.id}>{b.name}</option>{/each}
@@ -632,6 +638,13 @@
       <!-- 63-02/65-06：近期曝光查询（近 7 天 lite；布尔事实，不含题面内容） -->
       <div class="lv-card lv-section" style="margin-bottom:12px">
         <b>{t("exposure.title")}</b>
+        {#if Object.keys(exposureNodes).length}
+          <div class="lv-row" style="margin:4px 0 0">
+            {#each Object.entries(exposureNodes) as [node, n] (node)}
+              <span class="lv-chip num" title={t("exposure.node." + node, node)}>{t("exposure.node." + node, node)} ×<span class="num">{n}</span></span>
+            {/each}
+          </div>
+        {/if}
         <button class="lv-btn sm lv-btn--ghost" style="margin:4px 0" onclick={() => expOpen = !expOpen}>
           {expOpen ? "▾" : "▸"} {t("exposure.drill")}
         </button>
