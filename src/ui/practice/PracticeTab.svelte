@@ -72,6 +72,26 @@ import { ttsSpeak } from "@/core/tts";
      *  需要跟随草稿变化——三个作答框（数值/多空/文本）oninput 时同步此镜像 */
     let draftLive = $state("");
 
+    /** 43-01 lite：题目修订时间线（app.appendRevision 在编辑成功后落快照；此处只读+恢复） */
+    let revOpenFor = $state("");
+    let revLoaded = $state<Record<string, import("../../core/revision").QuestionRevision[]>>({});
+    const revList = (qid: string) => revLoaded[qid] ?? [];
+    async function toggleRevisions(qid: string) {
+      if (revOpenFor === qid) { revOpenFor = ""; return; }
+      revOpenFor = qid;
+      revLoaded = { ...revLoaded, [qid]: await app.questionRevisions(qid) };
+    }
+    async function restoreRevision(q: Question & { blockId: string }, rev: import("../../core/revision").QuestionRevision) {
+      const { confirmDialogSync } = await import("../../libs/dialog");
+      if (!(await confirmDialogSync({ title: t("rev.restoreTitle"), content: t("rev.restoreConfirm").replace("{a}", rev.answer) }))) return;
+      const next = await app.updateQuestionContent(q, {
+        stem: q.stem, options: q.options, answer: rev.answer, analysis: q.analysis ?? "", kp: rev.kp ?? q.kp ?? "", difficulty: q.difficulty,
+      });
+      questions = questions.map((x) => (x.id === q.id ? { ...x, ...next } : x));
+      revLoaded = { ...revLoaded, [q.id]: await app.questionRevisions(q.id) };
+      showMessage(t("rev.restored"), 2400, "info");
+    }
+
     /** 63-03 改答轨迹：qid → {首答, 每次修改}。非响应式存储（仅提交时读取）；
      *  原因弹层可见性是 UI 态单独管理。上限截断/取消不记等语义在 answerTrail.ts */
     const trails = new SvelteMap<string, AnswerTrail>();
@@ -4298,6 +4318,23 @@ import { ttsSpeak } from "@/core/tts";
                   {#if st && st.attempts}
                     <!-- 43-02 lite：题目使用分析（作答次数/正确率/最近作答/错次），数据不足如实不显示 -->
                     <div class="lv-muted num" role="status">📊 {t("browse.usage").replace("{a}", String(st.attempts)).replace("{c}", String(Math.round((st.correct / st.attempts) * 100)))}{#if wr} · {t("browse.wrongCount").replace("{n}", String(wr.wrongCount))}{/if} · {new Date(st.lastAt).toLocaleDateString()}</div>
+                  <div class="lv-row" style="margin:4px 0 0">
+                    <button class="lv-btn sm lv-btn--ghost" onclick={() => void toggleRevisions(q.id)}>📝 {t("rev.drill")}{#if revOpenFor === q.id}（<span class="num">{revList(q.id).length}</span>）{/if}</button>
+                  </div>
+                  {#if revOpenFor === q.id}
+                    <div class="lv-row" style="flex-direction:column;align-items:stretch;gap:4px;margin:4px 0 0">
+                      {#each revList(q.id) as r (r.ts)}
+                        <div class="lv-error-row" style="white-space:normal">
+                          <b class="num">{new Date(r.ts).toLocaleString()}</b> · {t("report.changedFirst")}: {r.answer}
+                          {#if r.specChanged}<span class="lv-chip lv-chip--amb" style="margin-left:4px">{t("rev.specChanged")}</span>{/if}
+                          {#if r.kp}<span class="lv-muted"> · {r.kp}</span>{/if}
+                          <button class="lv-btn sm lv-btn--ghost" style="margin-left:6px" onclick={() => void restoreRevision(q, r)}>{t("rev.restore")}</button>
+                        </div>
+                      {:else}
+                        <span class="lv-muted num">{t("rev.empty")}</span>
+                      {/each}
+                    </div>
+                  {/if}
                   {/if}
                   <div class="lv-row">
                     <button class="lv-btn sm" onclick={() => openEditForm(q)}>✎ {t("edit.open")}</button>

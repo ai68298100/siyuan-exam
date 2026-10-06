@@ -10,6 +10,7 @@ import { replay, activeWrongItems } from "./core/replayer";
 import { PracticeSession, pickRandom, groupAdjacent } from "./core/session";
 import { randomSeedId, seededPickN } from "./core/random";
 import { inferAnswerSpec } from "./core/structuredAnswer";
+import { appendRevision, specChanged, type QuestionRevision, type RevisionStore } from "./core/revision";
 import { interleaveGroups } from "./core/interleave";
 import { deckNameForBank, selfRatingToRiffRating, pickSameKp, cramQueue, dailySet } from "./core/memory";
 import { SaveGate } from "./core/saveGate";
@@ -160,6 +161,8 @@ export interface ExamAppDeps {
 const BANK_REGISTRY_KEY = "banks";
 const SESSION_KEY = "session/active";
 const WRONG_REASON_KEY = "wrongbook/reasons";
+/** 43-01 lite：题目修订时间线（revision.ts 存储键） */
+const REVISIONS_KEY = "revisions";
 const MOCK_RUN_KEY = "mock/run";
 const ACTIONS_KEY = "actions/items";
 const MATERIALS_KEY = "materials/registry";
@@ -479,8 +482,10 @@ export class ExamApp {
     }
     // 54/63-03：答案变更 → 结构化 spec 重推断并同步块属性（陈旧 spec 会让新答案全判错；
     // 填空答案改为不可识别文本 → 清空属性回旧字符串口径）。答案未变（只改题干等）不触碰。
+    let specWasChanged = false;
     if (q.type === "fill" && answer !== q.answer) {
       const spec = inferAnswerSpec("fill", answer);
+      specWasChanged = specChanged(q.answerSpec, spec);
       next.answerSpec = spec;
       try {
         await this.deps.client.setExamAttrs(q.blockId, {
@@ -488,7 +493,34 @@ export class ExamApp {
         });
       } catch { /* 属性同步失败不影响题面编辑本身；读回时按块内旧属性如实判分 */ }
     }
+    // 43-01 lite：修订时间线快照（答案/考点变更才记；每题 FIFO 10 条）
+    if (answer !== q.answer || (draft.kp.trim() || undefined) !== q.kp || specWasChanged) {
+      await this.appendRevision(q.id, {
+        ts: this.deps.now?.() ?? Date.now(),
+        answer,
+        kp: draft.kp.trim() || undefined,
+        specChanged: specWasChanged || undefined,
+      });
+    }
     return next;
+  }
+
+  private revisionCache: RevisionStore | null = null;
+
+  /** 修订时间线（43-01 lite）：读缓存 + 惰性加载 */
+  async questionRevisions(qid: string): Promise<QuestionRevision[]> {
+    if (!this.revisionCache) {
+      this.revisionCache = ((await this.deps.storage.load(REVISIONS_KEY)) as RevisionStore | undefined) ?? {};
+    }
+    return this.revisionCache[qid] ?? [];
+  }
+
+  private async appendRevision(qid: string, entry: QuestionRevision): Promise<void> {
+    if (!this.revisionCache) {
+      this.revisionCache = ((await this.deps.storage.load(REVISIONS_KEY)) as RevisionStore | undefined) ?? {};
+    }
+    this.revisionCache = appendRevision(this.revisionCache, qid, entry);
+    await this.deps.storage.save(REVISIONS_KEY, this.revisionCache);
   }
 
   // ---------- 流水与派生 ----------
