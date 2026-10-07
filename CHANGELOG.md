@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.8.1 (2026-10-07)
+
+### 用户可读摘要
+
+> 稳定性与维护版本：补齐原生包导入/请求取消链路，收敛窄屏与键盘可达性，并加固 GitHub 发布与依赖治理。
+
+- **内核请求与导入**：原生 `.sy.zip` 导入改用 multipart；JSON 和文件请求统一传递 `AbortSignal`，超时会取消底层请求，重试定时器在成功、失败和退避路径均会清理。
+- **练习与 UI 回归**：修复练习键盘返回路径和 UI smoke 对题型的错误假设；命令面板关闭后恢复焦点，Tab 页面补齐键盘导航和 ARIA 关联。
+- **窄屏与读屏**：Rail 抽屉增加 modal/inert 背景隔离、焦点循环和 44px 触控区域；图表增加语义标签，长文本可换行，动态确认对话框内容经过净化。
+- **仓库治理**：新增状态总览、贡献/安全/行为准则、PR 与 Issue 模板、CODEOWNERS 和 Dependabot；Check/Release 工作流增加并发、超时、发布检查、SHA 固定和自动 Release notes。
+- **依赖维护**：升级 GitHub Actions checkout v7.0.1、pnpm/action-setup v6.1.0、setup-node v7.0.0 和 ESLint v10.12.0。
+
+### 验证与边界
+
+- `pnpm test`：102 个测试文件 / 547 项通过；`pnpm check`、`pnpm lint`、`pnpm build`、`pnpm verify:package`、`pnpm release:check`（8/8）和 `pnpm smoke:ui`（7/7）通过。
+- 以上证据覆盖离线逻辑和本地 UI harness；真实 SiYuan 内核、保存/恢复、Android WebView、大题库性能和真实 AI 取消仍需按 [真机冒烟清单](docs/17-真机冒烟清单.md) 验证。
+
 ## 0.8.0 (2026-10-07)
 
 ### 用户可读摘要
