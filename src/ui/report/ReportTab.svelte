@@ -4,6 +4,7 @@
     import { onMount } from "svelte";
     import { SvelteMap } from "svelte/reactivity";
     import { showMessage } from "siyuan";
+    import { resolveAiKey } from "@/ai/secrets";
     import { weeklyAggregates, weekCompare, dailyTrend } from "@/core/weekly";
     import { quadrantReport, quadrantSignals, type QuadrantReport } from "@/core/quadrant";
     import type { ExamApp } from "../../app";
@@ -153,7 +154,7 @@
         const { buildReportExplainMessages } = await import("@/ai/reportExplain");
         const { AiTaskRunner } = await import("@/ai/task");
         const endpoint = String(plugin?.settingUtils?.get?.("aiEndpoint") ?? "");
-        const key = String(plugin?.settingUtils?.get?.("aiKey") ?? "");
+        const key = resolveAiKey(plugin);
         const model = String(plugin?.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
         const ch = endpoint && key
           ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
@@ -216,7 +217,7 @@
         const { AiTaskRunner } = await import("@/ai/task");
         const { estimatePlanMinutes, avgMsByType } = await import("@/core/timeBudget");
         const endpoint = String(plugin?.settingUtils?.get?.("aiEndpoint") ?? "");
-        const key = String(plugin?.settingUtils?.get?.("aiKey") ?? "");
+        const key = resolveAiKey(plugin);
         const model = String(plugin?.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
         const ch = endpoint && key
           ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))

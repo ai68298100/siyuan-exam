@@ -42,6 +42,7 @@ import { ttsSpeak } from "@/core/tts";
     import { escapeHtml } from "../../libs/sanitize";
     import { questionFingerprint } from "@/ai/task";
     import { summarizeLoad } from "@/ai/flashCandidates";
+    import { resolveAiKey } from "@/ai/secrets";
     import SaveStatus from "../shared/SaveStatus.svelte";
 
     let { plugin, examApp: app }: { plugin: any; examApp: ExamApp } = $props();
@@ -849,7 +850,7 @@ import { ttsSpeak } from "@/core/tts";
         const { buildMisdiagnosisMessages } = await import("@/ai/misdiagnosis");
         const { AiTaskRunner, questionFingerprint } = await import("@/ai/task");
         const endpoint = String(plugin.settingUtils?.get?.("aiEndpoint") ?? "");
-        const key2 = String(plugin.settingUtils?.get?.("aiKey") ?? "");
+        const key2 = resolveAiKey(plugin);
         const model = String(plugin.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
         const ch = endpoint && key2
           ? new OpenAiChannel({ endpoint, apiKey: key2, model }, (u, i) => fetch(u, i))
@@ -909,7 +910,7 @@ import { ttsSpeak } from "@/core/tts";
         const { buildFlashCandidateMessages, parseFlashCandidates, findCardLeaks } = await import("@/ai/flashCandidates");
         const { AiTaskRunner, questionFingerprint } = await import("@/ai/task");
         const endpoint = String(plugin.settingUtils?.get?.("aiEndpoint") ?? "");
-        const key = String(plugin.settingUtils?.get?.("aiKey") ?? "");
+        const key = resolveAiKey(plugin);
         const model = String(plugin.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
         const ch = endpoint && key
           ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
@@ -1469,7 +1470,7 @@ import { ttsSpeak } from "@/core/tts";
         const { buildExplainMessages } = await import("@/ai/explain");
         const { AiTaskRunner } = await import("@/ai/task");
         const endpoint = String(plugin.settingUtils?.get?.("aiEndpoint") ?? "");
-        const key = String(plugin.settingUtils?.get?.("aiKey") ?? "");
+        const key = resolveAiKey(plugin);
         const model = String(plugin.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
         const ch = endpoint && key
           ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
@@ -1540,7 +1541,7 @@ import { ttsSpeak } from "@/core/tts";
         const { buildHintMessages, findHintLeaks } = await import("@/ai/hint");
         const { AiTaskRunner } = await import("@/ai/task");
         const endpoint = String(plugin.settingUtils?.get?.("aiEndpoint") ?? "");
-        const key = String(plugin.settingUtils?.get?.("aiKey") ?? "");
+        const key = resolveAiKey(plugin);
         const model = String(plugin.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
         const ch = endpoint && key
           ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
@@ -1610,7 +1611,7 @@ import { ttsSpeak } from "@/core/tts";
         const { continueExplainMessages } = await import("@/ai/explain");
         const { AiTaskRunner } = await import("@/ai/task");
         const endpoint = String(plugin.settingUtils?.get?.("aiEndpoint") ?? "");
-        const key = String(plugin.settingUtils?.get?.("aiKey") ?? "");
+        const key = resolveAiKey(plugin);
         const model = String(plugin.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
         const ch = endpoint && key
           ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
@@ -1810,7 +1811,7 @@ import { ttsSpeak } from "@/core/tts";
         const { buildMisdiagnosisMessages } = await import("@/ai/misdiagnosis");
         const { AiTaskRunner, questionFingerprint } = await import("@/ai/task");
         const endpoint = String(plugin.settingUtils?.get?.("aiEndpoint") ?? "");
-        const key = String(plugin.settingUtils?.get?.("aiKey") ?? "");
+        const key = resolveAiKey(plugin);
         const model = String(plugin.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
         const ch = endpoint && key
           ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
@@ -2151,7 +2152,7 @@ import { ttsSpeak } from "@/core/tts";
     let aiCount = $state(5);
     let aiDifficulty = $state<"easy" | "medium" | "hard" | "mixed">("mixed");
     let aiKp = $state("");
-    const aiCustomEndpointSet = $derived(!!String(plugin.settingUtils?.get?.("aiEndpoint") ?? "").trim() && !!String(plugin.settingUtils?.get?.("aiKey") ?? "").trim());
+    const aiCustomEndpointSet = $derived(!!String(plugin.settingUtils?.get?.("aiEndpoint") ?? "").trim() && !!resolveAiKey(plugin));
     let aiBusy = $state(false);
     let aiCancel = $state({ aborted: false });
     let aiQuality = $state<"standard" | "economy">("standard");
@@ -2264,7 +2265,7 @@ import { ttsSpeak } from "@/core/tts";
     async function makeAiChannel() {
       const { SiyuanAiChannel, OpenAiChannel } = await import("@/ai/client");
       const endpoint = String(plugin.settingUtils?.get?.("aiEndpoint") ?? "");
-      const key = String((plugin as any).getSecret?.("lv-exam-ai-key") || plugin.settingUtils?.get?.("aiKey") || "");
+      const key = resolveAiKey(plugin);
       const model = String(plugin.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
       return endpoint && key
         ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
