@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 使用问题与经验交流
+    url: https://github.com/ai68298100/siyuan-exam/discussions
+    about: 适合配置、导入格式、学习流程和使用经验交流；可复现缺陷请使用 Bug 反馈。
+  - name: 文档与当前状态
+    url: https://github.com/ai68298100/siyuan-exam/blob/main/docs/STATUS.md
+    about: 先查看当前已实现、已验证和暂未验证的范围。
+  - name: 私密安全问题
+    url: https://github.com/ai68298100/siyuan-exam/security/advisories/new
+    about: 不要在公开 issue 中提交密钥、个人数据或可利用的安全细节。

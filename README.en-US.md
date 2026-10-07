@@ -9,13 +9,13 @@
 
 [![Release](https://img.shields.io/github/v/release/ai68298100/siyuan-exam?logo=github)](https://github.com/ai68298100/siyuan-exam/releases)
 [![CI](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml/badge.svg)](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml)
-[![Tests](https://img.shields.io/badge/tests-479%20passed-brightgreen)](#-development)
+[![Tests](https://img.shields.io/badge/tests-547%20passed-brightgreen)](#-development)
 [![SiYuan](https://img.shields.io/badge/SiYuan-%3E%3D%203.8.0-blue)](https://github.com/siyuan-note/siyuan)
 [![License](https://img.shields.io/badge/license-MIT-green)](#-license)
 
 <img src="preview.png" alt="Lv Exam preview" width="640"/>
 
-*[中文](README.md) | English*
+*[中文](README.md) | English* · [Current status](docs/STATUS.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
 </div>
 
@@ -70,7 +70,7 @@ The capabilities below have source implementations and automated coverage where 
 1. **Manual**: download `package.zip` from [Releases](https://github.com/ai68298100/siyuan-exam/releases), extract to `<SiYuan workspace>/data/plugins/siyuan-exam/`, restart SiYuan and enable it in Settings.
 2. **Dev**: clone this repo, `pnpm i && pnpm make-link`, reload the plugin in SiYuan.
 
-**30-second tour**: create a bank (= a notebook) → download the official Excel template and fill a few questions → import → hit "Quick drill". Wrong answers flow into the wrongbook automatically; "convert to cards" hands them to FSRS.
+**30-second tour**: create a bank (= a notebook) → download the official Excel template and fill a few questions → import → hit "Quick drill". Wrong answers flow into the wrongbook automatically; "convert to cards" hands them to FSRS. Before using important data, run the host smoke checklist against your target SiYuan version; offline CI does not verify real file pickers, saves, reload recovery or Android WebView behavior.
 
 ## 🔒 Data & privacy
 
@@ -81,7 +81,7 @@ The capabilities below have source implementations and automated coverage where 
 
 ## 🏗️ Engineering quality
 
-- **479 unit tests in 91 files** (grader / import parsers / event replayer / FSRS mapping / AI pipeline / kernel response-shape regression locks; run on 2026-10-05)
+- **547 unit tests in 102 files** (grader / import parsers / event replayer / FSRS mapping / AI pipeline / kernel response-shape regression locks; run on 2026-10-07)
 - **Guard gates**: TypeScript strict → svelte-check (0 warnings) → i18n parity + usage coverage → 42 architecture assertions → style audit → ESLint → Vitest
 - **Live-kernel preflight**: `pnpm preflight` asserts 17 kernel API behaviors against a running SiYuan. The current recorded contract run targets SiYuan 3.8.6; UI journey and mobile evidence remain separate manual checks.
 
@@ -109,7 +109,7 @@ pnpm dev              # watch build + livereload
 pnpm make-link        # symlink into <workspace>/data/plugins/siyuan-exam/
 pnpm check            # typecheck + svelte + i18n + arch checks
 pnpm guard            # full pre-push gate chain
-pnpm test             # vitest (545 tests at v0.8.0)
+pnpm test             # vitest (547 tests in 102 files at v0.8.0)
 pnpm preflight        # live-kernel API preflight (17 checks; needs SiYuan running)
 pnpm build            # dist/ + package.zip
 pnpm make-install     # build and install into a local SiYuan plugin dir

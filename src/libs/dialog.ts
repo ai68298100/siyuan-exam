@@ -8,7 +8,7 @@
  */
 import { Dialog } from "siyuan";
 import { Component, mount, unmount } from "svelte";
-import { escapeHtml } from "./sanitize";
+import { escapeHtml, sanitizeRichHtml } from "./sanitize";
 
 export const inputDialog = (args: {
   title: string;
@@ -96,7 +96,9 @@ export const confirmDialog = (args: IConfirmDialogArgs) => {
 
   const target: HTMLElement = dialog.element.querySelector(".b3-dialog__content>div.ft__breakword");
   if (typeof content === "string") {
-    target.innerHTML = content;
+    // Dialog content can include intentional formatting such as <br>, but it
+    // must still pass the same allowlist as rendered question/AI HTML.
+    target.innerHTML = sanitizeRichHtml(content);
   } else {
     target.appendChild(content);
   }

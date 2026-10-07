@@ -29,6 +29,9 @@
 
   let q = $state("");
   let sel = $state(0);
+  let panelEl: HTMLDivElement | null = $state(null);
+  let returnFocus: HTMLElement | null = null;
+  let wasOpen = false;
   // 实例级 id 后缀（同页多 Tab 各挂一个面板，避免 aria id 冲突）
   const uid = Math.random().toString(36).slice(2, 8);
   let inputEl: HTMLInputElement | null = $state(null);
@@ -42,9 +45,16 @@
 
   $effect(() => {
     if (open) {
+      if (!wasOpen && document.activeElement instanceof HTMLElement) returnFocus = document.activeElement;
+      wasOpen = true;
       q = "";
       sel = 0;
       tick().then(() => inputEl?.focus());
+    } else if (wasOpen) {
+      wasOpen = false;
+      const target = returnFocus;
+      returnFocus = null;
+      tick().then(() => target?.isConnected && target.focus());
     }
   });
 
@@ -66,11 +76,17 @@
       open = false;
       return;
     }
-    if (open && e.key === "Tab") {
-      // 单输入面板：Tab 不逃逸出面板（焦点圈闭，Esc 退出）
-      e.preventDefault();
-    }
     if (!open) return;
+    if (e.key === "Tab" && panelEl) {
+      const focusables = [...panelEl.querySelectorAll<HTMLElement>("input:not([disabled]), button:not([disabled])")];
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (first && last && (e.shiftKey ? document.activeElement === first : document.activeElement === last)) {
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
+      }
+      return;
+    }
     if (e.key === "ArrowDown") {
       e.preventDefault();
       sel = Math.min(sel + 1, shown.length - 1);
@@ -91,7 +107,7 @@
     role="presentation"
     onclick={(e) => { if (e.target === e.currentTarget) open = false; }}
   >
-    <div class="lv-palette" role="dialog" aria-modal="true" aria-label={t("palette.title", "命令面板")}>
+    <div bind:this={panelEl} class="lv-palette" role="dialog" aria-modal="true" aria-label={t("palette.title", "命令面板")}>
       <div class="lv-palette-input">
         <Icon name="search" size={16} />
         <input

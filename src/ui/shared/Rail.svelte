@@ -35,13 +35,66 @@
   let asideEl: HTMLElement | null = null;
   let closeBtn: HTMLButtonElement | null = null;
 
+  // The rail is a desktop sidebar until the responsive breakpoint. Keep the
+  // drawer contract scoped to the narrow layout so a resize while it is open
+  // cannot leave a backdrop or an inert main panel behind.
+  let narrow = $state(false);
+  const drawerOpen = $derived(open && narrow);
+
+  $effect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia("(max-width: 1023px)");
+    const update = () => (narrow = media.matches);
+    update();
+    media.addEventListener?.("change", update);
+    return () => media.removeEventListener?.("change", update);
+  });
+
+  // A modal drawer must remove the shell's background surfaces from both
+  // pointer and accessibility navigation. Restore any pre-existing
+  // attributes on close or when the component is destroyed.
+  $effect(() => {
+    const active = drawerOpen;
+    const shell = asideEl?.parentElement;
+    const root = shell?.parentElement;
+    if (!shell) return;
+    const background: HTMLElement[] = [];
+    const addBackground = (node: HTMLElement) => {
+      if (!background.includes(node)) background.push(node);
+    };
+    for (const node of shell.children) {
+      if (node instanceof HTMLElement && node !== asideEl && !node.classList.contains("lv-nav-backdrop")) addBackground(node);
+    }
+    for (const node of root?.children ?? []) {
+      if (node instanceof HTMLElement && node !== shell) addBackground(node);
+    }
+    if (!background.length) return;
+    const previous = [...background].map((node) => ({
+      node,
+      hadInert: node.hasAttribute("inert"),
+      ariaHidden: node.getAttribute("aria-hidden"),
+    }));
+    if (active) for (const { node } of previous) {
+      node.setAttribute("inert", "");
+      node.setAttribute("aria-hidden", "true");
+    }
+    return () => {
+      for (const { node, hadInert, ariaHidden } of previous) {
+        if (hadInert) node.setAttribute("inert", "");
+        else node.removeAttribute("inert");
+        if (ariaHidden === null) node.removeAttribute("aria-hidden");
+        else node.setAttribute("aria-hidden", ariaHidden);
+      }
+    };
+  });
+
   // 打开时聚焦关闭钮（焦点移入抽屉）
   $effect(() => {
-    if (open) tick().then(() => closeBtn?.focus());
+    if (drawerOpen) tick().then(() => closeBtn?.focus());
   });
 
   function onKeydown(e: KeyboardEvent) {
-    if (!open) return;
+    if (!drawerOpen) return;
     if (e.key === "Escape") {
       e.stopPropagation();
       onclose?.();
@@ -67,7 +120,7 @@
   function nav(item: { onclick: () => void }) {
     item.onclick();
     // 窄屏抽屉内完成导航后自动收回
-    if (open) onclose?.();
+    if (drawerOpen) onclose?.();
   }
 
   function go(target: "practice" | "mock" | "report") {
@@ -85,10 +138,10 @@
 </script>
 
 <svelte:window onkeydown={onKeydown} />
-{#if open}
+{#if drawerOpen}
   <button class="lv-nav-backdrop" aria-label={t("menu.closeNav", "关闭导航")} onclick={() => onclose?.()}></button>
 {/if}
-<aside class="lv-rail" class:open bind:this={asideEl} aria-label="Lv Exam">
+<aside class="lv-rail" class:open={drawerOpen} bind:this={asideEl} role={drawerOpen ? "dialog" : undefined} aria-modal={drawerOpen ? "true" : undefined} aria-label="Lv Exam">
   <div class="lv-brand">
     <span class="lv-brand-mark" aria-hidden="true">驴</span>
     <span class="lv-brand-name">小驴考试<span class="lv-brand-sub">LV EXAM</span></span>
@@ -110,7 +163,7 @@
     <p class="lv-nav-label">{t("rail.workbench", "")}</p>
     <nav class="lv-rail-nav">
       {#each globals as g (g.target)}
-        <button class="lv-rail-btn" class:on={active === g.target} onclick={() => { go(g.target); if (open) onclose?.(); }} aria-current={active === g.target ? "page" : undefined}>
+        <button class="lv-rail-btn" class:on={active === g.target} onclick={() => { go(g.target); if (drawerOpen) onclose?.(); }} aria-current={active === g.target ? "page" : undefined}>
           <Icon name={g.icon} size={16} /> {g.label}
         </button>
       {/each}

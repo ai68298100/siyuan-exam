@@ -169,17 +169,33 @@ async function runSuite() {
 
   // ---------- 流程 40-06：纯键盘作答（A 选择 / → 导航；27 恢复后的卷面） ----------
   try {
-    await page.keyboard.press("b"); // A-J 选择：选 B
-    await page.waitForTimeout(400);
-    const selKey = await page.locator("#app .lv-opt.sel .key").first().textContent();
+    // 恢复后的游标由快照和题库顺序决定，当前题可能是选项题，也可能是填空/简答题。
+    // 只在存在选项时断言字母选择；否则验证文本题控件存在并继续验证箭头导航。
+    const optionCount = await page.locator("#app .lv-question .lv-opt").count();
+    let keyboardNote = "";
+    let keyboardSelectionOk = true;
+    if (optionCount > 0) {
+      const expectedKey = optionCount >= 2 ? "B" : "A";
+      await page.keyboard.press(expectedKey.toLowerCase()); // A-J 选择：使用当前题存在的选项
+      await page.waitForTimeout(400);
+      const selKey = await page.locator("#app .lv-question .lv-opt.sel .key").first().textContent();
+      keyboardSelectionOk = String(selKey).trim() === expectedKey;
+      keyboardNote = `选项题键盘选中=${String(selKey).trim()}`;
+    } else {
+      const answerCount = await page.locator("#app .lv-question .lv-answer-num, #app .lv-question .lv-answer-blank, #app .lv-question textarea.lv-textarea").count();
+      if (!answerCount) throw new Error(`恢复后的当前题没有可作答控件（options=${optionCount}）`);
+      // 让 window keydown 的 target 离开输入框，验证文本题同样支持箭头切题。
+      await page.locator("#app .lv-question").click({ position: { x: 20, y: 20 } });
+      keyboardNote = `文本题控件=${answerCount}`;
+    }
     await page.keyboard.press("ArrowRight"); // → 下一题
     await page.waitForTimeout(500);
     const prog =
       (await page.locator("#app .lv-chip.num").allTextContents()).find((t) => /^\d+\/\d+$/.test(t.trim())) ?? "";
     record(
       "40-06 键盘作答",
-      String(selKey).trim() === "B" && progress(prog) === "2/8",
-      `键盘选中=${String(selKey).trim()} · → 后进度=${progress(prog) || "?"}`,
+      keyboardSelectionOk && progress(prog) === "2/8",
+      `${keyboardNote} · → 后进度=${progress(prog) || "?"}`,
     );
   } catch (e) {
     record("40-06 键盘作答", false, String(e).slice(0, 90));

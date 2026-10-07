@@ -782,7 +782,7 @@
     {#if score.sections.length >= 3}
       <div class="lv-card" style="margin:12px 0">
         <b style="font-size:13px">{t("mock.radar")}</b>
-        <svg viewBox="0 0 220 190" style="width:100%;max-width:300px;margin:0 auto;display:block">
+        <svg viewBox="0 0 220 190" style="width:100%;max-width:300px;margin:0 auto;display:block" role="img" aria-label={t("mock.radar")}>
           <polygon points={radarPoints(score.sections.map(() => 1))} fill="none" stroke="var(--lv-border)" />
           <polygon points={radarPoints(score.sections.map(() => 0.5))} fill="none" stroke="var(--lv-border)" stroke-dasharray="3 3" />
           <polygon points={radarPoints(secAccuracy)} fill="var(--lv-accent-soft)" stroke="var(--lv-accent)" stroke-width="2" />
@@ -807,7 +807,7 @@
         {#if tri}
           <span class="lv-chip num" style="margin-left:auto">本周 {tri.this}% · 上周 {tri.avg ?? "–"}%</span>
         {/if}
-        <svg viewBox="0 0 300 110" style="width:100%;max-width:420px;display:block">
+        <svg viewBox="0 0 300 110" style="width:100%;max-width:420px;display:block" role="img" aria-label={t("mock.history")}>
           <line x1="0" y1={100 - bp.passLine} x2="300" y2={100 - bp.passLine} stroke="var(--lv-green)" stroke-dasharray="4 4" />
           <polyline points={historyPoints()} fill="none" stroke="var(--lv-accent)" stroke-width="2" />
           {#each history as h, i (i)}
