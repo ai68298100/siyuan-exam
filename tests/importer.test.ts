@@ -122,7 +122,38 @@ describe("块模板往返", () => {
     expect(back).not.toBeNull();
     expect(back!.id).toBe(q.id);
     expect(back!.options).toEqual(["甲", "乙"]);
+    expect(back!.analysis).toBe("解析");
     expect(back!.hash).toBe(q.hash);
+  });
+  it("analysis 属性优先于嵌套 row，且多行解析不混入题干", () => {
+    const q = makeQuestion({
+      type: "single",
+      stem: "题干",
+      options: ["甲", "乙"],
+      answer: "A",
+      analysis: "第一行\n第二行",
+    });
+    const md = questionToMarkdown(q);
+    expect(md).toContain('custom-exam-analysis="第一行\\n第二行"');
+    const ial = parseIal(md.split("{: ")[1]!.replace(/}$/, "").trim());
+    const back = questionFromBlock({ attrs: ial, text: md });
+    expect(ial["custom-exam-analysis"]).toBe("第一行\n第二行");
+    expect(back?.stem).toBe("题干");
+    expect(back?.analysis).toBe("第一行\n第二行");
+
+    const attrsWithoutAnalysis = { ...ial };
+    delete attrsWithoutAnalysis["custom-exam-analysis"];
+    const nestedOnly = questionFromBlock({ attrs: attrsWithoutAnalysis, text: md });
+    expect(nestedOnly?.analysis).toBe("第一行\n第二行");
+    const attrPriority = questionFromBlock({ attrs: { ...ial, "custom-exam-analysis": "属性版本" }, text: md });
+    expect(attrPriority?.analysis).toBe("属性版本");
+  });
+  it("题干 blockquote 在没有嵌套 row 时保持题干文本", () => {
+    const q = makeQuestion({ type: "short", stem: "> 引用题干", answer: "答案" });
+    const ial = parseIal(ialOfForTest(q));
+    const back = questionFromBlock({ attrs: ial, text: "> 引用题干" });
+    expect(back?.stem).toBe("> 引用题干");
+    expect(back?.analysis).toBeUndefined();
   });
   it("非法属性缺 exam-id → null", () => {
     expect(questionFromBlock({ attrs: {}, text: "x" })).toBeNull();
@@ -138,3 +169,8 @@ describe("块模板往返", () => {
     expect(parseType("名词解释")).toBeNull();
   });
 });
+
+function ialOfForTest(q: ReturnType<typeof makeQuestion>): string {
+  const md = questionToMarkdown(q);
+  return md.split("{: ")[1]!.replace(/}$/, "").trim();
+}
