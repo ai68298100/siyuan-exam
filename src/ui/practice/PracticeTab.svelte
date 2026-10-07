@@ -3530,7 +3530,7 @@ import { ttsSpeak } from "@/core/tts";
           <div class="lv-card lv-question" class:lv-pure={pureListen}>
             {#if materialContext}
               <div class="lv-analysis lv-rich b3-typography" style="margin-bottom:12px">
-                <b class="lv-mat-chip"><Icon name="paperclip" size={14} /> 共用材料：</b>{@html materialLong && !materialExpanded ? materialShown : (materialHtml || materialShown)}
+                <b class="lv-mat-chip"><Icon name="paperclip" size={14} /> 共用材料：</b>{@html materialLong && !materialExpanded ? escapeHtml(materialShown) : (materialHtml || escapeHtml(materialShown))}
                 {#if materialLong}
                   <button class="lv-chip num" style="margin-left:6px" onclick={() => { materialExpanded = !materialExpanded; if (materialExpanded && !feedback) addExposure(q.id, "material"); }}>
                     {materialExpanded ? t("material.fold") : t("material.expand")}
@@ -4923,7 +4923,7 @@ import { ttsSpeak } from "@/core/tts";
                       {#if sq.kp}<span class="lv-chip">{sq.kp}</span>{/if}
                       <span class="lv-muted num">{t("browse.answer")}: {sq.answer}</span>
                     </div>
-                    <div class="b3-typography" style="font-size:13px">{@html spotHtml[sid] ?? sq.stem}</div>
+                    <div class="b3-typography" style="font-size:13px">{@html spotHtml[sid] || escapeHtml(sq.stem)}</div>
                     {#each sq.options as opt, oi (oi)}
                       <div class="lv-muted">{String.fromCharCode(65 + oi)}. {opt}</div>
                     {/each}
