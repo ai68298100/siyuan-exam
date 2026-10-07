@@ -18,8 +18,8 @@
   }: {
     active: "practice" | "mock" | "report";
     plugin: any;
-    /** Tab 内上下文导航项（如练习台的浏览/导入/录题…） */
-    items?: { icon: string; name: string; on: boolean; onclick: () => void }[];
+    /** Tab 内上下文导航项（如练习台的浏览/错题本/导入/录题…） */
+    items?: { icon: string; name: string; on: boolean; badge?: string; onclick: () => void }[];
     /** 全局项点击的 Tab 内接管（缺省走 plugin.openPractice/openMock/openReport） */
     onnavigate?: (target: "practice" | "mock" | "report") => void;
     /** 窄屏抽屉开合（桌面端常显，不受影响） */
@@ -100,8 +100,10 @@
     <!-- 原型 .project-switch：当前题库上下文卡（surface 底+阴影；点击回入口/练习台） -->
     <button class="lv-project" onclick={() => onproject?.()} title={project.name}>
       <span class="lv-project-kicker">{project.kicker}</span>
-      <span class="lv-project-name">{project.name}</span>
-      <span class="lv-project-go">↗</span>
+      <span class="lv-project-row">
+        <span class="lv-project-name">{project.name}</span>
+        <span class="lv-project-go" aria-hidden="true">↗</span>
+      </span>
     </button>
   {/if}
   <div>
@@ -117,6 +119,7 @@
         {#each items as it (it.name)}
           <button class="lv-rail-btn lv-rail-btn--sub" class:on={it.on} onclick={() => nav(it)} aria-current={it.on ? "page" : undefined}>
             <Icon name={it.icon} size={16} /> {it.name}
+            {#if it.badge}<span class="lv-rail-badge">{it.badge}</span>{/if}
           </button>
         {/each}
       {/if}
@@ -142,15 +145,15 @@
     padding: 0 8px;
   }
   .lv-brand-mark {
-    width: 34px;
-    height: 34px;
-    border-radius: 10px;
+    width: 37px;
+    height: 40px;
+    border-radius: 12px;
     display: grid;
     place-items: center;
     background: var(--lv-accent);
     color: var(--b3-theme-on-primary, #fff);
     font-family: Georgia, "Songti SC", serif;
-    font-size: 19px;
+    font-size: 22px;
     box-shadow: var(--lv-btn-primary-shadow);
     flex-shrink: 0;
   }
@@ -198,16 +201,25 @@
     margin-bottom: 4px;
   }
   .lv-project-name {
-    display: block;
+    flex: 1;
+    min-width: 0;
     font-size: 13.5px;
     font-weight: 600;
     line-height: 1.5;
     color: var(--lv-text);
-    overflow-wrap: anywhere;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* 原型 project-switch：↗ 与名称同行收尾（不孤行） */
+  .lv-project-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
   }
   .lv-project-go {
-    display: block;
-    margin-top: 4px;
+    flex-shrink: 0;
     font-size: 11px;
     color: var(--lv-text-3);
   }
@@ -226,13 +238,13 @@
     gap: 10px;
     width: 100%;
     text-align: left;
-    padding: 10px 12px;
+    padding: 8px 12px;
     border: 1px solid transparent;
-    border-radius: var(--lv-r-2);
+    border-radius: 9px;
     background: transparent;
     color: var(--lv-text-2);
     font-size: 13px;
-    min-height: 40px;
+    min-height: 38px;
     cursor: pointer;
     transition:
       background-color var(--lv-dur-micro) ease,
@@ -261,6 +273,16 @@
   }
   .lv-rail-btn--sub {
     color: var(--lv-text-2);
+  }
+  /* 组级徽标（规范 v6：错题在册数等计数；tabular） */
+  .lv-rail-badge {
+    margin-left: auto;
+    font-size: 11px;
+    background: var(--lv-accent-soft);
+    color: var(--lv-accent);
+    border-radius: 6px;
+    padding: 0 7px;
+    font-variant-numeric: tabular-nums;
   }
   .lv-rail-divider {
     height: 1px;
