@@ -69,5 +69,13 @@ export function sanitizeRichHtml(html: string): string {
     const src = image.getAttribute("src")?.trim() ?? "";
     if (/^(?:https?:|\/\/|\\\\)/i.test(src)) image.removeAttribute("src");
   }
+  // CSS 的 url()/expression()/behavior 等能触发远程请求或协议注入；反斜杠、
+  // 注释和 var() 还可隐藏这些 token。保留普通 KaTeX 样式，风险 token 命中就
+  // 移除整段 style，避免用不完整 CSS 解析器做错误放行。
+  for (const element of Array.from(doc.querySelectorAll("[style]"))) {
+    if (/(?:url\s*\(|expression\s*\(|behavior\s*:|-moz-binding\s*:|var\s*\(|\/\*|\\)/i.test(element.getAttribute("style") ?? "")) {
+      element.removeAttribute("style");
+    }
+  }
   return doc.body.innerHTML;
 }
