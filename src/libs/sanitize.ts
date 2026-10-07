@@ -51,7 +51,7 @@ export function sanitizeRichHtml(html: string): string {
   // fail-closed：净化器不可用（无 DOMParser 的异常环境）时退化为纯文本，绝不放行未净化 HTML。
   // happy-dom 实测：DOMPurify.isSupported=false 时 sanitize 会原样返回脏输入，必须显式拦截。
   if (!DOMPurify.isSupported) return escapeHtml(html ?? "");
-  return DOMPurify.sanitize(html ?? "", {
+  const sanitized = DOMPurify.sanitize(html ?? "", {
     ALLOWED_TAGS: RICH_ALLOWED_TAGS,
     ALLOWED_ATTR: RICH_ALLOWED_ATTR,
     ALLOW_DATA_ATTR: false,
@@ -59,4 +59,15 @@ export function sanitizeRichHtml(html: string): string {
     // 收紧协议：http(s)、mailto、锚点与相对路径；拒绝 javascript:/vbscript:/file: 等
     ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
   });
+  // 73-02：题文中的远程图片不能在用户打开题目时静默外发请求。
+  // 保留相对路径、# 锚点和 data 等本地或已内嵌资源；blob 等其他协议仍由
+  // DOMPurify 的 URI 策略处理。外链仍可作为 <a>
+  // 由用户显式打开，且不改变其他富文本标签的渲染策略。
+  if (typeof DOMParser === "undefined") return sanitized;
+  const doc = new DOMParser().parseFromString(sanitized, "text/html");
+  for (const image of Array.from(doc.querySelectorAll("img[src]"))) {
+    const src = image.getAttribute("src")?.trim() ?? "";
+    if (/^(?:https?:|\/\/|\\\\)/i.test(src)) image.removeAttribute("src");
+  }
+  return doc.body.innerHTML;
 }
