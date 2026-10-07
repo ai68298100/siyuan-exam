@@ -18,6 +18,7 @@ import { ttsSpeak } from "@/core/tts";
     import { helpFromExposure } from "../../core/exposure";
     import { abandonedExposureInputs } from "../../core/exposure";
     import { randomSeedId } from "../../core/random";
+    import { ELIMINATE_STREAK, localDate, streak, wrongReasonMix } from "../../core/replayer";
     import { recentlySeen } from "../../core/exposure";
     import { validate } from "../../importer/pipeline";
     import { bankHealthReport, coverageStats, answerDistribution, unreviewedStats, type BankHealthReport } from "../../core/bankHealth";
@@ -34,6 +35,8 @@ import { ttsSpeak } from "@/core/tts";
     import { probeGlean, listLaterClips, formatClipsForSource, markClipDone, type GleanClip } from "@/core/gleanBridge";
     import { onExamEvent, emitExamEvent } from "@/core/bus";
     import Icon from "../shared/Icon.svelte";
+    import Palette from "../shared/Palette.svelte";
+    import type { PaletteCommand } from "../shared/Palette.svelte";
     import { SvelteMap, SvelteSet } from "svelte/reactivity";
     import Rail from "../shared/Rail.svelte";
     import { escapeHtml } from "../../libs/sanitize";
@@ -45,7 +48,7 @@ import { ttsSpeak } from "@/core/tts";
     const i18n = $derived(plugin?.i18n ?? {});
     const t = (k: string, fb = "") => i18n[k] ?? fb;
 
-    type View = "entry" | "session" | "browse" | "import" | "recite" | "manual" | "ai" | "materials";
+    type View = "entry" | "session" | "browse" | "import" | "recite" | "manual" | "ai" | "materials" | "wrongbook";
     let view: View = $state("entry");
     let loading = $state(true);
     let errorMsg = $state("");
@@ -689,10 +692,17 @@ import { ttsSpeak } from "@/core/tts";
         void focusInBrowse(env.payload.qid, false, env.payload.bank);
       const onEditQ = (env: import("@/core/bus").BusEvent<{ qid: string; bank?: string }>) =>
         void focusInBrowse(env.payload.qid, true, env.payload.bank);
+      // 稳定入口深链（window.siyuanExam.wrongbook → 错题本视图；新开与已开 Tab 同路径）
+      const onOpenView = (env: import("@/core/bus").BusEvent<{ view: string }>) => {
+        if (env.payload.view !== "wrongbook") return;
+        view = "wrongbook";
+        void loadQuestions();
+      };
       const offs = [
         onExamEvent("open-question", onOpenQ),
         onExamEvent("open-in-browse", onBrowseQ),
         onExamEvent("edit-question", onEditQ),
+        onExamEvent("open-view", onOpenView),
       ];
       onMountCleanup = () => offs.forEach((off) => off());
       // Dock 信号优先：按 qid 直达单题
@@ -876,7 +886,7 @@ import { ttsSpeak } from "@/core/tts";
             evidence: { myAnswer: e.myAnswer ?? null, confidence: e.confidence, timeMs: e.timeMs, helped: !!e.help },
           }).catch(() => { /* 持久化失败不阻断展示 */ });
         } else {
-          showMessage(`⚠ ${env.summary}${env.error ? "：" + env.error : ""}`, 3600, "error");
+          showMessage(`${env.summary}${env.error ? "：" + env.error : ""}`, 3600, "error");
         }
       } catch (err) {
         showMessage(String(err instanceof Error ? err.message : err), 3600, "error");
@@ -928,7 +938,7 @@ import { ttsSpeak } from "@/core/tts";
           }
           flashCandidates = { ...flashCandidates, [q.id]: parsed };
         } else {
-          flashError = { ...flashError, [q.id]: `⚠ ${env.summary}${env.error ? "：" + env.error : ""}` };
+          flashError = { ...flashError, [q.id]: `${env.summary}${env.error ? "：" + env.error : ""}` };
         }
       } catch (e) {
         flashError = { ...flashError, [q.id]: String(e instanceof Error ? e.message : e) };
@@ -995,11 +1005,59 @@ import { ttsSpeak } from "@/core/tts";
     function closeRail() { railOpen = false; menuBtn?.focus(); }
     const railItems = $derived([
       { icon: "table", name: t("mode.browse"), on: at("browse"), onclick: () => { view = "browse"; void loadQuestions(); } },
+      { icon: "xcircle", name: t("wrongbook.title"), on: at("wrongbook"), badge: app.wrongItems().length ? String(app.wrongItems().length) : undefined, onclick: () => { view = "wrongbook"; void loadQuestions(); } },
       { icon: "import", name: t("import.title"), on: at("import"), onclick: () => view = "import" },
       { icon: "pencil", name: t("entry.manual"), on: at("manual"), onclick: () => view = "manual" },
       { icon: "sparkles", name: t("ai.title"), on: at("ai"), onclick: () => view = "ai" },
       { icon: "book", name: t("materials.title"), on: at("materials"), onclick: () => { view = "materials"; loadMaterials(); } },
     ]);
+
+    // ---------- 驾驶舱 widgets（规范 v6 §5.3）：目标环 / 连胜 / 待消灭错题 ----------
+    const todayDone = $derived.by(() => {
+      try {
+        return app.derived().days.get(localDate(Date.now()))?.attempts ?? 0;
+      } catch { return 0; }
+    });
+    const dailyGoalN = $derived(Math.max(1, Number(plugin.settingUtils?.get?.("dailyGoal") ?? 10) || 10));
+    const goalPct = $derived(Math.min(100, Math.round((todayDone / dailyGoalN) * 100)));
+    const streakDays = $derived.by(() => {
+      try { return streak(app.derived()); } catch { return 0; }
+    });
+    const wrongList = $derived(app.wrongItems());
+    /** 错因计数：口径在 core/wrongReasonMix（reasons map 优先 → 遗留字段 → 未标注桶） */
+    const reasonMap = $derived.by(() => {
+      try { return app.wrongReasonMap?.() ?? new Map(); } catch { return new Map(); }
+    });
+    const reasonCounts = $derived(wrongReasonMix(wrongList, reasonMap));
+    const reasonOf = (qid: string) => reasonMap.get(qid) ?? wrongList.find((w) => w.qid === qid)?.reason;
+    /** 消灭口径：eliminated/(eliminated+在册)；处置覆盖层不影响分母方向 */
+    const eliminatedCount = $derived.by(() => {
+      try { return [...app.derived().wrongbook.values()].filter((w) => w.status === "eliminated").length; } catch { return 0; }
+    });
+    const clearPct = $derived(
+      eliminatedCount + wrongList.length ? Math.round((eliminatedCount / (eliminatedCount + wrongList.length)) * 100) : 0,
+    );
+    /** 错题队列：错次降序 → 最近错误降序（紧迫度序） */
+    const wrongQueue = $derived(
+      [...wrongList].sort((a, b) => b.wrongCount - a.wrongCount || b.lastWrongAt - a.lastWrongAt),
+    );
+
+    let paletteOpen = $state(false);
+    const paletteCommands: PaletteCommand[] = [
+      { group: t("palette.views"), icon: "home", label: t("tab.practice"), keywords: "home entry today", run: () => { view = "entry"; } },
+      { group: t("palette.views"), icon: "xcircle", label: t("wrongbook.title"), keywords: "wrongbook wrong", run: () => { view = "wrongbook"; void loadQuestions(); } },
+      { group: t("palette.views"), icon: "table", label: t("mode.browse"), keywords: "browse bank list", run: () => { view = "browse"; void loadQuestions(); } },
+      { group: t("palette.views"), icon: "import", label: t("import.title"), keywords: "import excel csv aiken gift", run: () => { view = "import"; } },
+      { group: t("palette.views"), icon: "pencil", label: t("entry.manual"), keywords: "manual add", run: () => { view = "manual"; } },
+      { group: t("palette.views"), icon: "sparkles", label: t("ai.title"), keywords: "ai generate", run: () => { view = "ai"; } },
+      { group: t("palette.views"), icon: "book", label: t("materials.title"), keywords: "materials pdf", run: () => { view = "materials"; loadMaterials(); } },
+      { group: t("palette.actions"), icon: "zap", label: t("mode.quick"), keywords: "quick drill practice", run: () => void startDrill("quick") },
+      { group: t("palette.actions"), icon: "calendar", label: t("mode.daily"), keywords: "daily", run: () => void startDrill("daily") },
+      { group: t("palette.actions"), icon: "rotate", label: t("mode.recite"), keywords: "recite cover tts", run: () => void startRecite() },
+      { group: t("palette.tabs"), icon: "clock", label: t("tab.mock"), keywords: "mock exam", run: () => plugin.openMock?.() },
+      { group: t("palette.tabs"), icon: "chart", label: t("tab.report"), keywords: "report stats", run: () => plugin.openReport?.() },
+    ];
+
     function onRailNav(target: "practice" | "mock" | "report") {
       if (target === "practice") view = "entry";
       else if (target === "mock") plugin.openMock?.();
@@ -1078,6 +1136,23 @@ import { ttsSpeak } from "@/core/tts";
         feedback = null; selected = ""; confidenceSel = ""; sessionDone = null;
         view = "session";
       });
+    }
+
+    /** 错题本行级重练：单题会话（与 open-question 总线同路径，mode=wrong） */
+    async function startWrongFor(qid: string) {
+      errorMsg = "";
+      const all = questions.length ? questions : await loadQuestions();
+      const q = all.find((x) => x.id === qid);
+      if (!q) { showMessage(t("query.empty"), 3200, "info"); return; }
+      await safeStart(groupAdjacent([q]), "wrong", () => {
+        feedback = null; selected = ""; confidenceSel = ""; sessionDone = null;
+        view = "session";
+      });
+    }
+
+    /** 错题手动处置（已掌握）：与浏览详情同 API；处置后更新错误自动清覆盖 */
+    async function masterWrong(qid: string) {
+      try { await app.setWrongStatus(qid, "mastered"); showMessage(t("wrongbook.masteredDone"), 2400, "info"); } catch { /* 尽力而为 */ }
     }
 
     // ---------- 收藏（exam-fav；E 键 + 星标 + 过滤） ----------
@@ -1183,9 +1258,11 @@ import { ttsSpeak } from "@/core/tts";
         openTab({ app: (plugin as any).app ?? plugin, doc: { id: q.rootId, zoomIn: q.blockId } } as any);
       });
     }
-    function startRecite() { void 0; // 背诵朗读按钮在视图内直接调用 ttsSpeak
-      const qs = app.wrongDrill(questions.length ? questions : []);
-      const pool = qs.length ? qs : questions;
+    async function startRecite() { void 0; // 背诵朗读按钮在视图内直接调用 ttsSpeak
+      // 首次进入时 questions 可能尚未加载（模式卡直达）——与 startDrill 同路径先拉取
+      const all = questions.length ? questions : await loadQuestions();
+      const qs = app.wrongDrill(all);
+      const pool = qs.length ? qs : all;
       if (!pool.length) { errorMsg = t("state.emptyBank"); return; }
       // 背诵组大小可配（TODO 13 组）：设置 reciteGroupSize，夹在 5–50
       const size = Math.max(5, Math.min(50, Number(plugin.settingUtils?.get?.("reciteGroupSize") ?? 15) || 15));
@@ -1374,7 +1451,7 @@ import { ttsSpeak } from "@/core/tts";
     async function explainCurrent(mode: "explain" | "hint" | "socratic" = "explain") {
       const q = session?.current;
       if (!q || explainBusy || !feedback) return;
-      if (!app.kernelOnline) { explainText = `⚠ ${t("state.offlineHint")}`; return; }   // 离线早退（兜底）
+      if (!app.kernelOnline) { explainText = t("state.offlineHint"); return; }   // 离线早退（兜底）
       explainBusy = true; explainText = ""; explainQid = q.id;
       // G1 任务身份：模板+题面指纹+作答快照+提交状态（ai/task.ts 信封契约）
       const reqCtx: import("@/ai/task").AiTaskContext = {
@@ -1408,7 +1485,7 @@ import { ttsSpeak } from "@/core/tts";
           helpShown.set(q.id, mode); // 114-01：受助标记——同题再答（重排队）时随 attempt 落 help 字段
         } else {
           // 有类型失败（G6 闸门/预算/通道错误）：显示信封摘要，不裸抛异常栈
-          explainText = `⚠ ${env.summary}${env.error ? "：" + env.error : ""}`;
+          explainText = `${env.summary}${env.error ? "：" + env.error : ""}`;
         }
         // G2：响应期间切题时，explainQid 门控使旧讲解不占当前题展示；历史已按 q.id 留草稿
       } catch (e) {
@@ -1437,12 +1514,12 @@ import { ttsSpeak } from "@/core/tts";
       const q = session?.current;
       if (!q || explainBusy) return;
       explainQid = q.id; leakPending = null;
-      if (!app.kernelOnline) { explainText = `⚠ ${t("state.offlineHint")}`; return; }
+      if (!app.kernelOnline) { explainText = t("state.offlineHint"); return; }
       const shown = hintLevels.get(q.id) ?? 0;
       const step = nextHintStepSync(shown, q.options.length);
       if (step.kind === "reveal") {
         // G6 正式揭示：不冒充提示——提交作答由判定揭示答案，帮助事件随 attempt 如实落
-        explainText = `🔒 ${t("explain.hintReveal")}`;
+        explainText = t("explain.hintReveal");
         return;
       }
       explainBusy = true; explainText = "";
@@ -1485,12 +1562,12 @@ import { ttsSpeak } from "@/core/tts";
           hintTexts.set(q.id, [...shownTexts, env.data.text]);
           explainText = hintTexts
             .get(q.id)!
-            .map((s, i) => `💡 ${t("explain.hintLayer").replace("{n}", String(i + 1))}：${s}`)
+            .map((s, i) => `${t("explain.hintLayer").replace("{n}", String(i + 1))}：${s}`)
             .join("\n");
           helpShown.set(q.id, "hint"); // 受助标记：本题后续作答（含本次提交）随 attempt 落 help
           void app.recordAiUsage(ch.id, env.tokens, 1);
         } else {
-          explainText = `⚠ ${env.summary}${env.error ? "：" + env.error : ""}`;
+          explainText = `${env.summary}${env.error ? "：" + env.error : ""}`;
         }
       } catch (e) {
         explainText = String(e instanceof Error ? e.message : e);
@@ -1505,7 +1582,7 @@ import { ttsSpeak } from "@/core/tts";
       hintTexts.set(q.id, [...(hintTexts.get(q.id) ?? []), leakPending.text]);
       explainText = hintTexts
         .get(q.id)!
-        .map((s, i) => `💡 ${t("explain.hintLayer").replace("{n}", String(i + 1))}：${s}`)
+        .map((s, i) => `${t("explain.hintLayer").replace("{n}", String(i + 1))}：${s}`)
         .join("\n");
       helpShown.set(q.id, "reveal");
       leakPending = null;
@@ -1549,7 +1626,7 @@ import { ttsSpeak } from "@/core/tts";
           explainFollowUp = "";
           void app.recordAiUsage(ch.id, env.tokens, 1);
         } else {
-          explainText = (explainText ? explainText + "\n\n" : "") + `⚠ ${env.summary}${env.error ? "：" + env.error : ""}`;
+          explainText = (explainText ? explainText + "\n\n" : "") + `${env.summary}${env.error ? "：" + env.error : ""}`;
         }
       } catch (e) {
         explainText = String(e instanceof Error ? e.message : e);
@@ -1771,7 +1848,7 @@ import { ttsSpeak } from "@/core/tts";
             evidence: { myAnswer: a.grade.myAnswer ?? null, confidence: meta.confidence, timeMs: a.timeMs, helped: meta.helped },
           }).catch(() => { /* 持久化失败不阻断展示 */ });
         } else {
-          showMessage(`⚠ ${env.summary}${env.error ? "：" + env.error : ""}`, 3600, "error");
+          showMessage(`${env.summary}${env.error ? "：" + env.error : ""}`, 3600, "error");
         }
       } catch (e) {
         showMessage(String(e instanceof Error ? e.message : e), 3600, "error");
@@ -3059,6 +3136,9 @@ import { ttsSpeak } from "@/core/tts";
     </div>
     <SaveStatus gate={app.saves} {t} />
     <span class="fn__flex-1"></span>
+    <button class="lv-btn lv-btn--ghost sm lv-palette-btn" onclick={() => paletteOpen = true} title="Ctrl / ⌘ K">
+      <Icon name="search" size={13} /> <span class="lv-palette-label">{t("palette.open")}</span> <span class="lv-kbd">⌘K</span>
+    </button>
     {#if offline}<span class="lv-chip lv-chip--amb">{t("state.offline")}</span>{/if}
     {#if plan}
       {#if plan.mode === "sprint"}<span class="lv-chip lv-chip--red num"><Icon name="flame" size={12} /> {t("entry.sprint")} D-{plan.daysToExam}</span>
@@ -3066,7 +3146,7 @@ import { ttsSpeak } from "@/core/tts";
       {#if examProfileList.filter((p) => p.days != null && p.days >= 0).length > 1}
         <!-- 53-02 lite：多考期并存展示（计划锚定最近，其余一目了然） -->
         {#each examProfileList.filter((p) => p.days != null && p.days >= 0) as p, _pi (_pi)}
-          <span class="lv-chip num" title={t("entry.profileTip")}>📌 {p.name} D-{p.days}</span>
+          <span class="lv-chip num" title={t("entry.profileTip")}><Icon name="pin" size={12} /> {p.name} D-{p.days}</span>
         {/each}
       {/if}
       {#if planTrace && planTrace.absentStreak >= 2}
@@ -3095,7 +3175,22 @@ import { ttsSpeak } from "@/core/tts";
   {#if loading}
     <div class="lv-pad"><div class="lv-skeleton"></div></div>
   {:else if errorMsg && view !== "session"}
-    <div class="lv-pad"><div class="lv-error">{errorMsg}</div></div>
+    <!-- 空题库走居中空态（原型 .empty），其余错误保留语义横幅 -->
+    <div class="lv-pad">
+      {#if errorMsg === t("state.emptyBank")}
+        <div class="lv-empty">
+          <div class="lv-empty-icon"><Icon name="file" size={30} /></div>
+          <b>{t("state.emptyBank")}</b>
+          <div class="lv-row" style="justify-content:center;margin-top:18px">
+            <button class="lv-btn lv-btn--primary" onclick={() => { errorMsg = ""; view = "import"; }}><Icon name="import" size={15} /> {t("import.title")}</button>
+            <button class="lv-btn" onclick={() => { errorMsg = ""; view = "manual"; }}><Icon name="pencil" size={15} /> {t("entry.manual")}</button>
+            <button class="lv-btn lv-btn--ghost" onclick={() => { errorMsg = ""; view = "ai"; }}><Icon name="sparkles" size={15} /> {t("ai.title")}</button>
+          </div>
+        </div>
+      {:else}
+        <div class="lv-error">{errorMsg}</div>
+      {/if}
+    </div>
   {:else if view === "entry"}
     <!-- ===== S1 入口 / 守卫 ===== -->
     {#if !hasBank}
@@ -3111,7 +3206,7 @@ import { ttsSpeak } from "@/core/tts";
             </button>
           </div>
           <!-- 25-P1 首用三路入口：示例题建库即练 / 模板先行 / 直接导入 -->
-          <p class="lv-hint">🧭 {t("guard.sampleHint")}</p>
+          <p class="lv-hint"><Icon name="compass" size={13} /> {t("guard.sampleHint")}</p>
           <div class="lv-row lv-center-text"><span class="lv-muted">{t("guard.or")}</span></div>
           <div class="lv-row">
             <button class="lv-btn" style="flex:1" onclick={downloadTemplate}><Icon name="import" size={15} /> {t("import.template")}</button>
@@ -3147,10 +3242,29 @@ import { ttsSpeak } from "@/core/tts";
       {#if onboarding}
         <!-- 47-02 lite：首次五分钟任务引导（无作答记录时显示；可跳过，有作答自动消失） -->
         <div class="lv-pad">
-          <div class="lv-card lv-resume">
+          <div class="lv-card lv-resume lv-onboard">
             <div>
-              <b>🧭 {t("onboard.title")}</b>
+              <b class="lv-onboard-title"><Icon name="compass" size={16} /> {t("onboard.title")}</b>
               <div class="lv-muted">{t("onboard.desc")}</div>
+              <div class="lv-onboard-steps">
+                <div class="lv-onboard-step"><span class="lv-onboard-no num">01</span><span class="lv-tile-icon"><Icon name="import" size={17} /></span><b>{t("onboard.step1")}</b>
+                  <div class="lv-row" style="gap:6px;margin:8px 0 0">
+                    <button class="lv-btn sm" onclick={() => { view = "import"; }}>{t("onboard.step1")}</button>
+                    <button class="lv-btn sm" onclick={() => { view = "manual"; }}>{t("onboard.step1b")}</button>
+                    <button class="lv-btn sm" onclick={() => { view = "ai"; }}>{t("onboard.step1c")}</button>
+                  </div>
+                </div>
+                <div class="lv-onboard-step"><span class="lv-onboard-no num">02</span><span class="lv-tile-icon"><Icon name="zap" size={17} /></span><b>{t("onboard.step2")}</b>
+                  <div class="lv-row" style="gap:6px;margin:8px 0 0">
+                    <button class="lv-btn sm lv-btn--primary" onclick={() => void startDrill("quick")}>{t("onboard.step2")}</button>
+                  </div>
+                </div>
+                <div class="lv-onboard-step"><span class="lv-onboard-no num">03</span><span class="lv-tile-icon"><Icon name="chart" size={17} /></span><b>{t("onboard.step3")}</b>
+                  <div class="lv-row" style="gap:6px;margin:8px 0 0">
+                    <button class="lv-btn sm" onclick={() => plugin.openReport?.()}>{t("onboard.step3")}</button>
+                  </div>
+                </div>
+              </div>
             </div>
             <div class="lv-row" style="margin:6px 0 0">
               <button class="lv-btn sm" onclick={() => { view = "import"; }}>① {t("onboard.step1")}</button>
@@ -3180,17 +3294,50 @@ import { ttsSpeak } from "@/core/tts";
                   <Icon name="hourglass" size={13} /> ~{planTime.minutes} {t("entry.minutes")}（{planTime.low}-{planTime.high}）
                 </span>
               {/if}
-              <!-- 原型：主操作在 hero 卡内部，与上下文成组 -->
+              <!-- 原型：主操作在 hero 卡内部，与上下文成组；空队列禁用防无效点击 -->
               <div class="lv-hero-actions">
-                <button class="lv-btn lv-btn--primary" onclick={startToday}><Icon name="play" size={16} /> {t("entry.startToday")}</button>
+                <button class="lv-btn lv-btn--primary" onclick={startToday} disabled={!plan.queue.length} title={plan.queue.length ? "" : t("state.emptyBank")}><Icon name="play" size={16} /> {t("entry.startToday")}</button>
               </div>
             </div>
             <div class="lv-entry-num">
-              <div class="num lv-entry-count">{plan.queue.length}</div>
-              <div class="lv-muted lv-entry-unit">{t("browse.count")}</div>
+              <div class="lv-entry-countwrap">
+                <span class="num lv-entry-count">{plan.queue.length}</span>
+                <span class="lv-entry-unit">{t("browse.count")}</span>
+              </div>
+              <div class="lv-entry-label">{t("entry.queueLabel")}</div>
             </div>
           </div>
         {/if}
+        <!-- 驾驶舱 widgets（规范 v6 §5.3）：目标环 / 连胜 / 待消灭；数据全部来自本地流水 -->
+        <div class="lv-widgets">
+          <div class="lv-card lv-widget">
+            <span class="lv-goal-wrap" role="img" aria-label={t("widget.goal.aria").replace("{p}", String(goalPct))}>
+              <span class="lv-goal-ring" class:data-tone={goalPct >= 100 ? "good" : undefined} style="--pct:{goalPct}"></span>
+              <span class="lv-goal-center num">{goalPct}%</span>
+            </span>
+            <div class="lv-widget-body">
+              <div class="lv-widget-title">{t("widget.goal")}</div>
+              <strong class="num">{todayDone} / {dailyGoalN} {t("browse.count")}</strong>
+              <span class="lv-muted">{goalPct >= 100 ? t("widget.goal.done") : t("widget.goal.left").replace("{n}", String(Math.max(0, dailyGoalN - todayDone)))}</span>
+            </div>
+          </div>
+          <div class="lv-card lv-widget">
+            <span class="lv-streak-flame"><Icon name="flame" size={22} /></span>
+            <div class="lv-widget-body">
+              <div class="lv-widget-title">{t("widget.streak")}</div>
+              <strong class="num">{streakDays} {t("entry.days")}</strong>
+              <span class="lv-muted">{t("widget.streak.note")}</span>
+            </div>
+          </div>
+          <button class="lv-card lv-widget lv-widget--click" style="text-align:left;font:inherit;color:inherit" onclick={() => { view = "wrongbook"; void loadQuestions(); }}>
+            <span class="lv-streak-flame lv-streak-flame--wrong"><Icon name="xcircle" size={22} /></span>
+            <div class="lv-widget-body">
+              <div class="lv-widget-title">{t("widget.wrong")}</div>
+              <strong class="num">{wrongList.length} {t("mode.wrong.unit")}</strong>
+              <span class="lv-muted">{t("widget.wrong.note")}</span>
+            </div>
+          </button>
+        </div>
         <div class="lv-section-title"><span>{t("entry.modes")}</span></div>
         <div class="lv-modes">
           <button class="lv-mode" onclick={() => startDrill("single")}>
@@ -3217,10 +3364,10 @@ import { ttsSpeak } from "@/core/tts";
         </div>
         <div class="lv-section-title" style="margin-top:22px"><span>{t("entry.tools")}</span></div>
         <div class="lv-row" style="margin-top:0">
-          <button class="lv-btn lv-btn--ghost acc-btn" onclick={() => view = "import"}><Icon name="import" size={16} /> {t("import.title")}</button>
-          <button class="lv-btn lv-btn--ghost acc-btn" onclick={() => view = "ai"}><Icon name="sparkles" size={16} /> {t("ai.title")}</button>
-          <button class="lv-btn lv-btn--ghost acc-btn" onclick={() => view = "manual"}><Icon name="pencil" size={16} /> {t("entry.manual")}</button>
-          <button class="lv-btn lv-btn--ghost acc-btn" onclick={() => { view = "materials"; loadMaterials(); }}><Icon name="book" size={16} /> {t("materials.title")}</button>
+          <button class="lv-btn lv-btn--ghost" onclick={() => view = "import"}><Icon name="import" size={16} /> {t("import.title")}</button>
+          <button class="lv-btn lv-btn--ghost" onclick={() => view = "ai"}><Icon name="sparkles" size={16} /> {t("ai.title")}</button>
+          <button class="lv-btn lv-btn--ghost" onclick={() => view = "manual"}><Icon name="pencil" size={16} /> {t("entry.manual")}</button>
+          <button class="lv-btn lv-btn--ghost" onclick={() => { view = "materials"; loadMaterials(); }}><Icon name="book" size={16} /> {t("materials.title")}</button>
           <button class="lv-btn" onclick={copyChallengeCode}><Icon name="target" size={16} /> {t("challenge.copy")}</button>
           <button class="lv-btn" onclick={importChallengeCode}><Icon name="import" size={16} /> {t("challenge.import")}</button>
           <details class="lv-export-fold">
@@ -3248,7 +3395,7 @@ import { ttsSpeak } from "@/core/tts";
               </div>
               <button class="lv-btn sm lv-btn--primary" onclick={exportWrong}><Icon name="export" size={14} /> {t("export.run")}</button>
               <div class="lv-row" style="margin:6px 0 0">
-                <button class="lv-btn sm" disabled={offline} onclick={exportBank}>📦 {t("share.export")}</button>
+                <button class="lv-btn sm" disabled={offline} onclick={exportBank}><Icon name="export" size={14} /> {t("share.export")}</button>
                 <label class="lv-btn sm" class:disabled={offline} style={offline ? "opacity:.5;pointer-events:none" : ""}><Icon name="import" size={14} /> {t("share.import")}<input type="file" accept=".sy.zip,.zip" style="display:none" onchange={importBank} /></label>
                 <span class="lv-muted">{t("share.desktopOnly")}</span>
               </div>
@@ -3262,8 +3409,12 @@ import { ttsSpeak } from "@/core/tts";
     {#if sessionDone}
       <div class="lv-pad lv-center">
         <div class="lv-card lv-guard">
-          <div class="lv-guard-title">🏁 {t("session.done")}</div>
-          <p class="num">{t("session.total")} {sessionDone.total} · <span class="lv-green">{t("session.correct")} {sessionDone.correct}</span> · <span class="lv-red">{t("session.wrong")} {sessionDone.wrong}</span></p>
+          <div class="lv-guard-title"><Icon name="trophy" size={18} /> {t("session.done")}</div>
+          <div class="lv-done-stats num">
+            <div><strong>{sessionDone.total}</strong><span>{t("session.total")}</span></div>
+            <div class="good"><strong>{sessionDone.correct}</strong><span>{t("session.correct")}</span></div>
+            <div class="bad"><strong>{sessionDone.wrong}</strong><span>{t("session.wrong")}</span></div>
+          </div>
           {#if checkinStatus && checkinStatus !== "disabled" && checkinStatus !== "below-threshold" && checkinStatus !== "no-api"}
             <!-- 48-03 lite：打卡桥状态（未配置/未达标/打卡未装时安静不显） -->
             <p class="lv-muted" style="margin:2px 0" role="status">
@@ -3289,10 +3440,10 @@ import { ttsSpeak } from "@/core/tts";
             </div>
           {/if}
           {#if sessionDone.wrong > 0}
-            <button class="lv-btn" style="width:100%" onclick={sameKpSession}>🔁 {t("memory.sameKp")}</button>
+            <button class="lv-btn" style="width:100%" onclick={sameKpSession}><Icon name="rotate" size={16} /> {t("memory.sameKp")}</button>
             <button class="lv-btn" style="width:100%;margin-top:6px" onclick={wrongsToCard}><Icon name="layers" size={16} /> {t("session.wrongsToCard")}</button>
             <button class="lv-btn" style="width:100%;margin-top:6px" disabled={actionBusy} onclick={wrongsToActions}>
-              📌 {actionBusy ? "…" : t("action.addWrong")}
+              <Icon name="pin" size={16} /> {actionBusy ? "…" : t("action.addWrong")}
             </button>
             {#if actionNote}<p class="lv-muted num" style="margin:6px 0 0">{actionNote}</p>{/if}
             <!-- 44-01 end 模式/回看：错题逐题展开（题干+我的答案+正确答案+解析） -->
@@ -3308,37 +3459,37 @@ import { ttsSpeak } from "@/core/tts";
                     <div class="lv-muted num">{t("browse.answer")}: {aq?.answer ?? "—"}{#if a.grade.myAnswer} · {t("session.myAnswer")}: {a.grade.myAnswer}{/if}{#if aq?.analysis} · {aq.analysis}{/if}</div>
                     {#if reflections[a.qid]}
                       <!-- 52-04：上次检查点回显 -->
-                      <div class="lv-muted" style="font-size:11.5px">📝 {t("reflection.last").replace("{d}", new Date(reflections[a.qid].at).toLocaleDateString())}：{reflections[a.qid].text}</div>
+                      <div class="lv-muted" style="font-size:11.5px"><Icon name="pencil" size={12} /> {t("reflection.last").replace("{d}", new Date(reflections[a.qid].at).toLocaleDateString())}：{reflections[a.qid].text}</div>
                     {/if}
                     <div class="lv-row" style="margin:4px 0 0;gap:4px">
                       <button class="lv-btn sm lv-btn--ghost" onclick={() => void editReflection(a.qid)}>
-                        📝 {reflections[a.qid] ? t("reflection.edit") : t("reflection.add")}
+                        <Icon name="pencil" size={13} /> {reflections[a.qid] ? t("reflection.edit") : t("reflection.add")}
                       </button>
                       <!-- 116-01 T08：AI 错因假设（事实→假设→验证行动；采纳由用户操作） -->
                       <button class="lv-btn sm lv-btn--ghost" disabled={misdiagnosisBusy === a.qid}
                         onclick={() => void runMisdiagnosis(a)}>
-                        🧪 {misdiagnosisBusy === a.qid ? "…" : t("misdiagnosis.ask")}
+                        <Icon name="flask" size={13} /> {misdiagnosisBusy === a.qid ? "…" : t("misdiagnosis.ask")}
                       </button>
                     </div>
                     {#if misdiagnosisText[a.qid]}
                       <div class="lv-detail" style="margin:4px 0 0;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere">{misdiagnosisText[a.qid]}</div>
                       <div class="lv-muted" style="font-size:10.5px">{t("misdiagnosis.disclaimer")}</div>
-                      <button class="lv-btn sm lv-btn--ghost" onclick={() => void adoptMisdiagnosis(a.qid)}>➕ {t("misdiagnosis.adopt")}</button>
+                      <button class="lv-btn sm lv-btn--ghost" onclick={() => void adoptMisdiagnosis(a.qid)}>＋ {t("misdiagnosis.adopt")}</button>
                     {/if}
                   </div>
                 {/each}
                 {#if session.answered.some((a) => a.grade.verdict === "correct" && helpShown.get(a.qid))}
                   <!-- 114-05 lite：受助答对 → 自我解释（用自己的话说明依据；可跳过；与错题复盘同层存储） -->
-                  <div class="lv-muted" style="margin:8px 0 2px;font-size:11.5px">🫱 {t("selfexplain.header")}</div>
+                  <div class="lv-muted" style="margin:8px 0 2px;font-size:11.5px"><Icon name="bulb" size={12} /> {t("selfexplain.header")}</div>
                   {#each session.answered.filter((a) => a.grade.verdict === "correct" && helpShown.get(a.qid)) as a, _si2 (_si2)}
                     {@const aq = questions.find((x) => x.id === a.qid)}
                     <div class="lv-error-row" style="white-space:normal">
-                      <b class="num">🫱✓</b> {aq?.stem.slice(0, 80) ?? a.qid}
+                      <b class="num">✓</b> {aq?.stem.slice(0, 80) ?? a.qid}
                       {#if reflections[a.qid]}
-                        <div class="lv-muted" style="font-size:11.5px">🗣 {reflections[a.qid].text}</div>
+                        <div class="lv-muted" style="font-size:11.5px">{reflections[a.qid].text}</div>
                       {/if}
                       <button class="lv-btn sm lv-btn--ghost" onclick={() => void editReflection(a.qid)}>
-                        🗣 {reflections[a.qid] ? t("selfexplain.edit") : t("selfexplain.add")}
+                        <Icon name="message" size={13} /> {reflections[a.qid] ? t("selfexplain.edit") : t("selfexplain.add")}
                       </button>
                     </div>
                   {/each}
@@ -3373,7 +3524,7 @@ import { ttsSpeak } from "@/core/tts";
           <div class="lv-card lv-question" class:lv-pure={pureListen}>
             {#if materialContext}
               <div class="lv-analysis lv-rich b3-typography" style="margin-bottom:12px">
-                <b>📎 共用材料：</b>{@html materialLong && !materialExpanded ? materialShown : (materialHtml || materialShown)}
+                <b class="lv-mat-chip"><Icon name="paperclip" size={14} /> 共用材料：</b>{@html materialLong && !materialExpanded ? materialShown : (materialHtml || materialShown)}
                 {#if materialLong}
                   <button class="lv-chip num" style="margin-left:6px" onclick={() => { materialExpanded = !materialExpanded; if (materialExpanded && !feedback) addExposure(q.id, "material"); }}>
                     {materialExpanded ? t("material.fold") : t("material.expand")}
@@ -3386,7 +3537,7 @@ import { ttsSpeak } from "@/core/tts";
               <!-- 52-02 lite：先回忆后显示选项——藏选项 + 独立回忆草稿（与作答草稿分离，不入正式答案） -->
               <div class="lv-row" style="margin:0 0 4px">
                 <button class="lv-chip" class:acc={hideOptions} onclick={() => { hideOptions = !hideOptions; if (hideOptions) recallDraft = ""; }}>
-                  {hideOptions ? "🙈 " + t("session.recallOn") : "👁 " + t("session.recallOff")}
+                  {hideOptions ? t("session.recallOn") : t("session.recallOff")}
                 </button>
                 {#if hideOptions}<span class="lv-muted" style="font-size:11.5px">{t("session.recallHint")}</span>{/if}
               </div>
@@ -3419,6 +3570,7 @@ import { ttsSpeak } from "@/core/tts";
                       }
                       if (!feedback) trailInput(q.id, selected);
                     }}>
+                    <span class="lv-opt-check" class:box={q.type === "multiple"} aria-hidden="true"></span>
                     <span class="key">{L}</span>
                     <span>{opt}</span>
                   </button>
@@ -3455,7 +3607,7 @@ import { ttsSpeak } from "@/core/tts";
             {/if}
 
             {#if feedback}
-              <div class="lv-feedback" class:good={feedback.verdict === "correct"}>
+              <div class="lv-feedback" role="status" aria-live="polite" class:good={feedback.verdict === "correct"}>
                 {feedback.verdict === "correct" ? "✓ " + t("session.correct") : feedback.verdict === "wrong" ? "✕ " + t("session.wrongAns") + " " + q.answer : "– " + t("session.skipped")}
                 {#if confidenceSel}<span class="lv-chip num" style="margin-left:8px">{t("confidence.recorded")}{t("confidence." + confidenceSel)}</span>{/if}
               </div>
@@ -3475,7 +3627,7 @@ import { ttsSpeak } from "@/core/tts";
                   <button class="lv-chip" class:acc={confidenceSel === c} title={`Key ${["sure", "fuzzy", "guess"].indexOf(c) + 1}`} onclick={() => confidenceSel = c as "sure" | "fuzzy" | "guess"}>{t("confidence." + c)}</button>
                 {/each}
                 <span class="lv-chip num" class:lv-chip--red={qTimeoutS > 0 && qElapsedS >= qTimeoutS} title={qTimeoutS > 0 ? t("session.timeoutHint").replace("{n}", String(qTimeoutS)) : ""}>
-                  <Icon name="clock" size={12} /> {qElapsedS}s{qTimeoutS > 0 && qElapsedS >= qTimeoutS ? " ⚠" : ""}
+                  <Icon name="clock" size={12} /> {qElapsedS}s
                 </span>
               </div>
             {/if}
@@ -3492,7 +3644,7 @@ import { ttsSpeak } from "@/core/tts";
             <div class="lv-row lv-answer-actions">
               {#if !feedback}
                 <button class="lv-btn lv-btn--primary" onclick={submitAnswer} disabled={!selected && !draftLive}>{t("session.submit")}</button>
-                <button class="lv-btn lv-btn--ghost" onclick={requestHint} disabled={explainBusy}>{hintButtonLabel(q)}</button>
+                <button class="lv-btn lv-btn--ghost" onclick={requestHint} disabled={explainBusy}><Icon name="bulb" size={14} /> {hintButtonLabel(q)}</button>
                 {#if q.type === "fill" || q.type === "short"}
                   <button class="lv-btn lv-btn--ghost" onclick={() => { submitAnswer(); }}>{t("session.skip")}</button>
                 {/if}
@@ -3502,8 +3654,8 @@ import { ttsSpeak } from "@/core/tts";
                   <button class="lv-btn" onclick={toCard}><Icon name="layers" size={16} /> {t("memory.toCard")}</button>
                   {#if cardResult}<span class="lv-muted">{cardResult}</span>{/if}
                   <button class="lv-btn" onclick={() => explainCurrent("explain")} disabled={explainBusy}><Icon name="sparkles" size={16} /> {explainBusy ? "…" : t("explain.ask")}</button>
-                  <button class="lv-btn" onclick={requestHint} disabled={explainBusy}>{hintButtonLabel(q)}</button>
-                  <button class="lv-btn" onclick={() => explainCurrent("socratic")} disabled={explainBusy}>🧠 {t("explain.socratic")}</button>
+                  <button class="lv-btn" onclick={requestHint} disabled={explainBusy}><Icon name="bulb" size={14} /> {hintButtonLabel(q)}</button>
+                  <button class="lv-btn" onclick={() => explainCurrent("socratic")} disabled={explainBusy}><Icon name="message" size={14} /> {t("explain.socratic")}</button>
                 {/if}
               {/if}
               {#if leakPending && session?.current && explainQid === session.current.id}
@@ -3519,10 +3671,10 @@ import { ttsSpeak } from "@/core/tts";
                 <div class="lv-analysis lv-explain">{explainText}</div>
                 <div class="lv-row">
                   {#if !explainText.startsWith("✓")}
-                    <button class="lv-btn sm" onclick={saveExplain}>📌 {t("explain.save")}</button>
+                    <button class="lv-btn sm" onclick={saveExplain}><Icon name="pin" size={13} /> {t("explain.save")}</button>
                   {/if}
-                  <button class="lv-btn sm" onclick={requestHint} disabled={explainBusy}>{hintButtonLabel(q)}</button>
-                  <button class="lv-btn sm" onclick={() => explainCurrent("socratic")} disabled={explainBusy}>🧠 {t("explain.socratic")}</button>
+                  <button class="lv-btn sm" onclick={requestHint} disabled={explainBusy}><Icon name="bulb" size={14} /> {hintButtonLabel(q)}</button>
+                  <button class="lv-btn sm" onclick={() => explainCurrent("socratic")} disabled={explainBusy}><Icon name="message" size={14} /> {t("explain.socratic")}</button>
                 </div>
                 <div class="lv-row">
                   <input class="lv-input" style="flex:1;min-width:160px" placeholder={t("explain.followUp")}
@@ -3588,7 +3740,7 @@ import { ttsSpeak } from "@/core/tts";
         {@const q = reciteQueue[reciteCursor]}
         <div class="lv-card lv-question lv-paper">
           {#if reciteMaterial}
-            <div class="lv-analysis" style="margin-bottom:12px"><b>📎 共用材料：</b>{reciteMaterial}</div>
+            <div class="lv-analysis" style="margin-bottom:12px"><b class="lv-mat-chip"><Icon name="paperclip" size={14} /> 共用材料：</b>{reciteMaterial}</div>
           {/if}
           {#if stemHtml}<div class="lv-stem lv-rich b3-typography">{@html stemHtml}</div>{:else}<div class="lv-stem">{q.stem}</div>{/if}
           {#if !reciteRevealed}
@@ -3620,6 +3772,96 @@ import { ttsSpeak } from "@/core/tts";
               <button class="lv-btn r4" onclick={() => rateSelf(4)}>4 {t("rate.4")}</button>
             </div>
           {/if}
+        </div>
+      {/if}
+    </div>
+  {:else if view === "wrongbook"}
+    <!-- ===== 错题本（规范 v6 §6 / P0-2）：消灭进度 + 错因分布 + 紧迫队列 + 重练策略 ===== -->
+    <div class="lv-pad">
+      <div class="lv-screen-head">
+        <span class="lv-eyebrow">WRONG BOOK</span>
+        <h1 class="lv-h1">{t("wrongbook.title")}</h1>
+        <p>{t("wrongbook.desc").replace("{n}", String(ELIMINATE_STREAK))}</p>
+      </div>
+      {#if !wrongList.length}
+        <div class="lv-empty">
+          <div class="lv-empty-icon"><Icon name="check" size={26} /></div>
+          <b>{t("wrongbook.emptyTitle")}</b>
+          <p class="lv-muted">{t("wrongbook.emptyDesc")}</p>
+          <div class="lv-row" style="justify-content:center;margin-top:18px">
+            <button class="lv-btn lv-btn--primary" onclick={() => void startDrill("quick")}><Icon name="zap" size={15} /> {t("mode.quick")}</button>
+            <button class="lv-btn" onclick={() => { view = "entry"; }}><Icon name="home" size={15} /> {t("session.back")}</button>
+          </div>
+        </div>
+      {:else}
+        {@const qOf = (qid: string) => questions.find((x) => x.id === qid)}
+        <div class="lv-kpis">
+          <div class="lv-card lv-kpi"><div class="l"><span>{t("wrongbook.metric.active")}</span><Icon name="xcircle" size={15} /></div><div class="v num">{wrongList.length}</div><span class="lv-muted" style="font-size:12px">{t("wrongbook.metric.active.note")}</span></div>
+          <div class="lv-card lv-kpi"><div class="l"><span>{t("wrongbook.metric.eliminated")}</span><Icon name="check" size={15} /></div><div class="v num">{eliminatedCount}</div><span class="lv-muted" style="font-size:12px">{t("wrongbook.metric.eliminated.note")}</span></div>
+          <div class="lv-card lv-kpi"><div class="l"><span>{t("wrongbook.metric.progress")}</span><Icon name="target" size={15} /></div><div class="v num">{clearPct}%</div><span class="lv-muted" style="font-size:12px">{t("wrongbook.metric.progress.note")}</span></div>
+          <div class="lv-card lv-kpi"><div class="l"><span>{t("widget.streak")}</span><Icon name="flame" size={15} /></div><div class="v num">{streakDays} {t("entry.days")}</div><span class="lv-muted" style="font-size:12px">{t("widget.streak.note")}</span></div>
+        </div>
+        <div class="lv-shell-grid">
+          <div class="stack">
+            <div class="lv-card">
+              <b class="lv-block-title">{t("wrongbook.progress")}</b>
+              <div class="lv-row" style="justify-content:space-between;margin:4px 0 8px">
+                <strong class="num" style="font-size:22px">{clearPct}%</strong>
+                <span class="lv-chip lv-chip--amb num">{t("wrongbook.eliminated.note").replace("{e}", String(eliminatedCount)).replace("{a}", String(wrongList.length))}</span>
+              </div>
+              <div class="lv-progress"><i style="width:{clearPct}%"></i></div>
+              <div class="divider" style="margin:16px 0 12px"></div>
+              <b class="lv-block-title">{t("wrongbook.reasons")}</b>
+              <div class="lv-chart-row"><span>{t("reason.unknown")}</span><div class="lv-progress"><i style="width:{clearPct ? Math.round((reasonCounts.unknown / Math.max(1, wrongList.length)) * 100) : 0}%"></i></div><strong>{reasonCounts.unknown}</strong></div>
+              <div class="lv-chart-row"><span>{t("reason.careless")}</span><div class="lv-progress"><i style="width:{Math.round((reasonCounts.careless / Math.max(1, wrongList.length)) * 100)}%"></i></div><strong>{reasonCounts.careless}</strong></div>
+              <div class="lv-chart-row"><span>{t("reason.trap")}</span><div class="lv-progress"><i style="width:{Math.round((reasonCounts.trap / Math.max(1, wrongList.length)) * 100)}%"></i></div><strong>{reasonCounts.trap}</strong></div>
+              <div class="lv-chart-row"><span>{t("reason.unmarked")}</span><div class="lv-progress"><i style="width:{Math.round((reasonCounts.unmarked / Math.max(1, wrongList.length)) * 100)}%"></i></div><strong>{reasonCounts.unmarked}</strong></div>
+              <p class="lv-muted" style="font-size:11.5px;margin:6px 0 0">{t("wrongbook.reasons.note")}</p>
+            </div>
+            <div class="lv-card">
+              <div class="lv-row" style="justify-content:space-between;margin:0 0 6px">
+                <b class="lv-block-title" style="margin:0">{t("wrongbook.queue")}</b>
+                <span class="lv-muted" style="font-size:11.5px">{t("wrongbook.queue.note")}</span>
+              </div>
+              {#each wrongQueue as w, wi (w.qid)}
+                {@const q = qOf(w.qid)}
+                <div class="lv-wrong-row">
+                  <span class="task-number num">{wi + 1}</span>
+                  <div class="lv-wrong-main">
+                    <div class="lv-wrong-stem" title={q?.stem ?? w.qid}>{q?.stem.slice(0, 80) ?? w.qid}</div>
+                    <div class="lv-wrong-meta">
+                      <span>{t("wrongbook.wrongN").replace("{n}", String(w.wrongCount))}</span>
+                      {#if w.streakCorrect > 0}<span class="lv-chip lv-chip--grn num">{t("wrongbook.reClear").replace("{n}", String(ELIMINATE_STREAK - w.streakCorrect))}</span>{/if}
+                      {#if reasonOf(w.qid)}<span class="lv-chip num">{t("reason." + reasonOf(w.qid))}</span>{/if}
+                      <span>{t("wrongbook.lastWrong")} {new Date(w.lastWrongAt).toLocaleDateString()}</span>
+                      {#if q?.kp}<span class="lv-chip num">{q.kp}</span>{/if}
+                    </div>
+                  </div>
+                  <button class="lv-btn sm" onclick={() => void startWrongFor(w.qid)}><Icon name="play" size={13} /> {t("wrongbook.retry")}</button>
+                  <button class="lv-btn sm lv-btn--ghost" title={t("wrongbook.masteredTip")} onclick={() => void masterWrong(w.qid)}>{t("wrongbook.mastered")}</button>
+                </div>
+              {/each}
+            </div>
+          </div>
+          <div class="stack">
+            <div class="lv-card">
+              <b class="lv-block-title">{t("wrongbook.strategy")}</b>
+              <div class="stack-sm" style="margin-top:10px">
+                <button class="lv-btn lv-btn--primary" style="width:100%" onclick={() => void startDrill("wrong")}><Icon name="rotate" size={15} /> {t("wrongbook.strategy.weighted")}</button>
+                <button class="lv-btn" style="width:100%" onclick={() => { filterWrong = true; view = "browse"; void loadQuestions(); }}><Icon name="table" size={15} /> {t("wrongbook.strategy.browse")}</button>
+                <button class="lv-btn lv-btn--ghost" style="width:100%" onclick={() => void startDrill("cram")}><Icon name="flame" size={15} /> {t("mode.cram")}</button>
+              </div>
+              <p class="lv-muted" style="font-size:11.5px;margin:10px 0 0">{t("wrongbook.strategy.note")}</p>
+            </div>
+            <div class="lv-card">
+              <b class="lv-block-title">{t("wrongbook.rules")}</b>
+              <div class="stack-sm" style="margin-top:10px;font-size:12.5px;color:var(--lv-text-3)">
+                <span>{t("wrongbook.rule.eliminate")}</span>
+                <span>{t("wrongbook.rule.reason")}</span>
+                <span>{t("wrongbook.rule.dedup")}</span>
+              </div>
+            </div>
+          </div>
         </div>
       {/if}
     </div>
@@ -3674,7 +3916,7 @@ import { ttsSpeak } from "@/core/tts";
             <!-- 54-02 作者设置：数值判分规格（可折叠；留空=自动识别/exact） -->
             <div class="lv-row" style="margin:4px 0 0">
               <button class="lv-btn sm lv-btn--ghost" onclick={() => (mSpecOpen = !mSpecOpen)}>
-                ⚙ {t("spec.authorSection")}{#if mSpecOpen} ▾{/if}
+                {t("spec.authorSection")}{#if mSpecOpen} ▾{/if}
               </button>
             </div>
             {#if mSpecOpen}
@@ -3727,7 +3969,7 @@ import { ttsSpeak } from "@/core/tts";
       </div>
       <div class="lv-card lv-pad-card">
         <div class="lv-field"><span class="lv-muted">{t("ai.source")}</span>
-          <button class="lv-chip" title={t("ai.fromDocTitle")} onclick={aiSourceFromCurrentDoc}>📄 {t("ai.fromDoc")}</button>
+          <button class="lv-chip" title={t("ai.fromDocTitle")} onclick={aiSourceFromCurrentDoc}><Icon name="file-text" size={13} /> {t("ai.fromDoc")}</button>
           <textarea class="lv-input lv-textarea" rows="7" bind:value={aiSource} placeholder={t("ai.sourcePlaceholder")} aria-label={t("ai.source")}></textarea>
           {#if gleanAvailable}
             <!-- 60-01 lite：拾遗稍后读 → 出题素材（只读；不写拾遗状态） -->
@@ -3797,7 +4039,7 @@ import { ttsSpeak } from "@/core/tts";
           {#if aiCost}<span class="lv-chip num">{aiCost}</span>{/if}
           <span class="fn__flex-1"></span>
           {#if aiRejected.length}
-            <button class="lv-btn sm" onclick={retryRejected} disabled={aiBusy} title={t("ai.retryTitle")}>⟳ {t("ai.retryRejected")}（{aiRejected.length}）</button>
+            <button class="lv-btn sm" onclick={retryRejected} disabled={aiBusy} title={t("ai.retryTitle")}><Icon name="rotate" size={13} /> {t("ai.retryRejected")}（{aiRejected.length}）</button>
           {/if}
           {#if aiQueue.length}
             <button class="lv-btn lv-btn--primary sm" onclick={approveAllAi}>✓ {t("ai.approveAll")}（{aiQueue.length}）</button>
@@ -3839,7 +4081,7 @@ import { ttsSpeak } from "@/core/tts";
               <div class="lv-row" style="margin:8px 0 0">
                 <button class="lv-btn sm lv-btn--primary" onclick={() => approveAi(q)}>✓ {t("ai.approve")}</button>
                 <button class="lv-btn sm" onclick={() => startEditAi(q)}>✎ {t("ai.edit")}</button>
-                <button class="lv-btn sm" disabled={aiRegenBusy === q.id} onclick={() => regenOneAi(q)}>⟳ {aiRegenBusy === q.id ? "…" : t("ai.regen")}</button>
+                <button class="lv-btn sm" disabled={aiRegenBusy === q.id} onclick={() => regenOneAi(q)}><Icon name="rotate" size={13} /> {aiRegenBusy === q.id ? "…" : t("ai.regen")}</button>
                 <button class="lv-btn sm lv-btn--ghost" onclick={() => dropAi(q)}>✕ {t("ai.drop")}</button>
               </div>
             {/if}
@@ -3850,7 +4092,7 @@ import { ttsSpeak } from "@/core/tts";
         {/each}
         {#if aiTaskLog.length}
           <details class="lv-card lv-pad-card" style="padding:12px 16px;margin-top:14px">
-            <summary style="cursor:pointer;font-weight:650">🧾 {t("ai.taskLog")}（{aiTaskLog.length}）</summary>
+            <summary style="cursor:pointer;font-weight:650">✚ {t("ai.taskLog")}（{aiTaskLog.length}）</summary>
             <p class="lv-muted" style="margin:6px 0 0">{t("ai.taskLogHint")}</p>
             {#each [...aiTaskLog].reverse().slice(0, 5) as e, _i (_i)}
               <div class="lv-row" style="margin:8px 0 0">
@@ -3883,13 +4125,13 @@ import { ttsSpeak } from "@/core/tts";
       <div class="lv-card" style="margin-top:10px">
         <div class="lv-row">
           <label class="lv-btn">
-            📎 {t("materials.pickFile")}
+            <Icon name="paperclip" size={14} /> {t("materials.pickFile")}
             <input type="file" accept=".pdf,.mp4,.webm,.m4v,.mp3,.m4a,.wav,.ogg,.png,.jpg,.jpeg,.gif,.webp,.md,.txt,.docx,.epub" style="display:none" onchange={onMaterialFile} disabled={materialsBusy || offline} />
           </label>
           <span class="lv-muted">{t("materials.copyHint")}</span>
         </div>
         <div class="lv-row">
-          <span class="lv-chip">🔗 {t("materials.link")}</span>
+          <span class="lv-chip"><Icon name="link" size={12} /> {t("materials.link")}</span>
           <input class="lv-input" style="flex:1;min-width:200px" placeholder="https://…" bind:value={matLink} />
           <input class="lv-input" style="max-width:150px" placeholder={t("materials.linkTitle")} bind:value={matLinkTitle} />
           <button class="lv-btn" onclick={registerMaterialLink} disabled={materialsBusy || offline || !matLink.trim()}>{t("materials.register")}</button>
@@ -3906,9 +4148,9 @@ import { ttsSpeak } from "@/core/tts";
         {#if materialsNote}<div class="lv-row"><span class="lv-chip">{materialsNote}</span></div>{/if}
       </div>
       {#if materialsList.length === 0}
-        <div class="lv-muted" style="margin-top:12px">{t("materials.empty")}</div>
+        <div class="lv-empty"><div class="lv-empty-icon"><Icon name="book" size={24} /></div><b>{t("materials.title")}</b><p class="lv-muted">{t("materials.empty")}</p></div>
       {:else if materialsFiltered.length === 0}
-        <div class="lv-muted" style="margin-top:12px">{t("materials.noMatch")}</div>
+        <div class="lv-empty">{t("materials.noMatch")}</div>
       {:else}
         {#each materialsFiltered as m (m.id)}
           <div class="lv-card" style="margin-top:8px">
@@ -3918,18 +4160,18 @@ import { ttsSpeak } from "@/core/tts";
               {#if m.subject}<span class="lv-chip">{m.subject}</span>{/if}
               {#if m.chapter}<span class="lv-chip">{m.chapter}</span>{/if}
               <span class="fn__flex-1"></span>
-              <button class="lv-btn sm" onclick={() => toggleNotes(m)}>📝 {t("materials.notes")}（<span class="num">{app.listMaterialNotes(m.id).length}</span>）</button>
+              <button class="lv-btn sm" onclick={() => toggleNotes(m)}><Icon name="pencil" size={13} /> {t("materials.notes")}（<span class="num">{app.listMaterialNotes(m.id).length}</span>）</button>
               <button class="lv-btn sm" onclick={() => openMaterial(m)}>↗ {t("materials.open")}</button>
-              <button class="lv-btn sm lv-btn--ghost" onclick={() => void removeMaterialEntry(m)} disabled={materialsBusy}>🗑</button>
+              <button class="lv-btn sm lv-btn--ghost" onclick={() => void removeMaterialEntry(m)} disabled={materialsBusy}><Icon name="trash" size={13} /></button>
             </div>
             <div class="lv-row lv-muted" style="font-size:11px;flex-wrap:wrap">
               {#each m.locations as l, _li (_li)}
-                <span class="lv-chip num" style="max-width:100%;overflow:hidden;text-overflow:ellipsis">{l.kind === "assets" ? "A" : "🔗"} {l.path}</span>
+                <span class="lv-chip num" style="max-width:100%;overflow:hidden;text-overflow:ellipsis">{l.kind === "assets" ? "A" : ""}{#if l.kind !== "assets"}<Icon name="link" size={11} />{/if} {l.path}</span>
               {/each}
               <span>v{m.revision}</span>
               {#if app.listQuestionRefs(m.id).length}
                 <!-- 120-05 lite：资料侧反查关联题目 -->
-                <span class="lv-chip num" title={t("qref.linkedTip")}>🔗 {t("qref.linkedCount").replace("{n}", String(app.listQuestionRefs(m.id).length))}</span>
+                <span class="lv-chip num" title={t("qref.linkedTip")}><Icon name="link" size={11} /> {t("qref.linkedCount").replace("{n}", String(app.listQuestionRefs(m.id).length))}</span>
               {/if}
             </div>
             {#if notesOpenId === m.id}
@@ -3946,8 +4188,8 @@ import { ttsSpeak } from "@/core/tts";
                       <div style="font-size:13px;overflow-wrap:anywhere">{n.text}</div>
                     </div>
                     {#if n.locator}<button class="lv-btn sm" onclick={() => openMaterialAt(m, n)}>↗ {t("materials.openAt")}</button>{/if}
-                    <button class="lv-btn sm lv-btn--ghost" onclick={() => startEditNote(n)}>✎</button>
-                    <button class="lv-btn sm lv-btn--ghost" onclick={() => void removeNoteEntry(m, n)} disabled={materialsBusy}>🗑</button>
+                    <button class="lv-btn sm lv-btn--ghost" onclick={() => startEditNote(n)}><Icon name="pencil" size={12} /></button>
+                    <button class="lv-btn sm lv-btn--ghost" onclick={() => void removeNoteEntry(m, n)} disabled={materialsBusy}><Icon name="trash" size={13} /></button>
                   </div>
                 {/each}
                 {#if !notesCache.length}<div class="lv-muted" style="font-size:12px">{t("materials.noteEmpty")}</div>{/if}
@@ -3981,17 +4223,17 @@ import { ttsSpeak } from "@/core/tts";
         <button class="lv-btn lv-btn--ghost lv-mobile-back" onclick={() => view = "entry"}>← {t("mode.practice")}</button>
         <span class="lv-chip num">{shownQuestions.length}/{questions.length} {t("browse.count")}</span>
         <button class="lv-chip" class:acc={favOnly} onclick={() => favOnly = !favOnly}><Icon name="star" size={12} /> {t("browse.favOnly")}</button>
-        <button class="lv-chip" class:acc={sectionOpen} onclick={() => void toggleSectionTree()}>📑 {t("browse.sectionTree")}</button>
-        <button class="lv-chip" class:acc={kpOpen} onclick={() => { kpOpen = !kpOpen; }}>🧭 {t("kp.title")}</button>
-        <button class="lv-chip" class:acc={healthOpen} onclick={() => healthOpen = !healthOpen}>🩺 {t("health.title")}</button>
-        <button class="lv-chip" class:acc={errataOpen} onclick={() => errataOpen = !errataOpen}>📄 {t("errata.title")}</button>
+        <button class="lv-chip" class:acc={sectionOpen} onclick={() => void toggleSectionTree()}><Icon name="file-text" size={13} /> {t("browse.sectionTree")}</button>
+        <button class="lv-chip" class:acc={kpOpen} onclick={() => { kpOpen = !kpOpen; }}><Icon name="compass" size={13} /> {t("kp.title")}</button>
+        <button class="lv-chip" class:acc={healthOpen} onclick={() => healthOpen = !healthOpen}><Icon name="activity" size={13} /> {t("health.title")}</button>
+        <button class="lv-chip" class:acc={errataOpen} onclick={() => errataOpen = !errataOpen}><Icon name="file-text" size={13} /> {t("errata.title")}</button>
         <button class="lv-chip" class:acc={batchMode} onclick={() => { batchMode = !batchMode; if (!batchMode) selectedIds = {}; }}>{t("batch.mode")}</button>
         <button class="lv-chip" title={t("browse.exportCsvTitle")} onclick={exportBankCsv}><Icon name="export" size={13} /> CSV</button>
         <!-- 68-01 lite：题册/答案册分离打印（作用于当前筛选全集；题册不含答案与解析） -->
-        <button class="lv-chip" title={t("print.qSheetTip")} onclick={printQuestionSheet}>🖨 {t("print.qSheet")}</button>
-        <button class="lv-chip" title={t("print.aSheetTip")} onclick={printAnswerSheet}>🖨 {t("print.aSheet")}</button>
-        <button class="lv-chip" title={t("print.cardTip")} onclick={printAnswerCard}>🖨 {t("print.card")}</button>
-        <button class="lv-chip" class:acc={paperOpen} onclick={() => paperOpen = !paperOpen}>📝 {t("paper.title")}</button>
+        <button class="lv-chip" title={t("print.qSheetTip")} onclick={printQuestionSheet}><Icon name="printer" size={13} /> {t("print.qSheet")}</button>
+        <button class="lv-chip" title={t("print.aSheetTip")} onclick={printAnswerSheet}><Icon name="printer" size={13} /> {t("print.aSheet")}</button>
+        <button class="lv-chip" title={t("print.cardTip")} onclick={printAnswerCard}><Icon name="printer" size={13} /> {t("print.card")}</button>
+        <button class="lv-chip" class:acc={paperOpen} onclick={() => paperOpen = !paperOpen}><Icon name="paperclip" size={13} /> {t("paper.title")}</button>
         <input class="lv-input" style="flex:1;min-width:160px" placeholder={t("browse.searchPlaceholder")} bind:value={searchText} />
         <!-- 65-01 lite：结构化筛选（题型/来源/仅错题），与搜索词叠加 -->
         <select class="lv-select" style="max-width:110px" bind:value={filterType} onchange={() => (browseLimit = 200)}>
@@ -4007,7 +4249,7 @@ import { ttsSpeak } from "@/core/tts";
           </select>
         {/if}
         <button class="lv-chip" class:acc={filterWrong} onclick={() => (filterWrong = !filterWrong)} title={t("browse.fWrongTip")}>✕ {t("browse.fWrong")}</button>
-        <button class="lv-chip" class:acc={filterHelp} onclick={() => (filterHelp = !filterHelp)} title={t("browse.fHelpTip")}>🫱 {t("browse.fHelp")}</button>
+        <button class="lv-chip" class:acc={filterHelp} onclick={() => (filterHelp = !filterHelp)} title={t("browse.fHelpTip")}><Icon name="bulb" size={12} /> {t("browse.fHelp")}</button>
         <select class="lv-select" style="max-width:110px" bind:value={filterDays} title={t("browse.fDaysTip")}>
           <option value={0}>{t("browse.fAnyDay")}</option>
           <option value={1}>{t("browse.fToday")}</option>
@@ -4019,13 +4261,13 @@ import { ttsSpeak } from "@/core/tts";
             <option value="">{t("view.pick")}</option>
             {#each smartViews as v, _i (_i)}<option value={v.name}>{v.name}</option>{/each}
           </select>
-          <button class="lv-btn sm lv-btn--ghost" title={t("view.delete")} disabled={!selectedView} onclick={() => void deleteNamedView()}>🗑</button>
+          <button class="lv-btn sm lv-btn--ghost" title={t("view.delete")} disabled={!selectedView} onclick={() => void deleteNamedView()}><Icon name="trash" size={13} /></button>
         {/if}
-        <button class="lv-btn sm lv-btn--ghost" title={t("view.saveTitle")} onclick={() => void saveCurrentView()}>💾 {t("view.save")}</button>
+        <button class="lv-btn sm lv-btn--ghost" title={t("view.saveTitle")} onclick={() => void saveCurrentView()}><Icon name="save" size={13} /> {t("view.save")}</button>
       </div>
       {#if sectionSel}
         <div class="lv-row" style="margin:4px 0">
-          <span class="lv-chip acc">📑 {sectionLabel}</span>
+          <span class="lv-chip acc"><Icon name="file-text" size={12} /> {sectionLabel}</span>
           <button class="lv-btn sm lv-btn--ghost" onclick={() => { sectionSel = null; }}>{t("browse.sectionClear")}</button>
         </div>
       {/if}
@@ -4040,7 +4282,7 @@ import { ttsSpeak } from "@/core/tts";
             <div class="lv-row" style="margin:6px 0 0">
               <button class="lv-btn sm lv-btn--ghost" class:acc-btn={sectionSel?.kind === "doc" && sectionSel.id === doc.id}
                 onclick={() => { sectionSel = { kind: "doc", id: doc.id, hpath: doc.hpath }; }}>
-                📄 {doc.title || doc.hpath}
+                <Icon name="file" size={13} /> {doc.title || doc.hpath}
               </button>
             </div>
             {#each doc.children as h, _hi (_hi)}
@@ -4080,13 +4322,13 @@ import { ttsSpeak } from "@/core/tts";
               <input class="lv-input" style="max-width:160px" bind:value={kpMergeFrom} placeholder={t("kp.fromPlaceholder")} />
               <span class="lv-muted">→</span>
               <input class="lv-input" style="max-width:160px" bind:value={kpMergeTo} placeholder={t("kp.toPlaceholder")} />
-              <button class="lv-btn sm" onclick={previewKpMerge}>🔍 {t("batch.preview")}</button>
+              <button class="lv-btn sm" onclick={previewKpMerge}><Icon name="search" size={13} /> {t("batch.preview")}</button>
             </div>
             {#if kpData.emptyCount}
               <div class="lv-row" style="margin:4px 0 0">
                 <b style="font-size:12.5px">{t("kp.fill").replace("{n}", String(kpData.emptyCount))}</b>
                 <input class="lv-input" style="max-width:160px" bind:value={kpFillKp} placeholder={t("kp.toPlaceholder")} />
-                <button class="lv-btn sm" onclick={previewKpFill}>🔍 {t("batch.preview")}</button>
+                <button class="lv-btn sm" onclick={previewKpFill}><Icon name="search" size={13} /> {t("batch.preview")}</button>
               </div>
             {/if}
             {#if kpMergePlan}
@@ -4109,7 +4351,7 @@ import { ttsSpeak } from "@/core/tts";
             {#if kpNote}<div class="lv-row"><span class="lv-muted num">{kpNote}</span></div>{/if}
             <!-- 51-01/03 lite：考纲对照——粘贴大纲树，按 kp 前缀覆盖，零题缺口明示可导出 -->
             <div class="lv-row" style="margin:10px 0 0">
-              <b style="font-size:12.5px">📜 {t("syl.title")}</b>
+              <b style="font-size:12.5px"><Icon name="file-text" size={13} /> {t("syl.title")}</b>
               {#if app.syllabusReadonly}<span class="lv-chip lv-chip--amb">{t("materials.readonly")}</span>{/if}
               {#if sylDoc.roots.length}
                 <span class="lv-chip num">{t("syl.nodes").replace("{n}", String(countSyllabusNodes(sylDoc.roots)))}</span>
@@ -4144,7 +4386,7 @@ import { ttsSpeak } from "@/core/tts";
               </div>
               <textarea class="lv-input lv-textarea" rows="4" bind:value={sylText} placeholder={t("syl.placeholder")}></textarea>
               <div class="lv-row">
-                <button class="lv-btn sm" onclick={previewSyllabus} disabled={!sylText.trim()}>🔍 {t("syl.preview")}</button>
+                <button class="lv-btn sm" onclick={previewSyllabus} disabled={!sylText.trim()}><Icon name="search" size={13} /> {t("syl.preview")}</button>
                 {#if sylPreviewRoots?.length}
                   <span class="lv-chip num">{t("syl.nodes").replace("{n}", String(countSyllabusNodes(sylPreviewRoots)))}</span>
                   <button class="lv-btn lv-btn--primary sm" onclick={() => void importSyllabus()} disabled={app.syllabusReadonly}>{t("syl.import")}</button>
@@ -4160,7 +4402,7 @@ import { ttsSpeak } from "@/core/tts";
         <!-- 68-02 lite：纸笔回录——「题号=作答」判分预览后 append 流水（mode=paper，不覆盖任何线上数据） -->
         <div class="lv-card lv-pad-card" style="padding:12px 16px">
           <div class="lv-row" style="margin:0">
-            <b style="font-size:13px">📝 {t("paper.title")}</b>
+            <b style="font-size:13px"><Icon name="paperclip" size={13} /> {t("paper.title")}</b>
             <span class="lv-muted" style="font-size:11.5px">{t("paper.hint")}</span>
           </div>
           <textarea class="lv-input lv-textarea" rows="4" bind:value={paperText} placeholder={t("paper.placeholder")}></textarea>
@@ -4189,13 +4431,13 @@ import { ttsSpeak } from "@/core/tts";
         <!-- 57 lite：勘误回导——qid 定向元数据勘误，dry-run 预览后走批量编辑同一写路径与撤销基线 -->
         <div class="lv-card lv-pad-card" style="padding:12px 16px;max-height:320px;overflow:auto">
           <div class="lv-row" style="margin:0">
-            <b style="font-size:13px">📄 {t("errata.title")}</b>
+            <b style="font-size:13px"><Icon name="file-text" size={13} /> {t("errata.title")}</b>
             <span class="lv-muted" style="font-size:11.5px">{t("errata.hint")}</span>
           </div>
           <div class="lv-row" style="margin:6px 0 0">
             <button class="lv-btn sm lv-btn--ghost" onclick={exportErrataTemplate}><Icon name="export" size={13} /> {t("errata.template")}</button>
             <label class="lv-btn sm">
-              📥 {t("errata.import")}
+              <Icon name="import" size={13} /> {t("errata.import")}
               <input type="file" accept=".csv,.tsv,.txt" style="display:none" onchange={onErrataFile} disabled={errataBusy} />
             </label>
           </div>
@@ -4253,7 +4495,7 @@ import { ttsSpeak } from "@/core/tts";
               <input class="lv-input" style="max-width:200px" bind:value={batchValue}
                 placeholder={batchField === "kp" ? t("batch.kpPlaceholder") : batchField === "year" ? t("batch.yearPlaceholder") : t("batch.sourcePlaceholder")} />
             {/if}
-            <button class="lv-btn sm" disabled={!selectedCount} onclick={previewBatch}>🔍 {t("batch.preview")}</button>
+            <button class="lv-btn sm" disabled={!selectedCount} onclick={previewBatch}><Icon name="search" size={13} /> {t("batch.preview")}</button>
             {#if batchPreview}
               <button class="lv-btn lv-btn--primary sm" disabled={batchBusy || !batchPreview.changes.length} onclick={() => applyBatch(false)}>
                 {batchBusy ? "…" : t("batch.apply").replace("{n}", String(batchPreview.changes.length))}
@@ -4285,7 +4527,7 @@ import { ttsSpeak } from "@/core/tts";
           {#if answerDist && answerDist.total >= 10}
             <!-- 67-03 lite：答案分布（公平性——答案可猜测性来自分布偏斜；样本 ≥10 才判定） -->
             <div class="lv-row" style="margin:6px 0 0;flex-wrap:wrap;gap:4px">
-              <span class="lv-chip num" title={t("health.distTip")}>📊 {t("health.dist")}（{answerDist.total}）</span>
+              <span class="lv-chip num" title={t("health.distTip")}><Icon name="chart" size={11} /> {t("health.dist")}（{answerDist.total}）</span>
               {#each Object.entries(answerDist.counts).sort() as [letter, n] (letter)}
                 <span class="lv-chip num" class:lv-chip--red={answerDist.skewed === letter}>{letter} {n}</span>
               {/each}
@@ -4312,7 +4554,7 @@ import { ttsSpeak } from "@/core/tts";
               {/each}
               {#if coverage.kpLearned != null}
                 <!-- 51-03 lite：已学考点覆盖（有题考点中至少一题作答过的数量；练一题≠掌握整个考点） -->
-                <span class="lv-chip num" title={t("coverage.learnedTip")}>📖 {t("coverage.learned").replace("{l}", String(coverage.kpLearned)).replace("{t}", String(coverage.kpCovered))}</span>
+                <span class="lv-chip num" title={t("coverage.learnedTip")}><Icon name="book" size={11} /> {t("coverage.learned").replace("{l}", String(coverage.kpLearned)).replace("{t}", String(coverage.kpCovered))}</span>
               {/if}
               <span class="lv-chip num">{t("coverage.sources").replace("{n}", String(coverage.sources))}</span>
               {#if coverage.sourceMissing}<button class="lv-chip lv-chip--amb num" onclick={() => { filterSource = "@@none"; }} title={t("coverage.sourceMissTip")}>{t("coverage.sourceMissing").replace("{n}", String(coverage.sourceMissing))}</button>{/if}
@@ -4336,7 +4578,7 @@ import { ttsSpeak } from "@/core/tts";
             <div class="lv-row" style="margin:10px 0 0">
               <b style="font-size:12.5px">{t("import.batches")}</b>
               {#each batchList as b, _i (_i)}
-                <span class="lv-chip num" title={b.batch}>📦 {b.batch.slice(0, 16)} · {b.count}</span>
+                <span class="lv-chip num" title={b.batch}><Icon name="folder" size={11} /> {b.batch.slice(0, 16)} · {b.count}</span>
                 <button class="lv-btn sm lv-btn--ghost" disabled={rollbackBusy === b.batch} onclick={() => undoBatch(b.batch)}>
                   {rollbackBusy === b.batch ? "…" : t("import.rollback")}
                 </button>
@@ -4348,7 +4590,7 @@ import { ttsSpeak } from "@/core/tts";
       {#if questionsError}
         <div class="lv-error">{questionsError}</div>
       {:else if !questions.length}
-        <div class="lv-empty">{t("browse.empty")}</div>
+        <div class="lv-empty"><div class="lv-empty-icon"><Icon name="file" size={24} /></div><b>{t("browse.title")}</b><p class="lv-muted">{t("browse.empty")}</p></div>
       {:else}
         {#each shownQuestions as q (q.id)}
           <div class="lv-card lv-qrow">
@@ -4432,9 +4674,9 @@ import { ttsSpeak } from "@/core/tts";
                   <div class="lv-muted"><b>{t("browse.answer")}:</b> {q.answer}{#if q.analysis} · {q.analysis}{/if}</div>
                   {#if st && st.attempts}
                     <!-- 43-02 lite：题目使用分析（作答次数/正确率/最近作答/错次），数据不足如实不显示 -->
-                    <div class="lv-muted num" role="status">📊 {t("browse.usage").replace("{a}", String(st.attempts)).replace("{c}", String(Math.round((st.correct / st.attempts) * 100)))}{#if wr} · {t("browse.wrongCount").replace("{n}", String(wr.wrongCount))}{/if} · {new Date(st.lastAt).toLocaleDateString()}</div>
+                    <div class="lv-muted num" role="status"><Icon name="chart" size={11} /> {t("browse.usage").replace("{a}", String(st.attempts)).replace("{c}", String(Math.round((st.correct / st.attempts) * 100)))}{#if wr} · {t("browse.wrongCount").replace("{n}", String(wr.wrongCount))}{/if} · {new Date(st.lastAt).toLocaleDateString()}</div>
                   <div class="lv-row" style="margin:4px 0 0">
-                    <button class="lv-btn sm lv-btn--ghost" onclick={() => void toggleRevisions(q.id)}>📝 {t("rev.drill")}{#if revOpenFor === q.id}（<span class="num">{revList(q.id).length}</span>）{/if}</button>
+                    <button class="lv-btn sm lv-btn--ghost" onclick={() => void toggleRevisions(q.id)}><Icon name="pencil" size={12} /> {t("rev.drill")}{#if revOpenFor === q.id}（<span class="num">{revList(q.id).length}</span>）{/if}</button>
                   </div>
                   {#if revOpenFor === q.id}
                     <div class="lv-row" style="flex-direction:column;align-items:stretch;gap:4px;margin:4px 0 0">
@@ -4457,13 +4699,13 @@ import { ttsSpeak } from "@/core/tts";
                     <button class="lv-btn sm" onclick={() => void loadBacklinks(q.blockId)}><Icon name="link" size={13} /> {t("browse.backlinks")}</button>
                     {#if links}
                       {#if links.length === 0}<span class="lv-muted">{t("browse.noBacklinks")}</span>
-                      {:else}{#each links as l, _i (_i)}<span class="lv-chip" title={l.content}>📎 {l.title}</span>{/each}{/if}
+                      {:else}{#each links as l, _i (_i)}<span class="lv-chip" title={l.content}><Icon name="paperclip" size={11} /> {l.title}</span>{/each}{/if}
                     {/if}
                   </div>
                   {#if qrefView[q.id]}
                     <!-- 120-05 lite：题目↔资料关联（回 PDF 页/视频时间点） -->
                     <div class="lv-row" style="font-size:11.5px">
-                      <span class="lv-chip">📄 {qrefView[q.id]!.title}{#if qrefView[q.id]!.label} · {qrefView[q.id]!.label}{/if}</span>
+                      <span class="lv-chip"><Icon name="file-text" size={11} /> {qrefView[q.id]!.title}{#if qrefView[q.id]!.label} · {qrefView[q.id]!.label}{/if}</span>
                       {#if qrefView[q.id]!.stale}<span class="lv-chip lv-chip--amb" title={t("materials.relocateTip")}>{t("materials.relocate")}</span>{/if}
                       <button class="lv-btn sm" onclick={() => openQref(q.id)}>↗ {t("materials.openAt")}</button>
                       <button class="lv-btn sm lv-btn--ghost" onclick={() => startQrefForm(q.id)}><Icon name="link" size={13} /> {t("qref.relink")}</button>
@@ -4493,7 +4735,7 @@ import { ttsSpeak } from "@/core/tts";
                     <!-- U14 lite：作答回执下钻（显示当时作答/判定/信心/受助/先回忆/用时；错题回执可接 AI 错因假设） -->
                     <div class="lv-row" style="font-size:11.5px">
                       <button class="lv-btn sm lv-btn--ghost" onclick={() => toggleReceipts(q.id)}>
-                        🗂 {t("receipt.title")}（<span class="num">{st.attempts}</span>）
+                        <Icon name="table" size={13} /> {t("receipt.title")}（<span class="num">{st.attempts}</span>）
                       </button>
                     </div>
                     {#if receiptOpenFor === q.id}
@@ -4501,7 +4743,7 @@ import { ttsSpeak } from "@/core/tts";
                         {#if receiptStored}
                           <!-- U14：上次 AI 假设（独立存储层回显，与用户复盘分层） -->
                           <div class="lv-row" style="flex-wrap:wrap;margin:3px 0;gap:4px;font-size:11.5px">
-                            <span class="lv-chip">🧪 {t("receipt.lastHypothesis")} · {new Date(receiptStored.at).toLocaleDateString()}</span>
+                            <span class="lv-chip"><Icon name="flask" size={11} /> {t("receipt.lastHypothesis")} · {new Date(receiptStored.at).toLocaleDateString()}</span>
                             {#if receiptStored.adoptedAt}<span class="lv-chip lv-chip--grn">{t("receipt.adopted")}</span>{/if}
                           </div>
                           <div class="lv-muted" style="font-size:11.5px;white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 6px">{receiptStored.text}</div>
@@ -4513,12 +4755,12 @@ import { ttsSpeak } from "@/core/tts";
                             <span class="lv-chip">{e.verdict === "correct" ? "✓" : e.verdict === "wrong" ? "✕" : "—"}</span>
                             {#if e.myAnswer}<span class="lv-chip num">{t("session.myAnswer")}: {e.myAnswer}</span>{/if}
                             {#if e.confidence}<span class="lv-chip">{t("confidence." + e.confidence)}</span>{/if}
-                            {#if e.help}<span class="lv-chip lv-chip--amb">🫱 {t("receipt.help")}</span>{/if}
+                            {#if e.help}<span class="lv-chip lv-chip--amb"><Icon name="bulb" size={11} /> {t("receipt.help")}</span>{/if}
                             {#if e.recall}<span class="lv-chip"><Icon name="eyeoff" size={11} /> {t("receipt.recall")}</span>{/if}
                             {#if e.timeMs}<span class="lv-chip num">{Math.round(e.timeMs / 1000)}s</span>{/if}
                             {#if e.verdict === "wrong"}
                               <button class="lv-btn sm lv-btn--ghost" disabled={receiptBusy === rkey}
-                                onclick={() => void runReceiptMisdiagnosis(q, e)}>🧪 {receiptBusy === rkey ? "…" : t("misdiagnosis.ask")}</button>
+                                onclick={() => void runReceiptMisdiagnosis(q, e)}><Icon name="flask" size={13} /> {receiptBusy === rkey ? "…" : t("misdiagnosis.ask")}</button>
                             {/if}
                             {#if receiptMisdiagnosis[rkey]}
                               <div class="lv-detail" style="width:100%;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere">{receiptMisdiagnosis[rkey]}</div>
@@ -4531,7 +4773,7 @@ import { ttsSpeak } from "@/core/tts";
                   {#if flashError[q.id]}<div class="lv-error">{flashError[q.id]}</div>{/if}
                   <div class="lv-row" style="font-size:11.5px">
                     <button class="lv-btn sm lv-btn--ghost" disabled={flashBusy === q.id} onclick={() => void makeFlashCandidates(q)}>
-                      🃏 {flashBusy === q.id ? "…" : t("flash.ask")}
+                      <Icon name="layers" size={13} /> {flashBusy === q.id ? "…" : t("flash.ask")}
                     </button>
                     {#if flashCandidates[q.id]?.cards?.length}
                       <span class="lv-chip num" title={flashCandidates[q.id]!.splitReason ?? ""}>{summarizeLoad(flashCandidates[q.id]!.cards)}</span>
@@ -4583,7 +4825,7 @@ import { ttsSpeak } from "@/core/tts";
       {:else}
         <div class="lv-card lv-pad-card">
           <div class="lv-row">
-            <label class="lv-btn">📁 {t("import.pickExcel")}<input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange={onExcelFile} /></label>
+            <label class="lv-btn"><Icon name="folder" size={15} /> {t("import.pickExcel")}<input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange={onExcelFile} /></label>
             <button class="lv-btn sm" onclick={downloadTemplate}><Icon name="import" size={15} /> {t("import.template")}</button>
             <span class="lv-muted">{t("import.orPaste")}</span>
           </div>
@@ -4610,7 +4852,7 @@ import { ttsSpeak } from "@/core/tts";
           {#if sheetRowsCache.get(activeSheet)?.length}
             <!-- 38-02：手动列映射（自动失败/异名列/乱序表） -->
             <div class="lv-row">
-              <button class="lv-btn sm" onclick={toggleMapEditor}>🔧 {t("import.manualMap")}</button>
+              <button class="lv-btn sm" onclick={toggleMapEditor}><Icon name="pencil" size={13} /> {t("import.manualMap")}</button>
               {#if manualMap}<span class="lv-chip lv-chip--acc">{t("import.manualMapActive")}</span>{/if}
             </div>
             {#if mapEditorOpen}
@@ -4660,7 +4902,7 @@ import { ttsSpeak } from "@/core/tts";
               {#if importReport.duplicates}<span class="lv-chip lv-chip--amb num" title={t("import.dupeHint")}>⧉ {importReport.duplicates}</span>{/if}
               {#if importReport.ok.length}
                 <button class="lv-btn sm lv-btn--ghost" disabled={spotBusy} onclick={() => void spotCheckRender()}>
-                  🎲 {t("import.spotCheck")}{#if spotIds.length}（{spotIds.length}）{/if}
+                  <Icon name="shuffle" size={13} /> {t("import.spotCheck")}{#if spotIds.length}（{spotIds.length}）{/if}
                 </button>
               {/if}
             </div>
@@ -4729,7 +4971,7 @@ import { ttsSpeak } from "@/core/tts";
             {/if}
             {#if lastMap}
               <div class="lv-row">
-                <button class="lv-btn sm" onclick={saveMapping}>💾 {t("import.saveMapping")}</button>
+                <button class="lv-btn sm" onclick={saveMapping}><Icon name="save" size={13} /> {t("import.saveMapping")}</button>
               </div>
             {/if}
             <div class="lv-row">
@@ -4784,6 +5026,7 @@ import { ttsSpeak } from "@/core/tts";
     </div>
   {/if}
     </div>
+    <Palette commands={paletteCommands} bind:open={paletteOpen} {t} />
   </div>
 </div>
 
@@ -4800,49 +5043,55 @@ import { ttsSpeak } from "@/core/tts";
   .lv-side-rows { display: flex; flex-wrap: wrap; gap: 6px; }
   @media (max-width: 960px) { .lv-session-grid { grid-template-columns: minmax(0, 1fr); } .lv-session-side { order: 2; } }
   /* —— 入口 hero 卡（对齐原型 home 首屏；600px 下折叠单列） —— */
-  .lv-entry-hero { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 24px; align-items: center; padding: 26px 28px; }
+  .lv-entry-hero { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 24px; align-items: center; padding: 26px 28px; position: relative; overflow: hidden; }
+  .lv-entry-hero::after { content: ''; position: absolute; right: -80px; top: -80px; width: 260px; height: 260px; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in srgb, var(--b3-theme-primary) 8%, transparent), transparent); pointer-events: none; }
   .lv-entry-main { min-width: 0; }
   .lv-entry-reason { font-size: 22px; font-weight: 650; letter-spacing: -.4px; line-height: 1.5; margin: 10px 0; overflow-wrap: anywhere; }
-  .lv-entry-num { border-left: 1px solid var(--lv-border); padding: 5px 0 5px 24px; text-align: center; }
-  .lv-entry-count { font-size: 46px; font-weight: 600; letter-spacing: -2px; line-height: 1.1; font-variant-numeric: tabular-nums; }
-  .lv-entry-unit { font-size: 11px; margin-top: 8px; display: block; color: var(--lv-text-3); }
+  .lv-entry-num { border-left: 1px solid var(--lv-border); padding: 5px 0 5px 28px; display: flex; flex-direction: column; gap: 7px; align-self: stretch; justify-content: center; }
+  .lv-entry-countwrap { display: flex; align-items: baseline; gap: 8px; }
+  .lv-entry-count { font-size: 46px; font-weight: 650; letter-spacing: -2px; line-height: 1.05; font-variant-numeric: tabular-nums; }
+  .lv-entry-unit { font-size: 12px; color: var(--lv-text-3); }
+  .lv-entry-label { font-size: 11px; letter-spacing: 0.6px; color: var(--lv-text-3); }
   /* 原型 .hero-actions：主操作在 hero 卡内部 */
   .lv-hero-actions { margin-top: 18px; }
   .lv-hero-actions .lv-btn--primary { box-shadow: 0 3px 10px color-mix(in srgb, var(--b3-theme-primary) 24%, transparent); }
   @media (max-width: 600px) {
     .lv-entry-hero { grid-template-columns: minmax(0,1fr); padding: 18px; }
-    .lv-entry-num { border-left: 0; border-top: 1px solid var(--lv-border); padding: 12px 0 0; display: flex; align-items: baseline; gap: 10px; text-align: left; }
+    .lv-entry-num { border-left: 0; border-top: 1px solid var(--lv-border); padding: 12px 0 0; flex-direction: row; align-items: baseline; gap: 10px; justify-content: flex-start; }
   }
   .lv-center { display: flex; align-items: center; justify-content: center; min-height: 60%; }
-  .lv-muted { color: var(--lv-text-3); font-size: 12.5px; }
   .lv-green { color: var(--lv-green); font-weight: 650; }
   .lv-red { color: var(--lv-red); font-weight: 650; }
-  .lv-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
   /* —— 视图切换（对齐原型 .subnav：文字 + 底部 2px 指示条，非按钮块） —— */
   .lv-card { background: var(--lv-surface); border: 1px solid var(--lv-border); border-radius: var(--lv-r-3); padding: 20px 22px; box-shadow: var(--lv-sh-1); }
   .lv-pad-card { margin: 8px 0; }
   .lv-guard { max-width: 460px; width: 100%; }
   .lv-guard-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+  /* —— 结算三联数据（规范 v6 指标语言：大数字 + 标签，语义色只上数字） —— */
+  .lv-done-stats { display: grid; grid-template-columns: repeat(3, 1fr); margin: 10px 0 6px; }
+  .lv-done-stats > div { display: grid; gap: 2px; justify-items: center; padding: 6px 0; }
+  .lv-done-stats > div + div { border-left: 1px solid var(--lv-border); }
+  .lv-done-stats strong { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
+  .lv-done-stats span { font-size: 11px; color: var(--lv-text-3); }
+  .lv-done-stats .good strong { color: var(--lv-green); }
+  .lv-done-stats .bad strong { color: var(--lv-red); }
   .lv-guard p { margin: 6px 0; }
   .lv-center-text { justify-content: center; }
   .lv-hint { font-size: 12px; color: var(--lv-text-3); text-align: center; }
   .lv-input { min-height: 44px; padding: 9px 12px; border-radius: 11px; border: 1px solid var(--lv-ctl-border); background: var(--lv-surface); color: var(--lv-text); font: inherit; font-size: 13.5px; flex: 1; min-width: 140px; }
   .lv-input:focus { border-color: var(--lv-accent); box-shadow: var(--lv-ring); outline: none; }
   .lv-textarea { width: 100%; min-height: 90px; resize: vertical; line-height: 1.8; padding: 12px; margin: 6px 0; }
-  .lv-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 9px 16px; border-radius: 11px; font-size: 14px; font-weight: 550; border: 1px solid var(--lv-ctl-border); background: var(--lv-surface); color: var(--lv-text); cursor: pointer; transition: background-color var(--lv-dur-micro) ease, border-color var(--lv-dur-micro) ease, box-shadow var(--lv-dur-micro) ease; }
-  .lv-btn:hover:not(:disabled) { border-color: var(--lv-accent); background: var(--lv-accent-soft); transform: none; }
-  .lv-btn:disabled { opacity: .62; cursor: not-allowed; }
-  .lv-btn--primary { background: var(--lv-accent); border-color: var(--lv-accent); color: var(--b3-theme-on-primary, #fff); box-shadow: var(--lv-btn-primary-shadow); }
-  .lv-btn--primary:hover:not(:disabled) { background: var(--lv-accent); filter: brightness(.95); }
-  .lv-btn--ghost { border-color: transparent; color: var(--lv-text-2); background: transparent; }
-  .lv-btn--ghost.acc-btn { color: var(--lv-accent); background: var(--lv-accent-soft); }
-  .lv-btn.sm { min-height: 34px; padding: 5px 12px; font-size: 12.5px; border-radius: 9px; }
-  .lv-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 550; color: var(--lv-text-2); background: var(--lv-surface-2); border: 1px solid var(--lv-border); }
-  .lv-chip.acc { color: var(--lv-accent); background: var(--lv-accent-soft); border-color: transparent; }
-  .lv-chip--acc { color: var(--lv-accent); background: var(--lv-accent-soft); border-color: transparent; }
-  .lv-chip--grn { color: var(--lv-green); background: var(--lv-green-soft); border-color: transparent; }
-  .lv-chip--red { color: var(--lv-red); background: var(--lv-red-soft); border-color: transparent; }
-  .lv-chip--amb { color: var(--lv-amber); background: var(--lv-amber-soft); border-color: transparent; }
+  /* .lv-btn/.lv-chip/.lv-select 外观基线上收 lv-base.scss（三 Tab 共用，暗色一致） */
+  .lv-btn--ghost.acc-btn { color: var(--lv-accent); background: var(--lv-accent-soft); border-color: transparent; }
+  .lv-onboard-title { display: inline-flex; align-items: center; gap: 8px; }
+  /* —— 首用引导三步卡（规范 v6 onboard-steps） —— */
+  .lv-onboard { flex-direction: column; align-items: stretch; }
+  .lv-onboard-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
+  @media (max-width: 960px) { .lv-onboard-steps { grid-template-columns: minmax(0, 1fr); } }
+  .lv-onboard-step { position: relative; border: 1px solid var(--lv-border); border-radius: var(--lv-r-2); padding: 14px 16px; background: var(--lv-surface-2); }
+  .lv-onboard-no { position: absolute; right: 12px; top: 8px; font-size: 26px; font-weight: 700; letter-spacing: -0.02em; color: color-mix(in srgb, var(--b3-theme-primary) 26%, transparent); }
+  .lv-onboard-step b { display: block; font-size: 13.5px; margin: 8px 0 0; }
+  .lv-mat-chip { display: inline-flex; align-items: center; gap: 5px; }
   .lv-modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
   .lv-mode { padding: 16px 17px; border-radius: var(--lv-r-3); text-align: left; background: var(--lv-surface); border: 1px solid var(--lv-border); cursor: pointer; transition: background-color .16s ease, border-color .16s ease, box-shadow .16s ease; display: flex; align-items: flex-start; gap: 12px; }
   .lv-mode:hover:not(.lv-mode--disabled) { box-shadow: var(--lv-sh-2); border-color: var(--lv-accent); }
@@ -4861,6 +5110,16 @@ import { ttsSpeak } from "@/core/tts";
   .lv-opt { display: flex; gap: 13px; align-items: center; width: 100%; text-align: left; padding: 15px 17px; border-radius: var(--lv-r-2); border: 1px solid var(--lv-ctl-border); margin-bottom: 10px; cursor: pointer; background: var(--lv-surface); font: inherit; color: inherit; transition: background-color var(--lv-dur-micro) ease, border-color var(--lv-dur-micro) ease; }
   .lv-opt:hover:not([disabled]) { border-color: var(--lv-accent); background: var(--lv-surface-2); }
   .lv-opt .key { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; flex: none; font-size: 12px; font-weight: 550; background: var(--lv-surface); color: var(--lv-text-2); border: 1px solid var(--lv-ctl-border); }
+  /* —— 选项圆点指示（规范 v6 .option：radio 圆 / checkbox 方；随四态着色） —— */
+  .lv-opt-check { width: 17px; height: 17px; border-radius: 50%; border: 1.5px solid var(--lv-ctl-border); background: var(--lv-surface); flex: none; display: grid; place-items: center; transition: background-color var(--lv-dur-micro) ease, border-color var(--lv-dur-micro) ease; }
+  .lv-opt-check.box { border-radius: 5px; }
+  .lv-opt-check::after { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--b3-theme-on-primary, #fff); transform: scale(0); transition: transform var(--lv-dur-micro) var(--lv-ease-out); }
+  .lv-opt-check.box::after { border-radius: 1.5px; }
+  .lv-opt.sel .lv-opt-check, .lv-opt.right .lv-opt-check, .lv-opt.wrong .lv-opt-check { border-color: transparent; }
+  .lv-opt.sel .lv-opt-check { background: var(--lv-accent); }
+  .lv-opt.right .lv-opt-check { background: var(--lv-green); }
+  .lv-opt.wrong .lv-opt-check { background: var(--lv-red); }
+  .lv-opt.sel .lv-opt-check::after, .lv-opt.right .lv-opt-check::after, .lv-opt.wrong .lv-opt-check::after { transform: scale(1); }
   .lv-opt.sel { border-color: var(--lv-accent); background: var(--lv-accent-soft); }
   .lv-opt.sel .key { background: var(--lv-accent); border-color: var(--lv-accent); color: var(--b3-theme-on-primary, #fff); }
   .lv-opt.right { border-color: var(--lv-green); background: var(--lv-green-soft); }
@@ -4877,10 +5136,22 @@ import { ttsSpeak } from "@/core/tts";
   .lv-answer-num { min-height: 48px; font-size: 16px; font-variant-numeric: tabular-nums; }
   .lv-answer-blank { min-height: 44px; margin-bottom: 10px; }
   .lv-analysis { border-left: 3px solid var(--lv-accent); background: var(--lv-surface-2); border-radius: 0 var(--lv-r-2) var(--lv-r-2) 0; padding: 12px 16px; font-size: 13.5px; color: var(--lv-text-2); margin-bottom: 10px; white-space: pre-wrap; }
-  .lv-error { margin: 8px 0; padding: 10px 14px; border-radius: var(--lv-r-2); background: var(--lv-red-soft); color: var(--lv-red); font-size: 13px; }
   .lv-success { margin: 8px 0; padding: 10px 14px; border-radius: var(--lv-r-2); background: var(--lv-green-soft); color: var(--lv-green); font-size: 13px; font-weight: 650; }
   .lv-error-row { font-size: 12.5px; color: var(--lv-red); padding: 4px 2px; border-bottom: 1px dashed var(--lv-border); }
   .lv-empty { border-radius: var(--lv-r-3); padding: 56px 24px; text-align: center; color: var(--lv-text-3); font-size: 13.5px; }
+  .lv-empty-icon { display: grid; place-items: center; width: 56px; height: 56px; margin: 0 auto; border-radius: 16px; background: var(--lv-accent-soft); color: var(--lv-accent); }
+  .lv-empty b { display: block; font-size: 17px; font-weight: 650; color: var(--lv-text); margin: 14px 0 6px; }
+  .lv-empty .lv-muted { max-width: 430px; margin: 0 auto; }
+  /* —— 错题本视图（规范 v6 §6）：指标联排 + 双栏 + 队列行 —— */
+  .lv-shell-grid { display: grid; grid-template-columns: minmax(0, 1fr) 288px; gap: 20px; align-items: start; }
+  @media (max-width: 960px) { .lv-shell-grid { grid-template-columns: minmax(0, 1fr); } }
+  /* 嵌套网格链路逐级解除 min-width:auto（否则窄屏 min-content 404 撑破轨道） */
+  .lv-shell-grid > .stack { min-width: 0; }
+  .lv-shell-grid > .stack > .lv-card { min-width: 0; }
+  .lv-block-title { display: block; font-size: 15px; font-weight: 650; letter-spacing: -0.2px; }
+  .stack { display: grid; gap: 16px; align-content: start; min-width: 0; }
+  .stack-sm { display: grid; gap: 8px; }
+  .task-number { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; border: 1px solid var(--lv-border); background: var(--lv-surface-2); color: var(--lv-accent); font-size: 12px; font-variant-numeric: tabular-nums; flex-shrink: 0; }
   .lv-skeleton { height: 180px; border-radius: var(--lv-r-3); background: linear-gradient(100deg, var(--lv-surface-2) 40%, var(--lv-surface) 50%, var(--lv-surface-2) 60%); background-size: 200% 100%; animation: lv-shimmer 1.4s infinite; border: 1px solid var(--lv-border); }
   @keyframes lv-shimmer { to { background-position: -200% 0; } }
   .lv-qrow { padding: 12px 16px; margin-bottom: 8px; }
