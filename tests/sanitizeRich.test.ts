@@ -9,6 +9,8 @@ import { ExamApp } from "../src/app";
 import { KernelApiClient } from "../src/kernel/client";
 import type { KernelTransport } from "../src/kernel/client";
 import { makeQuestion } from "../src/core/blockTemplate";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 describe("escapeHtml（纯文本边界）", () => {
   it("转义全部活动字符", () => {
@@ -95,5 +97,15 @@ describe("renderStem 源头净化（ExamApp 边界）", () => {
     expect(html).toContain("题干");
     expect(html).not.toContain("onerror");
     expect(html).not.toContain("<script");
+  });
+});
+
+describe("PracticeTab 富文本回退边界", () => {
+  it("材料和抽查的 {@html} 回退必须先转义纯文本", () => {
+    const source = readFileSync(resolve(process.cwd(), "src/ui/practice/PracticeTab.svelte"), "utf8");
+    expect(source).toContain("escapeHtml(materialShown)");
+    expect(source).toContain("escapeHtml(sq.stem)");
+    expect(source).not.toMatch(/\{@html\s+[^}]*\?\s*[^:]+:\s*materialShown\s*\}/);
+    expect(source).not.toMatch(/\{@html\s+spotHtml\[sid\]\s*\?\?\s*sq\.stem\s*\}/);
   });
 });
