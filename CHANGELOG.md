@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.2 (2026-10-07)
+
+### 用户可读摘要
+
+> 依赖与发布维护版本：同步兼容范围内的最新工具链，保持生产包可复现，并更新 GitHub Release；本次不推送思源集市。
+
+- **依赖更新**：升级 `js-yaml`、`typescript-eslint`、Vite、`npm-run-all2` 和 pnpm；TypeScript 保持 6.x，以满足当前 `typescript-eslint` 与 `svelte-check` 的 peer 约束。Svelte 5.57.2 因刚发布仍处于供应链等待窗口，暂保留已验证的 5.57.1。
+- **依赖安全**：刷新 `devalue`、`source-map-js` 和 `brace-expansion` 的安全修复版本；生产依赖审计为 0 漏洞。完整开发依赖审计仅剩 `braces@3.0.3`，上游尚无修复版本，且不进入生产包。
+- **发布验证**：重新执行类型、Svelte、i18n、架构、样式、ESLint、单元测试、UI smoke、生产构建、包白名单和发布检查。
+- **发布边界**：GitHub 源码、标签和 Release 保持同步；不执行集市上架。
+
+### 验证与边界
+
+- `pnpm test`：102 个测试文件 / 547 项通过；`pnpm check`、`pnpm lint`、`pnpm build`、`pnpm verify:package`、`pnpm release:check` 和 `pnpm smoke:ui` 通过。
+- 真实 SiYuan 内核、保存/恢复、Android WebView、大题库性能和真实 AI 取消仍需按 [真机冒烟清单](docs/17-真机冒烟清单.md) 验证。
+
 ## 0.8.1 (2026-10-07)
 
 ### 用户可读摘要
