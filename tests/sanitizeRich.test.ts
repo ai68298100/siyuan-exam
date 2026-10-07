@@ -90,6 +90,20 @@ describe("sanitizeRichHtml（富文本白名单）", () => {
     expect(out).toContain('<span style="color:blue">safe</span>');
   });
 
+  it("移除可覆盖宿主布局或拦截交互的 CSS 属性，保留普通排版", () => {
+    const out = sanitizeRichHtml(
+      `<span style="color:red;position:fixed;inset:0;z-index:9999;pointer-events:auto">overlay</span>` +
+      `<span style="display:none;opacity:0">hidden</span>` +
+      `<span style="-webkit-transform:scale(4);-webkit-mask-image:none">moved</span>` +
+      `<span style="color:blue;font-size:1.2em;margin:4px">safe</span>`,
+    );
+    expect(out).not.toContain('style="color:red');
+    expect(out).not.toContain('style="display:none');
+    expect(out).not.toContain("-webkit-transform");
+    expect(out).not.toContain("-webkit-mask-image");
+    expect(out).toContain('<span style="color:blue;font-size:1.2em;margin:4px">safe</span>');
+  });
+
   it("移除远程图片自动加载，保留本地与内嵌资源", () => {
     const out = sanitizeRichHtml(
       `<img src="https://tracker.example/p.gif?u=1" alt="remote"><img src="//tracker.example/p.gif" alt="protocol"><img src="http:/tracker.example/p.gif" alt="single-slash"><img src="\\\\tracker.example\\p.gif" alt="backslash"><img src="assets/p.png" alt="local"><img src="#p" alt="anchor"><img src="data:image/png;base64,AA==" alt="inline">`,

@@ -42,6 +42,12 @@ const RICH_ALLOWED_ATTR = [
   "colspan", "rowspan", "start", "type", "checked", "disabled",
 ];
 
+// CSS 属性值可以影响插件壳的布局和交互，即使没有执行脚本也可能把题面
+// 覆盖在导航/按钮上，或把必要内容隐藏。这里仅拦截高影响属性，保留颜色、
+// 字体、间距、表格等正常排版；活动 token 则仍然按下方的整段 style 策略处理。
+const CSS_LAYOUT_OR_INTERACTION_RE = /(?:^|;)\s*(?:-[a-z]+-)?(?:position|inset(?:-(?:block|inline)(?:-(?:start|end))?)?|top|right|bottom|left|z-index|pointer-events|visibility|opacity|display|transform(?:-[a-z-]+)?|translate|rotate|scale|clip(?:-path)?|mask(?:-[a-z-]+)?|filter|mix-blend-mode|isolation|contain|content|all)\s*:/i;
+const CSS_ACTIVE_TOKEN_RE = /(?:url\s*\(|expression\s*\(|behavior\s*:|-moz-binding\s*:|var\s*\(|\/\*|\\)/i;
+
 /**
  * 富文本净化：所有进入 {@html} / dialog innerHTML 的第三方/渲染产物（md2html、AI 输出、
  * 导入内容衍生的 HTML）必须经此白名单。剥离 script/iframe/事件属性/javascript: 协议等
@@ -73,7 +79,8 @@ export function sanitizeRichHtml(html: string): string {
   // 注释和 var() 还可隐藏这些 token。保留普通 KaTeX 样式，风险 token 命中就
   // 移除整段 style，避免用不完整 CSS 解析器做错误放行。
   for (const element of Array.from(doc.querySelectorAll("[style]"))) {
-    if (/(?:url\s*\(|expression\s*\(|behavior\s*:|-moz-binding\s*:|var\s*\(|\/\*|\\)/i.test(element.getAttribute("style") ?? "")) {
+    const style = element.getAttribute("style") ?? "";
+    if (CSS_ACTIVE_TOKEN_RE.test(style) || CSS_LAYOUT_OR_INTERACTION_RE.test(style)) {
       element.removeAttribute("style");
     }
   }
