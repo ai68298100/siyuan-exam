@@ -13,6 +13,8 @@
     import { newRunId } from "../../core/ids";
     import { estimateScore } from "../../core/estimate";
     import Icon from "../shared/Icon.svelte";
+    import Palette from "../shared/Palette.svelte";
+    import type { PaletteCommand } from "../shared/Palette.svelte";
     import SaveStatus from "../shared/SaveStatus.svelte";
     import { mockSectionsToCsv, mockHistoryToCsv } from "../../core/exportMd";
     
@@ -29,6 +31,14 @@
 
     type View = "config" | "exam" | "report";
     let view: View = $state("config");
+    let paletteOpen = $state(false);
+    const paletteCommands: PaletteCommand[] = [
+      { group: t("palette.views"), icon: "clock", label: t("tab.mock"), keywords: "mock config blueprint", run: () => { if (view !== "exam") view = "config"; } },
+      { group: t("palette.actions"), icon: "play", label: t("mock.start"), keywords: "start exam", run: () => { if (view === "config") void startExam(); } },
+      { group: t("palette.actions"), icon: "rotate", label: t("mock.resumeGo"), keywords: "resume", run: () => { if (view === "config" && resumable) void resumeExam(); } },
+      { group: t("palette.tabs"), icon: "home", label: t("tab.practice"), keywords: "practice", run: () => plugin.openPractice?.() },
+      { group: t("palette.tabs"), icon: "chart", label: t("tab.report"), keywords: "report stats", run: () => plugin.openReport?.() },
+    ];
     let loading = $state(true);
     let errorMsg = $state("");
     let questions = $state<Question[]>([]);
@@ -510,12 +520,7 @@
 
 <svelte:window onblur={onBlur} onkeydown={onExamKey} />
 
-<div class="fn__flex-1 lv-shell">
-  <Rail active="mock" {plugin} open={railOpen} onclose={closeRail}
-    project={{ name: railBankName || t("guard.title"), kicker: t("rail.projectKicker") }} onproject={() => plugin.openPractice?.()} />
-  <div class="lv-main">
-  <div class="fn__flex-1 lv-pad">
-  <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.mock.eyebrow")}</span><h1 class="lv-h1">{t("head.mock.title")}</h1><p>{t("head.mock.desc")}</p></div>
+<div class="fn__flex-1 lv-exam-tab">
   <div class="block__icons">
     <button class="lv-menu-btn" aria-label={t("menu.open")} bind:this={menuBtn} onclick={() => railOpen = true}><Icon name="menu" size={16} /></button>
     <div class="lv-crumbs">
@@ -525,6 +530,9 @@
     </div>
     <SaveStatus gate={app.saves} {t} />
     <span class="fn__flex-1"></span>
+    <button class="lv-btn lv-btn--ghost sm lv-palette-btn" onclick={() => paletteOpen = true} title="Ctrl / ⌘ K">
+      <Icon name="search" size={13} /> <span class="lv-palette-label">{t("palette.open")}</span> <span class="lv-kbd">⌘K</span>
+    </button>
     {#if view === "exam"}
       <span class="lv-chip num"><Icon name="clock" size={13} /> {remainText()}</span>
       {#if (session?.state.extraTimeS ?? 0) > 0}
@@ -536,6 +544,12 @@
       </button>
     {/if}
   </div>
+<div class="fn__flex-1 lv-shell">
+  <Rail active="mock" {plugin} open={railOpen} onclose={closeRail}
+    project={{ name: railBankName || t("guard.title"), kicker: t("rail.projectKicker") }} onproject={() => plugin.openPractice?.()} />
+  <div class="lv-main">
+  <div class="fn__flex-1 lv-pad">
+  <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.mock.eyebrow")}</span><h1 class="lv-h1">{t("head.mock.title")}</h1><p>{t("head.mock.desc")}</p></div>
 
   {#if loading}
     <div class="lv-skeleton"></div>
@@ -563,7 +577,7 @@
       <input class="lv-input" bind:value={bp.name} style="max-width:220px" />
       <span class="lv-chip num">{t("mock.totalQ")} {totals.questions}</span>
       <span class="lv-chip num">{t("mock.totalScore")} {totals.score}</span>
-      <span class="lv-chip num"><svg class="ic" width="12" height="12"><use xlink:href="#iconMock" /></svg>{Math.round(bp.durationS / 60)} min</span>
+      <span class="lv-chip num"><Icon name="clock" size={12} />{Math.round(bp.durationS / 60)} min</span>
       {#each quotaShort as qs, _i (_i)}
         <span class="lv-chip lv-chip--red num" title={t("mock.quotaShortTip")}>⚠ {qs.name} {t("mock.quotaShort").replace("{have}", String(qs.have)).replace("{need}", String(qs.need))}</span>
       {/each}
@@ -581,7 +595,7 @@
           <!-- 55-02 lite：考点配额（前缀匹配；缺口显式计入短缺，不用其他考点补齐） -->
           <input class="lv-input" value={s.kp ?? ""} placeholder={t("mock.secKpHint")}
             oninput={(e) => updateSection(i, { kp: (e.target as HTMLInputElement).value.trim() || undefined })} />
-          <button class="lv-btn lv-btn--ghost sm" onclick={() => removeSection(i)}>✕</button>
+          <button class="lv-btn lv-btn--ghost sm lv-bp-del" title={t("edit.cancel")} aria-label={t("edit.cancel")} onclick={() => removeSection(i)}><Icon name="close" size={13} /></button>
         </div>
       {/each}
       <div style="padding:8px 12px"><button class="lv-btn sm" style="border-style:dashed;width:100%" onclick={addSection}>＋ {t("mock.addSec")}</button></div>
@@ -660,12 +674,12 @@
       {/if}
       <span class="lv-chip num">{cursor + 1}/{session.state.qids.length}</span>
       <span class="fn__flex-1"></span>
-      <button class="lv-btn sm" onclick={() => { session?.toggleFlag(current); persistRun(); }}><Icon name="pin" size={14} /> {session.flags.has(current) ? "✓" : ""}</button>
+      <button class="lv-btn sm lv-flag-btn" class:lv-flag-btn--on={session.flags.has(current)} title={t("mock.flag")} aria-pressed={session.flags.has(current)} onclick={() => { session?.toggleFlag(current); persistRun(); }}><Icon name="pin" size={14} /></button>
       <button class="lv-btn sm" title={t("mock.fullscreen")} onclick={(e) => {
         const el = (e.target as HTMLElement).closest(".lv-pad");
         if (!document.fullscreenElement) el?.requestFullscreen?.();
         else document.exitFullscreen?.();
-      }}>⛶</button>
+      }}><Icon name="expand" size={14} /></button>
       <button class="lv-btn lv-btn--primary sm" disabled={submitting} onclick={() => finishExam(false)}>{t("mock.handIn")}</button>
     </div>
     {#if restoreNote}<div class="lv-error">{restoreNote}</div>{/if}
@@ -680,6 +694,7 @@
               role={currentQ.type === "multiple" ? "checkbox" : "radio"}
               aria-checked={currentQ.type === "multiple" ? (answeredMap[current] ?? "").includes(L) : selected === L}
               onclick={() => pickOption(L)}>
+              <span class="lv-opt-check" class:box={currentQ.type === "multiple"} aria-hidden="true"></span>
               <span class="key">{L}</span><span>{opt}</span>
             </button>
           {/each}
@@ -697,8 +712,8 @@
       {/each}
     </div>
     <div class="lv-row">
-      <button class="lv-btn sm" onclick={() => goto(bp.lockout ? cursor + 1 : cursor - 1)} disabled={bp.lockout ? false : cursor === 0}>◀</button>
-      <button class="lv-btn sm" onclick={() => goto(cursor + 1)} disabled={cursor >= session.state.qids.length - 1}><Icon name="play" size={14} /></button>
+      <button class="lv-btn sm" onclick={() => goto(bp.lockout ? cursor + 1 : cursor - 1)} disabled={bp.lockout ? false : cursor === 0}><Icon name="chev-left" size={14} /></button>
+      <button class="lv-btn sm" onclick={() => goto(cursor + 1)} disabled={cursor >= session.state.qids.length - 1}><Icon name="chev-right" size={14} /></button>
     </div>
   {:else if view === "report" && score}
     <!-- ===== S7 成绩单 ===== -->
@@ -707,7 +722,7 @@
       <span class="lv-chip num">{new Date(startedAt).toLocaleString()}</span>
       {#if session && revisionDrift.length}
         <!-- 55-07 lite：改题后成绩仍按开考冻结版本记录，历史不静默重算 -->
-        <span class="lv-chip lv-chip--amb num" title={t("mock.revisedTip")}>✏️ {t("mock.revisedNote").replace("{n}", String(revisionDrift.length))}</span>
+        <span class="lv-chip lv-chip--amb num" title={t("mock.revisedTip")}><Icon name="pencil" size={12} /> {t("mock.revisedNote").replace("{n}", String(revisionDrift.length))}</span>
       {/if}
     </div>
     <div class="lv-card" style="margin-bottom:14px">
@@ -746,7 +761,7 @@
     {/each}
     <!-- 45-08 收口：分段/历史图表的文本等价物 + CSV（同一数据快照） -->
     <div class="lv-row" style="margin:6px 0">
-      <button class="lv-btn sm lv-btn--ghost" onclick={() => mockTableOpen = !mockTableOpen}>📋 {t("data.table")}</button>
+      <button class="lv-btn sm lv-btn--ghost" onclick={() => mockTableOpen = !mockTableOpen}><Icon name="table" size={13} /> {t("data.table")}</button>
       <button class="lv-btn sm lv-btn--ghost" onclick={() => downloadMockCsv(mockSectionsToCsv(score.sections), "sections")}><Icon name="export" size={13} /> CSV</button>
       {#if history.length}
         <button class="lv-btn sm lv-btn--ghost" onclick={() => downloadMockCsv(mockHistoryToCsv(history), "history")}><Icon name="export" size={13} /> CSV {t("mock.history")}</button>
@@ -855,7 +870,7 @@
           const md = scoreToMarkdown(bp, score, startedAt);
           await (app as any).writeScoreDoc(activeBankId, md);
           showMessage(t("report.dailyDone"), 3200, "info");
-        }}>📚 {t("mock.exportToDoc")}</button>
+        }}><Icon name="book" size={14} /> {t("mock.exportToDoc")}</button>
       {/if}
       <button class="lv-btn lv-btn--primary" onclick={rewrongDrill}><Icon name="xcircle" size={15} /> {t("mock.rewrong")}</button>
       <button class="lv-btn" onclick={() => { view = "config"; }}><Icon name="rotate" size={15} /> {t("mock.again")}</button>
@@ -863,24 +878,19 @@
   {/if}
 </div>
   </div>
+  <Palette commands={paletteCommands} bind:open={paletteOpen} {t} />
+</div>
 </div>
 
 <style>
   .lv-pad { padding: 16px 22px 48px; overflow: auto; }
-  .lv-muted { color: var(--lv-text-3); font-size: 12.5px; }
-  .lv-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
   .lv-input { min-height: 44px; padding: 9px 12px; border-radius: 11px; border: 1px solid var(--lv-ctl-border); background: var(--lv-surface); color: var(--lv-text); font: inherit; font-size: 13px; }
   .lv-input:focus { border-color: var(--lv-accent); box-shadow: var(--lv-ring); outline: none; }
   .lv-input.num { width: 72px; }
-  .lv-select { min-height: 44px; padding: 9px 12px; border-radius: 11px; border: 1px solid var(--lv-ctl-border); background: var(--lv-surface); color: var(--lv-text); font: inherit; font-size: 13px; }
   .lv-textarea { width: 100%; min-height: 80px; resize: vertical; }
-  .lv-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 9px 16px; border-radius: 11px; font-size: 14px; font-weight: 550; border: 1px solid var(--lv-ctl-border); background: var(--lv-surface); color: var(--lv-text); cursor: pointer; transition: background-color var(--lv-dur-micro) ease, border-color var(--lv-dur-micro) ease, box-shadow var(--lv-dur-micro) ease; }
-  .lv-btn:hover:not(:disabled) { border-color: var(--lv-accent); background: var(--lv-accent-soft); }
-  .lv-btn:disabled { opacity: .62; cursor: not-allowed; }
-  .lv-btn--primary { background: var(--lv-accent); border-color: var(--lv-accent); color: var(--b3-theme-on-primary, #fff); box-shadow: var(--lv-btn-primary-shadow); }
-  .lv-btn--primary:hover:not(:disabled) { background: var(--lv-accent); filter: brightness(.95); }
-  .lv-btn--ghost { border-color: transparent; background: transparent; color: var(--lv-text-2); }
-  .lv-btn.sm { min-height: 34px; padding: 5px 12px; font-size: 12.5px; border-radius: 9px; }
+  /* .lv-btn/.lv-select 外观基线上收 lv-base.scss */
+  .lv-flag-btn { min-width: 34px; padding: 5px 8px; }
+  .lv-flag-btn--on { border-color: var(--lv-amber); color: var(--lv-amber); background: var(--lv-amber-soft); }
   .lv-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 7px; font-size: 12px; font-weight: 550; color: var(--lv-text-2); background: var(--lv-surface-2); border: 1px solid transparent; }
   .lv-chip.grn { color: var(--lv-green); background: var(--lv-green-soft); }
   .lv-chip.red { color: var(--lv-red); background: var(--lv-red-soft); }
@@ -889,18 +899,27 @@
   .lv-opt { display: flex; gap: 13px; align-items: center; width: 100%; text-align: left; padding: 14px 17px; border-radius: var(--lv-r-2); border: 1px solid var(--lv-ctl-border); margin-bottom: 10px; cursor: pointer; background: var(--lv-surface); font: inherit; color: inherit; transition: background-color var(--lv-dur-micro) ease, border-color var(--lv-dur-micro) ease; }
   .lv-opt:hover { border-color: var(--lv-accent); background: var(--lv-surface-2); }
   .lv-opt .key { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; flex: none; font-size: 12px; font-weight: 550; background: var(--lv-surface); color: var(--lv-text-2); border: 1px solid var(--lv-ctl-border); }
+  .lv-opt-check { width: 17px; height: 17px; border-radius: 50%; border: 1.5px solid var(--lv-ctl-border); background: var(--lv-surface); flex: none; display: grid; place-items: center; transition: background-color var(--lv-dur-micro) ease, border-color var(--lv-dur-micro) ease; }
+  .lv-opt-check.box { border-radius: 5px; }
+  .lv-opt-check::after { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--b3-theme-on-primary, #fff); transform: scale(0); transition: transform var(--lv-dur-micro) var(--lv-ease-out); }
+  .lv-opt-check.box::after { border-radius: 1.5px; }
+  .lv-opt.sel .lv-opt-check { border-color: transparent; background: var(--lv-accent); }
+  .lv-opt.sel .lv-opt-check::after { transform: scale(1); }
   .lv-opt.sel { border-color: var(--lv-accent); background: var(--lv-accent-soft); }
   .lv-opt.sel .key { background: var(--lv-accent); border-color: var(--lv-accent); color: var(--b3-theme-on-primary, #fff); }
-  .lv-bp-table { border: 1px solid var(--lv-border); border-radius: 12px; overflow: hidden; margin: 10px 0; }
-  .lv-bp-row { display: grid; grid-template-columns: 1.1fr .5fr .5fr .8fr 1fr 36px; gap: 8px; padding: 8px 12px; border-bottom: 1px dashed var(--lv-border); align-items: center; }
+  .lv-bp-table { border: 1px solid var(--lv-border); border-radius: 12px; overflow-x: auto; margin: 10px 0; }
+  .lv-bp-row { display: grid; grid-template-columns: 1.1fr .5fr .5fr .8fr 1fr 36px; gap: 8px; padding: 8px 12px; border-bottom: 1px dashed var(--lv-border); align-items: center; min-width: 560px; }
   .lv-bp-row:last-child { border-bottom: none; }
+  .lv-bp-row:not(.head):hover { background: var(--lv-surface-2); }
   .lv-bp-row.head { background: var(--lv-surface-2); font-size: 11.5px; font-weight: 700; color: var(--lv-text-3); border-bottom: 1px solid var(--lv-border); }
+  /* 蓝图行数据网格密度（规范 v6）：34px 控件，行更紧凑 */
+  .lv-bp-row .lv-input, .lv-bp-row .lv-select { min-height: 34px; padding: 5px 10px; border-radius: 9px; font-size: 13px; }
+  .lv-bp-del:hover:not(:disabled) { border-color: var(--lv-red); color: var(--lv-red); background: var(--lv-red-soft); }
   .lv-sheet { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
   .lv-cell { min-width: 0; min-height: 44px; border-radius: 8px; border: 1px solid var(--lv-border); background: var(--lv-surface); font-size: 12px; font-variant-numeric: tabular-nums; color: var(--lv-text-2); cursor: pointer; }
   .lv-cell.done { background: var(--lv-green-soft); color: var(--lv-green); border-color: transparent; }
   .lv-cell.flag { outline: 2px solid var(--lv-amber); }
   .lv-cell.cur { background: var(--lv-accent); color: var(--b3-theme-on-primary, #fff); border-color: transparent; }
-  .lv-error { margin: 8px 0; padding: 10px 14px; border-radius: var(--lv-r-2); background: var(--lv-red-soft); color: var(--lv-red); font-size: 13px; }
   .lv-empty { border: 1.5px dashed var(--lv-border); border-radius: 14px; padding: 26px; text-align: center; color: var(--lv-text-3); }
   .lv-skeleton { height: 160px; border-radius: var(--lv-r-3); background: linear-gradient(100deg, var(--lv-surface-2) 40%, var(--lv-surface) 50%, var(--lv-surface-2) 60%); background-size: 200% 100%; animation: lv-shim 1.4s infinite; }
   @keyframes lv-shim { to { background-position: -200% 0; } }

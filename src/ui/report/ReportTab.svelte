@@ -11,6 +11,8 @@
     import { changedAnswerList } from "../../core/answerTrail";
     import { recentExposureList } from "../../core/exposure";
     import Icon from "../shared/Icon.svelte";
+    import Palette from "../shared/Palette.svelte";
+    import type { PaletteCommand } from "../shared/Palette.svelte";
     import { heatmap, masteryByKp, weakTop, hourly, calibration, confidentWrongList, uncertainCorrectList, delayedRecall, exposureStats, type CalibrationReport } from "@/core/report";
     import { trendToCsv, heatmapToCsv, hourlyToCsv } from "@/core/exportMd";
     import type { ActionItem } from "@/core/actions";
@@ -28,7 +30,15 @@
     function closeRail() { railOpen = false; menuBtn?.focus(); }
 
     let loading = $state(true);
-    let questions = $state<any[]>([]);
+
+    let paletteOpen = $state(false);
+    const paletteCommands: PaletteCommand[] = [
+      { group: t("palette.actions"), icon: "rotate", label: t("report.refresh"), keywords: "refresh recompute", run: () => { reportMemo.clear(); computeReport(); } },
+      { group: t("palette.actions"), icon: "table", label: t("report.writeDaily"), keywords: "daily write diary", run: () => void writeDaily() },
+      { group: t("palette.actions"), icon: "export", label: t("data.export"), keywords: "export data", run: () => void exportAllData() },
+      { group: t("palette.tabs"), icon: "home", label: t("tab.practice"), keywords: "practice", run: () => plugin.openPractice?.() },
+      { group: t("palette.tabs"), icon: "clock", label: t("tab.mock"), keywords: "mock exam", run: () => plugin.openMock?.() },
+    ];    let questions = $state<any[]>([]);
     let kpi = $state({ attempts: 0, accuracy: 0, eliminated: 0, streak: 0 });
     let heat = $state<{ date: string; count: number }[]>([]);
     let mastery = $state<ReturnType<typeof masteryByKp>>([]);
@@ -184,7 +194,7 @@
           explainText = env.data.text;
           void app.recordAiUsage(ch.id, env.tokens, 1);
         } else {
-          explainError = `⚠ ${env.summary}${env.error ? "：" + env.error : ""}`;
+          explainError = `${env.summary}${env.error ? "：" + env.error : ""}`;
         }
       } catch (e) {
         explainError = String(e instanceof Error ? e.message : e);
@@ -264,7 +274,7 @@
           nextActionText = env.data.text;
           void app.recordAiUsage(ch.id, env.tokens, 1);
         } else {
-          nextActionError = `⚠ ${env.summary}${env.error ? "：" + env.error : ""}`;
+          nextActionError = `${env.summary}${env.error ? "：" + env.error : ""}`;
         }
       } catch (e) {
         nextActionError = String(e instanceof Error ? e.message : e);
@@ -472,6 +482,22 @@
         .join(" "),
     );
 
+    /** v6 图表质感：题量面积多边形（渐变填充）与最后一个有作答日的末点坐标 */
+    const trendArea = $derived.by(() => {
+      const pts = trend30
+        .map((p, i) => (p.attempts > 0 ? `${(i / 29) * 300},${42 - Math.round((p.attempts / maxTrend) * 38)}` : null))
+        .filter(Boolean);
+      if (!pts.length) return "";
+      const lastX = pts[pts.length - 1].split(",")[0];
+      return `0,44 ${pts.join(" ")} ${lastX},44`;
+    });
+    const trendLastDot = $derived.by(() => {
+      for (let i = trend30.length - 1; i >= 0; i--) {
+        if (trend30[i].attempts > 0) return { x: (i / 29) * 300, y: 42 - Math.round((trend30[i].attempts / maxTrend) * 38) };
+      }
+      return null;
+    });
+
     // 44-02 lite：确定-错 下钻（展开时从流水实时取，随报告数据同源）
     let cwOpen = $state(false);
     let caOpen = $state(false);
@@ -503,12 +529,7 @@
     }
 </script>
 
-<div class="fn__flex-1 lv-shell">
-  <Rail active="report" {plugin} open={railOpen} onclose={closeRail}
-    project={{ name: railBankName || t("guard.title"), kicker: t("rail.projectKicker") }} onproject={() => plugin.openPractice?.()} />
-  <div class="lv-main">
-  <div class="fn__flex-1 lv-pad">
-  <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.report.eyebrow")}</span><h1 class="lv-h1">{t("head.report.title")}</h1><p>{t("head.report.desc")}</p></div>
+<div class="fn__flex-1 lv-exam-tab">
   <div class="block__icons">
     <button class="lv-menu-btn" aria-label={t("menu.open")} bind:this={menuBtn} onclick={() => railOpen = true}><Icon name="menu" size={16} /></button>
     <div class="lv-crumbs">
@@ -517,6 +538,9 @@
       <span class="lv-crumb-current">{t("tab.report")}</span>
     </div>
     {#if app}<SaveStatus gate={app.saves} {t} />{/if}
+    <button class="lv-btn lv-btn--ghost sm lv-palette-btn" onclick={() => paletteOpen = true} title="Ctrl / ⌘ K">
+      <Icon name="search" size={13} /> <span class="lv-palette-label">{t("palette.open")}</span> <span class="lv-kbd">⌘K</span>
+    </button>
     <!-- 39-06 lite：统计日期范围（消灭错题/连续天数为状态类指标保持全局） -->
     <select class="lv-select" bind:value={rangeDays} onchange={computeReport} title={t("report.rangeTip")}>
       <option value={0}>{t("report.rangeAll")}</option>
@@ -544,13 +568,19 @@
     </button>
     <span class="lv-chip">{t("report.dataFromLog")}</span>
   </div>
+<div class="fn__flex-1 lv-shell">
+  <Rail active="report" {plugin} open={railOpen} onclose={closeRail}
+    project={{ name: railBankName || t("guard.title"), kicker: t("rail.projectKicker") }} onproject={() => plugin.openPractice?.()} />
+  <div class="lv-main">
+  <div class="fn__flex-1 lv-pad">
+  <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.report.eyebrow")}</span><h1 class="lv-h1">{t("head.report.title")}</h1><p>{t("head.report.desc")}</p></div>
 
   {#if explainError}
     <div class="lv-error" style="margin:0 0 8px">{explainError}</div>
   {:else if explainText}
     <div class="lv-card" style="margin:0 0 10px;padding:10px 14px">
       <div class="lv-row" style="margin:0 0 4px">
-        <b style="font-size:13px">🧪 {t("reportExplain.title")}</b>
+        <b class="lv-card-title" style="font-size:13px"><Icon name="flask" size={14} /> {t("reportExplain.title")}</b>
         <span class="lv-chip">{windowLabel()}</span>
         <span class="fn__flex-1"></span>
         <button class="lv-btn sm lv-btn--ghost" onclick={() => { explainText = ""; }}>{t("edit.cancel")}</button>
@@ -633,7 +663,7 @@
                 <thead><tr><th>{t("quad.byType")}</th><th>{t("quad.sureRight")}</th><th>{t("quad.sureWrong")}</th><th>{t("quad.guessedRight")}</th><th>{t("quad.fuzzyRight")}</th></tr></thead>
                 <tbody>
                   {#each quad.byType as row (row.type)}
-                    <tr><td>{row.type}</td><td class="num">{row.cells.sureRight}</td><td class="num">{row.cells.sureWrong}</td><td class="num">{row.cells.guessedRight}</td><td class="num">{row.cells.fuzzyRight}</td></tr>
+                    <tr><td>{t("qtype." + row.type, row.type)}</td><td class="num">{row.cells.sureRight}</td><td class="num">{row.cells.sureWrong}</td><td class="num">{row.cells.guessedRight}</td><td class="num">{row.cells.fuzzyRight}</td></tr>
                   {/each}
                 </tbody>
               </table>
@@ -664,7 +694,7 @@
             {#each expList as x (x.qid + x.lastTs)}
               {@const stem = questions.find((q) => q.id === x.qid)?.stem}
               <div class="lv-error-row" style="white-space:normal" title={stem ?? x.qid}>
-                <b class="num">👁</b> {stem ? stem.slice(0, 60) : x.qid}
+                <span class="lv-inline-icon"><Icon name="eye" size={13} /></span> {stem ? stem.slice(0, 60) : x.qid}
                 <span class="lv-muted num"> · {new Date(x.lastTs).toLocaleString()}</span>
                 <span class="lv-chip num">×{x.count}</span>
                 {#each x.kinds as k (k)}<span class="lv-chip">{t("qk." + k, k)}</span>{/each}
@@ -705,7 +735,16 @@
       <div class="lv-card lv-section" style="margin-bottom:12px">
         <b>{t("report.trend30")}</b>
         <svg viewBox="0 0 300 46" style="width:100%;max-width:420px;display:block" role="img" aria-label={t("report.trend30")}>
+          <defs>
+            <linearGradient id="lv-trend-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="var(--lv-accent)" stop-opacity="0.22" />
+              <stop offset="1" stop-color="var(--lv-accent)" stop-opacity="0" />
+            </linearGradient>
+          </defs>
+          <line x1="0" y1="44.5" x2="300" y2="44.5" stroke="var(--lv-border)" stroke-width="1" />
+          {#if trendArea}<polygon points={trendArea} fill="url(#lv-trend-fill)" />{/if}
           <polyline points={trend30.map((p, i) => `${(i / 29) * 300},${42 - Math.round((p.attempts / maxTrend) * 38)}`).join(" ")} fill="none" stroke="var(--lv-accent)" stroke-width="2" />
+          {#if trendLastDot}<circle cx={trendLastDot.x} cy={trendLastDot.y} r="3" fill="var(--lv-accent)" stroke="var(--lv-surface)" stroke-width="1.5" />{/if}
           <!-- 55-04 lite：正确率曲线（有作答日连成段，0 题日断点；比例尺 0-100% 对满高） -->
           <polyline points={trendAccPoints} fill="none" stroke="var(--lv-green)" stroke-width="1.6" stroke-dasharray="3 2" />
         </svg>
@@ -714,7 +753,7 @@
           <span class="lv-chip num">{t("report.trendSum")} {trend30.reduce((n, p) => n + p.attempts, 0)}</span>
           <span class="lv-chip lv-chip--grn">— {t("report.accuracyTrend")}</span>
           <!-- 45-08：SVG 图表的文本等价物 + CSV（同一数据快照，读屏/打印/导出数字一致） -->
-          <button class="lv-btn sm lv-btn--ghost" onclick={() => tableOpen = tableOpen === "trend" ? "" : "trend"}>📋 {t("data.table")}</button>
+          <button class="lv-btn sm lv-btn--ghost" onclick={() => tableOpen = tableOpen === "trend" ? "" : "trend"}><Icon name="table" size={13} /> {t("data.table")}</button>
           <button class="lv-btn sm lv-btn--ghost" onclick={() => downloadChartCsv(trendToCsv(trend30), "trend30")}><Icon name="export" size={13} /> CSV</button>
         </div>
         {#if tableOpen === "trend"}
@@ -738,7 +777,7 @@
         {/each}
       </div>
       <div class="lv-row" style="margin:6px 0 0">
-        <button class="lv-btn sm lv-btn--ghost" onclick={() => tableOpen = tableOpen === "heat" ? "" : "heat"}>📋 {t("data.table")}</button>
+        <button class="lv-btn sm lv-btn--ghost" onclick={() => tableOpen = tableOpen === "heat" ? "" : "heat"}><Icon name="table" size={13} /> {t("data.table")}</button>
         <button class="lv-btn sm lv-btn--ghost" onclick={() => downloadChartCsv(heatmapToCsv(heat), "heatmap")}><Icon name="export" size={13} /> CSV</button>
       </div>
       {#if tableOpen === "heat"}
@@ -801,7 +840,7 @@
             <div class="progress" style="flex:1"><i class:ok={r.accuracy >= 80} class:mid={r.accuracy >= 50 && r.accuracy < 80} class:low={r.accuracy < 50} style="width:{r.accuracy}%"></i></div>
             <span class="num lv-muted" style="width:130px">{r.accuracy}% · {r.attempts} {t("browse.count")}{r.attempts < 3 ? " · " + t("report.lowSample") : ""}</span>
             {#if r.assisted}
-              <span class="lv-chip lv-chip--amb num" title={t("report.assistedTip")}>🫱 {r.assisted}</span>
+              <span class="lv-chip lv-chip--amb num" title={t("report.assistedTip")}><Icon name="bulb" size={11} /> {r.assisted}</span>
             {/if}
           </div>
         {/each}
@@ -893,7 +932,7 @@
           <div class="lv-row" style="margin:4px 0">
             <span class="lv-chip num">{t("action.kind." + a.kind)}</span>
             <span style="flex:1;min-width:140px">{a.detail}</span>
-            {#if a.qid}<button class="lv-btn sm" onclick={() => redoAction(a)}>🔁 {t("action.kind.redo")}</button>{/if}
+            {#if a.qid}<button class="lv-btn sm" onclick={() => redoAction(a)}><Icon name="rotate" size={13} /> {t("action.kind.redo")}</button>{/if}
             <button class="lv-btn sm" onclick={() => finishAction(a.id)}>✓ {t("action.doneBtn")}</button>
             <button class="lv-btn sm lv-btn--ghost" onclick={() => dropAction(a.id)}>✕</button>
           </div>
@@ -919,7 +958,7 @@
         <polyline points={hoursSvg} fill="none" stroke="var(--lv-accent)" stroke-width="2" />
       </svg>
       <div class="lv-row" style="margin:4px 0 0">
-        <button class="lv-btn sm lv-btn--ghost" onclick={() => tableOpen = tableOpen === "hourly" ? "" : "hourly"}>📋 {t("data.table")}</button>
+        <button class="lv-btn sm lv-btn--ghost" onclick={() => tableOpen = tableOpen === "hourly" ? "" : "hourly"}><Icon name="table" size={13} /> {t("data.table")}</button>
         <button class="lv-btn sm lv-btn--ghost" onclick={() => downloadChartCsv(hourlyToCsv(hours), "hourly")}><Icon name="export" size={13} /> CSV</button>
       </div>
       {#if tableOpen === "hourly"}
@@ -933,11 +972,11 @@
         <Icon name="table" size={14} /> {reportBusy ? "…" : t("report.writeDaily")}
       </button>
       <button class="lv-btn sm lv-btn--ghost" style="margin-top:8px" onclick={exportDiagnostics}>
-        🩰 {t("diag.export")}
+        <Icon name="activity" size={13} /> {t("diag.export")}
       </button>
       <!-- 69-01/69-06/58-01 lite：存储占用 / 数据体检 / 数据出库 -->
       <button class="lv-btn sm lv-btn--ghost" style="margin-top:8px" onclick={() => void toggleStorage()}>
-        💾 {storageOpen ? t("data.hideStorage") : t("data.showStorage")}{#if storageRows.length}&nbsp;· {storageTotalKb} KB{/if}
+        <Icon name="save" size={13} /> {storageOpen ? t("data.hideStorage") : t("data.showStorage")}{#if storageRows.length}&nbsp;· {storageTotalKb} KB{/if}
       </button>
       {#if storageOpen}
         <div class="lv-row" style="margin:6px 0 0">
@@ -948,7 +987,7 @@
         <div class="lv-muted" style="margin-top:4px;font-size:11.5px">{t("data.storageNote")}</div>
       {/if}
       <button class="lv-btn sm lv-btn--ghost" style="margin-top:8px" disabled={auditBusy} onclick={() => void runDataAudit()}>
-        {auditBusy ? "…" : `🔍 ${t("data.audit")}`}
+        {auditBusy ? "…" : t("data.audit")}
       </button>
       {#if auditResult}
         <div class="lv-row" style="margin:6px 0 0" role="status">
@@ -967,7 +1006,7 @@
         <Icon name="export" size={14} /> {t("data.export")}
       </button>
       <button class="lv-btn sm" style="margin-top:8px" disabled={purgeBusy} onclick={() => void purgeAllData()}>
-        {purgeBusy ? "…" : `🗑 ${t("data.purge")}`}
+        {purgeBusy ? "…" : t("data.purge")}
       </button>
       {#if purgeReceipts.length}
         <!-- 58-03/U30：逐对象回执（不冒充全部删除）；重载思源后内存态归零 -->
@@ -982,23 +1021,21 @@
   {/if}
 </div>
   </div>
+  <Palette commands={paletteCommands} bind:open={paletteOpen} {t} />
+</div>
 </div>
 
 <style>
   .lv-pad { padding: 16px 22px 48px; overflow: auto; }
-  .lv-muted { color: var(--lv-text-3); font-size: 12.5px; }
-  .lv-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
-  .lv-select { min-height: 44px; padding: 9px 12px; border-radius: 11px; border: 1px solid var(--lv-ctl-border); background: var(--lv-surface); color: var(--lv-text); font: inherit; font-size: 13px; }
+  /* .lv-btn/.lv-select 外观基线上收 lv-base.scss（修复暗色露 UA 白底） */
+  .lv-card-title { display: inline-flex; align-items: center; gap: 6px; }
+  .lv-inline-icon { display: inline-flex; margin-right: 5px; }
   .lv-card { background: var(--lv-surface); border: 1px solid var(--lv-border); border-radius: var(--lv-r-3); padding: 20px 22px; box-shadow: var(--lv-sh-1); margin-bottom: 14px; }
   .lv-row.low-sample { opacity: .55; }
   .lv-section b { display: block; font-size: 15px; font-weight: 650; letter-spacing: -.2px; margin-bottom: 12px; }
   .lv-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 7px; font-size: 12px; font-weight: 550; color: var(--lv-text-2); background: var(--lv-surface-2); border: 1px solid transparent; }
   .lv-chip.acc { color: var(--lv-accent); background: var(--lv-accent-soft); }
   .lv-chip.lv-chip--red { color: var(--lv-red); background: var(--lv-red-soft); }
-  .lv-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 14px; }
-  .lv-kpi .l { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--lv-text-3); margin-bottom: 4px; }
-  .lv-kpi .l :global(.lv-icon) { color: var(--lv-accent); }
-  .lv-kpi .v { font-size: 29px; font-weight: 650; letter-spacing: -.8px; line-height: 1.5; font-variant-numeric: tabular-nums; }
   /* —— 63-01 四象限（原型 .metric 风格的象限格） —— */
   .lv-quad-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
   .lv-quad { border: 1px solid var(--lv-border); border-radius: var(--lv-r-2); padding: 12px 14px; background: var(--lv-surface-2); display: flex; flex-direction: column; gap: 4px; }
@@ -1022,6 +1059,5 @@
   .lv-error { margin: 8px 0; padding: 10px 14px; border-radius: var(--lv-r-2); background: var(--lv-red-soft); color: var(--lv-red); font-size: 13px; }
   .lv-skeleton { height: 160px; border-radius: var(--lv-r-3); background: linear-gradient(100deg, var(--lv-surface-2) 40%, var(--lv-surface) 50%, var(--lv-surface-2) 60%); background-size: 200% 100%; animation: lv-shim 1.4s infinite; }
   @keyframes lv-shim { to { background-position: -200% 0; } }
-  @media (max-width: 960px) { .lv-kpis { grid-template-columns: repeat(2, 1fr); } }
   @media (prefers-reduced-motion: reduce) { .lv-skeleton { animation: none; } }
 </style>
