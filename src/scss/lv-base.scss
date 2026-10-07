@@ -25,7 +25,8 @@
   }
 }
 
-/* —— 徽章（默认 / accent / 语义三色；对齐原型 .pill：7px 小圆角贴纸，非胶囊） —— */
+/* —— 徽章（默认 / accent / 语义三色；对齐原型 .pill：7px 小圆角贴纸，非胶囊）
+   单/双破折号修饰类并存（历史用法 .acc 与 --acc 等价），语义一致 —— */
 .lv-chip {
   display: inline-flex;
   align-items: center;
@@ -40,21 +41,116 @@
   border: 1px solid transparent;
   white-space: nowrap;
 
+  &.acc,
   &--acc {
     color: var(--lv-accent);
     background: var(--lv-accent-soft);
   }
+  &.grn,
+  &.good,
   &--grn {
     color: var(--lv-green);
     background: var(--lv-green-soft);
   }
+  &.red,
   &--red {
     color: var(--lv-red);
     background: var(--lv-red-soft);
   }
+  &.amb,
   &--amb {
     color: var(--lv-amber);
     background: var(--lv-amber-soft);
+  }
+}
+
+/* 徽章用作切换按钮时（浏览工具条筛选等）补交互态；静态徽章不受影响 */
+button.lv-chip {
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    border-color: var(--lv-accent);
+    color: var(--lv-accent);
+  }
+  &:disabled {
+    opacity: 0.62;
+    cursor: not-allowed;
+  }
+}
+
+/* —— 按钮外观基线（对齐原型 .btn/.primary/.quiet；
+   原 Practice/Mock 各自 scoped 重复定义、Report 缺失导致暗色露 UA 白底，故上收全局） —— */
+.lv-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: 11px;
+  font-size: 14px;
+  font-weight: 550;
+  border: 1px solid var(--lv-ctl-border);
+  background: var(--lv-surface);
+  color: var(--lv-text);
+  cursor: pointer;
+  transition:
+    background-color var(--lv-dur-micro) ease,
+    border-color var(--lv-dur-micro) ease,
+    box-shadow var(--lv-dur-micro) ease;
+
+  &:hover:not(:disabled) {
+    border-color: var(--lv-accent);
+    background: var(--lv-accent-soft);
+  }
+  &:disabled {
+    opacity: 0.62;
+    cursor: not-allowed;
+  }
+}
+.lv-btn--primary {
+  background: var(--lv-btn-primary-bg);
+  border-color: transparent;
+  color: var(--b3-theme-on-primary, #fff);
+  box-shadow: var(--lv-btn-primary-shadow);
+
+  &:hover:not(:disabled) {
+    background: var(--lv-btn-primary-bg);
+    filter: none;
+    transform: translateY(-1px);
+    box-shadow: var(--lv-btn-primary-shadow-hover);
+  }
+  &:active:not(:disabled) {
+    transform: translateY(0);
+  }
+}
+.lv-btn--ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--lv-text-2);
+}
+.lv-btn.sm {
+  min-height: 34px;
+  padding: 5px 12px;
+  font-size: 12.5px;
+  border-radius: 9px;
+}
+
+/* —— 下拉框外观（对齐原型 input/select：ctl-border + 11px 圆角；
+   原 Practice/Memory 用 UA 默认样式，观感掉档） —— */
+.lv-select {
+  min-height: 44px;
+  padding: 9px 12px;
+  border-radius: 11px;
+  border: 1px solid var(--lv-ctl-border);
+  background: var(--lv-surface);
+  color: var(--lv-text);
+  font: inherit;
+  font-size: 13px;
+
+  &:focus {
+    border-color: var(--lv-accent);
+    box-shadow: var(--lv-ring);
+    outline: none;
   }
 }
 
@@ -145,10 +241,10 @@
   h1,
   .lv-h1 {
     margin: 0;
-    font-size: 26px;
-    line-height: 1.4;
-    font-weight: 650;
-    letter-spacing: -0.6px;
+    font-size: 28px;
+    line-height: 1.35;
+    font-weight: 700;
+    letter-spacing: -0.56px;
   }
   p {
     margin: 8px 0 0;
@@ -290,7 +386,12 @@
       position: absolute;
       inset: 0;
       transform: translateX(-100%);
-      background: linear-gradient(100deg, transparent 30%, var(--b3-theme-primary-lighter, rgba(255, 255, 255, 0.45)) 50%, transparent 70%);
+      background: linear-gradient(
+        100deg,
+        transparent 30%,
+        var(--b3-theme-primary-lighter, rgba(255, 255, 255, 0.45)) 50%,
+        transparent 70%
+      );
       animation: lv-sheen 2.6s ease-in-out infinite;
     }
   }
@@ -315,11 +416,10 @@
   white-space: nowrap;
 }
 
-/* —— 全局焦点可见性（对齐原型：3px 焦点环） —— */
+/* —— 全局焦点可见性（规范 v6：环形投影，随元素圆角自适应） —— */
 :focus-visible {
-  outline: 3px solid var(--lv-accent);
-  outline-offset: 3px;
-  border-radius: 6px;
+  outline: none;
+  box-shadow: var(--lv-ring);
 }
 
 /* —— 触控目标基线（对齐原型：交互控件 ≥44px；徽章/键帽除外） ——
@@ -462,6 +562,90 @@ input[type="range"] {
   }
 }
 
+/* —— Tab 顶栏（规范 v6 app-top：面包屑/工具条行，三 Tab 同构） —— */
+.lv-exam-tab > .block__icons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--lv-border);
+  background: var(--lv-surface);
+  padding: 10px 16px;
+  min-height: 48px;
+}
+@media (max-width: 1023px) {
+  /* 窄屏：chips 允许换行，面包屑占满首行可收缩（修复 390px 溢出撑宽整页） */
+  .lv-exam-tab > .block__icons {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+  .lv-exam-tab > .block__icons .lv-crumbs {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+}
+@media (max-width: 600px) {
+  .lv-exam-tab > .block__icons .lv-palette-label {
+    display: none; /* 搜索按钮收敛为图标 + ⌘K */
+  }
+}
+
+/* —— 共用原语（上收自三 Tab 的逐字重复定义；改一处三处生效） —— */
+.lv-muted {
+  color: var(--lv-text-3);
+  font-size: 12.5px;
+}
+.lv-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+.lv-error {
+  margin: 8px 0;
+  padding: 10px 14px;
+  border-radius: var(--lv-r-2);
+  background: var(--lv-red-soft);
+  color: var(--lv-red);
+  font-size: 13px;
+}
+.lv-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.lv-kpi {
+  padding: 18px 20px;
+}
+.lv-kpi .l {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--lv-text-3);
+  margin-bottom: 4px;
+}
+.lv-kpi .l .lv-icon {
+  color: var(--lv-accent);
+  background: var(--lv-accent-soft);
+  border-radius: 7px;
+  padding: 3px;
+}
+.lv-kpi .v {
+  font-size: 29px;
+  font-weight: 650;
+  letter-spacing: -0.8px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 960px) {
+  .lv-kpis {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 /* —— 长文本溢出（V08：无空格英文/URL/公式不撑破布局） —— */
 :where(.lv-exam-tab, .lv-pad, .lv-detail, .lv-qrow-stem) {
   overflow-wrap: anywhere;
@@ -493,6 +677,255 @@ input[type="range"] {
   .lv-seg button.on,
   .lv-seg button.active {
     outline: 1px solid Highlight;
+  }
+}
+
+/* —— 命令面板（规范 v6 §5.2：⌘K 全局命令；键盘优先） —— */
+.lv-palette-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  background: var(--lv-overlay);
+  display: grid;
+  place-items: start center;
+  padding: 12vh 16px 16px;
+  backdrop-filter: blur(2px);
+}
+.lv-palette {
+  width: min(620px, 100%);
+  background: var(--lv-surface);
+  border: 1px solid var(--lv-border);
+  border-radius: var(--lv-r-3);
+  box-shadow: var(--lv-sh-pop);
+  overflow: hidden;
+  animation: lv-pop-in 0.22s var(--lv-ease-out);
+}
+.lv-palette-input {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--lv-border);
+  color: var(--lv-text-3);
+}
+.lv-palette-input input {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  min-height: 30px;
+  padding: 0;
+  font-size: 15px;
+  flex: 1;
+  color: var(--lv-text);
+}
+.lv-palette-input input:focus {
+  box-shadow: none;
+  outline: none;
+}
+.lv-palette-list {
+  max-height: 46vh;
+  overflow: auto;
+  padding: 8px;
+}
+.lv-palette-group {
+  font-size: 10.5px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--lv-text-3);
+  font-weight: 650;
+  padding: 10px 12px 5px;
+}
+.lv-palette-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 11px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  padding: 9px 12px;
+  min-height: 38px;
+  color: var(--lv-text);
+  font-size: 13.5px;
+  cursor: pointer;
+
+  .lv-icon {
+    color: var(--lv-text-2);
+  }
+  &:hover,
+  &.sel {
+    background: var(--lv-accent-soft);
+    .lv-icon {
+      color: var(--lv-accent);
+    }
+  }
+  kbd {
+    margin-left: auto;
+  }
+}
+.lv-palette-foot {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 9px 16px;
+  border-top: 1px solid var(--lv-border);
+  font-size: 11px;
+  color: var(--lv-text-3);
+  background: var(--lv-surface-2);
+}
+/* 顶栏/头部触发 chip（图标+文案+⌘K 键帽） */
+.lv-palette-btn {
+  color: var(--lv-text-2);
+  border-color: var(--lv-border);
+
+  .lv-kbd {
+    margin-left: 2px;
+  }
+  &:hover:not(:disabled) {
+    color: var(--lv-accent);
+    border-color: var(--lv-accent);
+    background: var(--lv-accent-soft);
+  }
+}
+
+/* —— 首页 widgets（规范 v6 §5.3：目标环 / 连胜 / 待消灭） —— */
+.lv-widgets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+
+  @media (max-width: 960px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.lv-widget {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 16px 18px;
+}
+.lv-widget--click {
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--lv-accent);
+    box-shadow: var(--lv-sh-2);
+    transform: translateY(-1px);
+  }
+}
+.lv-widget-title {
+  font-size: 11px;
+  letter-spacing: 1.2px;
+  color: var(--lv-text-3);
+  font-weight: 650;
+  text-transform: uppercase;
+  margin-bottom: 5px;
+}
+.lv-widget-body {
+  min-width: 0;
+
+  strong {
+    display: block;
+    font-size: 19px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+  }
+  .lv-muted {
+    display: block;
+    font-size: 12px;
+    margin-top: 2px;
+  }
+}
+.lv-goal-wrap {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.lv-goal-ring {
+  --pct: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: conic-gradient(var(--lv-accent) calc(var(--pct) * 1%), var(--lv-border) 0);
+  mask: var(--lv-goal-mask);
+  -webkit-mask: var(--lv-goal-mask);
+}
+.lv-goal-ring[data-tone="good"] {
+  background: conic-gradient(var(--lv-green) calc(var(--pct) * 1%), var(--lv-border) 0);
+}
+.lv-goal-center {
+  position: absolute;
+  font-size: 14px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.lv-streak-flame {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--lv-amber) 12%, transparent);
+  color: var(--lv-amber);
+  flex-shrink: 0;
+}
+.lv-streak-flame--wrong {
+  background: var(--lv-red-soft);
+  color: var(--lv-red);
+}
+
+/* —— 错题本部件（规范 v6 §6） —— */
+.lv-chart-row {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) 48px;
+  gap: 12px;
+  align-items: center;
+  font-size: 12px;
+  padding: 10px 0;
+  font-variant-numeric: tabular-nums;
+
+  strong {
+    text-align: right;
+    font-weight: 650;
+  }
+}
+.lv-wrong-row {
+  display: flex;
+  gap: 13px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--lv-border);
+
+  &:last-of-type {
+    border-bottom: 0;
+  }
+  .lv-wrong-main {
+    flex: 1;
+    min-width: 0;
+  }
+  .lv-wrong-stem {
+    font-size: 13.5px;
+    font-weight: 550;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .lv-wrong-meta {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 4px;
+    font-size: 11.5px;
+    color: var(--lv-text-3);
+    font-variant-numeric: tabular-nums;
   }
 }
 

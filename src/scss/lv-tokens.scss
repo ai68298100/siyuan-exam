@@ -16,6 +16,9 @@
     var(--b3-theme-primary),
     var(--b3-theme-primary-light, var(--b3-theme-primary))
   );
+  /* 设计规范 v6：主按钮垂直渐变（deep=主题色压深一档，主题自适应） */
+  --lv-accent-deep: color-mix(in srgb, var(--b3-theme-primary) 84%, #000);
+  --lv-btn-primary-bg: linear-gradient(180deg, var(--b3-theme-primary), var(--lv-accent-deep));
   --lv-green: var(--b3-theme-success, #189a58);
   --lv-green-soft: color-mix(in srgb, var(--lv-green) 11%, transparent);
   --lv-red: var(--b3-theme-error, #e5484d);
@@ -47,6 +50,8 @@
   --lv-dur-view: 260ms;
 
   /* —— 焦点环 —— */
+  /* 目标环 mask（几何遮罩色，非产品色；#000 仅作 mask 不透明段） */
+  --lv-goal-mask: radial-gradient(closest-side, transparent 62%, #000 63%);
   --lv-ring: 0 0 0 3px var(--lv-accent-soft);
 
   /* —— 浮层遮罩（V04 抽屉/对话框背板；中性深色，token 定义） —— */
@@ -58,8 +63,15 @@
   --lv-sh-1: 0 1px 1px rgba(18, 25, 38, 0.03), 0 2px 6px -2px rgba(18, 25, 38, 0.06);
   --lv-sh-2: 0 1px 2px rgba(18, 25, 38, 0.05), 0 12px 36px -12px rgba(18, 25, 38, 0.16);
   --lv-sh-pop: 0 2px 4px rgba(18, 25, 38, 0.06), 0 20px 48px -16px rgba(18, 25, 38, 0.22);
-  /* 主按钮投影（原型 .primary: 0 3px 7px accent/20；accent alpha 由 color-mix 生成，无硬编码主题色） */
-  --lv-btn-primary-shadow: 0 3px 7px color-mix(in srgb, var(--b3-theme-primary) 20%, transparent);
+  /* 主按钮投影（规范 v6：双层主题色投影 + inset 高光；accent alpha 由 color-mix 生成） */
+  --lv-btn-primary-shadow:
+    0 1px 2px color-mix(in srgb, var(--b3-theme-primary) 22%, transparent),
+    0 4px 14px -4px color-mix(in srgb, var(--b3-theme-primary) 32%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  --lv-btn-primary-shadow-hover:
+    0 2px 5px color-mix(in srgb, var(--b3-theme-primary) 26%, transparent),
+    0 10px 24px -8px color-mix(in srgb, var(--b3-theme-primary) 40%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 /* 视图入场（原型 .screen-enter appear .18s；reduced-motion 全局禁用） */

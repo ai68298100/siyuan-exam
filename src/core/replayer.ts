@@ -128,3 +128,25 @@ export function streak(r: ReplayResult, today = new Date()): number {
   }
   return n;
 }
+
+/** 错因分布（错题本假设口径）：持久化标注（reasons map）优先，WrongItem.reason 遗留字段兜底，未标注单独计桶。
+ *  供错题本分布卡与报告复习信号聚合共用——口径单一定义源。 */
+export type WrongReasonKey = "careless" | "unknown" | "trap";
+export interface WrongReasonMix {
+  careless: number;
+  unknown: number;
+  trap: number;
+  unmarked: number;
+}
+export function wrongReasonMix(
+  items: readonly { qid: string; reason?: WrongItem["reason"] }[],
+  reasons: ReadonlyMap<string, WrongReasonKey>,
+): WrongReasonMix {
+  const mix: WrongReasonMix = { careless: 0, unknown: 0, trap: 0, unmarked: 0 };
+  for (const w of items) {
+    const r = reasons.get(w.qid) ?? w.reason;
+    if (r === "careless" || r === "unknown" || r === "trap") mix[r]++;
+    else mix.unmarked++;
+  }
+  return mix;
+}

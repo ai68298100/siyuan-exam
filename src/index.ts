@@ -239,7 +239,11 @@ export default class LvExamPlugin extends Plugin {
       version: manifest.version,
       open: () => this.openPractice(),
       practice: () => this.openPractice(),
-      wrongbook: () => this.openPractice(),
+      wrongbook: () => {
+        this.openPractice();
+        // 深链到练习台错题本视图（bus 信封；已开 Tab 与新开 Tab 同路径）
+        emitExamEvent("open-view", { view: "wrongbook" });
+      },
       mock: () => this.openMock(),
       report: () => this.openReport(),
       stats: () => {
@@ -266,7 +270,10 @@ export default class LvExamPlugin extends Plugin {
     try {
       import("@/core/publicStats").then((m) => {
         const d = this.examApp!.derived();
-        const snapshot = m.buildPublicStats(d, this.examApp!.attempts.all(), streak(d)) as unknown as Record<string, unknown>;
+        const snapshot = m.buildPublicStats(d, this.examApp!.attempts.all(), streak(d)) as unknown as Record<
+          string,
+          unknown
+        >;
         (this as any).lastPublicStats = snapshot; // window.siyuanExam.stats() 的同步缓存
         // 48-02 lite：总线形态（信封 v1，新消费者推荐）；legacy 裸 detail 同时保留（旧消费者兼容）
         emitExamEvent("stats", snapshot);
@@ -492,7 +499,11 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
       langKey: "command.resetOnboarding",
       // 25-P1：首用引导可跳过、可重置（清 47-02 的 localStorage 标记，重开练习台即再见）
       callback: () => {
-        try { localStorage.removeItem("lv-exam-onboarded"); } catch { /* 忽略 */ }
+        try {
+          localStorage.removeItem("lv-exam-onboarded");
+        } catch {
+          /* 忽略 */
+        }
         showMessage(this.i18n["onboard.resetDone"], 3200, "info");
       },
     });
@@ -628,14 +639,20 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
               return;
             }
             const { inputDialogSync } = await import("./libs/dialog");
-            const kp = (await inputDialogSync({
-              title: this.i18n["blockMenu.markKp"],
-              placeholder: this.i18n["blockMenu.markKpPlaceholder"],
-              defaultText: hit.q.kp ?? "",
-            }))?.trim();
+            const kp = (
+              await inputDialogSync({
+                title: this.i18n["blockMenu.markKp"],
+                placeholder: this.i18n["blockMenu.markKpPlaceholder"],
+                defaultText: hit.q.kp ?? "",
+              })
+            )?.trim();
             if (kp == null) return; // 用户取消
             await exam.markQuestionKp(hit.q, kp);
-            showMessage(kp ? `${this.i18n["blockMenu.markKpDone"]} ${kp}` : this.i18n["blockMenu.markKpCleared"], 2800, "info");
+            showMessage(
+              kp ? `${this.i18n["blockMenu.markKpDone"]} ${kp}` : this.i18n["blockMenu.markKpCleared"],
+              2800,
+              "info",
+            );
           } catch (e) {
             showMessage(String(e instanceof Error ? e.message : e), 4800, "error");
           }
@@ -648,7 +665,11 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
         click: async () => {
           const hit = await exam.findQuestionByBlock(blockId).catch(() => null);
           if (!hit) {
-            showMessage(this.examApp!.kernelOnline ? this.i18n["query.empty"] : this.i18n["state.offlineHint"], 3600, "info");
+            showMessage(
+              this.examApp!.kernelOnline ? this.i18n["query.empty"] : this.i18n["state.offlineHint"],
+              3600,
+              "info",
+            );
             return;
           }
           (this as any).pendingEditQid = hit.q.id;
@@ -663,7 +684,11 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
         click: async () => {
           const hit = await exam.findQuestionByBlock(blockId).catch(() => null);
           if (!hit) {
-            showMessage(this.examApp!.kernelOnline ? this.i18n["query.empty"] : this.i18n["state.offlineHint"], 3600, "info");
+            showMessage(
+              this.examApp!.kernelOnline ? this.i18n["query.empty"] : this.i18n["state.offlineHint"],
+              3600,
+              "info",
+            );
             return;
           }
           (this as any).pendingBrowseQid = hit.q.id;
