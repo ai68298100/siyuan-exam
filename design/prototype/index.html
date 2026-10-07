@@ -13,6 +13,13 @@
   <div class="prototype-copy"><strong>交互设计 v5</strong><span class="pill accent">规划原型 · 原创示例</span><span class="muted desktop-note">不连接真实资料、AI或思源；刷新重置示例</span></div>
   <div class="controls"><label for="scenario">状态演示</label><select id="scenario"><option value="ready">正常流程</option><option value="empty">无资料</option><option value="offline">离线 / 无 AI</option><option value="save-error">保存失败</option><option value="stale">来源已更新</option></select><button id="theme" aria-label="切换深色主题">深色</button><button id="reset">重置示例</button></div>
 </div>
+<div class="palette-overlay" id="palette" hidden>
+  <div class="palette" role="dialog" aria-modal="true" aria-label="命令面板">
+    <div class="palette-input"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg><input id="palette-q" type="text" placeholder="搜索页面与动作，试试「模考」「导入」「错题」…" aria-label="搜索命令"><kbd>Esc</kbd></div>
+    <div class="palette-list" id="palette-list"></div>
+    <div class="palette-foot"><span><kbd>↑</kbd> <kbd>↓</kbd> 选择</span><span><kbd>Enter</kbd> 执行</span><span class="grow"></span><span>键盘优先 · 对标 Linear ⌘K</span></div>
+  </div>
+</div>
 <div class="shell">
   <aside class="sidebar" id="sidebar" aria-label="主导航">
     <div class="brand-row"><a class="brand" href="#home"><span class="brand-mark" aria-hidden="true">驴</span><span>小驴考试<small>LV EXAM</small></span></a><button class="quiet drawer-close" id="nav-close" aria-label="关闭主导航">×</button></div>
@@ -22,7 +29,7 @@
   </aside>
   <button class="nav-backdrop" id="nav-backdrop" aria-label="关闭主导航" tabindex="-1" hidden></button>
   <div class="workspace">
-    <header class="app-top"><div class="row"><button class="quiet mobile-menu" id="menu" aria-label="打开主导航" aria-expanded="false">☰</button><span class="breadcrumbs" id="breadcrumbs">线性代数 / 项目首页</span></div><div class="top-status"><span class="save-indicator" id="save-status" role="status">本地示例就绪</span><span class="desktop-note">思源 AI · 演示</span><button class="btn top-ai" data-action="ai-entry"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z"></path></svg>AI 下一步</button></div></header>
+    <header class="app-top"><div class="row"><button class="quiet mobile-menu" id="menu" aria-label="打开主导航" aria-expanded="false">☰</button><span class="breadcrumbs" id="breadcrumbs">线性代数 / 项目首页</span></div><div class="top-status"><span class="save-indicator" id="save-status" role="status">本地示例就绪</span><button class="btn kbd-chip" id="palette-open" title="命令面板（Ctrl/⌘ K）"><svg class="icon" viewBox="0 0 24 24" style="width:14px;height:14px" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg>搜索或跳转<kbd>⌘K</kbd></button><span class="desktop-note">思源 AI · 演示</span><button class="btn top-ai" data-action="ai-entry"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z"></path></svg>AI 下一步</button></div></header>
     <div class="main-wrap"><nav class="subnav" id="subnav" aria-label="本模块页面"></nav><div id="state-message" aria-live="polite"></div><main id="content" tabindex="-1"></main></div>
   </div>
 </div>
