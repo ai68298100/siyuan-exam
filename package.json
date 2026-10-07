@@ -22,6 +22,7 @@
     "smoke:csv": "node ./scripts/smoke-csv.mjs",
     "perf:bank": "node ./scripts/perf-bank.mjs",
     "e2e": "node ./scripts/smoke-e2e.mjs",
+    "smoke:ui": "node ./scripts/visual-harness/smoke-ui.mjs",
     "check:styles": "node ./scripts/check-styles.mjs",
     "commit:check": "commitlint",
     "lint": "eslint .",
