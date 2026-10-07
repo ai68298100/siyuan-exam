@@ -78,6 +78,18 @@ describe("sanitizeRichHtml（富文本白名单）", () => {
     expect(out).toContain("style");
   });
 
+  it("移除 style 中的 CSS 外载/活动 token，保留无风险普通样式", () => {
+    const out = sanitizeRichHtml(
+      `<span style="background:url(https://tracker.example/x);color:red">remote</span><span style="background:url(javascript:alert(1))">script</span><span style="background:u/**/rl(https://tracker.example/x)">comment</span><span style="background:u\\72l(https://tracker.example/x)">escape</span><span style="behavior:url(#x)">behavior</span><span style="background:var(--remote)">var</span><span style="color:blue">safe</span>`,
+    );
+    expect(out).not.toContain("tracker.example");
+    expect(out).not.toContain("javascript:");
+    expect(out).not.toContain('style="background:u');
+    expect(out).not.toContain('style="behavior');
+    expect(out).not.toContain('style="background:var');
+    expect(out).toContain('<span style="color:blue">safe</span>');
+  });
+
   it("移除远程图片自动加载，保留本地与内嵌资源", () => {
     const out = sanitizeRichHtml(
       `<img src="https://tracker.example/p.gif?u=1" alt="remote"><img src="//tracker.example/p.gif" alt="protocol"><img src="http:/tracker.example/p.gif" alt="single-slash"><img src="\\\\tracker.example\\p.gif" alt="backslash"><img src="assets/p.png" alt="local"><img src="#p" alt="anchor"><img src="data:image/png;base64,AA==" alt="inline">`,
