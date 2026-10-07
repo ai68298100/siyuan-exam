@@ -602,7 +602,7 @@
     </div>
     <div class="lv-row">
       <label class="lv-row" style="margin:0"><input type="checkbox" bind:checked={bp.sectionTimed} /> {t("mock.sectionTimed")}</label>
-      <label class="lv-row" style="margin:0"><input type="checkbox" bind:checked={bp.shuffleOptions} disabled /> {t("mock.shuffle")}（v0.4）</label>
+      <label class="lv-row" style="margin:0"><input type="checkbox" bind:checked={bp.shuffleOptions} disabled /> {t("mock.shuffle")}<span class="lv-muted">· 规划中</span></label>
       <label class="lv-row" style="margin:0"><input type="checkbox" bind:checked={bp.lockout} /> {t("mock.lockout")}</label>
       <span class="lv-chip">{t("mock.passLine")} <input class="lv-input num" style="width:64px" type="number" bind:value={bp.passLine} /></span>
     </div>
@@ -614,7 +614,10 @@
     </div>
     <!-- 考后估分 -->
     <details class="lv-card lv-pad-card" style="padding:12px 16px">
-      <summary style="cursor:pointer;font-weight:650">{t("estimate.title")}</summary>
+      <summary style="cursor:pointer;font-weight:650;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <span>{t("estimate.title")}</span>
+        <span class="lv-muted" style="font-weight:400;font-size:12px">{t("estimate.hint")}</span>
+      </summary>
       {#if !questions.length}
         <p class="lv-muted">{t("state.emptyBank")}</p>
       {:else}
@@ -711,9 +714,18 @@
           class:cur={i === cursor} onclick={() => goto(i)}>{i + 1}</button>
       {/each}
     </div>
-    <div class="lv-row">
-      <button class="lv-btn sm" onclick={() => goto(bp.lockout ? cursor + 1 : cursor - 1)} disabled={bp.lockout ? false : cursor === 0}><Icon name="chev-left" size={14} /></button>
-      <button class="lv-btn sm" onclick={() => goto(cursor + 1)} disabled={cursor >= session.state.qids.length - 1}><Icon name="chev-right" size={14} /></button>
+    <!-- 三态图例：新用户无需猜测紫底/琥珀框/实心的含义 -->
+    <div class="lv-row lv-muted" style="margin:0;font-size:11px;gap:14px">
+      <span class="lv-legend"><i class="dot" style="background:var(--lv-accent-soft)"></i>{t("mock.legend.done")}</span>
+      <span class="lv-legend"><i class="dot" style="background:transparent;border:2px solid var(--lv-amber)"></i>{t("mock.legend.flag")}</span>
+      <span class="lv-legend"><i class="dot" style="background:var(--lv-accent)"></i>{t("mock.legend.cur")}</span>
+    </div>
+    <div class="lv-row" style="margin-top:2px">
+      <!-- 人机对话模式不可回退：左键不再「向左却前进」（误触会不可逆跳题），与右键一起仅保留前进 -->
+      <button class="lv-btn sm" onclick={() => goto(cursor - 1)} disabled={bp.lockout || cursor === 0} title={bp.lockout ? t("mock.lockout") : t("session.kbdPrev")}><Icon name="chev-left" size={14} /></button>
+      <button class="lv-btn sm" onclick={() => goto(cursor + 1)} disabled={cursor >= session.state.qids.length - 1} title={t("session.next")}><Icon name="chev-right" size={14} /></button>
+      <!-- 位置读数：顺序作答模式下尤其需要知道当前进度 -->
+      <span class="lv-muted num">{cursor + 1} / {session.state.qids.length}</span>
     </div>
   {:else if view === "report" && score}
     <!-- ===== S7 成绩单 ===== -->
@@ -915,10 +927,14 @@
   /* 蓝图行数据网格密度（规范 v6）：34px 控件，行更紧凑 */
   .lv-bp-row .lv-input, .lv-bp-row .lv-select { min-height: 34px; padding: 5px 10px; border-radius: 9px; font-size: 13px; }
   .lv-bp-del:hover:not(:disabled) { border-color: var(--lv-red); color: var(--lv-red); background: var(--lv-red-soft); }
-  .lv-sheet { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
-  .lv-cell { min-width: 0; min-height: 44px; border-radius: 8px; border: 1px solid var(--lv-border); background: var(--lv-surface); font-size: 12px; font-variant-numeric: tabular-nums; color: var(--lv-text-2); cursor: pointer; }
-  .lv-cell.done { background: var(--lv-green-soft); color: var(--lv-green); border-color: transparent; }
-  .lv-cell.flag { outline: 2px solid var(--lv-amber); }
+  /* 答题卡（规范 v6 §5.4）：5 列 44px 格，密度对齐原型——宽屏限宽防格子被拉成横条 */
+  .lv-sheet { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 12px 0; max-width: 660px; }
+  /* 三态图例小方块 */
+  .lv-legend { display: inline-flex; align-items: center; gap: 5px; }
+  .lv-legend .dot { display: inline-block; width: 11px; height: 11px; border-radius: 3px; flex: none; }
+  .lv-cell { min-width: 0; min-height: 44px; border-radius: 8px; border: 1px solid var(--lv-border); background: var(--lv-surface); font-size: 12px; font-variant-numeric: tabular-nums; color: var(--lv-text-2); cursor: pointer; transition: background-color var(--lv-dur-micro) var(--lv-ease-out), border-color var(--lv-dur-micro) var(--lv-ease-out), color var(--lv-dur-micro) var(--lv-ease-out); }
+  .lv-cell.done { background: var(--lv-accent-soft); color: var(--lv-accent); border-color: transparent; }
+  .lv-cell.flag { outline: 2px solid var(--lv-amber); outline-offset: -2px; }
   .lv-cell.cur { background: var(--lv-accent); color: var(--b3-theme-on-primary, #fff); border-color: transparent; }
   .lv-empty { border: 1.5px dashed var(--lv-border); border-radius: 14px; padding: 26px; text-align: center; color: var(--lv-text-3); }
   .lv-skeleton { height: 160px; border-radius: var(--lv-r-3); background: linear-gradient(100deg, var(--lv-surface-2) 40%, var(--lv-surface) 50%, var(--lv-surface-2) 60%); background-size: 200% 100%; animation: lv-shim 1.4s infinite; }

@@ -16,8 +16,9 @@
     var(--b3-theme-primary),
     var(--b3-theme-primary-light, var(--b3-theme-primary))
   );
-  /* 设计规范 v6：主按钮垂直渐变（deep=主题色压深一档，主题自适应） */
-  --lv-accent-deep: color-mix(in srgb, var(--b3-theme-primary) 84%, #000);
+  /* 设计规范 v6：主按钮垂直渐变（deep=主题色压深一档，主题自适应；
+     78% 对齐原型亮色 deep 对 #6153d5→#4a3fb8 的压深比） */
+  --lv-accent-deep: color-mix(in srgb, var(--b3-theme-primary) 78%, #000);
   --lv-btn-primary-bg: linear-gradient(180deg, var(--b3-theme-primary), var(--lv-accent-deep));
   --lv-green: var(--b3-theme-success, #189a58);
   --lv-green-soft: color-mix(in srgb, var(--lv-green) 11%, transparent);
@@ -43,16 +44,20 @@
   --lv-r-3: 18px;
   --lv-r-4: 20px;
 
-  /* —— 动效 —— */
+  /* —— 动效（规范 v6 三档：140/220/320ms，统一曲线） —— */
   --lv-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --lv-ease-spring: cubic-bezier(0.3, 1.4, 0.4, 1);
-  --lv-dur-micro: 160ms;
-  --lv-dur-view: 260ms;
+  --lv-dur-micro: 140ms;
+  --lv-dur-view: 220ms;
+  --lv-dur-slow: 320ms;
 
   /* —— 焦点环 —— */
   /* 目标环 mask（几何遮罩色，非产品色；#000 仅作 mask 不透明段） */
   --lv-goal-mask: radial-gradient(closest-side, transparent 62%, #000 63%);
-  --lv-ring: 0 0 0 3px var(--lv-accent-soft);
+  /* 18% 主色环 + 1px surface 断层（Geist/shadcn 式 ring-offset 焦点语言，对齐现代工具链） */
+  --lv-ring:
+    0 0 0 1px var(--lv-surface),
+    0 0 0 4px color-mix(in srgb, var(--b3-theme-primary) 22%, transparent);
 
   /* —— 浮层遮罩（V04 抽屉/对话框背板；中性深色，token 定义） —— */
   --lv-overlay: rgba(17, 21, 40, 0.46);
@@ -91,4 +96,9 @@ html[data-theme-mode="dark"] {
   --lv-sh-1: 0 1px 2px rgba(0, 0, 0, 0.35);
   --lv-sh-2: 0 1px 2px rgba(0, 0, 0, 0.4), 0 16px 44px -14px rgba(0, 0, 0, 0.55);
   --lv-sh-pop: 0 2px 6px rgba(0, 0, 0, 0.4), 0 24px 56px -18px rgba(0, 0, 0, 0.65);
+  /* 暗色主按钮对齐原型：flat 主色 + 去彩色投影；deep 变亮档做 hover 端 */
+  --lv-accent-deep: color-mix(in srgb, var(--b3-theme-primary) 84%, #fff);
+  --lv-btn-primary-bg: var(--b3-theme-primary);
+  --lv-btn-primary-shadow: none;
+  --lv-btn-primary-shadow-hover: none;
 }

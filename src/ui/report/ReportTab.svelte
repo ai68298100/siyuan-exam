@@ -470,14 +470,14 @@
       } finally { purgeBusy = false; }
     }
 
-    const heatColor = (n: number) => n === 0 ? "var(--lv-surface-2)" : n < 5 ? "l1" : n < 15 ? "l2" : n < 30 ? "l3" : "l4";
+    const heatColor = (n: number) => (n === 0 ? "" : n < 5 ? "l1" : n < 15 ? "l2" : n < 30 ? "l3" : "l4");
     const maxHour = $derived(Math.max(1, ...hours));
     const hoursSvg = $derived(hours.map((n, i) => `${(i / 23) * 300},${40 - Math.round((n / maxHour) * 36)}`).join(" "));
     const maxTrend = $derived(Math.max(1, ...trend30.map((p) => p.attempts)));
-    /** 55-04 lite：正确率折线点——有作答日连成段（0 题日以 null 断开），比例尺 0-100% 对满高 */
+    /** 55-04 lite：正确率折线点——有作答日连成段（0 题日以 null 断开），比例尺 0-100% 对满高（viewBox 600×90） */
     const trendAccPoints = $derived(
       trend30
-        .map((p, i) => (p.attempts > 0 ? { x: (i / 29) * 300, y: 42 - Math.round(((p.correct ?? 0) / p.attempts) * 38) } : null))
+        .map((p, i) => (p.attempts > 0 ? { x: (i / 29) * 600, y: 86 - Math.round(((p.correct ?? 0) / p.attempts) * 78) } : null))
         .filter((pt): pt is { x: number; y: number } => pt != null)
         .map((pt) => `${pt.x},${pt.y}`)
         .join(" "),
@@ -486,15 +486,15 @@
     /** v6 图表质感：题量面积多边形（渐变填充）与最后一个有作答日的末点坐标 */
     const trendArea = $derived.by(() => {
       const pts = trend30
-        .map((p, i) => (p.attempts > 0 ? `${(i / 29) * 300},${42 - Math.round((p.attempts / maxTrend) * 38)}` : null))
+        .map((p, i) => (p.attempts > 0 ? `${(i / 29) * 600},${86 - Math.round((p.attempts / maxTrend) * 78)}` : null))
         .filter(Boolean);
       if (!pts.length) return "";
       const lastX = pts[pts.length - 1].split(",")[0];
-      return `0,44 ${pts.join(" ")} ${lastX},44`;
+      return `0,88 ${pts.join(" ")} ${lastX},88`;
     });
     const trendLastDot = $derived.by(() => {
       for (let i = trend30.length - 1; i >= 0; i--) {
-        if (trend30[i].attempts > 0) return { x: (i / 29) * 300, y: 42 - Math.round((trend30[i].attempts / maxTrend) * 38) };
+        if (trend30[i].attempts > 0) return { x: (i / 29) * 600, y: 86 - Math.round((trend30[i].attempts / maxTrend) * 78) };
       }
       return null;
     });
@@ -618,17 +618,20 @@
     </div>
 
     {#if weekCmp}
+      <!-- 周对比（原型 chart-row 数据语言：双条对比 + 带数值 delta，替代孤箭头 chip） -->
+      {@const delta = weekCmp.thisWeek.attempts - weekCmp.lastWeek.attempts}
+      {@const maxW = Math.max(weekCmp.thisWeek.attempts, weekCmp.lastWeek.attempts, 1)}
       <div class="lv-card lv-section" style="margin-bottom:12px">
-        <b>{t("report.weekCompare")}</b>
-        <div class="lv-row" style="margin:4px 0">
-          <span class="lv-chip">{t("report.thisWeek")} <b class="num">{weekCmp.thisWeek.attempts}</b> {t("browse.count")}</span>
-          <span class="lv-chip">{t("report.lastWeek")} <b class="num">{weekCmp.lastWeek.attempts}</b> {t("browse.count")}</span>
-          {#if weekCmp.thisWeek.attempts >= weekCmp.lastWeek.attempts}
-            <span class="lv-chip lv-chip--grn">↑</span>
+        <div class="lv-row" style="margin:0 0 6px;justify-content:space-between">
+          <b>{t("report.weekCompare")}</b>
+          {#if delta !== 0}
+            <span class="lv-chip num {delta > 0 ? 'lv-chip--grn' : 'lv-chip--red'}">{delta > 0 ? "↑" : "↓"} {delta > 0 ? "+" : ""}{delta} {t("browse.count")}</span>
           {:else}
-            <span class="lv-chip lv-chip--red">↓</span>
+            <span class="lv-chip num">±0</span>
           {/if}
         </div>
+        <div class="lv-chart-row"><span>{t("report.thisWeek")}</span><div class="lv-progress"><i style="width:{Math.round((weekCmp.thisWeek.attempts / maxW) * 100)}%"></i></div><b class="num">{weekCmp.thisWeek.attempts}</b></div>
+        <div class="lv-chart-row"><span>{t("report.lastWeek")}</span><div class="lv-progress"><i style="width:{Math.round((weekCmp.lastWeek.attempts / maxW) * 100)}%"></i></div><b class="num">{weekCmp.lastWeek.attempts}</b></div>
       </div>
     {/if}
 
@@ -735,19 +738,28 @@
     {#if trend30.some((p) => p.attempts > 0)}
       <div class="lv-card lv-section" style="margin-bottom:12px">
         <b>{t("report.trend30")}</b>
-        <svg viewBox="0 0 300 46" style="width:100%;max-width:420px;display:block" role="img" aria-label={t("report.trend30")}>
+        <!-- 全宽趋势图（6.7:1 viewBox）：随卡片伸缩，不在大卡里缩成小图 -->
+        <svg viewBox="0 0 600 90" style="width:100%;display:block" role="img" aria-label={t("report.trend30")}>
           <defs>
             <linearGradient id="lv-trend-fill" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0" stop-color="var(--lv-accent)" stop-opacity="0.22" />
               <stop offset="1" stop-color="var(--lv-accent)" stop-opacity="0" />
             </linearGradient>
           </defs>
-          <line x1="0" y1="44.5" x2="300" y2="44.5" stroke="var(--lv-border)" stroke-width="1" />
+          <line x1="0" y1="88.5" x2="600" y2="88.5" stroke="var(--lv-border)" stroke-width="1" />
           {#if trendArea}<polygon points={trendArea} fill="url(#lv-trend-fill)" />{/if}
-          <polyline points={trend30.map((p, i) => `${(i / 29) * 300},${42 - Math.round((p.attempts / maxTrend) * 38)}`).join(" ")} fill="none" stroke="var(--lv-accent)" stroke-width="2" />
+          <polyline points={trend30.map((p, i) => `${(i / 29) * 600},${86 - Math.round((p.attempts / maxTrend) * 78)}`).join(" ")} fill="none" stroke="var(--lv-accent)" stroke-width="2" />
           {#if trendLastDot}<circle cx={trendLastDot.x} cy={trendLastDot.y} r="3" fill="var(--lv-accent)" stroke="var(--lv-surface)" stroke-width="1.5" />{/if}
           <!-- 55-04 lite：正确率曲线（有作答日连成段，0 题日断点；比例尺 0-100% 对满高） -->
           <polyline points={trendAccPoints} fill="none" stroke="var(--lv-green)" stroke-width="1.6" stroke-dasharray="3 2" />
+          <!-- Anki hover-columns 灵感：逐日透明命中区 + SVG 原生 title（零 JS，悬浮看当日题量/正确率） -->
+          {#each trend30 as p, i (p.date)}
+            {#if p.attempts > 0}
+              <circle cx={(i / 29) * 600} cy={86 - Math.round((p.attempts / maxTrend) * 78)} r="9" fill="transparent" style="cursor:default">
+                <title>{p.date} · {p.attempts} {t("browse.count")}{#if (p.correct ?? 0) > 0} · {t("report.accuracy")} {Math.round(((p.correct ?? 0) / p.attempts) * 100)}%{/if}</title>
+              </circle>
+            {/if}
+          {/each}
         </svg>
         <div class="lv-row" style="margin:4px 0 0">
           <span class="lv-chip num">{t("report.trendMax")} {maxTrend}</span>
@@ -800,16 +812,17 @@
         <p class="lv-muted">{t("report.noData")}</p>
       {:else}
         {#each mastery.slice(0, 8) as m, _i (_i)}
-          <div class="lv-row" style="margin:4px 0">
-            <span style="width:80px">{m.root}</span>
-            <div class="progress" style="flex:1">
+          <!-- 栅格行：五列定宽对齐，窄屏末列折行到第二行（避免 flex-wrap 造成的悬挂碎片） -->
+          <div class="lv-mastery-row">
+            <span>{m.root}</span>
+            <div class="progress">
               {#if m.mastery < 0}<i style="width:100%;background:var(--lv-border)"></i>
               {:else}<i class:ok={m.mastery >= 0.8} class:mid={m.mastery >= 0.5 && m.mastery < 0.8} class:low={m.mastery < 0.5} style="width:{Math.round(m.mastery * 100)}%"></i>{/if}
             </div>
             <span class="num lv-muted">{m.mastery < 0 ? t("report.insufficient") : Math.round(m.mastery * 100) + "%"}</span>
-            <span class="num lv-muted" style="width:56px">{m.total} {t("browse.count")}</span>
+            <span class="num lv-muted">{m.total} {t("browse.count")}</span>
             <!-- 39-07：独立题/覆盖率（覆盖率 -1=题库无该考点题，不显示） -->
-            <span class="num lv-muted" style="width:110px" title={t("report.uniqueTip")}>{t("report.uniqueQ")} {m.uniqueQids}{#if m.coverage >= 0} · {t("report.coverage")} {Math.round(m.coverage * 100)}%{/if}</span>
+            <span class="num lv-muted" title={t("report.uniqueTip")}>{t("report.uniqueQ")} {m.uniqueQids}{#if m.coverage >= 0} · {t("report.coverage")} {Math.round(m.coverage * 100)}%{/if}</span>
           </div>
         {/each}
       {/if}
@@ -1047,16 +1060,24 @@
   .lv-quad--amb { background: var(--lv-amber-soft); border-color: transparent; } .lv-quad--amb .v, .lv-quad--amb .l { color: var(--lv-amber); }
   @media (max-width: 960px) { .lv-quad-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   .lv-heat { display: grid; grid-template-columns: repeat(53, 1fr); gap: 2.5px; }
-  .lv-heat i { aspect-ratio: 1; border-radius: 2.5px; background: var(--lv-surface-2); }
-  .lv-heat i.l1 { background: color-mix(in srgb, var(--lv-accent) 22%, var(--lv-surface-2)); }
-  .lv-heat i.l2 { background: color-mix(in srgb, var(--lv-accent) 45%, var(--lv-surface-2)); }
-  .lv-heat i.l3 { background: color-mix(in srgb, var(--lv-accent) 70%, var(--lv-surface-2)); }
+  /* 空格子 = 卡片上的轻微抬升（border 混合），暗色不再呈黑洞；有值格子在抬升底上叠主色 */
+  .lv-heat i { aspect-ratio: 1; border-radius: 2.5px; background: color-mix(in srgb, var(--lv-border) 45%, var(--lv-surface)); }
+  .lv-heat i.l1 { background: color-mix(in srgb, var(--lv-accent) 26%, color-mix(in srgb, var(--lv-border) 45%, var(--lv-surface))); }
+  .lv-heat i.l2 { background: color-mix(in srgb, var(--lv-accent) 48%, color-mix(in srgb, var(--lv-border) 45%, var(--lv-surface))); }
+  .lv-heat i.l3 { background: color-mix(in srgb, var(--lv-accent) 72%, color-mix(in srgb, var(--lv-border) 45%, var(--lv-surface))); }
   .lv-heat i.l4 { background: var(--lv-accent); }
   .progress { height: 6px; border-radius: 999px; background: var(--lv-surface-2); overflow: hidden; }
   .progress i { display: block; height: 100%; border-radius: 999px; background: var(--lv-accent-grad); }
   .progress i.ok { background: var(--lv-green); }
   .progress i.mid { background: var(--lv-amber); }
   .progress i.low { background: var(--lv-red); }
+  /* —— 考点掌握度行：五列栅格（考点/条/掌握度/题数/独立题·覆盖），窄屏末列折行 —— */
+  .lv-mastery-row { display: grid; grid-template-columns: 88px minmax(0, 1fr) 52px 64px minmax(0, 150px); gap: 10px; align-items: center; margin: 8px 0; font-size: 12.5px; }
+  .lv-mastery-row > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  @media (max-width: 720px) {
+    .lv-mastery-row { grid-template-columns: 72px minmax(0, 1fr) 48px; }
+    .lv-mastery-row > span:last-child { grid-column: 2 / -1; }
+  }
   .lv-error { margin: 8px 0; padding: 10px 14px; border-radius: var(--lv-r-2); background: var(--lv-red-soft); color: var(--lv-red); font-size: 13px; }
   .lv-skeleton { height: 160px; border-radius: var(--lv-r-3); background: linear-gradient(100deg, var(--lv-surface-2) 40%, var(--lv-surface) 50%, var(--lv-surface-2) 60%); background-size: 200% 100%; animation: lv-shim 1.4s infinite; }
   @keyframes lv-shim { to { background-position: -200% 0; } }

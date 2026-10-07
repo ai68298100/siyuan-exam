@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#6a5ce0"/>
+      <stop offset="1" stop-color="#4a3fb8"/>
+    </linearGradient>
+    <linearGradient id="hl" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#g)"/>
+  <rect width="512" height="512" rx="112" fill="url(#hl)"/>
+  <text x="256" y="262" text-anchor="middle" dominant-baseline="central"
+    font-family="Songti SC, SimSun, Georgia, serif" font-weight="700"
+    font-size="300" fill="#ffffff">驴</text>
+</svg>

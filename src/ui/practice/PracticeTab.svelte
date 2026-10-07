@@ -34,6 +34,7 @@ import { ttsSpeak } from "@/core/tts";
     import { probeCheckinApi, syncCheckin, localDateKeyOf, bridgeEnabled, fetchStreak } from "@/core/checkinBridge";
     import { probeGlean, listLaterClips, formatClipsForSource, markClipDone, type GleanClip } from "@/core/gleanBridge";
     import { resolveLink } from "@/core/externalLinks";
+    import { redactUrlForDisplay } from "@/core/urlRedaction";
     import { onExamEvent, emitExamEvent } from "@/core/bus";
     import Icon from "../shared/Icon.svelte";
     import Palette from "../shared/Palette.svelte";
@@ -680,7 +681,7 @@ import { ttsSpeak } from "@/core/tts";
         if (bankId && bankId !== activeBankId && banks.some((b) => b.id === bankId)) activeBankId = bankId;
         const all = await loadQuestions();
         sectionSel = null;
-        searchText = pid;
+        setSearch(pid);
         view = "browse";
         loading = false;
         const q = all.find((x) => x.id === pid);
@@ -1056,6 +1057,9 @@ import { ttsSpeak } from "@/core/tts";
       { group: t("palette.actions"), icon: "zap", label: t("mode.quick"), keywords: "quick drill practice", run: () => void startDrill("quick") },
       { group: t("palette.actions"), icon: "calendar", label: t("mode.daily"), keywords: "daily", run: () => void startDrill("daily") },
       { group: t("palette.actions"), icon: "rotate", label: t("mode.recite"), keywords: "recite cover tts", run: () => void startRecite() },
+      { group: t("palette.actions"), icon: "xcircle", label: t("mode.wrong"), keywords: "wrong redo drill", run: () => void startDrill("wrong") },
+      { group: t("palette.actions"), icon: "flame", label: t("mode.cram"), keywords: "cram cram", run: () => void startDrill("cram") },
+      { group: t("palette.actions"), icon: "star", label: t("mode.fav"), keywords: "fav starred", run: () => void startDrill("fav") },
       { group: t("palette.tabs"), icon: "clock", label: t("tab.mock"), keywords: "mock exam", run: () => plugin.openMock?.() },
       { group: t("palette.tabs"), icon: "chart", label: t("tab.report"), keywords: "report stats", run: () => plugin.openReport?.() },
     ];
@@ -2202,7 +2206,7 @@ import { ttsSpeak } from "@/core/tts";
       if (consented !== currentEndpoint) {
         const ep = String(plugin.settingUtils?.get?.("aiEndpoint") ?? "").trim();
         const msg = ep
-          ? `${t("ai.consentTitle")}<br>${t("ai.consentCustom")} ${escapeHtml(ep)}`
+          ? `${t("ai.consentTitle")}<br>${t("ai.consentCustom")} ${escapeHtml(redactUrlForDisplay(ep))}`
           : `${t("ai.consentTitle")}<br>${t("ai.consentSiyuan")}`;
         if (!(await confirmDialogSync({ title: t("ai.consentTitle"), content: `${msg}<br><br>${t("ai.consentScope")}` }))) return;
         localStorage.setItem(consentKey, JSON.stringify({ endpoint: currentEndpoint }));
@@ -2630,7 +2634,7 @@ import { ttsSpeak } from "@/core/tts";
         title: t("gate.linkTitle"),
         content:
           "<div style='word-break:break-all;font-size:12.5px'>" +
-          escapeHtml(link.href) +
+          escapeHtml(redactUrlForDisplay(link.href)) +
           "</div><p class='lv-hint' style='text-align:left'>" + t("gate.linkDesc") + "</p>",
       });
       if (ok) { window.open(link.href, "_blank", "noopener,noreferrer"); return; }
@@ -2765,8 +2769,30 @@ import { ttsSpeak } from "@/core/tts";
     }
 
     let favOnly = $state(false);
+    // 浏览工具「更多」菜单：开启中任一维护面板时按钮出点标；Esc 关闭（ARIA menu 惯例）
+    let moreOpen = $state(false);
+    let moreRoot = $state<HTMLDivElement | null>(null);
+    let morePop = $state<HTMLDivElement | null>(null);
+    function onWindowClick(e: MouseEvent) {
+      if (moreOpen && moreRoot && !moreRoot.contains(e.target as Node)) moreOpen = false;
+    }
+    function toggleMore() {
+      moreOpen = !moreOpen;
+      if (moreOpen) setTimeout(() => morePop?.focus(), 0); // 焦点入菜单，Esc/Tab 语义成立
+    }
     let browseLimit = $state(200);
     let searchText = $state("");
+    /** 搜索防抖（体验/perf）：大题库逐键全量过滤掉帧；180ms 尾随，编程赋值走 setSearch 即时生效 */
+    let searchDebounced = $state("");
+    function setSearch(v: string) {
+      searchText = v;
+      searchDebounced = v;
+    }
+    $effect(() => {
+      const v = searchText;
+      const t = setTimeout(() => { searchDebounced = v; }, 180);
+      return () => clearTimeout(t);
+    });
     /** 65-01 lite：结构化筛选——题型/来源/仅错题（与搜索词叠加；命中数在工具栏实时可见） */
     let filterType = $state("");
     let filterSource = $state("");
@@ -2801,7 +2827,7 @@ import { ttsSpeak } from "@/core/tts";
         if (filterHelp) list = list.filter((q) => helped.has(q.id));
         if (filterDays) list = list.filter((q) => recent.has(q.id));
       }
-      const kw = searchText.trim().toLowerCase();
+      const kw = searchDebounced.trim().toLowerCase();
       if (kw) {
         list = list.filter((q) =>
           q.id.toLowerCase().includes(kw) ||
@@ -2858,9 +2884,21 @@ import { ttsSpeak } from "@/core/tts";
           return;
         }
       }
-      searchText = v.search ?? "";
+      setSearch(v.search ?? "");
       favOnly = !!v.favOnly;
       sectionSel = v.section ? { ...v.section } : null;
+    }
+    /** 一键放宽：清空全部浏览筛选（搜索/题型/来源/仅错题/仅受助/时间/收藏/章节/命名视图） */
+    function clearBrowseFilters() {
+      setSearch("");
+      favOnly = false;
+      filterType = "";
+      filterSource = "";
+      filterWrong = false;
+      filterHelp = false;
+      filterDays = 0;
+      sectionSel = null;
+      selectedView = "";
     }
     async function deleteNamedView() {
       if (!selectedView) return;
@@ -3148,7 +3186,7 @@ import { ttsSpeak } from "@/core/tts";
     }
 </script>
 
-<svelte:window onkeydown={onKeydown} onclick={onRichTextClick} onauxclick={onRichTextClick} ondragover={(e) => e.preventDefault()} ondrop={onDrop} />
+<svelte:window onkeydown={onKeydown} onclick={(e) => { onRichTextClick(e); onWindowClick(e); }} onauxclick={onRichTextClick} ondragover={(e) => e.preventDefault()} ondrop={onDrop} />
 
 <div class="fn__flex-1 lv-exam-tab" role="region" aria-label={t("tab.practice")}>
   <div class="block__icons">
@@ -3364,23 +3402,24 @@ import { ttsSpeak } from "@/core/tts";
           </button>
         </div>
         <div class="lv-section-title"><span>{t("entry.modes")}</span></div>
+        <!-- 层级：队列驱动三模式（快速/每日/错题）为一级 accent 键帽；低频三模式降噪为中性键帽 -->
         <div class="lv-modes">
-          <button class="lv-mode" onclick={() => startDrill("single")}>
+          <button class="lv-mode" onclick={() => startDrill("quick")}>
             <span class="lv-mode-icon"><Icon name="zap" /></span><span class="lv-mode-body"><b>{t("mode.quick")}</b><span class="lv-muted">{t("mode.quick.desc")}</span></span>
           </button>
           <button class="lv-mode" onclick={() => startDrill("daily")}>
             <span class="lv-mode-icon"><Icon name="calendar" /></span><span class="lv-mode-body"><b>{t("mode.daily")}</b><span class="lv-muted">{t("mode.daily.desc")}</span></span>
           </button>
-          <button class="lv-mode" onclick={() => startRecite()}>
-            <span class="lv-mode-icon"><Icon name="rotate" /></span><span class="lv-mode-body"><b>{t("mode.recite")}</b><span class="lv-muted">{t("mode.recite.desc")}</span></span>
-          </button>
           <button class="lv-mode" onclick={() => startDrill("wrong")}>
             <span class="lv-mode-icon"><Icon name="xcircle" /></span><span class="lv-mode-body"><b>{t("mode.wrong")}</b><span class="lv-muted num">{app.wrongItems().length} {t("mode.wrong.unit")}</span></span>
           </button>
-          <button class="lv-mode" onclick={() => startDrill("cram")}>
+          <button class="lv-mode lv-mode--minor" onclick={() => startRecite()}>
+            <span class="lv-mode-icon"><Icon name="rotate" /></span><span class="lv-mode-body"><b>{t("mode.recite")}</b><span class="lv-muted">{t("mode.recite.desc")}</span></span>
+          </button>
+          <button class="lv-mode lv-mode--minor" onclick={() => startDrill("cram")}>
             <span class="lv-mode-icon"><Icon name="flame" /></span><span class="lv-mode-body"><b>{t("mode.cram")}</b><span class="lv-muted">{t("mode.cram.desc")}</span></span>
           </button>
-          <button class="lv-mode" onclick={() => startDrill("fav")}>
+          <button class="lv-mode lv-mode--minor" onclick={() => startDrill("fav")}>
             <span class="lv-mode-icon"><Icon name="star" /></span><span class="lv-mode-body"><b>{t("mode.fav")}</b><span class="lv-muted">{t("mode.fav.desc")}（<span class="num">{questions.filter((q) => q.fav).length}</span> {t("mode.wrong.unit")}）</span></span>
           </button>
           <button class="lv-mode lv-mode--disabled" title={t("todo")}>
@@ -3471,8 +3510,8 @@ import { ttsSpeak } from "@/core/tts";
               <Icon name="pin" size={16} /> {actionBusy ? "…" : t("action.addWrong")}
             </button>
             {#if actionNote}<p class="lv-muted num" style="margin:6px 0 0">{actionNote}</p>{/if}
-            <!-- 44-01 end 模式/回看：错题逐题展开（题干+我的答案+正确答案+解析） -->
-            <button class="lv-btn lv-btn--ghost" style="width:100%;margin-top:6px" onclick={() => { reviewOpen = !reviewOpen; if (reviewOpen) void loadReflections(); }}>
+            <!-- 44-01 end 模式/回看：错题逐题展开（题干+我的答案+正确答案+解析）；quiet 边框给出可点可供养 -->
+            <button class="lv-btn" style="width:100%;margin-top:6px" onclick={() => { reviewOpen = !reviewOpen; if (reviewOpen) void loadReflections(); }}>
               {reviewOpen ? "▾" : "▸"} {t("session.reviewWrongs")}
             </button>
             {#if reviewOpen}
@@ -3640,7 +3679,7 @@ import { ttsSpeak } from "@/core/tts";
               {#if feedback.verdict === "wrong"}
                 <div class="lv-row lv-muted">{t("session.reason")}:
                   {#each ["careless", "unknown", "trap"] as r, ri (ri)}
-                    <button class="lv-chip" class:acc={savedReason === r} title={t("entry.days") === "天" ? `快捷键 ${ri + 1}` : `Key ${ri + 1}`} onclick={async () => { await app.saveWrongReason(q.id, r as any); savedReason = r; }}>{savedReason === r ? "✓ " : ""}{t("reason." + r)}</button>
+                    <button class="lv-chip" class:acc={savedReason === r} aria-pressed={savedReason === r} title={t("entry.days") === "天" ? `快捷键 ${ri + 1}` : `Key ${ri + 1}`} onclick={async () => { await app.saveWrongReason(q.id, r as any); savedReason = r; }}>{savedReason === r ? "✓ " : ""}{t("reason." + r)}</button>
                   {/each}
                 </div>
               {/if}
@@ -3649,7 +3688,7 @@ import { ttsSpeak } from "@/core/tts";
               <div class="lv-row lv-muted" style="font-size:11.5px;gap:6px;flex-wrap:wrap">
                 <span>{t("confidence.before")}</span>
                 {#each ["sure", "fuzzy", "guess"] as c, _i (_i)}
-                  <button class="lv-chip" class:acc={confidenceSel === c} title={`Key ${["sure", "fuzzy", "guess"].indexOf(c) + 1}`} onclick={() => confidenceSel = c as "sure" | "fuzzy" | "guess"}>{t("confidence." + c)}</button>
+                  <button class="lv-chip" class:acc={confidenceSel === c} aria-pressed={confidenceSel === c} title={`Key ${["sure", "fuzzy", "guess"].indexOf(c) + 1}`} onclick={() => confidenceSel = c as "sure" | "fuzzy" | "guess"}>{t("confidence." + c)}</button>
                 {/each}
                 <span class="lv-chip num" class:lv-chip--red={qTimeoutS > 0 && qElapsedS >= qTimeoutS} title={qTimeoutS > 0 ? t("session.timeoutHint").replace("{n}", String(qTimeoutS)) : ""}>
                   <Icon name="clock" size={12} /> {qElapsedS}s
@@ -3728,7 +3767,7 @@ import { ttsSpeak } from "@/core/tts";
                 <span class="lv-kbd">1</span>-<span class="lv-kbd">3</span> {t("confidence.shortcut")} ·
                 <span class="lv-kbd">Enter</span> {t("session.submit")} ·
                 <span class="lv-kbd">J</span>/<span class="lv-kbd">K</span> {t("session.next")}/{t("session.kbdPrev")} ·
-                <span class="lv-kbd">E</span> ⭐ ·
+                <span class="lv-kbd">E</span> {t("session.kbdFav")} ·
                 <span class="lv-kbd">Esc</span> {t("session.exit")}
               </div>
             </div>
@@ -3791,10 +3830,11 @@ import { ttsSpeak } from "@/core/tts";
             {/if}
             {#if q.analysis}<div class="lv-analysis">{q.analysis}</div>{/if}
             <div class="lv-rate">
-              <button class="lv-btn r1" onclick={() => rateSelf(1)}>1 {t("rate.1")}</button>
-              <button class="lv-btn r2" onclick={() => rateSelf(2)}>2 {t("rate.2")}</button>
-              <button class="lv-btn r3" onclick={() => rateSelf(3)}>3 {t("rate.3")}</button>
-              <button class="lv-btn r4" onclick={() => rateSelf(4)}>4 {t("rate.4")}</button>
+              <!-- Anki 现代改造式自评：数字键帽常显语义色（红/琥珀/绿/主色），可扫视；hover 再整钮染色 -->
+              <button class="lv-btn r1" onclick={() => rateSelf(1)}><span class="lv-rate-key">1</span> {t("rate.1")}</button>
+              <button class="lv-btn r2" onclick={() => rateSelf(2)}><span class="lv-rate-key">2</span> {t("rate.2")}</button>
+              <button class="lv-btn r3" onclick={() => rateSelf(3)}><span class="lv-rate-key">3</span> {t("rate.3")}</button>
+              <button class="lv-btn r4" onclick={() => rateSelf(4)}><span class="lv-rate-key">4</span> {t("rate.4")}</button>
             </div>
           {/if}
         </div>
@@ -3837,7 +3877,7 @@ import { ttsSpeak } from "@/core/tts";
               <div class="lv-progress"><i style="width:{clearPct}%"></i></div>
               <div class="divider" style="margin:16px 0 12px"></div>
               <b class="lv-block-title">{t("wrongbook.reasons")}</b>
-              <div class="lv-chart-row"><span>{t("reason.unknown")}</span><div class="lv-progress"><i style="width:{clearPct ? Math.round((reasonCounts.unknown / Math.max(1, wrongList.length)) * 100) : 0}%"></i></div><strong>{reasonCounts.unknown}</strong></div>
+              <div class="lv-chart-row"><span>{t("reason.unknown")}</span><div class="lv-progress"><i style="width:{Math.round((reasonCounts.unknown / Math.max(1, wrongList.length)) * 100)}%"></i></div><strong>{reasonCounts.unknown}</strong></div>
               <div class="lv-chart-row"><span>{t("reason.careless")}</span><div class="lv-progress"><i style="width:{Math.round((reasonCounts.careless / Math.max(1, wrongList.length)) * 100)}%"></i></div><strong>{reasonCounts.careless}</strong></div>
               <div class="lv-chart-row"><span>{t("reason.trap")}</span><div class="lv-progress"><i style="width:{Math.round((reasonCounts.trap / Math.max(1, wrongList.length)) * 100)}%"></i></div><strong>{reasonCounts.trap}</strong></div>
               <div class="lv-chart-row"><span>{t("reason.unmarked")}</span><div class="lv-progress"><i style="width:{Math.round((reasonCounts.unmarked / Math.max(1, wrongList.length)) * 100)}%"></i></div><strong>{reasonCounts.unmarked}</strong></div>
@@ -3874,7 +3914,7 @@ import { ttsSpeak } from "@/core/tts";
               <div class="stack-sm" style="margin-top:10px">
                 <button class="lv-btn lv-btn--primary" style="width:100%" onclick={() => void startDrill("wrong")}><Icon name="rotate" size={15} /> {t("wrongbook.strategy.weighted")}</button>
                 <button class="lv-btn" style="width:100%" onclick={() => { filterWrong = true; view = "browse"; void loadQuestions(); }}><Icon name="table" size={15} /> {t("wrongbook.strategy.browse")}</button>
-                <button class="lv-btn lv-btn--ghost" style="width:100%" onclick={() => void startDrill("cram")}><Icon name="flame" size={15} /> {t("mode.cram")}</button>
+                <button class="lv-btn" style="width:100%" onclick={() => void startDrill("cram")}><Icon name="flame" size={15} /> {t("mode.cram")}</button>
               </div>
               <p class="lv-muted" style="font-size:11.5px;margin:10px 0 0">{t("wrongbook.strategy.note")}</p>
             </div>
@@ -4244,21 +4284,8 @@ import { ttsSpeak } from "@/core/tts";
     <!-- ===== S3 浏览 ===== -->
     <div class="lv-pad">
       <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.browse.eyebrow")}</span><h1 class="lv-h1">{t("head.browse.title")}</h1><p>{t("head.browse.desc")}</p></div>
-      <div class="lv-row">
-        <button class="lv-btn lv-btn--ghost lv-mobile-back" onclick={() => view = "entry"}>← {t("mode.practice")}</button>
-        <span class="lv-chip num">{shownQuestions.length}/{questions.length} {t("browse.count")}</span>
-        <button class="lv-chip" class:acc={favOnly} onclick={() => favOnly = !favOnly}><Icon name="star" size={12} /> {t("browse.favOnly")}</button>
-        <button class="lv-chip" class:acc={sectionOpen} onclick={() => void toggleSectionTree()}><Icon name="file-text" size={13} /> {t("browse.sectionTree")}</button>
-        <button class="lv-chip" class:acc={kpOpen} onclick={() => { kpOpen = !kpOpen; }}><Icon name="compass" size={13} /> {t("kp.title")}</button>
-        <button class="lv-chip" class:acc={healthOpen} onclick={() => healthOpen = !healthOpen}><Icon name="activity" size={13} /> {t("health.title")}</button>
-        <button class="lv-chip" class:acc={errataOpen} onclick={() => errataOpen = !errataOpen}><Icon name="file-text" size={13} /> {t("errata.title")}</button>
-        <button class="lv-chip" class:acc={batchMode} onclick={() => { batchMode = !batchMode; if (!batchMode) selectedIds = {}; }}>{t("batch.mode")}</button>
-        <button class="lv-chip" title={t("browse.exportCsvTitle")} onclick={exportBankCsv}><Icon name="export" size={13} /> CSV</button>
-        <!-- 68-01 lite：题册/答案册分离打印（作用于当前筛选全集；题册不含答案与解析） -->
-        <button class="lv-chip" title={t("print.qSheetTip")} onclick={printQuestionSheet}><Icon name="printer" size={13} /> {t("print.qSheet")}</button>
-        <button class="lv-chip" title={t("print.aSheetTip")} onclick={printAnswerSheet}><Icon name="printer" size={13} /> {t("print.aSheet")}</button>
-        <button class="lv-chip" title={t("print.cardTip")} onclick={printAnswerCard}><Icon name="printer" size={13} /> {t("print.card")}</button>
-        <button class="lv-chip" class:acc={paperOpen} onclick={() => paperOpen = !paperOpen}><Icon name="paperclip" size={13} /> {t("paper.title")}</button>
+      <!-- 工具条分行（原型密度规则）：筛选行（搜索/结构化筛选）与工具行（动作 chip）分离，高度节奏一致 -->
+      <div class="lv-row" style="margin:0 0 8px">
         <input class="lv-input" style="flex:1;min-width:160px" placeholder={t("browse.searchPlaceholder")} bind:value={searchText} />
         <!-- 65-01 lite：结构化筛选（题型/来源/仅错题），与搜索词叠加 -->
         <select class="lv-select" style="max-width:110px" bind:value={filterType} onchange={() => (browseLimit = 200)}>
@@ -4275,6 +4302,7 @@ import { ttsSpeak } from "@/core/tts";
         {/if}
         <button class="lv-chip" class:acc={filterWrong} onclick={() => (filterWrong = !filterWrong)} title={t("browse.fWrongTip")}>✕ {t("browse.fWrong")}</button>
         <button class="lv-chip" class:acc={filterHelp} onclick={() => (filterHelp = !filterHelp)} title={t("browse.fHelpTip")}><Icon name="bulb" size={12} /> {t("browse.fHelp")}</button>
+        <button class="lv-chip" class:acc={favOnly} onclick={() => favOnly = !favOnly}><Icon name="star" size={12} /> {t("browse.favOnly")}</button>
         <select class="lv-select" style="max-width:110px" bind:value={filterDays} title={t("browse.fDaysTip")}>
           <option value={0}>{t("browse.fAnyDay")}</option>
           <option value={1}>{t("browse.fToday")}</option>
@@ -4289,6 +4317,33 @@ import { ttsSpeak } from "@/core/tts";
           <button class="lv-btn sm lv-btn--ghost" title={t("view.delete")} disabled={!selectedView} onclick={() => void deleteNamedView()}><Icon name="trash" size={13} /></button>
         {/if}
         <button class="lv-btn sm lv-btn--ghost" title={t("view.saveTitle")} onclick={() => void saveCurrentView()}><Icon name="save" size={13} /> {t("view.save")}</button>
+      </div>
+      <!-- 工具行收敛：高频（章节树/批量编辑）内联，维护面板与导出打印入「更多」菜单；面板开启时按钮出点标 -->
+      <div class="lv-row" style="margin:0 0 10px;gap:8px 8px">
+        <button class="lv-btn lv-btn--ghost lv-mobile-back" onclick={() => view = "entry"}>← {t("mode.practice")}</button>
+        <span class="lv-chip num">{shownQuestions.length}/{questions.length} {t("browse.count")}</span>
+        <button class="lv-chip" class:acc={sectionOpen} onclick={() => void toggleSectionTree()}><Icon name="file-text" size={13} /> {t("browse.sectionTree")}</button>
+        <button class="lv-chip" class:acc={batchMode} onclick={() => { batchMode = !batchMode; if (!batchMode) selectedIds = {}; }}>{t("batch.mode")}</button>
+        <div class="lv-more" bind:this={moreRoot}>
+          <button class="lv-chip" class:acc={kpOpen || healthOpen || errataOpen || paperOpen} aria-haspopup="menu" aria-expanded={moreOpen}
+            onclick={() => toggleMore()}>
+            <Icon name="menu" size={13} /> {t("browse.more")}{#if kpOpen || healthOpen || errataOpen || paperOpen}<i class="lv-more-dot" aria-hidden="true"></i>{/if}
+          </button>
+          {#if moreOpen}
+            <div class="lv-more-pop" role="menu" tabindex="-1" bind:this={morePop}
+              onkeydown={(e) => { if (e.key === "Escape") { e.stopPropagation(); moreOpen = false; } }}>
+              <button role="menuitemcheckbox" aria-checked={kpOpen} onclick={() => { kpOpen = !kpOpen; moreOpen = false; }}><Icon name="compass" size={14} /> {t("kp.title")}</button>
+              <button role="menuitemcheckbox" aria-checked={healthOpen} onclick={() => { healthOpen = !healthOpen; moreOpen = false; }}><Icon name="activity" size={14} /> {t("health.title")}</button>
+              <button role="menuitemcheckbox" aria-checked={errataOpen} onclick={() => { errataOpen = !errataOpen; moreOpen = false; }}><Icon name="file-text" size={14} /> {t("errata.title")}</button>
+              <button role="menuitemcheckbox" aria-checked={paperOpen} onclick={() => { paperOpen = !paperOpen; moreOpen = false; }}><Icon name="paperclip" size={14} /> {t("paper.title")}</button>
+              <div class="lv-more-sep" role="separator"></div>
+              <button role="menuitem" title={t("browse.exportCsvTitle")} onclick={() => { exportBankCsv(); moreOpen = false; }}><Icon name="export" size={14} /> CSV</button>
+              <button role="menuitem" title={t("print.qSheetTip")} onclick={() => { printQuestionSheet(); moreOpen = false; }}><Icon name="printer" size={14} /> {t("print.qSheet")}</button>
+              <button role="menuitem" title={t("print.aSheetTip")} onclick={() => { printAnswerSheet(); moreOpen = false; }}><Icon name="printer" size={14} /> {t("print.aSheet")}</button>
+              <button role="menuitem" title={t("print.cardTip")} onclick={() => { printAnswerCard(); moreOpen = false; }}><Icon name="printer" size={14} /> {t("print.card")}</button>
+            </div>
+          {/if}
+        </div>
       </div>
       {#if sectionSel}
         <div class="lv-row" style="margin:4px 0">
@@ -4336,7 +4391,7 @@ import { ttsSpeak } from "@/core/tts";
               {#each kpData.entries.slice(0, 24) as e, _i (_i)}
                 <button class="lv-chip" class:lv-chip--red={e.suspect} class:acc={kpMergeFrom === e.kp}
                   title={e.suspect ? t("kp.suspect") : t("kp.filterTip")}
-                  onclick={() => { kpMergeFrom = e.kp; kpMergeTo = ""; kpMergePlan = null; searchText = e.kp; }}>
+                  onclick={() => { kpMergeFrom = e.kp; kpMergeTo = ""; kpMergePlan = null; setSearch(e.kp); }}>
                   {e.kp || "（空）"} · {e.count}
                 </button>
               {/each}
@@ -4393,7 +4448,7 @@ import { ttsSpeak } from "@/core/tts";
                   {@const learned = subtreeLearned(c)}
                   <button class="lv-chip" class:lv-chip--red={total === 0} class:lv-chip--amb={total > 0 && learned === 0}
                     title={`${t("syl.gapTip")}${subtreeNoSource(c) ? " · " + t("syl.noSourceTip").replace("{n}", String(subtreeNoSource(c))) : ""}`}
-                    onclick={() => { searchText = c.node.kpPrefix; }}>
+                    onclick={() => { setSearch(c.node.kpPrefix); }}>
                     {c.node.title} · <span class="num">{total}</span>
                     {#if total === 0}&nbsp;{t("syl.gap")}
                     {:else if learned === 0}&nbsp;{t("syl.unmastered")}
@@ -4616,10 +4671,20 @@ import { ttsSpeak } from "@/core/tts";
         <div class="lv-error">{questionsError}</div>
       {:else if !questions.length}
         <div class="lv-empty"><div class="lv-empty-icon"><Icon name="file" size={24} /></div><b>{t("browse.title")}</b><p class="lv-muted">{t("browse.empty")}</p></div>
+      {:else if !shownQuestions.length}
+        <!-- 筛选无结果的独立空态：给原因与出路，不留空白区（规范 v6 状态完备） -->
+        <div class="lv-empty">
+          <div class="lv-empty-icon"><Icon name="search" size={24} /></div>
+          <b>{t("browse.noMatch")}</b>
+          <p class="lv-muted">{t("browse.noMatch.desc")}</p>
+          <div class="lv-row" style="justify-content:center;margin-top:14px">
+            <button class="lv-btn lv-btn--primary sm" onclick={clearBrowseFilters}>{t("browse.clearFilters")}</button>
+          </div>
+        </div>
       {:else}
         {#each shownQuestions as q (q.id)}
-          <div class="lv-card lv-qrow">
-            <div class="lv-qrow-head" role="button" tabindex="0"
+          <div class="lv-card lv-qrow" class:sel={batchMode && !!selectedIds[q.id]}>
+            <div class="lv-qrow-head" role="button" tabindex="0" aria-expanded={expandedId === q.id ? "true" : "false"}
               onclick={() => { if (batchMode) { const next = { ...selectedIds }; if (next[q.id]) delete next[q.id]; else next[q.id] = true; selectedIds = next; } else expandedId = expandedId === q.id ? "" : q.id; }}
               onkeydown={(e) => e.key === "Enter" && (expandedId = expandedId === q.id ? "" : q.id)}>
               {#if batchMode}
@@ -5116,12 +5181,15 @@ import { ttsSpeak } from "@/core/tts";
   .lv-onboard-step b { display: block; font-size: 13.5px; margin: 8px 0 0; }
   .lv-mat-chip { display: inline-flex; align-items: center; gap: 5px; }
   .lv-modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-  .lv-mode { padding: 16px 17px; border-radius: var(--lv-r-3); text-align: left; background: var(--lv-surface); border: 1px solid var(--lv-border); cursor: pointer; transition: background-color .16s ease, border-color .16s ease, box-shadow .16s ease; display: flex; align-items: flex-start; gap: 12px; }
-  .lv-mode:hover:not(.lv-mode--disabled) { box-shadow: var(--lv-sh-2); border-color: var(--lv-accent); }
+  .lv-mode { padding: 16px 17px; border-radius: var(--lv-r-3); text-align: left; background: var(--lv-surface); border: 1px solid var(--lv-border); cursor: pointer; transition: background-color var(--lv-dur-micro) var(--lv-ease-out), border-color var(--lv-dur-micro) var(--lv-ease-out), box-shadow var(--lv-dur-micro) var(--lv-ease-out), transform var(--lv-dur-micro) var(--lv-ease-out); display: flex; align-items: flex-start; gap: 12px; }
+  .lv-mode:hover:not(.lv-mode--disabled) { box-shadow: var(--lv-sh-2); border-color: var(--lv-accent); transform: translateY(-1px); }
   .lv-mode .lv-mode-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 13px; background: var(--lv-accent-soft); flex-shrink: 0; font-size: 19px; }
   .lv-mode .lv-mode-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
   .lv-mode b { font-size: 14px; font-weight: 650; }
   .lv-mode--disabled { opacity: .55; cursor: not-allowed; }
+  /* 低频模式降噪：中性键帽 + 收紧字号，与一级队列模式拉开层级 */
+  .lv-mode--minor .lv-mode-icon { background: var(--lv-surface-2); color: var(--lv-text-2); }
+  .lv-mode--minor b { font-size: 13px; font-weight: 600; }
   .lv-resume { display: flex; gap: 14px; align-items: center; }
   .lv-resume > div:first-child { flex: 1; }
   .lv-session-head { justify-content: flex-start; }
@@ -5177,12 +5245,29 @@ import { ttsSpeak } from "@/core/tts";
   .task-number { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; border: 1px solid var(--lv-border); background: var(--lv-surface-2); color: var(--lv-accent); font-size: 12px; font-variant-numeric: tabular-nums; flex-shrink: 0; }
   .lv-skeleton { height: 180px; border-radius: var(--lv-r-3); background: linear-gradient(100deg, var(--lv-surface-2) 40%, var(--lv-surface) 50%, var(--lv-surface-2) 60%); background-size: 200% 100%; animation: lv-shimmer 1.4s infinite; border: 1px solid var(--lv-border); }
   @keyframes lv-shimmer { to { background-position: -200% 0; } }
-  .lv-qrow { padding: 12px 16px; margin-bottom: 8px; }
-  .lv-qrow-head { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; flex-wrap: wrap; }
+  .lv-qrow { padding: 12px 16px; margin-bottom: 8px; transition: border-color var(--lv-dur-micro) var(--lv-ease-out), background-color var(--lv-dur-micro) var(--lv-ease-out); }
+  /* 行头可点可供养：hover 浅底 + 手型；批量模式选中行 accent 描边 */
+  .lv-qrow-head { display: flex; gap: 8px; align-items: center; margin: -4px -8px 4px; padding: 4px 8px; border-radius: 8px; cursor: pointer; flex-wrap: wrap; transition: background-color var(--lv-dur-micro) var(--lv-ease-out); }
+  .lv-qrow-head:hover { background: var(--lv-surface-2); }
+  .lv-qrow.sel { border-color: var(--lv-accent); background: var(--lv-accent-soft); }
   .lv-qrow-src { margin-left: auto; font-size: 11.5px; }
   .lv-qrow-stem { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* —— 工具行「更多」菜单（浮层走卡片语言：surface + pop 阴影 + 38px 行） —— */
+  .lv-more { position: relative; display: inline-flex; }
+  .lv-more-dot { display: inline-block; width: 6px; height: 6px; margin-left: 5px; border-radius: 50%; background: var(--lv-accent); }
+  .lv-more-pop { position: absolute; top: calc(100% + 6px); right: 0; z-index: 40; min-width: 208px; padding: 6px; background: var(--lv-surface); border: 1px solid var(--lv-border); border-radius: var(--lv-r-2); box-shadow: var(--lv-sh-pop); display: grid; gap: 2px; animation: lv-pop-in var(--lv-dur-view) var(--lv-ease-out) both; }
+  .lv-more-pop button { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 36px; padding: 7px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--lv-text); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+  .lv-more-pop button:hover { background: var(--lv-accent-soft); }
+  .lv-more-pop button[aria-checked="true"] { color: var(--lv-accent); font-weight: 600; }
+  .lv-more-sep { height: 1px; margin: 4px 6px; background: var(--lv-border); }
   .lv-rate { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 12px; }
   .lv-rate .lv-btn { justify-content: center; }
+  /* 语义键帽常显（Anki 现代改造融合）：数字块随等级着色，按钮本体保持中性 */
+  .lv-rate-key { display: inline-grid; place-items: center; width: 20px; height: 20px; margin-right: 2px; border-radius: 6px; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--lv-text-2); background: var(--lv-surface-2); border: 1px solid var(--lv-border); transition: background-color var(--lv-dur-micro) var(--lv-ease-out), color var(--lv-dur-micro) var(--lv-ease-out), border-color var(--lv-dur-micro) var(--lv-ease-out); }
+  .lv-rate .r1 .lv-rate-key { color: var(--lv-red); background: var(--lv-red-soft); border-color: transparent; }
+  .lv-rate .r2 .lv-rate-key { color: var(--lv-amber); background: var(--lv-amber-soft); border-color: transparent; }
+  .lv-rate .r3 .lv-rate-key { color: var(--lv-green); background: var(--lv-green-soft); border-color: transparent; }
+  .lv-rate .r4 .lv-rate-key { color: var(--lv-accent); background: var(--lv-accent-soft); border-color: transparent; }
   .lv-rate .r1:hover { border-color: var(--lv-red); color: var(--lv-red); }
   .lv-rate .r2:hover { border-color: var(--lv-amber); color: var(--lv-amber); }
   .lv-rate .r3:hover { border-color: var(--lv-green); color: var(--lv-green); }

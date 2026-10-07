@@ -5,19 +5,20 @@
 // ============================================================
 @use "./lv-tokens";
 
-/* —— 卡片（static / hover 抬升 / 沉浸浮层） —— */
+/* —— 卡片（static / hover 抬升 / 沉浸浮层）
+   动效统一走 --lv-ease-out（规范 v6：同一条曲线，禁回弹） —— */
 .lv-card {
   background: var(--lv-surface);
   border: 1px solid var(--lv-border);
   border-radius: var(--lv-r-3);
   box-shadow: var(--lv-sh-1);
   transition:
-    box-shadow 0.22s ease,
-    transform 0.22s var(--lv-ease-spring),
-    border-color 0.22s ease;
+    box-shadow var(--lv-dur-view) var(--lv-ease-out),
+    transform var(--lv-dur-micro) var(--lv-ease-out),
+    border-color var(--lv-dur-micro) var(--lv-ease-out);
 
   &--click:hover {
-    transform: translateY(-2px);
+    transform: translateY(-1px);
     box-shadow: var(--lv-sh-2);
   }
   &--pop {
@@ -67,10 +68,18 @@
 /* 徽章用作切换按钮时（浏览工具条筛选等）补交互态；静态徽章不受影响 */
 button.lv-chip {
   cursor: pointer;
+  transition:
+    background-color var(--lv-dur-micro) var(--lv-ease-out),
+    border-color var(--lv-dur-micro) var(--lv-ease-out),
+    color var(--lv-dur-micro) var(--lv-ease-out),
+    transform var(--lv-dur-micro) var(--lv-ease-out);
 
   &:hover:not(:disabled) {
     border-color: var(--lv-accent);
     color: var(--lv-accent);
+  }
+  &:active:not(:disabled) {
+    transform: scale(0.97);
   }
   &:disabled {
     opacity: 0.62;
@@ -94,13 +103,19 @@ button.lv-chip {
   color: var(--lv-text);
   cursor: pointer;
   transition:
-    background-color var(--lv-dur-micro) ease,
-    border-color var(--lv-dur-micro) ease,
-    box-shadow var(--lv-dur-micro) ease;
+    background-color var(--lv-dur-micro) var(--lv-ease-out),
+    border-color var(--lv-dur-micro) var(--lv-ease-out),
+    box-shadow var(--lv-dur-micro) var(--lv-ease-out),
+    color var(--lv-dur-micro) var(--lv-ease-out),
+    transform var(--lv-dur-micro) var(--lv-ease-out);
 
   &:hover:not(:disabled) {
     border-color: var(--lv-accent);
     background: var(--lv-accent-soft);
+  }
+  /* 通用按压反馈（primary 单独定义压平）；disabled 前面已返回 */
+  &:active:not(:disabled) {
+    transform: translateY(1px);
   }
   &:disabled {
     opacity: 0.62;
@@ -113,8 +128,9 @@ button.lv-chip {
   color: var(--b3-theme-on-primary, #fff);
   box-shadow: var(--lv-btn-primary-shadow);
 
+  /* 对齐原型 .primary:hover：渐变收拢为 deep 纯色（暗色为亮档），再抬升 */
   &:hover:not(:disabled) {
-    background: var(--lv-btn-primary-bg);
+    background: var(--lv-accent-deep);
     filter: none;
     transform: translateY(-1px);
     box-shadow: var(--lv-btn-primary-shadow-hover);
@@ -266,74 +282,10 @@ button.lv-chip {
   max-width: 680px;
 }
 
-/* —— 选项行四态（默认 / 选中 / 正确 / 错误） —— */
-.lv-opt {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  width: 100%;
-  text-align: left;
-  padding: 13px 16px;
-  border-radius: var(--lv-r-2);
-  border: 1.5px solid var(--lv-border);
-  margin-bottom: 10px;
-  cursor: pointer;
-  background: var(--lv-surface);
-  transition: all var(--lv-dur-micro) ease;
+/* —— 选项行四态：由 Practice/Mock 的 scoped 样式定义（此全局旧版已删除，
+   避免双定义注入 translateX 悬停等规范外动效） —— */
 
-  &:hover {
-    border-color: var(--lv-accent);
-    background: var(--lv-accent-soft);
-    transform: translateX(3px);
-  }
-  &:active {
-    transform: translateX(3px) scale(0.995);
-  }
-
-  .key {
-    width: 28px;
-    height: 28px;
-    border-radius: 8px;
-    display: grid;
-    place-items: center;
-    flex: none;
-    font-size: 13px;
-    font-weight: 700;
-    background: var(--lv-surface-2);
-    color: var(--lv-text-2);
-    border: 1px solid var(--lv-border);
-    transition: all var(--lv-dur-micro) ease;
-  }
-  &--sel {
-    border-color: var(--lv-accent);
-    background: var(--lv-accent-soft);
-    .key {
-      background: var(--lv-accent);
-      border-color: var(--lv-accent);
-      color: var(--b3-theme-on-primary, #fff);
-    }
-  }
-  &--right {
-    border-color: var(--lv-green);
-    background: var(--lv-green-soft);
-    .key {
-      background: var(--lv-green);
-      border-color: var(--lv-green);
-      color: var(--b3-theme-on-primary, #fff);
-    }
-  }
-  &--wrong {
-    border-color: var(--lv-red);
-    background: var(--lv-red-soft);
-    .key {
-      background: var(--lv-red);
-      border-color: var(--lv-red);
-      color: var(--b3-theme-on-primary, #fff);
-    }
-  }
-}
-
-/* —— 判分反馈横幅 —— */
+/* —— 判分反馈横幅（规范 v6：左 3px 语义边 + soft 底；scoped 补语义配色） —— */
 .lv-feedback {
   display: flex;
   align-items: center;
@@ -345,7 +297,7 @@ button.lv-chip {
   font-size: 14.5px;
   background: var(--lv-red-soft);
   color: var(--lv-red);
-  animation: lv-pop-in 0.35s var(--lv-ease-spring) both;
+  animation: lv-pop-in var(--lv-dur-view) var(--lv-ease-out) both;
 
   &--good {
     background: var(--lv-green-soft);
@@ -377,6 +329,7 @@ button.lv-chip {
     height: 100%;
     border-radius: 999px;
     background: var(--lv-accent-grad);
+    transition: width var(--lv-dur-slow) var(--lv-ease-out);
   }
   &--sheen i {
     position: relative;
@@ -439,11 +392,22 @@ input[type="range"] {
   accent-color: var(--lv-accent);
 }
 
-/* —— 数据表（原型 table：th 浅底 muted、行分隔线；报告/模考数据表共用） —— */
+/* —— 选区主题化（细节质感：拖蓝跟随主色，明暗自适应） —— */
+::selection {
+  background: color-mix(in srgb, var(--b3-theme-primary) 22%, transparent);
+}
+
+/* —— 数据表（原型 table：th 浅底 muted、行分隔线；报告/模考数据表共用）
+   两种用法并存：table.lv-dtable 直接是表 / div.lv-dtable 作圆角包边 wrapper —— */
 .lv-dtable {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
 
   th,
   td {
@@ -637,8 +601,9 @@ input[type="range"] {
   font-size: 13px;
 }
 .lv-kpis {
+  /* auto-fit：窄容器（宿主设置浮层挤压主区等）优雅降级，不挤碎文字 */
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 14px;
   margin-bottom: 14px;
 }
@@ -661,15 +626,15 @@ input[type="range"] {
   padding: 3px;
 }
 .lv-kpi .v {
-  font-size: 29px;
-  font-weight: 650;
-  letter-spacing: -0.8px;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   line-height: 1.4;
   font-variant-numeric: tabular-nums;
 }
 @media (max-width: 960px) {
   .lv-kpis {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -818,8 +783,9 @@ input[type="range"] {
 
 /* —— 首页 widgets（规范 v6 §5.3：目标环 / 连胜 / 待消灭） —— */
 .lv-widgets {
+  /* auto-fit：容器受挤压（宿主浮层/分栏）时逐级换行而非竖排文字 */
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(216px, 1fr));
   gap: 14px;
   margin-bottom: 20px;
 

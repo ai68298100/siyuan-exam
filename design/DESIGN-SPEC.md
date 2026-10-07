@@ -114,6 +114,7 @@
 - **按钮**：`primary`（渐变+投影，唯一强调）/ `quiet`（细边中性）/ `ghost`（无边）/ `danger`；尺寸 md 44px / sm 34px。禁用 0.55 + not-allowed。焦点环 3px。
 - **命令面板**：⌘K 唤出；输入框 + 分组列表（页面/动作）+ ↑↓ 选择 + Enter 执行 + Esc 关闭；关键词别名（kw）支持中英文；空态给可试词。产品化时命令集 = 路由 + 模式启动 + 主题切换 + Recent。
 - **徽章 pill**：7px 圆角贴纸（非胶囊）；accent/good/warn/bad 四语义 + 默认中性；可点态（筛选 toggle）hover 出 accent 边。
+- **工具行「更多」菜单**（2026-10-08）：高频工具内联（≤3 个 chip），维护面板与导出打印收进卡片语言的下拉菜单（surface + pop 阴影 + 38px 行）；`menuitemcheckbox` 语义、面板开启出点标、Esc/点外关闭、开启即焦点入菜单。适用于工具型工具条 >8 个动作的场景。
 
 ### 5.3 数据展示
 
@@ -127,6 +128,7 @@
 
 - **输入**：44px 高、ctl-border、11px 圆角；hover 边框 accent、focus accent+ring；select 同规。
 - **选项 option**：radio/letter + 题干行；hover 边框 accent；选中 soft 底 + ring；正确/错误 green/red 成对（`.option.correct/.wrong`）。
+- **自评键帽 rate-key**（2026-10-08 融合自 Anki 现代改造共识）：四级自评（背诵 1-4 / 内核 Again-Hard-Good-Easy）的等级代号做成**常显语义色键帽**（red/amber/green/accent soft 底），按钮本体保持中性，hover 再整钮染色——等级一眼可扫，键盘提示不再隐形。实现端 `.lv-rate-key` 与原型 `.rate-key` 同构。
 - **反馈横幅 feedback**：左 3px 语义边 + soft 底；只陈述事实与正确答案，顶部不给情绪化大字。
 - **答题卡 answer-sheet**：5 列 44px 格；done=soft 紫、flag=amber 描边、cur=实心。
 
@@ -168,6 +170,8 @@
 2. **错题本独立页**：同 §6；实现侧从浏览筛选升为独立视图（数据已备：wrongItems/错因/曝光）。
 3. **命令面板 ⌘K**：路由+动作+最近；键盘优先补齐思源空缺。
 4. 报告正确率趋势已落地（55-04）；**FSRS 负载预测**待 riff 到期 API 真机契约（TODO 39-03）后补——首页 widgets 第三位暂由「待消灭错题」占位。
+5. **维护与估分工具面**（2026-10-07 原型补齐，实现已上线）：题库维护工具条（批量编辑 / 题库健康 / 勘误回导 / 智能视图·存为视图 / 纸笔回录 / 打印题册·答案册·答题卡，dry-run + 可撤销）→ `bank`；**考后估分**（模块正确率 + 区间，不预测正式能力）→ `mock-setup`；**报告周对比**（本周/上周双条 + delta 数值）→ `report`；**练习模式直达卡**（快速刷题/每日一练/背诵/错题重练/冲刺/收藏）→ `home`。
+6. **工具行收敛与模式分层**（2026-10-08）：浏览工具行只留高频（章节树/批量编辑/更多 ▾，§5.2 菜单组件），筛选行纳入只看收藏；首页练习模式分两级——队列驱动三模式（快速/每日/错题）accent 键帽为一级，低频三模式（背诵/冲刺/收藏）中性降噪。
 
 ### P1 · v1.x（原型留位）
 - 挑战码 PK 成绩单对比页；打卡海报导出；徽章/里程碑墙（连胜 widget 的下游）；图片遮挡卡；笔记→题转换入口（reader/bank 顶 action）；AI 复盘对话流（debrief 内嵌）。
@@ -191,7 +195,7 @@
 
 ## 9. 可达性
 
-焦点环 3px 永远可见（含暗色）；44px 触控下限（徽章/键帽除外）；语义角色（radiogroup/checkbox/progressbar/aria-current）；对比度：正文 ≥4.5:1、大数字 ≥3:1（亮暗各自实测）；forced-colors 全组件兜底（见 css 尾段）；面板焦点循环 + Esc 归还。
+焦点环**永远可见**（含暗色）：`1px surface 断层 + 4px 主色环`（ring-offset 语言，Geist/shadcn 同款；2026-10-08 由纯 3px 环升级）；44px 触控下限（徽章/键帽除外）；语义角色（radiogroup/checkbox/progressbar/aria-current）；对比度：正文 ≥4.5:1、大数字 ≥3:1（亮暗各自实测）；forced-colors 全组件兜底（见 css 尾段）；面板焦点循环 + Esc 归还。
 
 ---
 
@@ -204,3 +208,11 @@
 - **Linear**（质感基准）：⌘K 命令菜单、键盘优先、密度与对齐、微细节打磨、克制暗色 + 紫色点缀。[How we redesigned the Linear UI](https://linear.app/now/how-we-redesigned-the-linear-ui)、[A calmer interface](https://linear.app/now/behind-the-latest-design-refresh)、[Command Palette 8 States](https://www.setproduct.com)、[Linear 快捷键总表](https://shortcuts.design)
 
 > 对小驴的取舍：采纳「负载预算 / 错题主动作 / ⌘K / 密度微细节」；**不采纳**排行榜社交与 XP 积分（与「证据优先、反虚荣」定位冲突，徽章只做里程碑陈述）。
+
+### 10.1 增量调研（2026-10-08，gh 源码级 + Web 最佳实践）
+
+- **Anki 新 TS/Svelte 前端**（[ankitects/anki](https://github.com/ankitects/anki) `ts/routes`）：graphs 为响应式卡片栅格（3→2→1 列），图表元素可点击下钻进筛选浏览器（`graph-element-clickable`）；社区现代改造的主流共识是「评分按钮 2-4 个大目标、语义色可扫视、保留键盘」。→ 融合：背诵自评按钮数字键帽常显语义色（红/琥珀/绿/主色），hover 再整钮染色（`fusion-recite-reveal.png`）；图表保持静态但口径脚注齐全，可点击下钻待数据契约后评估。
+- **Anki 评分按钮显示下次间隔**（AnkiWeb Studying 文档默认行为）：间隔由思源 FSRS 内核产出，插件侧暂无契约透出——**不采纳**（不如实不显示），保留 1-4 快捷键。
+- **现代焦点语言**（Geist/shadcn ring-offset 模式）：焦点环带 1px surface 断层 + 4px 主色环。→ 已融合进 `--lv-ring` token，全组件焦点态升级。
+- **复习屏最小 chrome + 主题化选区**：作答页保持低 chrome（已有）；`::selection` 跟随主色（已融合）。
+- 其余候选（进度环庆祝、图表 hover 十字线、热力图月份标尺）均需 JS/数据契约或与「克制动效」规范冲突，本轮不采纳，留档待评估。

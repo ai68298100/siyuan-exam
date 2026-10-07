@@ -9,11 +9,34 @@
 
 [![Release](https://img.shields.io/github/v/release/ai68298100/siyuan-exam?logo=github)](https://github.com/ai68298100/siyuan-exam/releases)
 [![CI](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml/badge.svg)](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml)
-[![Tests](https://img.shields.io/badge/tests-571%20passed-brightgreen)](#-development)
+[![Tests](https://img.shields.io/badge/tests-577%20passed-brightgreen)](#-development)
 [![SiYuan](https://img.shields.io/badge/SiYuan-%3E%3D%203.8.0-blue)](https://github.com/siyuan-note/siyuan)
 [![License](https://img.shields.io/badge/license-MIT-green)](#-license)
 
 <img src="preview.png" alt="Lv Exam preview" width="640"/>
+
+
+## Screenshots
+
+**Practice home · today cockpit** (goal ring / streak / wrong to kill)　**Answering · keyboard first** (A-J select, Enter submit, 1-3 confidence)
+
+<p>
+  <img src="design/screenshots/practice-entry.png" width="49%" alt="Practice home"/>
+  <img src="design/screenshots/practice-session.png" width="49%" alt="Answering"/>
+</p>
+
+**Import & check · preview before commit**　**Evidence report · separated denominators**
+
+<p>
+  <img src="design/screenshots/import-preview.png" width="49%" alt="Import"/>
+  <img src="design/screenshots/report-center.png" width="49%" alt="Evidence report"/>
+</p>
+
+<p align="center">
+  <img src="design/screenshots/session-narrow.png" width="260" alt="Narrow 390px"/><br/>
+  <sup>Narrow (390px): answering, options and keyboard hints fully usable</sup>
+</p>
+
 
 *[中文](README.md) | English* · [Current status](docs/STATUS.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
@@ -81,7 +104,7 @@ The capabilities below have source implementations and automated coverage where 
 
 ## 🏗️ Engineering quality
 
-- **571 unit tests in 105 files** (grader / import parsers / event replayer / FSRS mapping / AI pipeline / kernel response-shape regression locks / external-link policy; run on 2026-10-07)
+- **577 unit tests in 106 files** (grader / import parsers / event replayer / FSRS mapping / AI pipeline / kernel response-shape regression locks / external-link policy; run on 2026-10-07)
 - **Guard gates**: TypeScript strict → svelte-check (0 warnings) → i18n parity + usage coverage → 42 architecture assertions → style audit → ESLint → Vitest
 - **Live-kernel preflight**: `pnpm preflight` asserts 17 kernel API behaviors against a running SiYuan. The current recorded contract run targets SiYuan 3.8.6; UI journey and mobile evidence remain separate manual checks.
 
@@ -109,7 +132,7 @@ pnpm dev              # watch build + livereload
 pnpm make-link        # symlink into <workspace>/data/plugins/siyuan-exam/
 pnpm check            # typecheck + svelte + i18n + arch checks
 pnpm guard            # full pre-push gate chain
-pnpm test             # vitest (571 tests in 105 files at v0.8.3)
+pnpm test             # vitest (577 tests in 106 files at v0.9.0)
 pnpm preflight        # live-kernel API preflight (17 checks; needs SiYuan running)
 pnpm build            # dist/ + package.zip
 pnpm make-install     # build and install into a local SiYuan plugin dir

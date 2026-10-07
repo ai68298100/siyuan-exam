@@ -187,6 +187,13 @@ const mkEvent = (daysAgo, qid, kind, mode, verdict, extra = {}) => ({
   [0, "seed-q10", "practice", "daily", "correct", { confidence: "guess" }],
   [0, "seed-q11", "practice", "daily", "wrong", { myAnswer: "350 m/s", confidence: "fuzzy" }],
   [0, "seed-q12", "practice", "daily", "wrong", { myAnswer: "光年;;秒差距", confidence: "guess" }],
+  // 自评确定却答错（44-02）：驱动报告「确定-错 题目下钻」与四象限确定错误档。
+  // 校准按置信度全局分桶：sure 桶连原有事件共 10/8=80%，加 2 错 → 12/8=67%（<80% 触发下钻按钮）
+  [1, "seed-q05", "practice", "daily", "wrong", { myAnswer: "A", confidence: "sure" }],
+  [2, "seed-q05", "practice", "daily", "correct", { confidence: "sure" }],
+  [0, "seed-q05", "practice", "daily", "wrong", { myAnswer: "B", confidence: "sure" }],
+  [2, "seed-q05", "practice", "daily", "wrong", { myAnswer: "C", confidence: "sure" }],
+  [0, "seed-q05", "practice", "daily", "wrong", { myAnswer: "D", confidence: "sure" }],
 ].forEach(([d, qid, kind, mode, verdict, extra]) => seedEvents.push(mkEvent(d, qid, kind, mode, verdict, extra)));
 
 const memStorage = new Map([

@@ -8,13 +8,38 @@
 
 [![Release](https://img.shields.io/github/v/release/ai68298100/siyuan-exam?logo=github)](https://github.com/ai68298100/siyuan-exam/releases)
 [![CI](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml/badge.svg)](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml)
-[![Tests](https://img.shields.io/badge/tests-571%20passed-brightgreen)](#开发)
+[![Tests](https://img.shields.io/badge/tests-577%20passed-brightgreen)](#开发)
 [![SiYuan](https://img.shields.io/badge/SiYuan-%3E%3D%203.8.0-blue)](https://github.com/siyuan-note/siyuan)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 [English](README.en-US.md) · [当前状态](docs/STATUS.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md) · [下载发行包](https://github.com/ai68298100/siyuan-exam/releases) · [查看 UI 设计原型](design/prototype/index.html) · [反馈问题](https://github.com/ai68298100/siyuan-exam/issues) · [参与讨论](https://github.com/ai68298100/siyuan-exam/discussions)
 
-> **当前版本：v0.8.3（2026-10-07 发布）。** 相对 0.6.0 新增：学习资料登记/查看/笔记/题目关联、考纲对照与缺口清单、勘误回导、打印题册/答案册/答题卡与纸笔回录、模考单次延时、答案分布与未审校体检、7 个运行时 AI 讲解/复盘任务及出题生成/复核/修复管线，以及结构化判分地基（数值容差/单位、多空逐空——首题待 UI 刀）。v0.8.0 相对 0.7.8：界面全面落地设计语言 v6——**错题本独立页**（消灭进度/错因分布/紧迫队列）、**⌘K 命令面板**（页面与动作直达）、**今日驾驶舱**（目标环/连胜/待消灭）、作答选项圆点四态、报告趋势面积图与成绩单雷达图；修复背诵误报空库、暗色报告按钮、错因分布口径。v0.8.3 增加富文本外链隐私闸门、危险协议阻断与安全打开策略；集市上架继续暂缓，保留 [TODO 7B](TODO.md#7b-集市上架暂缓以下门槛全部达成后启动) 的全部条件。全链路 571 项自动化测试 + UI 走查 7 流程与 CI 门禁；界面旅程的人工走查仍在进行，已知未验项见 [发版检查清单](docs/23-发版检查清单.md)。
+
+<img src="preview.png" alt="小驴考试 · 预览" width="640"/>
+
+## 界面一览
+
+**练习台 · 今日驾驶舱**（目标环 / 连胜 / 待消灭错题，模式分两级）　**独立作答 · 键盘优先**（A-J 选择、Enter 提交、错因 1-3）
+
+<p>
+  <img src="design/screenshots/practice-entry.png" width="49%" alt="练习台首页"/>
+  <img src="design/screenshots/practice-session.png" width="49%" alt="作答中"/>
+</p>
+
+**导入与校对 · 先预览再入库**　**学习证据报告 · 独立/受助/延迟分口径**
+
+<p>
+  <img src="design/screenshots/import-preview.png" width="49%" alt="导入与校对"/>
+  <img src="design/screenshots/report-center.png" width="49%" alt="学习证据报告"/>
+</p>
+
+<p align="center">
+  <img src="design/screenshots/session-narrow.png" width="260" alt="窄屏 390px"/><br/>
+  <sup>窄屏（390px）：作答、选项与键盘提示完整可用</sup>
+</p>
+
+
+> **当前版本：v0.9.0（2026-10-08 发布）。** v0.9.0 为界面提质批次：对齐设计规范 v6 的动效/焦点/主色语言，修复趋势图、掌握度栅格、错因条与暗色热力图等图表缺陷，浏览工具行收敛为「更多」菜单，首页练习模式分两级，⌘K 补齐模式命令，背诵自评语义键帽，并重制品牌图标与预览图。此前的 v0.8.3（2026-10-07）： 相对 0.6.0 新增：学习资料登记/查看/笔记/题目关联、考纲对照与缺口清单、勘误回导、打印题册/答案册/答题卡与纸笔回录、模考单次延时、答案分布与未审校体检、7 个运行时 AI 讲解/复盘任务及出题生成/复核/修复管线，以及结构化判分地基（数值容差/单位、多空逐空——首题待 UI 刀）。v0.8.0 相对 0.7.8：界面全面落地设计语言 v6——**错题本独立页**（消灭进度/错因分布/紧迫队列）、**⌘K 命令面板**（页面与动作直达）、**今日驾驶舱**（目标环/连胜/待消灭）、作答选项圆点四态、报告趋势面积图与成绩单雷达图；修复背诵误报空库、暗色报告按钮、错因分布口径。v0.8.3 增加富文本外链隐私闸门、危险协议阻断与安全打开策略；集市上架继续暂缓，保留 [TODO 7B](TODO.md#7b-集市上架暂缓以下门槛全部达成后启动) 的全部条件。全链路 577 项自动化测试 + UI 走查 7 流程与 CI 门禁；界面旅程的人工走查仍在进行，已知未验项见 [发版检查清单](docs/23-发版检查清单.md)。
 
 ## 围绕你的备考流程
 
@@ -118,7 +143,7 @@ pnpm make-install     # 构建并安装到本机思源插件目录
 
 `pnpm preflight` 会对运行中的思源创建测试题库/卡片、调用内核并清理测试数据，其中 AI 可选检查可能发送模型请求；它不是只读检查，应先确认目标测试工作空间及模型调用条件。
 
-2026-10-07 在 Node 24 / pnpm 12.5.1 下重新运行 `pnpm test`，105 个测试文件、571 项通过；`pnpm check`、`pnpm lint`、生产构建、发行包白名单和 UI smoke 也通过。本次新增富文本外链隐私闸门与 URL policy 回归测试。这些结果不覆盖真实文件选择、界面响应、卸载保存、同步、敏感查询参数脱敏及全部评分语义；docs/17 与 [产品现状评审](docs/25-产品现状评审与精品化待办.md) 记录了仍待真机验收的范围。
+2026-10-08 在 Node 24 / pnpm 12.5.1 下重新运行 `pnpm test`，106 个测试文件、577 项通过；`pnpm check`、`pnpm lint`、生产构建、发行包白名单和 UI smoke 也通过。本次新增富文本外链隐私闸门与 URL policy 回归测试。这些结果不覆盖真实文件选择、界面响应、卸载保存、同步、敏感查询参数脱敏及全部评分语义；docs/17 与 [产品现状评审](docs/25-产品现状评审与精品化待办.md) 记录了仍待真机验收的范围。
 
 ## 规划与文档
 

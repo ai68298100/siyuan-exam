@@ -184,42 +184,19 @@ await shot("browse-wrong-filter", {
     { click: "#app button:has-text('错题')", wait: 700 },
   ],
 });
+// 筛选无结果空态（UX）： gibberish 关键词触发 no-match + 清除筛选出路
+await shot("browse-nomatch", {
+  steps: [
+    { click: btn("浏览"), wait: 700 },
+    { fill: ["#app input[placeholder*='搜索题干']", "zzz不存在的关键词zzz"], wait: 700 },
+  ],
+});
 
 // 模考场
 await shot("mock", { steps: [{ eval: "window.__show('mock')" }] });
-// 模考成绩单（8 题经答题卡逐题作答后交卷，无未答确认直达）
-await shot("mock-score", {
-  steps: [
-    { eval: "window.__show('mock')", wait: 600 },
-    { click: btn("开始模考"), wait: 1200 },
-    { click: "#app .lv-cell >> nth=0", wait: 400 },
-    { click: "#app button.lv-opt", t: 1200, wait: 200 },
-    { fill: ["#app .lv-question textarea", "模拟作答"], t: 1200, wait: 200 },
-    { click: "#app .lv-cell >> nth=1", wait: 400 },
-    { click: "#app button.lv-opt", t: 1200, wait: 200 },
-    { fill: ["#app .lv-question textarea", "模拟作答"], t: 1200, wait: 200 },
-    { click: "#app .lv-cell >> nth=2", wait: 400 },
-    { click: "#app button.lv-opt", t: 1200, wait: 200 },
-    { fill: ["#app .lv-question textarea", "模拟作答"], t: 1200, wait: 200 },
-    { click: "#app .lv-cell >> nth=3", wait: 400 },
-    { click: "#app button.lv-opt", t: 1200, wait: 200 },
-    { fill: ["#app .lv-question textarea", "模拟作答"], t: 1200, wait: 200 },
-    { click: "#app .lv-cell >> nth=4", wait: 400 },
-    { click: "#app button.lv-opt", t: 1200, wait: 200 },
-    { fill: ["#app .lv-question textarea", "模拟作答"], t: 1200, wait: 200 },
-    { click: "#app .lv-cell >> nth=5", wait: 400 },
-    { click: "#app button.lv-opt", t: 1200, wait: 200 },
-    { fill: ["#app .lv-question textarea", "模拟作答"], t: 1200, wait: 200 },
-    { click: "#app .lv-cell >> nth=6", wait: 400 },
-    { click: "#app button.lv-opt", t: 1200, wait: 200 },
-    { fill: ["#app .lv-question textarea", "模拟作答"], t: 1200, wait: 200 },
-    { click: "#app .lv-cell >> nth=7", wait: 400 },
-    { click: "#app button.lv-opt", t: 1200, wait: 200 },
-    { fill: ["#app .lv-question textarea", "模拟作答"], t: 1200, wait: 200 },
-    { click: btn("交卷"), wait: 600 },
-    { click: "#confirmDialogConfirmBtn", wait: 1800 },
-  ],
-});
+// 练习台路由
+await shot("entry");
+// 注：mock-score 与 report-drill 移至 shoot-panels.mjs（逐题分支/面板定位，此处步骤易超时）
 await shot("mock-running", {
   steps: [
     { eval: "window.__show('mock')", wait: 500 },
@@ -250,22 +227,14 @@ await shot("ai-explain-result", {
     { click: btn("AI 解读"), wait: 2500 },
   ],
 });
-// 考后估分（mock 配置内可展开面）
+// 考后估分（mock 配置内可展开面；summary 非 button，用 summary 选择器）
 const SCROLL_BOTTOM =
   "[...document.querySelectorAll('#app, .lv-main, .lv-pad')].forEach((m) => (m.scrollTop = m.scrollHeight))";
 await shot("estimate-expand", {
   steps: [
     { eval: "window.__show('mock')", wait: 700 },
-    { click: btn("考后估分"), wait: 800 },
+    { click: "#app summary:has-text('考后估分')", wait: 800 },
     { eval: SCROLL_BOTTOM, wait: 400 },
-  ],
-});
-// 报告下钻（44-02：确定-错 逐题展开）
-await shot("report-drill", {
-  steps: [
-    { eval: "window.__show('report')", wait: 900 },
-    { click: "#app button:has-text('确定-错 题目下钻')", wait: 800 },
-    { eval: "[...document.querySelectorAll('.lv-main, .lv-pad')].forEach((m) => (m.scrollTop = 700))", wait: 400 },
   ],
 });
 await shot("report-charts", {
