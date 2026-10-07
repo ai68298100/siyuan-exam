@@ -28,6 +28,13 @@ describe("appendRevision（43-01 修订时间线）", () => {
     expect(store.q1[1].kp).toBe("新");
   });
 
+  it("答案与考点未变但判分规格变了 → 仍记录", () => {
+    let store: RevisionStore = {};
+    store = appendRevision(store, "q1", { ts: 1, answer: "A", kp: "K" });
+    store = appendRevision(store, "q1", { ts: 2, answer: "A", kp: "K", specChanged: true });
+    expect(store.q1).toHaveLength(2);
+  });
+
   it("不同题互不干扰", () => {
     let store: RevisionStore = {};
     store = appendRevision(store, "q1", { ts: 1, answer: "A" });
@@ -43,5 +50,25 @@ describe("specChanged（54 联动标记）", () => {
     expect(specChanged({ v: 1, kind: "numeric" }, { kind: "numeric", v: 1 })).toBe(false); // 键序无关
     expect(specChanged({ v: 1, kind: "numeric" }, undefined)).toBe(true);
     expect(specChanged({ v: 1, kind: "numeric", unit: "m" }, { v: 1, kind: "numeric" })).toBe(true);
+  });
+
+  it("递归比较多空题嵌套字段，字段顺序不影响结果", () => {
+    const a = {
+      v: 1,
+      kind: "multiBlank",
+      blanks: [{ answers: ["甲", "乙"], caseSensitive: false }],
+    };
+    const same = {
+      blanks: [{ caseSensitive: false, answers: ["甲", "乙"] }],
+      kind: "multiBlank",
+      v: 1,
+    };
+    const changed = {
+      blanks: [{ caseSensitive: false, answers: ["甲", "丙"] }],
+      kind: "multiBlank",
+      v: 1,
+    };
+    expect(specChanged(a, same)).toBe(false);
+    expect(specChanged(a, changed)).toBe(true);
   });
 });

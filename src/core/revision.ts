@@ -29,7 +29,12 @@ export function appendRevision(
 ): RevisionStore {
   const list = store[qid] ? [...store[qid]] : [];
   const last = list[list.length - 1];
-  if (last && last.answer === entry.answer && (last.kp ?? "") === (entry.kp ?? "")) return store;
+  if (
+    last &&
+    last.answer === entry.answer &&
+    (last.kp ?? "") === (entry.kp ?? "") &&
+    Boolean(last.specChanged) === Boolean(entry.specChanged)
+  ) return store;
   list.push(entry);
   while (list.length > MAX_REVISIONS) list.shift();
   return { ...store, [qid]: list };
@@ -44,8 +49,20 @@ export function specChanged(prev: unknown, next: unknown): boolean {
   return a !== b;
 }
 
-/** 规格对象 → 稳定键（键排序后序列化；非对象原样） */
+/** 规格对象 → 稳定键（递归排序对象键；数组顺序保留） */
 function stableKey(v: unknown): string | null {
-  if (v == null || typeof v !== "object") return v == null ? null : JSON.stringify(v);
-  return JSON.stringify(v, Object.keys(v as Record<string, unknown>).sort());
+  if (v == null) return null;
+  return JSON.stringify(normalizeForKey(v));
+}
+
+function normalizeForKey(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(normalizeForKey);
+  if (v && typeof v === "object") {
+    return Object.fromEntries(
+      Object.keys(v as Record<string, unknown>)
+        .sort()
+        .map((key) => [key, normalizeForKey((v as Record<string, unknown>)[key])]),
+    );
+  }
+  return v;
 }
