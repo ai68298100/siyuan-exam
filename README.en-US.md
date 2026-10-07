@@ -9,7 +9,7 @@
 
 [![Release](https://img.shields.io/github/v/release/ai68298100/siyuan-exam?logo=github)](https://github.com/ai68298100/siyuan-exam/releases)
 [![CI](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml/badge.svg)](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml)
-[![Tests](https://img.shields.io/badge/tests-547%20passed-brightgreen)](#-development)
+[![Tests](https://img.shields.io/badge/tests-571%20passed-brightgreen)](#-development)
 [![SiYuan](https://img.shields.io/badge/SiYuan-%3E%3D%203.8.0-blue)](https://github.com/siyuan-note/siyuan)
 [![License](https://img.shields.io/badge/license-MIT-green)](#-license)
 
@@ -30,7 +30,7 @@
 | AI explanations behind a paywall | **Bring your own AI**: generation, per-option explanations, Socratic follow-ups — via SiYuan's built-in AI or your own OpenAI-compatible endpoint, with explicit data-flow consent |
 | Half-baked mock exams | **CBT engine**: blueprint assembly, section timing, answer-sheet flags, indefinite-question partial credit, answer lockout, post-exam scoring |
 
-## 📦 Feature overview (v0.8.2; journey checks ongoing)
+## 📦 Feature overview (v0.8.3; journey checks ongoing)
 
 The capabilities below have source implementations and automated coverage where stated. "Journey checks ongoing" means per-screen manual walkthroughs are still in progress — see the [release checklist](docs/23-发版检查清单.md) for known unverified items.
 
@@ -81,7 +81,7 @@ The capabilities below have source implementations and automated coverage where 
 
 ## 🏗️ Engineering quality
 
-- **547 unit tests in 102 files** (grader / import parsers / event replayer / FSRS mapping / AI pipeline / kernel response-shape regression locks; run on 2026-10-07)
+- **571 unit tests in 105 files** (grader / import parsers / event replayer / FSRS mapping / AI pipeline / kernel response-shape regression locks / external-link policy; run on 2026-10-07)
 - **Guard gates**: TypeScript strict → svelte-check (0 warnings) → i18n parity + usage coverage → 42 architecture assertions → style audit → ESLint → Vitest
 - **Live-kernel preflight**: `pnpm preflight` asserts 17 kernel API behaviors against a running SiYuan. The current recorded contract run targets SiYuan 3.8.6; UI journey and mobile evidence remain separate manual checks.
 
@@ -109,7 +109,7 @@ pnpm dev              # watch build + livereload
 pnpm make-link        # symlink into <workspace>/data/plugins/siyuan-exam/
 pnpm check            # typecheck + svelte + i18n + arch checks
 pnpm guard            # full pre-push gate chain
-pnpm test             # vitest (547 tests in 102 files at v0.8.2)
+pnpm test             # vitest (571 tests in 105 files at v0.8.3)
 pnpm preflight        # live-kernel API preflight (17 checks; needs SiYuan running)
 pnpm build            # dist/ + package.zip
 pnpm make-install     # build and install into a local SiYuan plugin dir
