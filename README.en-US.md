@@ -30,7 +30,7 @@
 | AI explanations behind a paywall | **Bring your own AI**: generation, per-option explanations, Socratic follow-ups — via SiYuan's built-in AI or your own OpenAI-compatible endpoint, with explicit data-flow consent |
 | Half-baked mock exams | **CBT engine**: blueprint assembly, section timing, answer-sheet flags, indefinite-question partial credit, answer lockout, post-exam scoring |
 
-## 📦 Feature overview (v0.8.0; journey checks ongoing)
+## 📦 Feature overview (v0.8.1; journey checks ongoing)
 
 The capabilities below have source implementations and automated coverage where stated. "Journey checks ongoing" means per-screen manual walkthroughs are still in progress — see the [release checklist](docs/23-发版检查清单.md) for known unverified items.
 
@@ -109,7 +109,7 @@ pnpm dev              # watch build + livereload
 pnpm make-link        # symlink into <workspace>/data/plugins/siyuan-exam/
 pnpm check            # typecheck + svelte + i18n + arch checks
 pnpm guard            # full pre-push gate chain
-pnpm test             # vitest (547 tests in 102 files at v0.8.0)
+pnpm test             # vitest (547 tests in 102 files at v0.8.1)
 pnpm preflight        # live-kernel API preflight (17 checks; needs SiYuan running)
 pnpm build            # dist/ + package.zip
 pnpm make-install     # build and install into a local SiYuan plugin dir
