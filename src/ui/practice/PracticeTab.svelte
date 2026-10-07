@@ -33,6 +33,7 @@ import { ttsSpeak } from "@/core/tts";
     import { parsePaperAnswers, gradePaper } from "@/core/paperRecall";
     import { probeCheckinApi, syncCheckin, localDateKeyOf, bridgeEnabled, fetchStreak } from "@/core/checkinBridge";
     import { probeGlean, listLaterClips, formatClipsForSource, markClipDone, type GleanClip } from "@/core/gleanBridge";
+    import { resolveLink } from "@/core/externalLinks";
     import { onExamEvent, emitExamEvent } from "@/core/bus";
     import Icon from "../shared/Icon.svelte";
     import Palette from "../shared/Palette.svelte";
@@ -2617,20 +2618,37 @@ import { ttsSpeak } from "@/core/tts";
     /** 120-06 最低查看：assets → 内核静态 URL（浏览器原生看 PDF/播媒体）；link → 经隐私闸打开 */
     /** 73-02 lite：外链隐私闸——link 类素材打开前显示完整目的地，默认不自动请求；
      *  资产类（本地内核静态文件）不受闸。取消时复制链接，可到外部浏览器打开。 */
-    async function gatedOpen(url: string, _m: import("../../core/materials").MaterialDoc): Promise<void> {
-      // 外部判定：http(s) 且非当前来源（内核静态资产=同来源，不受闸）
-      const external = /^https?:///i.test(url) && !url.startsWith(window.location.origin);
-      if (!external) { window.open(url, "_blank", "noopener"); return; }
+    async function gatedOpen(url: string, _m?: import("../../core/materials").MaterialDoc): Promise<void> {
+      const link = resolveLink(url, window.location.href);
+      if (link.disposition === "blocked") return;
+      if (link.disposition === "internal") {
+        window.open(link.href, "_blank", "noopener,noreferrer");
+        return;
+      }
       const { confirmDialogSync } = await import("../../libs/dialog");
       const ok = await confirmDialogSync({
         title: t("gate.linkTitle"),
         content:
           "<div style='word-break:break-all;font-size:12.5px'>" +
-          escapeHtml(url) +
+          escapeHtml(link.href) +
           "</div><p class='lv-hint' style='text-align:left'>" + t("gate.linkDesc") + "</p>",
       });
-      if (ok) { window.open(url, "_blank", "noopener"); return; }
-      try { await navigator.clipboard.writeText(url); showMessage(t("gate.linkCopied"), 2400, "info"); } catch { /* 剪贴板不可用则静默 */ }
+      if (ok) { window.open(link.href, "_blank", "noopener,noreferrer"); return; }
+      try { await navigator.clipboard.writeText(link.href); showMessage(t("gate.linkCopied"), 2400, "info"); } catch { /* 剪贴板不可用则静默 */ }
+    }
+
+    /** 73-02：题面富文本链接只能经外链闸打开，避免 {@html} 中的 href 直达网络。 */
+    function onRichTextClick(e: MouseEvent): void {
+      const target = e.target;
+      if (!(target instanceof Element)) return;
+      const anchor = target.closest("a[href]");
+      if (!anchor || !target.closest(".lv-rich")) return;
+      const href = anchor.getAttribute("href");
+      if (!href) return;
+      const link = resolveLink(href, window.location.href);
+      if (link.disposition === "internal") return;
+      e.preventDefault();
+      if (link.disposition === "external") void gatedOpen(link.href);
     }
 
     function openMaterial(m: import("../../core/materials").MaterialDoc) {
@@ -3130,7 +3148,7 @@ import { ttsSpeak } from "@/core/tts";
     }
 </script>
 
-<svelte:window onkeydown={onKeydown} ondragover={(e) => e.preventDefault()} ondrop={onDrop} />
+<svelte:window onkeydown={onKeydown} onclick={onRichTextClick} onauxclick={onRichTextClick} ondragover={(e) => e.preventDefault()} ondrop={onDrop} />
 
 <div class="fn__flex-1 lv-exam-tab" role="region" aria-label={t("tab.practice")}>
   <div class="block__icons">
@@ -4924,7 +4942,7 @@ import { ttsSpeak } from "@/core/tts";
                       {#if sq.kp}<span class="lv-chip">{sq.kp}</span>{/if}
                       <span class="lv-muted num">{t("browse.answer")}: {sq.answer}</span>
                     </div>
-                    <div class="b3-typography" style="font-size:13px">{@html spotHtml[sid] || escapeHtml(sq.stem)}</div>
+                    <div class="lv-rich b3-typography" style="font-size:13px">{@html spotHtml[sid] || escapeHtml(sq.stem)}</div>
                     {#each sq.options as opt, oi (oi)}
                       <div class="lv-muted">{String.fromCharCode(65 + oi)}. {opt}</div>
                     {/each}
