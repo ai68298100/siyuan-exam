@@ -129,6 +129,52 @@ describe("HttpTransport 429 限流处理（3.8.6 真机发现）", () => {
     await expect(t.post("/api/x", {})).rejects.toThrow(/429/);
     expect(calls).toBe(2);   // 首次 + 1 次重试
   });
+
+  it("JSON 请求把 AbortSignal 传给 fetch，超时会中止底层请求", async () => {
+    let signal: AbortSignal | undefined;
+    const t = new HttpTransport(
+      "http://x",
+      "tok",
+      ((_url, init) => {
+        signal = init.signal;
+        return new Promise((_resolve, reject) => {
+          init.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+        });
+      }) as never,
+      10,
+      0,
+    );
+    await expect(t.post("/api/slow", {})).rejects.toThrow(/Aborted|abort/i);
+    expect(signal).toBeDefined();
+    expect(signal!.aborted).toBe(true);
+  });
+
+  it("postForm 使用注入的 fetch、multipart body 和取消信号", async () => {
+    let request: { body: string | FormData; signal?: AbortSignal; headers: Record<string, string> } | undefined;
+    const t = new HttpTransport(
+      "http://x",
+      "tok",
+      ((_url, init) => {
+        request = init;
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ code: 0, msg: "", data: null }),
+        });
+      }) as never,
+      100,
+      0,
+    );
+    await expect(t.postForm("/api/import/importSY", new Blob(["zip"]), "bank.sy.zip")).resolves.toMatchObject({ code: 0 });
+    expect(request?.body).toBeInstanceOf(FormData);
+    expect(request?.headers.Authorization).toBe("Token tok");
+    expect(request?.headers["Content-Type"]).toBeUndefined();
+    expect(request?.signal).toBeDefined();
+    expect(request?.signal?.aborted).toBe(false);
+    const uploaded = (request?.body as FormData).get("file");
+    expect(uploaded).toBeInstanceOf(File);
+    expect((uploaded as File).name).toBe("bank.sy.zip");
+  });
 });
 
 describe("createNotebook 三形态（3.8.6 漂移：perf-bank 脚本实测发现；② 为旧版 preflight/mock 形态）", () => {

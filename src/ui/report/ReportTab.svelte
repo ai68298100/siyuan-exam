@@ -946,7 +946,7 @@
     {#if mockHistory.length >= 2}
       <div class="lv-card lv-section">
         <b>{t("mock.history")}</b>
-        <svg viewBox="0 0 300 110" style="width:100%;max-width:420px;display:block">
+        <svg viewBox="0 0 300 110" style="width:100%;max-width:420px;display:block" role="img" aria-label={t("mock.history")}>
           <polyline points={mockHistory.map((h, i) => `${(i / Math.max(1, mockHistory.length - 1)) * 300},${100 - Math.round(h.percent)}`).join(" ")} fill="none" stroke="var(--lv-accent)" stroke-width="2" />
         </svg>
       </div>
@@ -954,7 +954,7 @@
 
     <div class="lv-card lv-section">
       <b>{t("report.hourly")}</b>
-      <svg viewBox="0 0 300 46" style="width:100%;max-width:420px;display:block">
+      <svg viewBox="0 0 300 46" style="width:100%;max-width:420px;display:block" role="img" aria-label={t("report.hourly")}>
         <polyline points={hoursSvg} fill="none" stroke="var(--lv-accent)" stroke-width="2" />
       </svg>
       <div class="lv-row" style="margin:4px 0 0">

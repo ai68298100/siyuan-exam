@@ -543,6 +543,29 @@ input[type="range"] {
     box-shadow: var(--lv-sh-pop);
   }
 }
+
+/* 窄屏触控目标：紧凑桌面控件在触摸环境中仍需留出 44px 命中区。
+   仅扩大交互盒，不改变桌面密度；Rail/关闭钮的内部图标仍按原尺寸绘制。 */
+@media (max-width: 1023px) {
+  .lv-shell .lv-rail .lv-rail-btn {
+    min-height: 44px;
+  }
+  .lv-shell .lv-rail .lv-drawer-close {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .lv-btn.sm {
+    min-height: 44px;
+  }
+}
+
+/* 输入区明确保留换行；宿主主题可能给 textarea 施加 white-space: nowrap。 */
+.lv-textarea {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 /* 抽屉触发按钮（窄屏显示；置于各 Tab 头部） */
 .lv-menu-btn {
   display: none;
@@ -559,6 +582,10 @@ input[type="range"] {
 @media (max-width: 1023px) {
   .lv-menu-btn {
     display: inline-flex;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
   }
 }
 

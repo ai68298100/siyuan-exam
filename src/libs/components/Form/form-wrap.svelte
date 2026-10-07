@@ -7,6 +7,12 @@
  Description  : The setting item container
 -->
 <script lang="ts">
+    import { setContext } from 'svelte';
+    import {
+        FORM_FIELD_A11Y_CONTEXT,
+        createFormFieldA11yContext
+    } from './form-context';
+
     interface Props {
         title: string;
         description: string;
@@ -20,13 +26,16 @@
         direction = 'column',
         children
     }: Props = $props();
+
+    const fieldA11y = createFormFieldA11yContext();
+    setContext(FORM_FIELD_A11Y_CONTEXT, fieldA11y);
 </script>
 
 {#if direction === "row"}
     <div class="item-wrap b3-label">
         <div class="fn__block">
-            <span class="title">{title}</span>
-            <div class="b3-label__text">{@html description}</div>
+            <span class="title" id={fieldA11y.labelId}>{title}</span>
+            <div class="b3-label__text" id={fieldA11y.descriptionId}>{@html description}</div>
             <div class="fn__hr"></div>
             <div class="item-wrap__content">
                 {@render children?.()}
@@ -36,8 +45,8 @@
 {:else}
     <div class="item-wrap fn__flex b3-label config__item">
         <div class="fn__flex-1">
-            <span class="title">{title}</span>
-            <div class="b3-label__text">
+            <span class="title" id={fieldA11y.labelId}>{title}</span>
+            <div class="b3-label__text" id={fieldA11y.descriptionId}>
                 {@html description}
             </div>
         </div>

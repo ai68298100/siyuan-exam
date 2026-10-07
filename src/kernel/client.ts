@@ -45,7 +45,7 @@ export interface ProbeResult {
 export interface FetchLike {
   (
     url: string,
-    init: { method: string; headers: Record<string, string>; body: string },
+    init: { method: string; headers: Record<string, string>; body: string | FormData; signal?: AbortSignal },
   ): Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
 }
 
@@ -64,6 +64,7 @@ export class HttpTransport implements KernelTransport {
     for (let attempt = 0; attempt <= this.retries; attempt++) {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
+      let retryDelay: number | undefined;
       try {
         const res = await this.fetchImpl(this.baseUrl + endpoint, {
           method: "POST",
@@ -72,8 +73,8 @@ export class HttpTransport implements KernelTransport {
             Authorization: `Token ${this.token}`,
           },
           body: JSON.stringify(payload ?? {}),
+          signal: ctrl.signal,
         });
-        clearTimeout(timer);
         const text = await res.text();
         if (!res.ok) {
           // 429 限流（3.8.6 真机发现）：归 retryable 走退避重试；Retry-After 提示带回
@@ -89,7 +90,6 @@ export class HttpTransport implements KernelTransport {
         if (body.code !== 0) throw new KernelError("fatal", endpoint, body.msg || `code ${body.code}`);
         return body;
       } catch (e) {
-        clearTimeout(timer);
         lastErr = e;
         const kind = e instanceof KernelError ? e.kind : classify(e);
         if (kind === "fatal" || attempt === this.retries) {
@@ -98,8 +98,11 @@ export class HttpTransport implements KernelTransport {
             : new KernelError(kind, endpoint, e instanceof Error ? e.message : String(e), e);
         }
         const retryAfter = /429/.test(String(lastErr)) ? 1000 : 300;
-        await sleep(retryAfter * (attempt + 1));
+        retryDelay = retryAfter * (attempt + 1);
+      } finally {
+        clearTimeout(timer);
       }
+      if (retryDelay !== undefined) await sleep(retryDelay);
     }
     throw lastErr;
   }
@@ -109,16 +112,47 @@ export class HttpTransport implements KernelTransport {
   async postForm(endpoint: string, file: Blob, filename: string) {
     const fd = new FormData();
     fd.append("file", file, filename);
-    const res = await fetch(this.baseUrl + endpoint, {
-      method: "POST",
-      headers: { Authorization: `Token ${this.token}` },
-      body: fd,
-    });
-    const body = (await res.json().catch(() => null)) as { code: number; msg: string; data: unknown } | null;
-    if (!res.ok || !body || body.code !== 0) {
-      throw new KernelError("fatal", endpoint, body?.msg || `HTTP ${res.status}`);
+    let lastErr: unknown;
+    for (let attempt = 0; attempt <= this.retries; attempt++) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
+      let retryDelay: number | undefined;
+      try {
+        const res = await this.fetchImpl(this.baseUrl + endpoint, {
+          method: "POST",
+          headers: { Authorization: `Token ${this.token}` },
+          body: fd,
+          signal: ctrl.signal,
+        });
+        const text = await res.text();
+        if (!res.ok) {
+          if (res.status === 429) throw new KernelError("retryable", endpoint, "HTTP 429 限流，稍后重试");
+          throw new KernelError("fatal", endpoint, `HTTP ${res.status}`);
+        }
+        let body: { code: number; msg: string; data: unknown };
+        try {
+          body = JSON.parse(text);
+        } catch {
+          throw new KernelError("fatal", endpoint, "非 JSON 响应");
+        }
+        if (body.code !== 0) throw new KernelError("fatal", endpoint, body.msg || `code ${body.code}`);
+        return body;
+      } catch (e) {
+        lastErr = e;
+        const kind = e instanceof KernelError ? e.kind : classify(e);
+        if (kind === "fatal" || attempt === this.retries) {
+          throw e instanceof KernelError
+            ? e
+            : new KernelError(kind, endpoint, e instanceof Error ? e.message : String(e), e);
+        }
+        const retryAfter = /429/.test(String(lastErr)) ? 1000 : 300;
+        retryDelay = retryAfter * (attempt + 1);
+      } finally {
+        clearTimeout(timer);
+      }
+      if (retryDelay !== undefined) await sleep(retryDelay);
     }
-    return body;
+    throw lastErr;
   }
 }
 

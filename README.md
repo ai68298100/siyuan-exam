@@ -8,12 +8,13 @@
 
 [![Release](https://img.shields.io/github/v/release/ai68298100/siyuan-exam?logo=github)](https://github.com/ai68298100/siyuan-exam/releases)
 [![CI](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml/badge.svg)](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml)
+[![Tests](https://img.shields.io/badge/tests-547%20passed-brightgreen)](#开发)
 [![SiYuan](https://img.shields.io/badge/SiYuan-%3E%3D%203.8.0-blue)](https://github.com/siyuan-note/siyuan)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-[English](README.en-US.md) · [下载发行包](https://github.com/ai68298100/siyuan-exam/releases) · [查看 UI 设计原型](design/prototype/index.html) · [反馈问题](https://github.com/ai68298100/siyuan-exam/issues)
+[English](README.en-US.md) · [当前状态](docs/STATUS.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md) · [下载发行包](https://github.com/ai68298100/siyuan-exam/releases) · [查看 UI 设计原型](design/prototype/index.html) · [反馈问题](https://github.com/ai68298100/siyuan-exam/issues) · [参与讨论](https://github.com/ai68298100/siyuan-exam/discussions)
 
-> **当前版本：v0.8.0（2026-10-07 发布）。** 相对 0.6.0 新增：学习资料登记/查看/笔记/题目关联、考纲对照与缺口清单、勘误回导、打印题册/答案册/答题卡与纸笔回录、模考单次延时、答案分布与未审校体检、7 个运行时 AI 讲解/复盘任务及出题生成/复核/修复管线，以及结构化判分地基（数值容差/单位、多空逐空——首题待 UI 刀）。v0.8.0 相对 0.7.8：界面全面落地设计语言 v6——**错题本独立页**（消灭进度/错因分布/紧迫队列）、**⌘K 命令面板**（页面与动作直达）、**今日驾驶舱**（目标环/连胜/待消灭）、作答选项圆点四态、报告趋势面积图与成绩单雷达图；修复背诵误报空库、暗色报告按钮、错因分布口径。全链路 545 项自动化测试 + UI 走查 7 流程 + 35 张截图双闸矩阵与 CI 门禁；界面旅程的人工走查仍在进行，已知未验项见 [发版检查清单](docs/23-发版检查清单.md)。集市上架继续暂缓，保留 [TODO 7B](TODO.md#7b-集市上架暂缓以下门槛全部达成后启动) 的全部条件。
+> **当前版本：v0.8.0（2026-10-07 发布）。** 相对 0.6.0 新增：学习资料登记/查看/笔记/题目关联、考纲对照与缺口清单、勘误回导、打印题册/答案册/答题卡与纸笔回录、模考单次延时、答案分布与未审校体检、7 个运行时 AI 讲解/复盘任务及出题生成/复核/修复管线，以及结构化判分地基（数值容差/单位、多空逐空——首题待 UI 刀）。v0.8.0 相对 0.7.8：界面全面落地设计语言 v6——**错题本独立页**（消灭进度/错因分布/紧迫队列）、**⌘K 命令面板**（页面与动作直达）、**今日驾驶舱**（目标环/连胜/待消灭）、作答选项圆点四态、报告趋势面积图与成绩单雷达图；修复背诵误报空库、暗色报告按钮、错因分布口径。全链路 547 项自动化测试 + UI 走查 7 流程 + 35 张截图双闸矩阵与 CI 门禁；界面旅程的人工走查仍在进行，已知未验项见 [发版检查清单](docs/23-发版检查清单.md)。集市上架继续暂缓，保留 [TODO 7B](TODO.md#7b-集市上架暂缓以下门槛全部达成后启动) 的全部条件。
 
 ## 围绕你的备考流程
 
@@ -85,7 +86,7 @@ AI 只产生候选与解释，不应直接改原答案、正式成绩、题源�
 1. 从 [Releases](https://github.com/ai68298100/siyuan-exam/releases) 下载 `package.zip`。
 2. 解压到 `<思源工作空间>/data/plugins/siyuan-exam/`，确认该目录直接包含 `plugin.json`、`index.js` 等文件。
 3. 重启思源，在设置中的已下载插件列表启用小驴考试。
-4. 用原创或获准的小样例新建题库，尝试手工录题或相应导入入口，再走练习→错题→重载检查。已知 XLSX/原生包问题尚待修复，重要数据先保留原件与备份。
+4. 用原创或获准的小样例新建题库，尝试手工录题或相应导入入口，再走练习→错题→重载检查。原生包导入与保存恢复仍需在目标思源版本中完成宿主冒烟，重要数据先保留原件与备份。
 
 需要 AI 时先确认思源模型配置或选择自己的兼容端点。首次外发范围与所有入口统一确认仍待完善；先检查所选材料和端点，不将仅允许在线访问的资料送入模型。
 
@@ -117,7 +118,7 @@ pnpm make-install     # 构建并安装到本机思源插件目录
 
 `pnpm preflight` 会对运行中的思源创建测试题库/卡片、调用内核并清理测试数据，其中 AI 可选检查可能发送模型请求；它不是只读检查，应先确认目标测试工作空间及模型调用条件。
 
-2026-10-05 在 Node 24 / pnpm 12.5.1 下重新运行 `pnpm test`，91 个测试文件、479 项通过；`pnpm check`、`pnpm lint` 和生产构建也通过。这些结果不覆盖真实文件选择、界面响应、卸载保存、同步及全部评分语义；docs/17 与 [产品现状评审](docs/25-产品现状评审与精品化待办.md) 记录了仍待真机验收的范围。
+2026-10-07 在 Node 24 / pnpm 12.5.1 下重新运行 `pnpm test`，102 个测试文件、547 项通过；`pnpm check`、`pnpm lint` 和生产构建也通过。这些结果不覆盖真实文件选择、界面响应、卸载保存、同步及全部评分语义；docs/17 与 [产品现状评审](docs/25-产品现状评审与精品化待办.md) 记录了仍待真机验收的范围。
 
 ## 规划与文档
 

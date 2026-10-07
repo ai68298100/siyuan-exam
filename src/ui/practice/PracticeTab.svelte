@@ -86,7 +86,7 @@ import { ttsSpeak } from "@/core/tts";
     }
     async function restoreRevision(q: Question & { blockId: string }, rev: import("../../core/revision").QuestionRevision) {
       const { confirmDialogSync } = await import("../../libs/dialog");
-      if (!(await confirmDialogSync({ title: t("rev.restoreTitle"), content: t("rev.restoreConfirm").replace("{a}", rev.answer) }))) return;
+      if (!(await confirmDialogSync({ title: t("rev.restoreTitle"), content: t("rev.restoreConfirm").replace("{a}", escapeHtml(rev.answer)) }))) return;
       const next = await app.updateQuestionContent(q, {
         stem: q.stem, options: q.options, answer: rev.answer, analysis: q.analysis ?? "", kp: rev.kp ?? q.kp ?? "", difficulty: q.difficulty,
       });
@@ -1939,6 +1939,12 @@ import { ttsSpeak } from "@/core/tts";
       void app.saveSession();   // 游标推进随答随存
     }
 
+    /** 键盘 K 回到上一题：PracticeSession 是类实例，游标变化后必须推进响应式镜像。 */
+    function previousQuestion() {
+      if (!session?.prev()) return;
+      sessionRev++;
+    }
+
     async function finishSession() {
       sessionDone = session.finish();
       // 48-02 lite：会话结束事件（仅计数，无题干；生态消费者按需重读明细）
@@ -2902,7 +2908,7 @@ import { ttsSpeak } from "@/core/tts";
         if (e.key === "Escape") { e.preventDefault(); exitSession(); return; }
         if (feedback) {
           if (e.key === "Enter" || e.key.toLowerCase() === "j") { e.preventDefault(); nextQuestion(); }
-          else if (e.key.toLowerCase() === "k") { e.preventDefault(); session.prev(); }
+          else if (e.key.toLowerCase() === "k") { e.preventDefault(); previousQuestion(); }
           else if (feedback.verdict === "wrong" && /^[1-3]$/.test(e.key)) {
             // 错因快捷键（docs/11：1-4 错因；1-3 对应三分类）
             const reasons = ["careless", "unknown", "trap"] as const;
@@ -2928,7 +2934,7 @@ import { ttsSpeak } from "@/core/tts";
           submitAnswer();
         } else if (e.key.toLowerCase() === "k" && session.progress.done > 0) {
           e.preventDefault();
-          session.prev();
+          previousQuestion();
         }
       } else if (view === "recite") {
         if (reciteDone || !reciteQueue.length) return;
@@ -5060,8 +5066,6 @@ import { ttsSpeak } from "@/core/tts";
     .lv-entry-num { border-left: 0; border-top: 1px solid var(--lv-border); padding: 12px 0 0; flex-direction: row; align-items: baseline; gap: 10px; justify-content: flex-start; }
   }
   .lv-center { display: flex; align-items: center; justify-content: center; min-height: 60%; }
-  .lv-green { color: var(--lv-green); font-weight: 650; }
-  .lv-red { color: var(--lv-red); font-weight: 650; }
   /* —— 视图切换（对齐原型 .subnav：文字 + 底部 2px 指示条，非按钮块） —— */
   .lv-card { background: var(--lv-surface); border: 1px solid var(--lv-border); border-radius: var(--lv-r-3); padding: 20px 22px; box-shadow: var(--lv-sh-1); }
   .lv-pad-card { margin: 8px 0; }

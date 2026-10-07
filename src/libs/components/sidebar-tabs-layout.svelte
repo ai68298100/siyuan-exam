@@ -37,10 +37,26 @@
         onactivechange?.({ key: tab.key });
     }
 
+    const tabId = (key: string) => `sidebar-tab-${key.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+    const panelId = (key: string) => `sidebar-panel-${key.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+
     function handleTabKeydown(event: KeyboardEvent, tab: SidebarTab) {
         if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
             selectTab(tab);
+            return;
+        }
+        const index = tabs.findIndex((candidate) => candidate.key === tab.key);
+        let next = -1;
+        if (event.key === 'ArrowDown' || event.key === 'ArrowRight') next = (index + 1) % tabs.length;
+        if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') next = (index - 1 + tabs.length) % tabs.length;
+        if (event.key === 'Home') next = 0;
+        if (event.key === 'End') next = tabs.length - 1;
+        if (next >= 0 && tabs[next]) {
+            event.preventDefault();
+            const target = tabs[next];
+            selectTab(target);
+            document.getElementById(tabId(target.key))?.focus();
         }
     }
 </script>
@@ -52,7 +68,9 @@
                 class="b3-list-item"
                 class:b3-list-item--focus={tab.key === activeKey}
                 role="tab"
+                id={tabId(tab.key)}
                 aria-selected={tab.key === activeKey}
+                aria-controls={panelId(tab.key)}
                 tabindex={tab.key === activeKey ? 0 : -1}
                 onclick={() => selectTab(tab)}
                 onkeydown={(event) => handleTabKeydown(event, tab)}
@@ -68,7 +86,10 @@
                 class="sidebar-tabs-layout__panel"
                 class:fn__none={tab.key !== activeKey}
                 role="tabpanel"
+                id={panelId(tab.key)}
+                aria-labelledby={tabId(tab.key)}
                 aria-hidden={tab.key !== activeKey}
+                tabindex={tab.key === activeKey ? 0 : -1}
             >
                 {@render content?.(tab)}
             </div>
