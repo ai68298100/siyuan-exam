@@ -942,4 +942,9 @@
   .progress { height: 6px; border-radius: 999px; background: var(--lv-surface-2); overflow: hidden; }
   .progress i { display: block; height: 100%; background: var(--lv-accent-grad); border-radius: 999px; }
   @media (prefers-reduced-motion: reduce) { .lv-skeleton { animation: none; } .lv-opt, .lv-btn { transition: none; } }
+  @media (max-width: 480px) {
+    /* 极窄屏适配：答题卡 3 列、蓝图表格保持横滚 */
+    .lv-sheet { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .lv-btn { white-space: nowrap; }
+  }
 </style>
