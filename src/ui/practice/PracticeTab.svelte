@@ -57,6 +57,8 @@ import { ttsSpeak } from "@/core/tts";
     let errorMsg = $state("");
     let banks = $state<any[]>([]);
     let activeBankId = $state("");
+    /** 上次使用题库的记忆键（localStorage；多库切换与重载恢复） */
+    const BANK_PREF_KEY = "lv-exam/activeBank";
     let questions = $state<(Question & { blockId: string; rootId: string })[]>([]);
     let questionsError = $state("");
 
@@ -664,7 +666,10 @@ import { ttsSpeak } from "@/core/tts";
         } catch { /* 草稿读取失败静默 */ }
       })();
       banks = app.listBanks();
-      if (banks.length) activeBankId = banks[0].id;
+      // 记忆上次使用的题库：重载后回落 banks[0] 会静默切换库（真机走查发现）
+      const rememberedBank = localStorage.getItem(BANK_PREF_KEY);
+      if (rememberedBank && banks.some((b) => b.id === rememberedBank)) activeBankId = rememberedBank;
+      else if (banks.length) activeBankId = banks[0].id;
       /** Dock/块菜单 → 单题会话（qid 定位；首次挂载 questions 未加载，先按库拉取） */
       async function startSingleById(pid: string) {
         if (!pid) return false;
@@ -698,14 +703,19 @@ import { ttsSpeak } from "@/core/tts";
       // 稳定入口深链（window.siyuanExam.wrongbook → 错题本视图；新开与已开 Tab 同路径）
       const onOpenView = (env: import("@/core/bus").BusEvent<{ view: string }>) => {
         if (env.payload.view !== "wrongbook") return;
+        dataRev++;
         view = "wrongbook";
         void loadQuestions();
       };
+      // 应用层派生缓存失效：会话结算 / 错题处置后刷新驾驶舱 widgets 与错题本列表（见 dataRev 注）
+      const onDataChanged = () => { dataRev++; };
       const offs = [
         onExamEvent("open-question", onOpenQ),
         onExamEvent("open-in-browse", onBrowseQ),
         onExamEvent("edit-question", onEditQ),
         onExamEvent("open-view", onOpenView),
+        onExamEvent("session-ended", onDataChanged),
+        onExamEvent("wrongbook-changed", onDataChanged),
       ];
       onMountCleanup = () => offs.forEach((off) => off());
       // Dock 信号优先：按 qid 直达单题
@@ -889,7 +899,7 @@ import { ttsSpeak } from "@/core/tts";
             evidence: { myAnswer: e.myAnswer ?? null, confidence: e.confidence, timeMs: e.timeMs, helped: !!e.help },
           }).catch(() => { /* 持久化失败不阻断展示 */ });
         } else {
-          showMessage(`${env.summary}${env.error ? "：" + env.error : ""}`, 3600, "error");
+          showMessage(envStatusLine(env), 3600, "error");
         }
       } catch (err) {
         showMessage(String(err instanceof Error ? err.message : err), 3600, "error");
@@ -941,7 +951,7 @@ import { ttsSpeak } from "@/core/tts";
           }
           flashCandidates = { ...flashCandidates, [q.id]: parsed };
         } else {
-          flashError = { ...flashError, [q.id]: `${env.summary}${env.error ? "：" + env.error : ""}` };
+          flashError = { ...flashError, [q.id]: envStatusLine(env) };
         }
       } catch (e) {
         flashError = { ...flashError, [q.id]: String(e instanceof Error ? e.message : e) };
@@ -976,12 +986,30 @@ import { ttsSpeak } from "@/core/tts";
         const b = await app.createBank(newBankName);
         banks = app.listBanks();
         activeBankId = b.id;
+        rememberBank(b.id);
         newBankName = "";
         // 25-P1 首用：建库自带示例题（app.createBank），留在入口视图由 47-02 首用引导接管——
         // 最快首题路径是直接练示例题；导入/手工录题在下方动作区一步可达
       } catch (e) {
         errorMsg = offline ? t("state.offlineHint") : String(e instanceof Error ? e.message : e);
       } finally { creating = false; }
+    }
+
+    /** 记忆当前题库（多库切换/建库/移出后统一走这里） */
+    function rememberBank(id: string) {
+      if (id) localStorage.setItem(BANK_PREF_KEY, id);
+      else localStorage.removeItem(BANK_PREF_KEY);
+    }
+
+    /** 多库切换（真机走查补齐）：切库后题目/计划随 activeBankId 重载 */
+    async function onBankSwitch() {
+      rememberBank(activeBankId);
+      questions = [];
+      sectionSel = null;
+      questionsError = "";
+      plan = null;
+      await loadQuestions();
+      rebuildPlan();
     }
 
     /** 移出题库管理（app.removeBank）：仅移出注册表，笔记本本体保留可手动删 */
@@ -992,6 +1020,7 @@ import { ttsSpeak } from "@/core/tts";
       (app as any).removeBank(activeBankId);
       banks = app.listBanks();
       activeBankId = banks[0]?.id ?? "";
+      rememberBank(activeBankId);
       showMessage(t("bank.removed"), 2800, "info");
     }
 
@@ -1003,12 +1032,16 @@ import { ttsSpeak } from "@/core/tts";
     /** rail 上下文导航项（全局三项在 Rail 组件内） */
     const at = (v: View) => view === v;
     let sessionSeed = $state(""); // 65-05 lite：本次会话种子（结算页展示，可复现标识）
+    // 应用层派生缓存（app.derived()/wrongItems()）是普通对象，Svelte 无法追踪其变化；
+    // 用总线事件（session-ended / wrongbook-changed）驱动修订号显式失效下方相关 $derived，
+    // 否则组件挂载后数据变化不重算（真机走查实测：练完进错题本恒显空，重开页签才恢复）。
+    let dataRev = $state(0);
     let railOpen = $state(false);
     let menuBtn: HTMLButtonElement | null = null;
     function closeRail() { railOpen = false; menuBtn?.focus(); }
     const railItems = $derived([
       { icon: "table", name: t("mode.browse"), on: at("browse"), onclick: () => { view = "browse"; void loadQuestions(); } },
-      { icon: "xcircle", name: t("wrongbook.title"), on: at("wrongbook"), badge: app.wrongItems().length ? String(app.wrongItems().length) : undefined, onclick: () => { view = "wrongbook"; void loadQuestions(); } },
+      { icon: "xcircle", name: t("wrongbook.title"), on: at("wrongbook"), badge: app.wrongItems().length ? String(app.wrongItems().length) : undefined, onclick: () => { dataRev++; view = "wrongbook"; void loadQuestions(); } },
       { icon: "import", name: t("import.title"), on: at("import"), onclick: () => view = "import" },
       { icon: "pencil", name: t("entry.manual"), on: at("manual"), onclick: () => view = "manual" },
       { icon: "sparkles", name: t("ai.title"), on: at("ai"), onclick: () => view = "ai" },
@@ -1017,6 +1050,7 @@ import { ttsSpeak } from "@/core/tts";
 
     // ---------- 驾驶舱 widgets（规范 v6 §5.3）：目标环 / 连胜 / 待消灭错题 ----------
     const todayDone = $derived.by(() => {
+      void dataRev;
       try {
         return app.derived().days.get(localDate(Date.now()))?.attempts ?? 0;
       } catch { return 0; }
@@ -1024,17 +1058,26 @@ import { ttsSpeak } from "@/core/tts";
     const dailyGoalN = $derived(Math.max(1, Number(plugin.settingUtils?.get?.("dailyGoal") ?? 10) || 10));
     const goalPct = $derived(Math.min(100, Math.round((todayDone / dailyGoalN) * 100)));
     const streakDays = $derived.by(() => {
+      void dataRev;
       try { return streak(app.derived()); } catch { return 0; }
     });
-    const wrongList = $derived(app.wrongItems());
+    const wrongList = $derived.by(() => {
+      void dataRev;
+      // 错题本按当前题库口径：全局流水里的错题若不属于当前库，
+      // 重练/冲刺按钮（按当前库取题）会静默落空——列表与操作必须同库
+      const ids = new Set(questions.map((q) => q.id));
+      return app.wrongItems().filter((w) => ids.has(w.qid));
+    });
     /** 错因计数：口径在 core/wrongReasonMix（reasons map 优先 → 遗留字段 → 未标注桶） */
     const reasonMap = $derived.by(() => {
+      void dataRev;
       try { return app.wrongReasonMap?.() ?? new Map(); } catch { return new Map(); }
     });
     const reasonCounts = $derived(wrongReasonMix(wrongList, reasonMap));
     const reasonOf = (qid: string) => reasonMap.get(qid) ?? wrongList.find((w) => w.qid === qid)?.reason;
     /** 消灭口径：eliminated/(eliminated+在册)；处置覆盖层不影响分母方向 */
     const eliminatedCount = $derived.by(() => {
+      void dataRev;
       try { return [...app.derived().wrongbook.values()].filter((w) => w.status === "eliminated").length; } catch { return 0; }
     });
     const clearPct = $derived(
@@ -1117,17 +1160,17 @@ import { ttsSpeak } from "@/core/tts";
       errorMsg = "";
       sessionSeed = randomSeedId(); // 65-05：抽题与卷序共用同一种子
       const qs = (await loadQuestions()).filter((q) => q.type !== "material");
-      if (!qs.length) { errorMsg = t("state.emptyBank"); return; }
+      if (!qs.length) { errorMsg = t("state.emptyBank"); showMessage(t("state.emptyBank"), 2800, "info"); return; }
       let picked: Question[];
       if (mode === "wrong") {
         picked = app.wrongDrill(qs);
-        if (!picked.length) { errorMsg = t("state.noWrong"); return; }
+        if (!picked.length) { errorMsg = t("state.noWrong"); showMessage(t("state.noWrong"), 2800, "info"); return; }
       } else if (mode === "cram") {
         picked = app.cramDrill(qs);
-        if (!picked.length) { errorMsg = t("state.noCram"); return; }
+        if (!picked.length) { errorMsg = t("state.noCram"); showMessage(t("state.noCram"), 2800, "info"); return; }
       } else if (mode === "fav") {
         picked = app.favDrill(qs);
-        if (!picked.length) { errorMsg = t("state.noFav"); return; }
+        if (!picked.length) { errorMsg = t("state.noFav"); showMessage(t("state.noFav"), 2800, "info"); return; }
       } else if (mode === "daily") {
         const goal = Number(plugin.settingUtils?.get?.("dailyGoal") ?? 10);
         picked = app.dailyDrill(qs, [], Number.isFinite(goal) && goal > 0 ? goal : 10);
@@ -1193,6 +1236,13 @@ import { ttsSpeak } from "@/core/tts";
     // 可练习题过滤在 loadQuestions 后各入口处执行（材料母块只作上下文）
 
     let plan = $state<ReturnType<typeof import("@/core/planner").planToday> | null>(null);
+    /** 今日卡片说明：按 planner 结构化口径本地化渲染（plan.reason 为 zh 审计口径，不直接上界面） */
+    function planReasonText(p: NonNullable<typeof plan>): string {
+      const d = p.reasonData ?? { days: 0, cram: 0, stubborn: 0, due: 0 };
+      if (p.reasonKind === "sprint") return t("plan.sprint").replace("{d}", String(d.days)).replace("{n}", String(d.cram)).replace("{m}", String(d.stubborn));
+      if (p.reasonKind === "due") return t("plan.due").replace("{n}", String(d.due));
+      return t("plan.reflow").replace("{m}", String(d.stubborn));
+    }
     /** 53-01 lite：今日计划分钟预算（与 plan 同步重算） */
     let planTime = $state<import("@/core/timeBudget").TimeEstimate | null>(null);
     /** 53-02 lite：多考期清单（按剩余天数升序；入口页展示全部未来考期 chips） */
@@ -1243,7 +1293,7 @@ import { ttsSpeak } from "@/core/tts";
     async function startToday() {
       errorMsg = "";
       const qs = (await loadQuestions()).filter((q) => q.type !== "material");
-      if (!qs.length) { errorMsg = t("state.emptyBank"); return; }
+      if (!qs.length) { errorMsg = t("state.emptyBank"); showMessage(t("state.emptyBank"), 2800, "info"); return; }
       // FSRS 到期优先（docs/11 S8：dueFirst 供给；离线/无卡自然为空）
       let due: Question[];
       try { due = await (app as any).dueQuestions(bankName, qs); } catch { due = []; }
@@ -1491,12 +1541,19 @@ import { ttsSpeak } from "@/core/tts";
           helpShown.set(q.id, mode); // 114-01：受助标记——同题再答（重排队）时随 attempt 落 help 字段
         } else {
           // 有类型失败（G6 闸门/预算/通道错误）：显示信封摘要，不裸抛异常栈
-          explainText = `${env.summary}${env.error ? "：" + env.error : ""}`;
+          explainText = envStatusLine(env);
         }
         // G2：响应期间切题时，explainQid 门控使旧讲解不占当前题展示；历史已按 q.id 留草稿
       } catch (e) {
         explainText = String(e instanceof Error ? e.message : e);
       } finally { explainBusy = false; }
+    }
+
+    /** 信封 summary 是 zh 审计口径；展示层按状态本地化，错误详情原样附后 */
+    function envStatusLine(env: { status: string; summary: string; error?: string }): string {
+      const line =
+        env.status === "ok" ? t("ai.emptyResponse") : env.status === "unsupported" ? t("ai.taskUnsupported") : t("ai.taskFailed");
+      return line + (env.error ? ": " + env.error : "");
     }
 
     /** 提示按钮文案：随已展示层级推进（114-01 一次一层） */
@@ -1573,7 +1630,7 @@ import { ttsSpeak } from "@/core/tts";
           helpShown.set(q.id, "hint"); // 受助标记：本题后续作答（含本次提交）随 attempt 落 help
           void app.recordAiUsage(ch.id, env.tokens, 1);
         } else {
-          explainText = `${env.summary}${env.error ? "：" + env.error : ""}`;
+          explainText = envStatusLine(env);
         }
       } catch (e) {
         explainText = String(e instanceof Error ? e.message : e);
@@ -1628,11 +1685,11 @@ import { ttsSpeak } from "@/core/tts";
           const reply = env.data.text;
           explainHistory[q.id] = [...messages, { role: "assistant", content: reply }];
           void persistExplainHistory();
-          explainText = (explainText.endsWith(reply) ? explainText : explainText + "\n\n") + "【追问】" + explainFollowUp.trim() + "\n" + reply;
+          explainText = (explainText.endsWith(reply) ? explainText : explainText + "\n\n") + t("ai.followupTag") + explainFollowUp.trim() + "\n" + reply;
           explainFollowUp = "";
           void app.recordAiUsage(ch.id, env.tokens, 1);
         } else {
-          explainText = (explainText ? explainText + "\n\n" : "") + `${env.summary}${env.error ? "：" + env.error : ""}`;
+          explainText = (explainText ? explainText + "\n\n" : "") + envStatusLine(env);
         }
       } catch (e) {
         explainText = String(e instanceof Error ? e.message : e);
@@ -1854,7 +1911,7 @@ import { ttsSpeak } from "@/core/tts";
             evidence: { myAnswer: a.grade.myAnswer ?? null, confidence: meta.confidence, timeMs: a.timeMs, helped: meta.helped },
           }).catch(() => { /* 持久化失败不阻断展示 */ });
         } else {
-          showMessage(`${env.summary}${env.error ? "：" + env.error : ""}`, 3600, "error");
+          showMessage(envStatusLine(env), 3600, "error");
         }
       } catch (e) {
         showMessage(String(e instanceof Error ? e.message : e), 3600, "error");
@@ -1866,7 +1923,7 @@ import { ttsSpeak } from "@/core/tts";
       const hypothesis = misdiagnosisText[qid];
       if (!hypothesis) return;
       const cur = await app.loadWrongReflection(qid);
-      const merged = (cur?.text ? cur.text + "\n\n" : "") + "【AI 错因假设（参考，未确认）】\n" + hypothesis;
+      const merged = (cur?.text ? cur.text + "\n\n" : "") + t("ai.misdiagnosisTag") + "\n" + hypothesis;
       await app.saveWrongReflection(qid, merged);
       reflections = { ...reflections, [qid]: { text: merged, at: Date.now() } };
       void app.markMisdiagnosisAdopted(qid).catch(() => { /* 打点失败不影响并入 */ });
@@ -2804,6 +2861,7 @@ import { ttsSpeak } from "@/core/tts";
       [...new Set(questions.map((q) => (q.source ?? "").trim()).filter(Boolean))].sort().slice(0, 30),
     );
     const filteredQuestions = $derived.by(() => {
+      void dataRev; // 错题/受助/近 N 天过滤依赖应用层流水缓存，随总线事件失效（同 wrongList 注）
       let list = favOnly ? questions.filter((q) => q.fav) : questions;
       if (sectionSel) list = list.filter((q) => questionInSection(q, sectionSel!));
       if (filterType) list = list.filter((q) => q.type === filterType);
@@ -3229,7 +3287,15 @@ import { ttsSpeak } from "@/core/tts";
         <!-- 48-04 lite：打卡→考试只读投影（连续数由打卡单一实现计算，考试侧不自算） -->
         <span class="lv-chip num" title={t("entry.checkinStreakTip")}><Icon name="flame" size={12} /> {t("entry.checkinStreak").replace("{n}", String(checkinStreak))}</span>
       {/if}
-      {#if hasBank}<span class="lv-chip">{t("bank.label")} {bankName}</span><button class="lv-chip" title={t("bank.removeTitle")} onclick={removeActiveBank}>✕</button>{/if}
+      {#if banks.length > 1}
+        <!-- 多库切换（真机走查补齐）：此前多库时无任何切换入口，重载还会静默回落第一库 -->
+        <select class="lv-select" style="max-width:170px" bind:value={activeBankId} onchange={onBankSwitch} title={t("bank.label")}>
+          {#each banks as b, _i (_i)}<option value={b.id}>{b.name}</option>{/each}
+        </select>
+      {:else if hasBank}
+        <span class="lv-chip">{t("bank.label")} {bankName}</span>
+      {/if}
+      {#if hasBank}<button class="lv-chip" title={t("bank.removeTitle")} onclick={removeActiveBank}>✕</button>{/if}
   </div>
   <div class="lv-shell">
     <Rail active="practice" {plugin} items={railItems} onnavigate={onRailNav} open={railOpen} onclose={closeRail}
@@ -3351,7 +3417,7 @@ import { ttsSpeak } from "@/core/tts";
           <div class="lv-card lv-hero lv-entry-hero" style="margin-bottom:18px">
             <div class="lv-entry-main">
               <span class="lv-focus-label">{t("entry.today")}</span>
-              <div class="lv-entry-reason">{plan.reason}</div>
+              <div class="lv-entry-reason">{planReasonText(plan)}</div>
               {#if planTime}
                 <span class="lv-chip num" title={planTime.sourced ? t("entry.timeSourced") : t("entry.timeDefault")}>
                   <Icon name="hourglass" size={13} /> ~{planTime.minutes} {t("entry.minutes")}（{planTime.low}-{planTime.high}）
@@ -3440,12 +3506,12 @@ import { ttsSpeak } from "@/core/tts";
               <div class="lv-row" style="margin:4px 0">
                 <span class="lv-chip">{t("manual.kp")}</span>
                 <select class="lv-select" bind:value={expKp}>
-                  <option value="">全部</option>
+                  <option value="">{t("filter.all")}</option>
                   {#each expKpRoots as k, _i (_i)}<option value={k}>{k}</option>{/each}
                 </select>
                 <span class="lv-chip">{t("session.reason")}</span>
                 <select class="lv-select" bind:value={expReason}>
-                  <option value="">全部</option>
+                  <option value="">{t("filter.all")}</option>
                   <option value="careless">{t("reason.careless")}</option>
                   <option value="unknown">{t("reason.unknown")}</option>
                   <option value="trap">{t("reason.trap")}</option>
@@ -3582,13 +3648,13 @@ import { ttsSpeak } from "@/core/tts";
             {/if}
             <button class="lv-chip" title={t("tts.read")} onclick={() => ttsSpeak([q.stem, ...q.options].join(" "))}><Icon name="volume" size={13} /></button>
             <button class="lv-chip" class:acc={pureListen} title={t("tts.pureListen")} onclick={togglePureListen}><Icon name="eyeoff" size={13} /></button>
-            <button class="lv-chip" class:acc={!!q.fav} title="E" onclick={() => toggleFavCurrent()}><Icon name="star" size={13} /></button>
+            <button class="lv-chip" class:acc={!!q.fav} title="E" aria-label={t("session.kbdFav")} onclick={() => toggleFavCurrent()}><Icon name="star" size={13} /></button>
           </div>
           <div class="lv-session-main">
           <div class="lv-card lv-question" class:lv-pure={pureListen}>
             {#if materialContext}
               <div class="lv-analysis lv-rich b3-typography" style="margin-bottom:12px">
-                <b class="lv-mat-chip"><Icon name="paperclip" size={14} /> 共用材料：</b>{@html materialLong && !materialExpanded ? escapeHtml(materialShown) : (materialHtml || escapeHtml(materialShown))}
+                <b class="lv-mat-chip"><Icon name="paperclip" size={14} /> {t("material.shared")}</b>{@html materialLong && !materialExpanded ? escapeHtml(materialShown) : (materialHtml || escapeHtml(materialShown))}
                 {#if materialLong}
                   <button class="lv-chip num" style="margin-left:6px" onclick={() => { materialExpanded = !materialExpanded; if (materialExpanded && !feedback) addExposure(q.id, "material"); }}>
                     {materialExpanded ? t("material.fold") : t("material.expand")}
@@ -3804,7 +3870,7 @@ import { ttsSpeak } from "@/core/tts";
         {@const q = reciteQueue[reciteCursor]}
         <div class="lv-card lv-question lv-paper">
           {#if reciteMaterial}
-            <div class="lv-analysis" style="margin-bottom:12px"><b class="lv-mat-chip"><Icon name="paperclip" size={14} /> 共用材料：</b>{reciteMaterial}</div>
+            <div class="lv-analysis" style="margin-bottom:12px"><b class="lv-mat-chip"><Icon name="paperclip" size={14} /> {t("material.shared")}</b>{reciteMaterial}</div>
           {/if}
           {#if stemHtml}<div class="lv-stem lv-rich b3-typography">{@html stemHtml}</div>{:else}<div class="lv-stem">{q.stem}</div>{/if}
           {#if !reciteRevealed}
@@ -4006,8 +4072,8 @@ import { ttsSpeak } from "@/core/tts";
           <textarea class="lv-input lv-textarea" style="min-height:52px" bind:value={mAnalysis} aria-label={t("manual.analysis")}></textarea>
         </div>
         <div class="lv-row">
-          <span class="lv-chip">{t("manual.kp")}</span><input class="lv-input" style="max-width:180px" bind:value={mKp} placeholder="资料分析/增长率" />
-          <span class="lv-chip">{t("manual.source")}</span><input class="lv-input" style="max-width:160px" bind:value={mSource} placeholder="2023 国考 · 115" />
+          <span class="lv-chip">{t("manual.kp")}</span><input class="lv-input" style="max-width:180px" bind:value={mKp} placeholder={t("manual.kpHint")} />
+          <span class="lv-chip">{t("manual.source")}</span><input class="lv-input" style="max-width:160px" bind:value={mSource} placeholder={t("manual.sourceHint")} />
           <span class="lv-chip">{t("manual.group")}</span><input class="lv-input num" style="max-width:200px" bind:value={mGroup} placeholder="grp-…" />
         </div>
         <div class="lv-row">
@@ -4068,7 +4134,7 @@ import { ttsSpeak } from "@/core/tts";
         <div class="lv-row">
           <span class="lv-chip">{t("ai.preset")}</span>
           {#each ["default", "gongkao", "kaoyan", "yixue", "jiakao"] as p, _i (_i)}
-            <button class="lv-chip" class:acc={aiPreset === p} onclick={() => aiPreset = p as any}>{p === "default" ? t("ai.preset.default") : { gongkao: "公考行测", kaoyan: "考研政治", yixue: "医学执业", jiakao: "驾考" }[p]}</button>
+            <button class="lv-chip" class:acc={aiPreset === p} onclick={() => aiPreset = p as any}>{p === "default" ? t("ai.preset.default") : { gongkao: t("ai.preset.gongkao"), kaoyan: t("ai.preset.kaoyan"), yixue: t("ai.preset.yixue"), jiakao: t("ai.preset.jiakao") }[p as string]}</button>
           {/each}
         </div>
         <div class="lv-row">
@@ -4921,7 +4987,7 @@ import { ttsSpeak } from "@/core/tts";
           </div>
           <textarea class="lv-input lv-textarea" rows="8" placeholder={t("import.placeholder")} bind:value={importText}></textarea>
           <div class="lv-row">
-            <button class="lv-btn lv-btn--primary" onclick={doParseText} disabled={!importText.trim()}>{t("import.parse")}</button>
+            <button class="lv-btn lv-btn--primary" onclick={doParseText} disabled={!importText.trim()} title={importText.trim() ? t("import.parse") : t("import.needInput")}>{t("import.parse")}</button>
             <!-- 38-03：重复合并策略三选（跳过/并存/更新已有题答案） -->
             <select class="lv-select" bind:value={dupeStrategy} title={t("import.strategyHint")}>
               <option value="skip">{t("import.strategySkip")}</option>

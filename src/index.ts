@@ -20,6 +20,15 @@ const TAB_MOCK = "exam-mock";
 const TAB_REPORT = "exam-report";
 const DOCK_WRONGBOOK = "dock-wrongbook";
 
+/** 上次打开的页签（SiYuan 重启/刷新后布局恢复不带回插件自定义页签——真机走查两次复现，
+ *  用 localStorage 记忆并在 onLayoutReady 时恢复，行为对标编辑器恢复标签页） */
+const OPEN_TABS_KEY = "lv-exam/lastOpenTab";
+const OPEN_TAB_TYPES = [TAB_PRACTICE, TAB_MOCK, TAB_REPORT];
+function rememberOpenTab(type: string) {
+  if (!OPEN_TAB_TYPES.includes(type)) return;
+  try { localStorage.setItem(OPEN_TABS_KEY, type); } catch { /* 隐私模式静默 */ }
+}
+
 export default class LvExamPlugin extends Plugin {
   /** siyuan 1.2.9 将基类 i18n 宽化为 Record<string, JSONValue>；本项目 i18n 文件为平铺
    *  string→string（scripts/check-i18n.mjs 强制非空字符串），此处收窄回字符串字典 */
@@ -210,6 +219,7 @@ export default class LvExamPlugin extends Plugin {
     }
     this.refreshDock();
     this.refreshStatusBar();
+    this.restoreLastTabs();
     // 48-05：雷切组件面板接入（有界重试；未安装安静降级）
     if (this.examApp) {
       this.speedSwitchHandle = registerExamDailySummary({
@@ -393,10 +403,17 @@ export default class LvExamPlugin extends Plugin {
         title: this.i18n["dock.wrongbook"],
         hotkey: "⌥⌘E",
       },
-      data: {},
+      data: { plugin: this },
       type: DOCK_WRONGBOOK,
       init() {
         this.element.innerHTML = `<div class="fn__flex-1 lv-dock-body"></div>`;
+        // Dock 面板懒创建：onload 时的 refreshDock 查不到 .lv-dock-body 直接 return，
+        // 首次打开会渲染成空白面板（真机走查实测）——创建后主动渲染一次
+        const plugin = (this.data as { plugin?: LvExamPlugin }).plugin;
+        queueMicrotask(() => plugin?.refreshDock());
+      },
+      update() {
+        (this.data as { plugin?: LvExamPlugin }).plugin?.refreshDock();
       },
       destroy() {},
     });
@@ -509,6 +526,17 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
     });
   }
 
+  /** 恢复上次打开的页签（onLayoutReady：宿主布局恢复不包含插件自定义页签） */
+  private restoreLastTabs() {
+    if (this.isMobile) return;
+    try {
+      const type = localStorage.getItem(OPEN_TABS_KEY) ?? "";
+      if (type === TAB_PRACTICE) this.openPractice();
+      else if (type === TAB_MOCK) this.openMock();
+      else if (type === TAB_REPORT) this.openReport();
+    } catch { /* localStorage 不可用（隐私模式）：跳过恢复 */ }
+  }
+
   private openTabByType(type: string, icon: string, title: string) {
     // 单例聚焦（26.2）：同类型 Tab 已开则切换过去，避免 tabApps 覆盖引用
     const existing = (this.getOpenedTab()[type] ?? [])[0] as any;
@@ -516,12 +544,16 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
       const tab = existing.parent;
       if (tab?.switchTab) tab.switchTab(existing.headElement);
       else existing.headElement?.click?.();
+      rememberOpenTab(type);
       return;
     }
+    rememberOpenTab(type);
     openTab({
       app: this.app as any,
       custom: {
-        id: type,
+        // 宿主以 plugin.name + type 为键查找页签工厂（3.8.6 真机实测：裸 type 匹配不到
+        // models 注册键，页签会渲染成无 init 的空白面板）
+        id: this.name + type,
         icon,
         title,
         data: { plugin: this, examApp: this.examApp },

@@ -334,7 +334,7 @@
       if (!picked.length) { showMessage(t("state.emptyBank"), 3000, "error"); return; }
       (plugin as any).pendingPractice = picked;
       void import("siyuan").then(({ openTab }) => {
-        openTab({ app: (plugin as any).app ?? (plugin as any), custom: { id: "exam-practice", icon: "iconExam", title: t("tab.practice"), data: { plugin, examApp: app } } } as any);
+        openTab({ app: (plugin as any).app ?? (plugin as any), custom: { id: ((plugin as any).name ?? "siyuan-exam") + "exam-practice", icon: "iconExam", title: t("tab.practice"), data: { plugin, examApp: app } } } as any);
       });
     }
 
@@ -361,7 +361,7 @@
         await app.completeAction(a.id, "redo-drill");
         openActionList = await app.listOpenActions();
         void import("siyuan").then(({ openTab }) => {
-          openTab({ app: (plugin as any).app ?? (plugin as any), custom: { id: "exam-practice", icon: "iconExam", title: t("tab.practice"), data: { plugin, examApp: app } } } as any);
+          openTab({ app: (plugin as any).app ?? (plugin as any), custom: { id: ((plugin as any).name ?? "siyuan-exam") + "exam-practice", icon: "iconExam", title: t("tab.practice"), data: { plugin, examApp: app } } } as any);
         });
       } catch (e) {
         showMessage(String(e instanceof Error ? e.message : e), 4200, "error");

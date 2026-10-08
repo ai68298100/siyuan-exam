@@ -44,7 +44,7 @@
     let questions = $state<Question[]>([]);
 
     let bp = $state<Blueprint>({
-      id: "bp-default", name: "模拟卷 #1", durationS: 3600, passLine: 60,
+      id: "bp-default", name: t("mock.defaultName"), durationS: 3600, passLine: 60,
       shuffleOptions: false, sectionTimed: true,
       sections: []
     });
@@ -122,7 +122,7 @@
     });
 
     function addSection() {
-      bp.sections = [...bp.sections, { name: "新模块", count: 10, scoreEach: 1, source: "mixed", types: [] }];
+      bp.sections = [...bp.sections, { name: t("mock.newSection"), count: 10, scoreEach: 1, source: "mixed", types: [] }];
     }
     function removeSection(i: number) {
       bp.sections = bp.sections.filter((_, j) => j !== i);
@@ -414,7 +414,7 @@
 
     function openPractice() {
       void import("siyuan").then(({ openTab }) => {
-        openTab({ app: (plugin as any).app ?? (plugin as any), custom: { id: "exam-practice", icon: "iconExam", title: t("tab.practice"), data: { plugin, examApp: app } } } as any);
+        openTab({ app: (plugin as any).app ?? (plugin as any), custom: { id: ((plugin as any).name ?? "siyuan-exam") + "exam-practice", icon: "iconExam", title: t("tab.practice"), data: { plugin, examApp: app } } } as any);
       });
     }
 
@@ -590,7 +590,7 @@
           <input class="lv-input num" type="number" min="0" value={s.count} oninput={(e) => updateSection(i, { count: Math.max(0, parseInt((e.target as HTMLInputElement).value) || 0) })} />
           <input class="lv-input num" type="number" min="0" step="0.1" value={s.scoreEach} oninput={(e) => updateSection(i, { scoreEach: Math.max(0, parseFloat((e.target as HTMLInputElement).value) || 0) })} />
           <select class="lv-select" value={s.source} onchange={(e) => updateSection(i, { source: (e.target as HTMLSelectElement).value as any })}>
-            <option value="mixed">mixed</option><option value="real">真题</option><option value="mock">模拟</option>
+            <option value="mixed">mixed</option><option value="real">{t("mock.sourceReal")}</option><option value="mock">{t("mock.sourceMock")}</option>
           </select>
           <!-- 55-02 lite：考点配额（前缀匹配；缺口显式计入短缺，不用其他考点补齐） -->
           <input class="lv-input" value={s.kp ?? ""} placeholder={t("mock.secKpHint")}
@@ -602,7 +602,7 @@
     </div>
     <div class="lv-row">
       <label class="lv-row" style="margin:0"><input type="checkbox" bind:checked={bp.sectionTimed} /> {t("mock.sectionTimed")}</label>
-      <label class="lv-row" style="margin:0"><input type="checkbox" bind:checked={bp.shuffleOptions} disabled /> {t("mock.shuffle")}<span class="lv-muted">· 规划中</span></label>
+      <label class="lv-row" style="margin:0"><input type="checkbox" bind:checked={bp.shuffleOptions} disabled /> {t("mock.shuffle")}<span class="lv-muted">· {t("todo")}</span></label>
       <label class="lv-row" style="margin:0"><input type="checkbox" bind:checked={bp.lockout} /> {t("mock.lockout")}</label>
       <span class="lv-chip">{t("mock.passLine")} <input class="lv-input num" style="width:64px" type="number" bind:value={bp.passLine} /></span>
     </div>
@@ -672,7 +672,7 @@
       {#if bp.sectionTimed}
         {@const sr = session.sectionRemaining(currentSection, Date.now())}
         <span class="lv-chip num" class:lv-chip--red={sr !== null && sr < 60_000}>
-          <Icon name="clock" size={13} /> 段 {sr !== null ? `${Math.max(0, Math.floor(sr / 60_000))}:${String(Math.floor((sr % 60_000) / 1000)).padStart(2, "0")}` : "--"}
+          <Icon name="clock" size={13} /> {t("mock.secTime")} {sr !== null ? `${Math.max(0, Math.floor(sr / 60_000))}:${String(Math.floor((sr % 60_000) / 1000)).padStart(2, "0")}` : "--"}
         </span>
       {/if}
       <span class="lv-chip num">{cursor + 1}/{session.state.qids.length}</span>
@@ -745,13 +745,13 @@
         <span class="lv-chip num">{score.percent}%</span>
         {#if tri}
           <div class="lv-row" style="width:100%;margin:10px 0 0">
-            <span class="lv-muted" style="width:44px">本次</span>
+            <span class="lv-muted" style="width:44px">{t("mock.thisRun")}</span>
             <div class="progress" style="flex:1"><i style="width:{tri.this}%"></i></div>
             <span class="num lv-muted">{tri.this}%</span>
           </div>
           {#if tri.avg != null}
             <div class="lv-row" style="width:100%;margin:0">
-              <span class="lv-muted" style="width:44px">历均</span>
+              <span class="lv-muted" style="width:44px">{t("mock.histAvg")}</span>
               <div class="progress" style="flex:1"><i style="width:{tri.avg}%"></i></div>
               <span class="num lv-muted">{tri.avg}%</span>
             </div>
@@ -817,7 +817,7 @@
       <div class="lv-card" style="margin:12px 0">
         <b style="font-size:13px">{t("mock.history")}</b>
         {#if tri}
-          <span class="lv-chip num" style="margin-left:auto">本周 {tri.this}% · 上周 {tri.avg ?? "–"}%</span>
+          <span class="lv-chip num" style="margin-left:auto">{t("mock.weekTri").replace("{this}", String(tri.this)).replace("{avg}", String(tri.avg ?? "–"))}</span>
         {/if}
         <svg viewBox="0 0 300 110" style="width:100%;max-width:420px;display:block" role="img" aria-label={t("mock.history")}>
           <line x1="0" y1={100 - bp.passLine} x2="300" y2={100 - bp.passLine} stroke="var(--lv-green)" stroke-dasharray="4 4" />

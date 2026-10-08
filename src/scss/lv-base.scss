@@ -94,6 +94,8 @@ button.lv-chip {
   align-items: center;
   justify-content: center;
   gap: 8px;
+  /* 按钮标签不随容器挤压折行（真机走查：报告工具栏 "Refresh" 折成 "Refre sh"） */
+  white-space: nowrap;
   padding: 9px 16px;
   border-radius: 11px;
   font-size: 14px;
@@ -529,6 +531,13 @@ input[type="range"] {
 .lv-textarea {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+/* placeholder 统一降为三级文字色：宿主暗色主题的默认 placeholder 过亮，
+   多行示例（如 Aiken 导入）会被误读为已填入内容（真机走查发现） */
+.lv-input::placeholder,
+.lv-textarea::placeholder {
+  color: var(--lv-text-3, var(--b3-theme-on-surface, #888));
+  opacity: 1;
 }
 /* 抽屉触发按钮（窄屏显示；置于各 Tab 头部） */
 .lv-menu-btn {
