@@ -957,5 +957,6 @@
     "ai.preset.yixue": "医学执业",
     "ai.preset.jiakao": "驾考",
     "wrongbook.sameKp": "举一反三",
-    "wrongbook.sameKpTip": "同考点变式练习"
+    "wrongbook.sameKpTip": "同考点变式练习",
+    "session.reciteMode": "背题"
 }

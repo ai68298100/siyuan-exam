@@ -1712,6 +1712,8 @@ import { ttsSpeak } from "@/core/tts";
 
     // ---------- 纯听题 lite（TTS + 遮罩） ----------
     let pureListen = $state(false);
+    /** 背题模式（华图杀招，PRD §3）：开着时每题自动展示答案与解析，跳过提交判分，适合考前突击 */
+    let reciteToggle = $state(false);
     function togglePureListen() {
       const q = session?.current;
       if (!q) return;
@@ -2014,6 +2016,7 @@ import { ttsSpeak } from "@/core/tts";
       if (!session.next()) { void finishSession(); return; }
       sessionRev++; // 类实例非响应式：切题后刷新题面
       void app.saveSession();   // 游标推进随答随存
+      if (reciteToggle) setTimeout(() => submitAnswer(), 50); // 背题模式：切题后自动揭示答案
     }
 
     /** 键盘 K 回到上一题：PracticeSession 是类实例，游标变化后必须推进响应式镜像。 */
@@ -3661,6 +3664,7 @@ import { ttsSpeak } from "@/core/tts";
               <span class="lv-chip num"><Icon name="link" size={12} /> {t("session.groupPos")} {pos}/{sibs.length}</span>
             {/if}
             <button class="lv-chip" title={t("tts.read")} onclick={() => ttsSpeak([q.stem, ...q.options].join(" "))}><Icon name="volume" size={13} /></button>
+            <button class="lv-chip" class:acc={reciteToggle} title={t("session.reciteMode")} aria-pressed={reciteToggle} onclick={() => { reciteToggle = !reciteToggle; if (reciteToggle && !feedback) submitAnswer(); }}><Icon name="eye" size={13} /> {t("session.reciteMode")}</button>
             <button class="lv-chip" class:acc={pureListen} title={t("tts.pureListen")} onclick={togglePureListen}><Icon name="eyeoff" size={13} /></button>
             <button class="lv-chip" class:acc={!!q.fav} title="E" aria-label={t("session.kbdFav")} onclick={() => toggleFavCurrent()}><Icon name="star" size={13} /></button>
           </div>

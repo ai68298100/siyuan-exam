@@ -957,5 +957,6 @@
     "ai.preset.yixue": "Medical licensing",
     "ai.preset.jiakao": "Driving test",
     "wrongbook.sameKp": "Related",
-    "wrongbook.sameKpTip": "Practice same-KP questions"
+    "wrongbook.sameKpTip": "Practice same-KP questions",
+    "session.reciteMode": "Review"
 }
