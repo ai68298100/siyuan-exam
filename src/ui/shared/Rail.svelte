@@ -221,6 +221,7 @@
     letter-spacing: 2px;
     color: var(--lv-text-3);
     font-weight: 500;
+    white-space: nowrap; /* 极窄屏 Rail 挤压时防竖排 */
   }
   .lv-rail-nav {
     display: grid;

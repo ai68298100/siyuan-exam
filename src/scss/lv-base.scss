@@ -658,6 +658,22 @@ input[type="range"] {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+@media (max-width: 480px) {
+  /* 极窄屏：双列 KPI 卡 141px 太窄，文字逐字竖排（真机走查发现）——收为单列 */
+  .lv-kpis {
+    grid-template-columns: 1fr !important;
+  }
+  .lv-kpi {
+    padding: 14px 16px;
+  }
+  /* 图表行标签+信心校准标签 nowrap 防竖排 */
+  .lv-chart-row > span:first-child,
+  .lv-chart-row .l {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
 
 /* —— 长文本溢出（V08：无空格英文/URL/公式不撑破布局） —— */
 :where(.lv-exam-tab, .lv-pad, .lv-detail, .lv-qrow-stem) {
