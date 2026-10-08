@@ -1199,6 +1199,20 @@ import { ttsSpeak } from "@/core/tts";
       });
     }
 
+    /** 举一反三（中公杀招，PRD §4）：按考点推荐同考点变式题练习 */
+    async function startSameKpFor(qid: string) {
+      errorMsg = "";
+      const all = questions.length ? questions : await loadQuestions();
+      const q = all.find((x) => x.id === qid);
+      if (!q?.kp) { showMessage(t("state.noSameKp"), 2800, "info"); return; }
+      const related = all.filter((x) => x.id !== qid && x.kp === q.kp);
+      if (!related.length) { showMessage(t("state.noSameKp"), 2800, "info"); return; }
+      await safeStart(groupAdjacent(related), "same-kp", () => {
+        feedback = null; selected = ""; confidenceSel = ""; sessionDone = null;
+        view = "session";
+      });
+    }
+
     /** 错题手动处置（已掌握）：与浏览详情同 API；处置后更新错误自动清覆盖 */
     async function masterWrong(qid: string) {
       try { await app.setWrongStatus(qid, "mastered"); showMessage(t("wrongbook.masteredDone"), 2400, "info"); } catch { /* 尽力而为 */ }
@@ -3969,6 +3983,7 @@ import { ttsSpeak } from "@/core/tts";
                     </div>
                   </div>
                   <button class="lv-btn sm" onclick={() => void startWrongFor(w.qid)}><Icon name="play" size={13} /> {t("wrongbook.retry")}</button>
+                  <button class="lv-btn sm lv-btn--ghost" title={t("wrongbook.sameKpTip")} onclick={() => void startSameKpFor(w.qid)}><Icon name="link" size={13} /> {t("wrongbook.sameKp")}</button>
                   <button class="lv-btn sm lv-btn--ghost" title={t("wrongbook.masteredTip")} onclick={() => void masterWrong(w.qid)}>{t("wrongbook.mastered")}</button>
                 </div>
               {/each}

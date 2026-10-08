@@ -955,5 +955,7 @@
     "ai.preset.gongkao": "公考行测",
     "ai.preset.kaoyan": "考研政治",
     "ai.preset.yixue": "医学执业",
-    "ai.preset.jiakao": "驾考"
+    "ai.preset.jiakao": "驾考",
+    "wrongbook.sameKp": "举一反三",
+    "wrongbook.sameKpTip": "同考点变式练习"
 }

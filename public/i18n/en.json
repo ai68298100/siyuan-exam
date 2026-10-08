@@ -955,5 +955,7 @@
     "ai.preset.gongkao": "Civil-service aptitude",
     "ai.preset.kaoyan": "Postgrad politics",
     "ai.preset.yixue": "Medical licensing",
-    "ai.preset.jiakao": "Driving test"
+    "ai.preset.jiakao": "Driving test",
+    "wrongbook.sameKp": "Related",
+    "wrongbook.sameKpTip": "Practice same-KP questions"
 }
