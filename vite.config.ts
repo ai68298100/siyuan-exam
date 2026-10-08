@@ -94,6 +94,10 @@ export default defineConfig({
             output: {
                 entryFileNames: "[name].js",
                 assetFileNames: (assetInfo) => assetInfo.name ?? "asset",
+                // 思源 browser/mobile 前端的插件沙箱没有 window.require（Node），
+                // 动态 import 产出的 .cjs chunk 相对 require 会得到 undefined
+                // （真机 browser-desktop 实测 "Cannot read properties of undefined"）——必须单文件内联
+                inlineDynamicImports: true,
             },
         },
     }
