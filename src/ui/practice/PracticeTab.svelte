@@ -1712,8 +1712,13 @@ import { ttsSpeak } from "@/core/tts";
 
     // ---------- 纯听题 lite（TTS + 遮罩） ----------
     let pureListen = $state(false);
-    /** 背题模式（华图杀招，PRD §3）：开着时每题自动展示答案与解析，跳过提交判分，适合考前突击 */
-    let reciteToggle = $state(false);
+    /** 背题模式（华图杀招，PRD §3）：开着时每题自动展示答案与解析，跳过提交判分，适合考前突击。localStorage 持久化 */
+    let reciteToggle = $state((() => { try { return localStorage.getItem("lv-exam/reciteMode") === "1"; } catch { return false; } })());
+    function toggleRecite() {
+      reciteToggle = !reciteToggle;
+      try { localStorage.setItem("lv-exam/reciteMode", reciteToggle ? "1" : "0"); } catch { /* 隐私模式 */ }
+      if (reciteToggle && !feedback) setTimeout(() => submitAnswer(), 50);
+    }
     function togglePureListen() {
       const q = session?.current;
       if (!q) return;
@@ -3665,7 +3670,7 @@ import { ttsSpeak } from "@/core/tts";
               <span class="lv-chip num"><Icon name="link" size={12} /> {t("session.groupPos")} {pos}/{sibs.length}</span>
             {/if}
             <button class="lv-chip" title={t("tts.read")} onclick={() => ttsSpeak([q.stem, ...q.options].join(" "))}><Icon name="volume" size={13} /></button>
-            <button class="lv-chip" class:acc={reciteToggle} title={t("session.reciteMode")} aria-pressed={reciteToggle} onclick={() => { reciteToggle = !reciteToggle; if (reciteToggle && !feedback) setTimeout(() => submitAnswer(), 50); }}><Icon name="eye" size={13} /> {t("session.reciteMode")}</button>
+            <button class="lv-chip" class:acc={reciteToggle} title={t("session.reciteMode")} aria-pressed={reciteToggle} onclick={toggleRecite}><Icon name="eye" size={13} /> {t("session.reciteMode")}</button>
             <button class="lv-chip" class:acc={pureListen} title={t("tts.pureListen")} onclick={togglePureListen}><Icon name="eyeoff" size={13} /></button>
             <button class="lv-chip" class:acc={!!q.fav} title="E" aria-label={t("session.kbdFav")} onclick={() => toggleFavCurrent()}><Icon name="star" size={13} /></button>
           </div>
