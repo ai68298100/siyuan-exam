@@ -98,7 +98,7 @@ export function registerExamDailySummary(deps: ExamDailyDeps): ExamDailySummaryH
     if (typeof (host as SpeedSwitchHost | undefined)?.registerHomeModule !== "function") return false;
     const module: SpeedSwitchModule = {
       moduleId: MODULE_ID,
-      title: deps.t("eco.moduleTitle", "小驴考试 · 今日练习"),
+      title: deps.t("eco.moduleTitle", "小驴考试（内测版） · 今日练习"),
       icon: "iconExam",
       category: "plugin",
       supportedDevices: ["desktop", "sidebar", "mobile"],
@@ -106,7 +106,7 @@ export function registerExamDailySummary(deps: ExamDailyDeps): ExamDailySummaryH
       description: deps.t("eco.moduleDesc", "今日作答量、正确率与错题在册"),
       read: async () => ({ items: buildDailyItems(deps.app, deps.t) }),
       open: () => deps.open(),
-      source: { pluginId: "siyuan-exam", name: "小驴考试", icon: "iconExam" },
+      source: { pluginId: "siyuan-exam", name: "小驴考试（内测版）", icon: "iconExam" },
     };
     if (!assertModuleId(module.moduleId)) return false; // 协议白名单守卫（不满足则放弃而非误注册）
     unregister = host!.registerHomeModule(module) as { unregister?: () => void };

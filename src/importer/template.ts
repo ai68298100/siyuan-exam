@@ -183,5 +183,5 @@ export function buildTemplateWorkbook(): { buffer: ArrayBuffer; filename: string
   guide["!cols"] = [{ wch: 90 }];
   XLSX.utils.book_append_sheet(wb, guide, "填写说明");
   const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-  return { buffer: out as ArrayBuffer, filename: "小驴考试-题库导入模板.xlsx" };
+  return { buffer: out as ArrayBuffer, filename: "小驴考试（内测版）-题库导入模板.xlsx" };
 }

@@ -42,7 +42,7 @@ const BASE_CSS = `
 `;
 
 function head(title: string, note: string): string {
-  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${BASE_CSS}</style></head><body><h1>${esc(title)}</h1><div class="meta">${esc(note)} · 小驴考试导出 · ${new Date().toLocaleDateString("zh-CN")}</div>`;
+  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${BASE_CSS}</style></head><body><h1>${esc(title)}</h1><div class="meta">${esc(note)} · 小驴考试（内测版）导出 · ${new Date().toLocaleDateString("zh-CN")}</div>`;
 }
 
 /** 题册：题干/选项/材料 + 答题区——不含答案与解析（68-01 验收：打印不泄露隐藏答案）。

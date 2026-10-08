@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🐴 Lv Exam (小驴考试)
+# 🐴 Lv Exam (Beta) (小驴考试（内测版）)
 
 **An AI-assisted, local-first exam preparation workspace for SiYuan** — import · practice · mock exams · wrongbook · FSRS flashcards · AI
 
@@ -13,7 +13,7 @@
 [![SiYuan](https://img.shields.io/badge/SiYuan-%3E%3D%203.8.0-blue)](https://github.com/siyuan-note/siyuan)
 [![License](https://img.shields.io/badge/license-MIT-green)](#-license)
 
-<img src="preview.png" alt="Lv Exam preview" width="640"/>
+<img src="preview.png" alt="Lv Exam (Beta) preview" width="640"/>
 
 
 ## Screenshots
@@ -44,9 +44,9 @@
 
 ---
 
-## ✨ Why Lv Exam
+## ✨ Why Lv Exam (Beta)
 
-| Pain point | Lv Exam's answer |
+| Pain point | Lv Exam (Beta)'s answer |
 |---|---|
 | Question banks locked in someone else's cloud | **A bank = one of your SiYuan notebooks**: each question is a block with answer/KP/reason attributes — searchable, linkable, synced by SiYuan |
 | Wrong answers forgotten after one pass | **FSRS scheduling** on SiYuan's native kernel (riff): one-tap or batch wrong-to-card, scientifically timed reviews, pre-exam cram that never pollutes long-term scheduling |
@@ -132,7 +132,7 @@ pnpm dev              # watch build + livereload
 pnpm make-link        # symlink into <workspace>/data/plugins/siyuan-exam/
 pnpm check            # typecheck + svelte + i18n + arch checks
 pnpm guard            # full pre-push gate chain
-pnpm test             # vitest (577 tests in 106 files at v0.9.0)
+pnpm test             # vitest (577 tests in 106 files at v0.9.1)
 pnpm preflight        # live-kernel API preflight (17 checks; needs SiYuan running)
 pnpm build            # dist/ + package.zip
 pnpm make-install     # build and install into a local SiYuan plugin dir

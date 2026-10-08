@@ -141,10 +141,10 @@
 {#if drawerOpen}
   <button class="lv-nav-backdrop" aria-label={t("menu.closeNav", "关闭导航")} onclick={() => onclose?.()}></button>
 {/if}
-<aside class="lv-rail" class:open={drawerOpen} bind:this={asideEl} role={drawerOpen ? "dialog" : undefined} aria-modal={drawerOpen ? "true" : undefined} aria-label="Lv Exam">
+<aside class="lv-rail" class:open={drawerOpen} bind:this={asideEl} role={drawerOpen ? "dialog" : undefined} aria-modal={drawerOpen ? "true" : undefined} aria-label="小驴考试（内测版）">
   <div class="lv-brand">
     <span class="lv-brand-mark" aria-hidden="true">驴</span>
-    <span class="lv-brand-name">小驴考试<span class="lv-brand-sub">LV EXAM</span></span>
+    <span class="lv-brand-name">小驴考试（内测版）<span class="lv-brand-sub">LV EXAM</span></span>
     <button class="lv-drawer-close" bind:this={closeBtn} aria-label={t("menu.close", "关闭")} onclick={() => onclose?.()}>
       <Icon name="close" size={15} />
     </button>

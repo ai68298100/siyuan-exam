@@ -487,7 +487,7 @@
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = `小驴考试-模考-${name}-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `小驴考试（内测版）-模考-${name}-${new Date().toISOString().slice(0, 10)}.csv`;
       a.click();
       URL.revokeObjectURL(a.href);
     }

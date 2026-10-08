@@ -1,8 +1,8 @@
 {
   "name": "siyuan-exam",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "type": "module",
-  "description": "小驴考试 (Lv Exam) — SiYuan exam question bank learning: import, practice, mock exam, wrongbook, FSRS flashcards, AI. 思源笔记本地题库学习管理插件",
+  "description": "小驴考试（内测版） (Lv Exam (Beta)) — SiYuan exam question bank learning: import, practice, mock exam, wrongbook, FSRS flashcards, AI. 思源笔记本地题库学习管理插件",
   "repository": "https://github.com/ai68298100/siyuan-exam",
   "homepage": "https://github.com/ai68298100/siyuan-exam",
   "author": "ai68298100",

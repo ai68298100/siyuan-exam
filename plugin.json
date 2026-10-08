@@ -2,7 +2,7 @@
   "name": "siyuan-exam",
   "author": "ai68298100",
   "url": "https://github.com/ai68298100/siyuan-exam",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "minAppVersion": "3.8.0",
   "backends": [
     "windows",
@@ -22,8 +22,8 @@
   ],
   "disabledInPublish": true,
   "displayName": {
-    "default": "Lv Exam",
-    "zh-CN": "小驴考试"
+    "default": "Lv Exam (Beta)",
+    "zh-CN": "小驴考试（内测版）"
   },
   "description": {
     "default": "Local-first exam question bank in SiYuan: import (Excel/CSV/TSV/GIFT/Aiken/native package), practice, recite, mock exam, wrongbook, FSRS flashcards, and reviewable AI assistance. Your question bank lives in your knowledge base.",

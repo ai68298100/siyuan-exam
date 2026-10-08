@@ -53,7 +53,7 @@ export function buildCheckinEvent(
     unit: "题",
     source: "api",
     externalRef: `exam:${cfg.itemId.trim()}:${localDate}`,
-    note: "小驴考试每日练习",
+    note: "小驴考试（内测版）每日练习",
     occurredAt: new Date(nowMs).toISOString(),
   };
 }

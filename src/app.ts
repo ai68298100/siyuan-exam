@@ -299,7 +299,7 @@ export class ExamApp {
       await this.deps.client.createDocWithMd(
         notebookId,
         "/首页",
-        `# 题库：${clean}\n\n> 本笔记本由小驴考试管理。章节文档存放题目块。\n> 可在练习台导入题目，或删除「示例题」文档后自建章节。\n`,
+        `# 题库：${clean}\n\n> 本笔记本由小驴考试（内测版）管理。章节文档存放题目块。\n> 可在练习台导入题目，或删除「示例题」文档后自建章节。\n`,
       );
     } catch { /* 首页失败不阻断 */ }
     // 章节骨架：按官方模板的考点分层示例（47-02 首五分钟任务的最短路径）
@@ -311,7 +311,7 @@ export class ExamApp {
       );
       const { makeQuestion } = await import("./core/blockTemplate");
       const samples = [
-        makeQuestion({ type: "single", stem: "小驴考试的作答流水保存在哪里？", options: ["插件本地的 append-only 流水存储", "思源云端", "题目块的 custom-exam-* 属性里"], answer: "A", analysis: "作答流水 append-only 存于插件存储，与题目块解耦（docs/02 §2.3）。", kp: "示例/基础" }),
+        makeQuestion({ type: "single", stem: "小驴考试（内测版）的作答流水保存在哪里？", options: ["插件本地的 append-only 流水存储", "思源云端", "题目块的 custom-exam-* 属性里"], answer: "A", analysis: "作答流水 append-only 存于插件存储，与题目块解耦（docs/02 §2.3）。", kp: "示例/基础" }),
         makeQuestion({ type: "judge", stem: "错题连对 2 次后自动移出错题本。", options: [], answer: "对", kp: "示例/机制" }),
         makeQuestion({ type: "fill", stem: "FSRS 调度唯一需要理解的参数是期望____率。", options: [], answer: "保留", kp: "示例/记忆" }),
       ];
@@ -1255,7 +1255,7 @@ export class ExamApp {
     const today = new Date();
     const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
     const md = [
-      `# 📝 小驴考试战报 · ${ymd}`,
+      `# 📝 小驴考试（内测版）战报 · ${ymd}`,
       ``,
       `- 刷题：**${attempts}** 题 · 正确率 **${attempts ? Math.round((correct / attempts) * 100) : 0}%**`,
       `- 消灭错题：**${eliminated}**`,
