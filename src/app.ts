@@ -201,6 +201,13 @@ export class ExamApp {
   kernelOnline = false;
   probeMessage = "";
 
+  /** 运行时连接标记（传输层 retryable 失败/恢复时回调；启动初值由探针设定） */
+  setKernelOnline(ok: boolean) {
+    if (this.kernelOnline === ok) return;
+    this.kernelOnline = ok;
+    emitExamEvent("kernel-connection", { online: ok });
+  }
+
   constructor(readonly deps: ExamAppDeps) {
     this.attempts = new AttemptLog(deps.storage, "attempts/log", deps.now ?? (() => Date.now()));
   }
@@ -413,12 +420,19 @@ export class ExamApp {
   }
 
   private async ensureDoc(bankId: string, hpath: string): Promise<string> {
-    // createDocWithMd 幂等：已存在返回 ""（思源行为）——先查再建
+    // createDocWithMd 幂等：已存在返回 ""（思源行为）——先查再建；
+    // 建后重查一次：与思源日记自动建档存在竞态时 createDocWithMd 可能返回 ""
+    // 而真实文档由宿主创建（真机走查实测出现同 hpath 双文档块，写入静默落空）
     const existing = await this.deps.client.sql(
-      `SELECT id FROM blocks WHERE box='${bankId.replace(/'/g, "''")}' AND hpath='${hpath.replace(/'/g, "''")}' AND type='d' LIMIT 1`,
+      `SELECT id FROM blocks WHERE box='${bankId.replace(/'/g, "''")}' AND hpath='${hpath.replace(/'/g, "''")}' AND type='d' ORDER BY updated DESC LIMIT 1`,
     );
     if (existing[0]?.id) return String(existing[0].id);
-    return this.deps.client.createDocWithMd(bankId, hpath, `# ${hpath.split("/").pop()}\n\n`);
+    const created = await this.deps.client.createDocWithMd(bankId, hpath, `# ${hpath.split("/").pop()}\n\n`);
+    if (created) return created;
+    const again = await this.deps.client.sql(
+      `SELECT id FROM blocks WHERE box='${bankId.replace(/'/g, "''")}' AND hpath='${hpath.replace(/'/g, "''")}' AND type='d' ORDER BY updated DESC LIMIT 1`,
+    );
+    return String(again[0]?.id ?? "");
   }
 
   async listQuestions(bankId: string): Promise<(Question & { blockId: string; rootId: string; hpath: string })[]> {
@@ -873,11 +887,13 @@ export class ExamApp {
   async rollbackBatch(bankId: string, batch: string): Promise<{ deleted: number; failed: number }> {
     if (!this.kernelOnline) throw new Error("离线：批次回滚需要内核可写");
     const escaped = batch.replace(/'/g, "''");
-    const rows = await this.deps.client.sql<{ id?: string }>(
+    // 分页取全量（3.8.6 默认 64 行截断会让大批次静默漏删）；ORDER BY b.id 保证分页全序
+    const rows = await this.deps.client.sqlPaged<{ id?: string }>(
       `SELECT b.id AS id FROM blocks b
        JOIN attributes a ON a.block_id = b.id
        WHERE b.root_id IN (SELECT id FROM blocks WHERE box='${bankId.replace(/'/g, "''")}' AND type='d')
-         AND a.name='custom-exam-batch' AND a.value='${escaped}'`,
+         AND a.name='custom-exam-batch' AND a.value='${escaped}'
+       ORDER BY b.id`,
     );
     const ids = rows.map((r) => String(r.id ?? "")).filter(Boolean);
     let deleted = 0,
@@ -1267,12 +1283,9 @@ export class ExamApp {
       const conf = await this.deps.client.getNotebookConf(nb.id);
       if (conf.dailyNoteSavePath) {
         const hpath = dailyDocPath(conf.dailyNoteSavePath, today);
-        await this.ensureDoc(nb.id, hpath);
-        const docId = await this.deps.client
-          .sql(
-            `SELECT id FROM blocks WHERE box='${nb.id.replace(/'/g, "''")}' AND hpath='${hpath.replace(/'/g, "''")}' AND type='d' LIMIT 1`,
-          )
-          .then((rows) => String(rows[0]?.id ?? ""));
+        // 直接用 ensureDoc 的返回 id：紧跟其后的 SQL 重查会撞属性/块索引滞后，
+        // 新建文档在索引可见前查不到 → 误抛「日记文档未找到」（真机走查实测）
+        const docId = await this.ensureDoc(nb.id, hpath);
         if (!docId) throw new Error("日记文档未找到");
         // 45-02：每日写回过 SaveGate（对象级状态进报告中心顶栏 SaveStatus 矩阵，不再只有 toast 单点）
         await this.saves.run(`daily-report/${ymd}`, () => this.deps.client.appendBlock(docId, md));

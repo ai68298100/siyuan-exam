@@ -32,21 +32,28 @@ async function postWithTimeout(url: string, data: unknown): Promise<{ code: numb
   }
 }
 
-function makeTransport(): KernelTransport {
+function makeTransport(onConnectionChange?: (ok: boolean) => void): KernelTransport {
+  let down = false; // 只在状态翻转时回调，避免每次失败都刷 UI
+  const mark = (ok: boolean) => {
+    if (down === !ok) return;
+    down = !ok;
+    onConnectionChange?.(ok);
+  };
   return {
     async post(endpoint, payload) {
       try {
         const res = await postWithTimeout(endpoint, payload ?? {});
         if (res.code !== 0) throw new KernelError("fatal", endpoint, res.msg || `code ${res.code}`);
+        mark(true);
         return res;
       } catch (e) {
-        if (e instanceof KernelError) throw e;
-        throw new KernelError(
-          /timeout|abort|network|fail/i.test(String(e)) ? "retryable" : "fatal",
-          endpoint,
-          String(e),
-          e,
-        );
+        if (e instanceof KernelError) {
+          if (e.kind === "retryable") mark(false);
+          throw e;
+        }
+        const kind = /timeout|abort|network|fail/i.test(String(e)) ? "retryable" : "fatal";
+        if (kind === "retryable") mark(false);
+        throw new KernelError(kind, endpoint, String(e), e);
       }
     },
     async postForm(endpoint, file, filename) {
@@ -59,13 +66,13 @@ function makeTransport(): KernelTransport {
         if (res.code !== 0) throw new KernelError("fatal", endpoint, res.msg || `code ${res.code}`);
         return res;
       } catch (e) {
-        if (e instanceof KernelError) throw e;
-        throw new KernelError(
-          /timeout|abort|network|fail/i.test(String(e)) ? "retryable" : "fatal",
-          endpoint,
-          String(e),
-          e,
-        );
+        if (e instanceof KernelError) {
+          if (e.kind === "retryable") mark(false);
+          throw e;
+        }
+        const kind = /timeout|abort|network|fail/i.test(String(e)) ? "retryable" : "fatal";
+        if (kind === "retryable") mark(false);
+        throw new KernelError(kind, endpoint, String(e), e);
       }
     },
   };
@@ -76,7 +83,9 @@ function makeStorage(plugin: Plugin): StorageAdapter {
   return {
     async load(key) {
       try {
-        return await plugin.loadData(`${key}.json`);
+        const v = await plugin.loadData(`${key}.json`);
+        // 思源 loadData 对不存在的文件返回 ""（真机 3.8.6 实测），调用方 `?? 默认值` 全部失效——归一化为 undefined
+        return v === "" || v == null ? undefined : v;
       } catch {
         return undefined;
       }
@@ -99,11 +108,15 @@ function readOrCreateDeviceId(): string {
 }
 
 export async function createExamApp(plugin: Plugin): Promise<ExamApp> {
+  // 运行时连接标记：retryable 失败翻离线、成功翻回在线（离线横幅与降级提示依赖它；
+  // 启动初值仍由 init 的能力探针设定）
+  let appRef: ExamApp | null = null;
   const deps: ExamAppDeps = {
-    client: new KernelApiClient(makeTransport()),
+    client: new KernelApiClient(makeTransport((ok) => appRef?.setKernelOnline(ok))),
     storage: makeStorage(plugin),
   };
   const app = new ExamApp(deps);
+  appRef = app;
   await app.init(readOrCreateDeviceId());
   return app;
 }

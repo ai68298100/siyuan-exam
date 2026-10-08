@@ -1,19 +1,30 @@
 import { describe, it, expect } from "vitest";
 import { ExamApp } from "../src/app";
 import { MemoryStorage } from "../src/core/attemptLog";
-import type { KernelApiClient } from "../src/kernel/client";
+import { KernelApiClient } from "../src/kernel/client";
 import type { Question } from "../src/core/types";
 import { makeQuestion } from "../src/core/blockTemplate";
 
-/** stub 内核：sql 返回批次块；removeBlock 记录调用并可注入失败 */
+/**
+ * stub 内核：sql 按 stmt 内 LIMIT/OFFSET 切片返回批次块（真实分页语义），
+ * removeBlock 记录调用并可注入失败。挂到 KernelApiClient.prototype 上，
+ * 让真实的 sqlPaged 循环跑在 stub sql 之上。
+ */
 function stubClient(batchBlocks: string[], failIds: Set<string> = new Set()) {
   const removed: string[] = [];
-  const client = {
+  const sqlCalls: string[] = [];
+  const client = Object.create(KernelApiClient.prototype) as KernelApiClient;
+  Object.assign(client, {
     sql: async (stmt: string) => {
+      sqlCalls.push(stmt);
       if (stmt.includes("custom-exam-batch")) {
         // 校验转义：单引号批次必须被转义后才能进 SQL
         expect(stmt).not.toContain("b-'x");
-        return batchBlocks.map((id) => ({ id }));
+        const m = /LIMIT (\d+) OFFSET (\d+)/.exec(stmt);
+        if (!m) return batchBlocks.map((id) => ({ id }));
+        const size = Number(m[1]);
+        const off = Number(m[2]);
+        return batchBlocks.slice(off, off + size).map((id) => ({ id }));
       }
       return [];
     },
@@ -21,8 +32,8 @@ function stubClient(batchBlocks: string[], failIds: Set<string> = new Set()) {
       if (failIds.has(id)) throw new Error("delete failed");
       removed.push(id);
     },
-  } as unknown as KernelApiClient;
-  return { client, removed };
+  });
+  return { client, removed, sqlCalls };
 }
 
 const mkApp = (client: KernelApiClient, kernelOnline: boolean) => {
@@ -66,5 +77,18 @@ describe("导入批次回滚（TODO 12 组）", () => {
     const app = mkApp(client, false);
     await expect(app.rollbackBatch("bank1", "b-x")).rejects.toThrow("离线");
     expect(removed).toHaveLength(0);
+  });
+
+  it("大批次跨页取全（3.8.6 无 LIMIT 默认截断 64 行）：2500 块分 3 页全部删除，不漏删", async () => {
+    const pool = Array.from({ length: 2500 }, (_, i) => `blk-${i}`);
+    const { client, removed, sqlCalls } = stubClient(pool);
+    const app = mkApp(client, true);
+    const r = await app.rollbackBatch("bank1", "b-20261003-aaaa");
+    expect(r).toEqual({ deleted: 2500, failed: 0 });
+    expect(removed).toHaveLength(2500);
+    expect(new Set(removed).size).toBe(2500);
+    // sqlPaged 分页：1000+1000+500 三页，均带 SQL 文本级 LIMIT/OFFSET
+    expect(sqlCalls.length).toBe(3);
+    expect(sqlCalls.every((s) => /LIMIT 1000 OFFSET \d+/.test(s))).toBe(true);
   });
 });

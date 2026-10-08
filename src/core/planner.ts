@@ -105,8 +105,11 @@ export interface PlanResult {
   mode: "sprint" | "normal";
   daysToExam: number | null;
   queue: Question[];
-  /** 聚合说明（入口页展示"为什么是这些题"） */
+  /** 聚合说明（zh 审计口径；入口页展示走 reasonKind 本地化） */
   reason: string;
+  /** 结构化说明口径：UI 按 kind 选 i18n 模板渲染（reason 保留原文给导出/诊断） */
+  reasonKind: "sprint" | "due" | "reflow";
+  reasonData: { days: number; cram: number; stubborn: number; due: number };
 }
 
 /**
@@ -171,7 +174,10 @@ export function planToday(input: PlanInput, now: Date = new Date()): PlanResult 
     : dueFirst.length
       ? `到期 ${Math.min(dueFirst.length, queue.length)} 优先 + 每日补足`
       : `错题加权回流${stubborn ? `（顽固 ${stubborn}）` : ""} + 随机补足`;
-  return { mode: sprint ? "sprint" : "normal", daysToExam: days, queue, reason };
+  // 结构化说明：UI 按 reasonKind 本地化渲染（reason 保留 zh 审计口径）
+  const reasonKind: PlanResult["reasonKind"] = sprint ? "sprint" : dueFirst.length ? "due" : "reflow";
+  const reasonData = { days, cram: cramUsed, stubborn, due: Math.min(dueFirst.length, queue.length) };
+  return { mode: sprint ? "sprint" : "normal", daysToExam: days, queue, reason, reasonKind, reasonData };
 }
 
 function shuffle<T>(arr: T[], rnd: () => number): T[] {

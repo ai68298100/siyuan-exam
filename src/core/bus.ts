@@ -27,7 +27,8 @@ export type BusEventType =
   | "session-ended" // {sessionId, mode, total, correct, wrong} 会话结算（仅计数，无题干）
   | "wrongbook-changed" // {qid, status} 错题处置/暂缓/再错（生态消费者按需重读）
   | "open-view" // {view} 稳定入口深链（window.siyuanExam.wrongbook → 练习台错题本）
-  | "stats"; // {…} publicStats 快照（48-02 lite：信封双发；legacy 裸 detail 兼容保留）
+  | "stats" // {…} publicStats 快照（48-02 lite：信封双发；legacy 裸 detail 兼容保留）
+  | "kernel-connection"; // {online} 内核连接状态翻转（离线横幅/降级提示依据）
 
 export function busEventName(type: BusEventType): string {
   return BUS_PREFIX + type;

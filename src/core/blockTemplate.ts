@@ -19,7 +19,9 @@ export function questionToMarkdown(q: Question): string {
     md += q.options.map((o, i) => `- ${OPTION_LETTERS[i]}. ${o}`).join("\n") + "\n";
   }
   if (q.analysis) md += `{{{row\n> ${q.analysis.replace(/\n/g, "\n> ")}\n}}}\n`;
-  md += `}}}\n{: ${ialOf(q)}`;
+  // IAL 必须闭合（{: ...}）：缺右花括号时 kramdown 不解析为块属性而是落成纯文本段落，
+  // 真机 3.8.6 实测所有写入题目因此在 attributes 表不可见、练习台永远空库
+  md += `}}}\n{: ${ialOf(q)}}`;
   return md;
 }
 
