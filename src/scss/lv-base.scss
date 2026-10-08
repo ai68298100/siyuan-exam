@@ -566,16 +566,28 @@ input[type="range"] {
 .lv-exam-tab > .block__icons {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  row-gap: 6px;
   gap: 10px;
   border-bottom: 1px solid var(--lv-border);
   background: var(--lv-surface);
   padding: 10px 16px;
   min-height: 48px;
 }
+/* 桌面工具行拥挤时也允许换行：报告中心控件多（筛选/刷新/AI 双按钮/库切换/提示），
+   无 wrap 时 flex 挤压面包屑与提示文本竖排（真机走查发现） */
+.lv-exam-tab > .block__icons .lv-crumb-current {
+  white-space: nowrap;
+}
+.lv-exam-tab > .block__icons .lv-muted {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
 @media (max-width: 1023px) {
   /* 窄屏：chips 允许换行，面包屑占满首行可收缩（修复 390px 溢出撑宽整页） */
   .lv-exam-tab > .block__icons {
-    flex-wrap: wrap;
     row-gap: 6px;
   }
   .lv-exam-tab > .block__icons .lv-crumbs {
