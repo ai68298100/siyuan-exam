@@ -2023,6 +2023,7 @@ import { ttsSpeak } from "@/core/tts";
     function previousQuestion() {
       if (!session?.prev()) return;
       sessionRev++;
+      if (reciteToggle && !feedback) setTimeout(() => submitAnswer(), 50); // 背题模式：切题后自动揭示答案
     }
 
     async function finishSession() {
@@ -3664,7 +3665,7 @@ import { ttsSpeak } from "@/core/tts";
               <span class="lv-chip num"><Icon name="link" size={12} /> {t("session.groupPos")} {pos}/{sibs.length}</span>
             {/if}
             <button class="lv-chip" title={t("tts.read")} onclick={() => ttsSpeak([q.stem, ...q.options].join(" "))}><Icon name="volume" size={13} /></button>
-            <button class="lv-chip" class:acc={reciteToggle} title={t("session.reciteMode")} aria-pressed={reciteToggle} onclick={() => { reciteToggle = !reciteToggle; if (reciteToggle && !feedback) submitAnswer(); }}><Icon name="eye" size={13} /> {t("session.reciteMode")}</button>
+            <button class="lv-chip" class:acc={reciteToggle} title={t("session.reciteMode")} aria-pressed={reciteToggle} onclick={() => { reciteToggle = !reciteToggle; if (reciteToggle && !feedback) setTimeout(() => submitAnswer(), 50); }}><Icon name="eye" size={13} /> {t("session.reciteMode")}</button>
             <button class="lv-chip" class:acc={pureListen} title={t("tts.pureListen")} onclick={togglePureListen}><Icon name="eyeoff" size={13} /></button>
             <button class="lv-chip" class:acc={!!q.fav} title="E" aria-label={t("session.kbdFav")} onclick={() => toggleFavCurrent()}><Icon name="star" size={13} /></button>
           </div>
