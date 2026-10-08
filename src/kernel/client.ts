@@ -252,11 +252,12 @@ export class KernelApiClient {
    */
   async sqlPaged<T = Record<string, unknown>>(stmt: string, pageSize = 1000): Promise<T[]> {
     const maxRows = 1_000_000;
+    const size = Math.max(1, pageSize); // 防调用方传 0/负数导致死循环
     const all: T[] = [];
-    for (let offset = 0; offset < maxRows; offset += pageSize) {
-      const rows = await this.sql<T>(`${stmt} LIMIT ${pageSize} OFFSET ${offset}`);
+    for (let offset = 0; offset < maxRows; offset += size) {
+      const rows = await this.sql<T>(`${stmt} LIMIT ${size} OFFSET ${offset}`);
       all.push(...rows);
-      if (rows.length < pageSize) return all;
+      if (rows.length < size) return all;
     }
     return all;
   }
