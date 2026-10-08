@@ -5339,5 +5339,6 @@ import { ttsSpeak } from "@/core/tts";
   .lv-rate .r3:hover { border-color: var(--lv-green); color: var(--lv-green); }
   .lv-rate .r4:hover { border-color: var(--lv-accent); color: var(--lv-accent); }
   @media (max-width: 960px) { .lv-modes { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 480px) { .lv-modes { grid-template-columns: 1fr; } }
   @media (prefers-reduced-motion: reduce) { .lv-skeleton { animation: none; } .lv-mode, .lv-btn, .lv-opt { transition: none; } }
 </style>

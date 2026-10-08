@@ -659,19 +659,64 @@ input[type="range"] {
   }
 }
 @media (max-width: 480px) {
-  /* 极窄屏：双列 KPI 卡 141px 太窄，文字逐字竖排（真机走查发现）——收为单列 */
+  /* 极窄屏系统性适配（真机走查发现的竖排文字根因修复）——
+     多组件在 <480px 的 flex/grid 上下文中文字被挤压成逐字竖排，
+     根因：容器无 min-width 保护 + 文字元素缺 nowrap + grid 不收列 */
+
+  /* KPI 网格收为单列，卡片内部窄屏适配 */
   .lv-kpis {
     grid-template-columns: 1fr !important;
   }
   .lv-kpi {
     padding: 14px 16px;
   }
-  /* 图表行标签+信心校准标签 nowrap 防竖排 */
+  .lv-kpi .l span:first-child {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+  .lv-kpi .v {
+    font-size: 24px; /* 30px 在 <480px 过大，收一档 */
+  }
+
+  /* 入口 widget 三卡（目标环/连胜/待消灭）窄屏单列 */
+  .lv-shell-grid,
+  .lv-entry-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* widget 标题与内容文字 nowrap 防竖排 */
+  .lv-widget {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .lv-widget-title {
+    white-space: nowrap;
+  }
+  .lv-widget-body strong {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* 图表行（周比较/信心校准/时段分布等）标签列收窄防挤压 */
+  .lv-chart-row {
+    grid-template-columns: minmax(0, auto) minmax(8px, 1fr) auto;
+  }
   .lv-chart-row > span:first-child,
   .lv-chart-row .l {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    min-width: 0;
+  }
+
+  /* 错题本策略卡按钮 + 面包屑 nowrap */
+  .lv-crumb-current,
+  .lv-btn {
+    white-space: nowrap;
   }
 }
 
