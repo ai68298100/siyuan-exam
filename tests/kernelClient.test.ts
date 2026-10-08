@@ -195,3 +195,52 @@ describe("createNotebook 三形态（3.8.6 漂移：perf-bank 脚本实测发现
     await expect(client.createNotebook("x")).rejects.toThrow(/notebook id/);
   });
 });
+
+describe("sqlPaged 分页取全（3.8.6 靶场实测：无 LIMIT 查询默认截断 64 行且 truncated:true，请求级 limit 无效）", () => {
+  it("行数 < 页大小：单次查询返回全量，stmt 追加 SQL 文本级 LIMIT/OFFSET", async () => {
+    const { client, calls } = makeClient(() => Array.from({ length: 5 }, (_, i) => ({ i })));
+    const rows = await client.sqlPaged("SELECT v FROM t");
+    expect(rows).toHaveLength(5);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].payload.stmt).toBe("SELECT v FROM t LIMIT 1000 OFFSET 0");
+  });
+
+  it("1000 + 500 行：两页拼出全量且顺序保持", async () => {
+    const { client, calls } = makeClient((_ep, payload) => {
+      const off = Number(/OFFSET (\d+)/.exec(String(payload.stmt))?.[1] ?? 0);
+      return off === 0
+        ? Array.from({ length: 1000 }, (_, i) => ({ i }))
+        : Array.from({ length: 500 }, (_, i) => ({ i: 1000 + i }));
+    });
+    const rows = await client.sqlPaged("SELECT v FROM t");
+    expect(rows).toHaveLength(1500);
+    expect(rows[1499]).toEqual({ i: 1499 });
+    expect(calls).toHaveLength(2);
+  });
+
+  it("listQuestions 大题库：250 题 × 6 属性 = 1500 行跨 2 页，聚合不丢题不错位", async () => {
+    const rows: Record<string, string>[] = [];
+    for (let q = 0; q < 250; q++) {
+      const attrs: [string, string][] = [
+        ["custom-exam-id", "q" + q],
+        ["custom-exam-type", "single"],
+        ["custom-exam-answer", "A"],
+        ["custom-exam-kp", "考点" + q],
+        ["custom-exam-origin", "imported"],
+        ["custom-exam-batch", "batch-" + (q % 2)],
+      ];
+      for (const [attrName, attrValue] of attrs)
+        rows.push({ blockId: "b" + q, rootId: "r1", content: "题干\n- A. 甲\n- B. 乙", hpath: "/第一章", attrName, attrValue });
+    }
+    const { client, calls } = makeClient((_ep, payload) => {
+      const off = Number(/OFFSET (\d+)/.exec(String(payload.stmt))?.[1] ?? 0);
+      return rows.slice(off, off + 1000);
+    });
+    const qs = await client.listQuestions("bank1");
+    expect(qs).toHaveLength(250);
+    expect(qs[0].id).toBe("q0");
+    expect(qs[249].id).toBe("q249");
+    expect(qs[249].kp).toBe("考点249");
+    expect(calls).toHaveLength(2);
+  });
+});

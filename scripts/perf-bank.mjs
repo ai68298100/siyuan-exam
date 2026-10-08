@@ -87,6 +87,8 @@ async function main() {
     await new Promise((r) => setTimeout(r, 2000));
 
     // ---------- 3. listQuestions 式 SQL 检索（attributes join；含索引滞后重试，等待不计入查询耗时） ----------
+    // 3.8.6 靶场实测：无 LIMIT 的查询默认截断 64 行（truncated:true，请求级 limit 无效），
+    // 显式 SQL 文本 LIMIT 可解除——插件侧已改为 client.sqlPaged 分页取全。
     let rows = [];
     for (let attempt = 1; attempt <= 5; attempt++) {
       await new Promise((r) => setTimeout(r, 1500));
@@ -95,7 +97,7 @@ async function main() {
         stmt: `SELECT b.id AS blockId, b.root_id AS rootId, a.name AS attrName, a.value AS attrValue
              FROM attributes a JOIN blocks b ON a.block_id = b.id
              WHERE b.root_id IN (SELECT id FROM blocks WHERE box='${notebookId}' AND type='d')
-               AND a.name LIKE 'custom-exam-%'`,
+               AND a.name LIKE 'custom-exam-%' LIMIT ${N * 6}`,
       });
       const queryMs = performance.now() - t0;
       rows = Array.isArray(q.data) ? q.data : [];

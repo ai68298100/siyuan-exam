@@ -245,6 +245,22 @@ export class KernelApiClient {
     return (r.data as T[]) ?? [];
   }
 
+  /**
+   * 分页取全量（3.8.6 靶场实测：无 LIMIT 的查询默认只返回 64 行且 truncated:true，
+   * 请求级 limit 字段无效；SQL 文本级 LIMIT 可解除）。stmt 不得自带 LIMIT/OFFSET。
+   * 行数少于页大小即停；超过 maxRows 视为内核异常行为而截停，避免死循环。
+   */
+  async sqlPaged<T = Record<string, unknown>>(stmt: string, pageSize = 1000): Promise<T[]> {
+    const maxRows = 1_000_000;
+    const all: T[] = [];
+    for (let offset = 0; offset < maxRows; offset += pageSize) {
+      const rows = await this.sql<T>(`${stmt} LIMIT ${pageSize} OFFSET ${offset}`);
+      all.push(...rows);
+      if (rows.length < pageSize) return all;
+    }
+    return all;
+  }
+
   async createNotebook(name: string): Promise<string> {
     const r = await this.t.post("/api/notebook/createNotebook", { name });
     const d = r.data as unknown;
@@ -316,7 +332,8 @@ export class KernelApiClient {
 
   /** 题库内检索：custom-exam-* 属性驱动（2026-10-02 实测前缀约定）；带 root_id 供文档跳转、hpath 供章节树过滤 */
   async listQuestions(notebook: string): Promise<(Question & { blockId: string; rootId: string; hpath: string })[]> {
-    const rows = await this.sql<Record<string, string>>(
+    // 每题 ≥6 行 custom-exam-* 属性，3.8.6 默认 64 行截断会在约 10 题处静默丢题——必须分页
+    const rows = await this.sqlPaged<Record<string, string>>(
       `SELECT b.id AS blockId, b.root_id AS rootId, b.content AS content, b.hpath AS hpath,
               a.name AS attrName, a.value AS attrValue
        FROM attributes a JOIN blocks b ON a.block_id = b.id
@@ -345,11 +362,12 @@ export class KernelApiClient {
     headings: { id: string; text: string; hpath: string; level: number }[];
   }> {
     const box = escapeSql(notebook);
-    const docRows = await this.sql<Record<string, string>>(
-      `SELECT id, content, hpath FROM blocks WHERE box='${box}' AND type='d' ORDER BY hpath`,
+    // ORDER BY 补 id 破平局：OFFSET 分页需要全序，同名标题的 hpath 可能重复
+    const docRows = await this.sqlPaged<Record<string, string>>(
+      `SELECT id, content, hpath FROM blocks WHERE box='${box}' AND type='d' ORDER BY hpath, id`,
     );
-    const hRows = await this.sql<Record<string, string>>(
-      `SELECT id, content, hpath, subtype FROM blocks WHERE box='${box}' AND type='h' ORDER BY hpath`,
+    const hRows = await this.sqlPaged<Record<string, string>>(
+      `SELECT id, content, hpath, subtype FROM blocks WHERE box='${box}' AND type='h' ORDER BY hpath, id`,
     );
     return {
       docs: docRows.map((r) => ({ id: String(r.id ?? ""), title: String(r.content ?? ""), hpath: String(r.hpath ?? "") })),
