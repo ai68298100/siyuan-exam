@@ -962,5 +962,7 @@
     "wrongbook.masterAll": "Mark all as mastered",
     "wrongbook.masterAllTitle": "Mark all as mastered",
     "wrongbook.masterAllConfirm": "Mark all {n} active wrong questions as mastered (removed from wrongbook)?",
-    "wrongbook.masterAllDone": "All {n} questions marked as mastered"
+    "wrongbook.masterAllDone": "All {n} questions marked as mastered",
+    "session.totalTime": "Total time",
+    "session.avgTime": "Avg"
 }

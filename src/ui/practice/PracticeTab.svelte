@@ -125,7 +125,7 @@ import { ttsSpeak } from "@/core/tts";
       if (t) trails.set(qid, withLastEditReason(t, reason));
       reasonPromptQid = "";
     }
-    let sessionDone = $state<null | { total: number; correct: number; wrong: number }>(null);
+    let sessionDone = $state<null | { total: number; correct: number; wrong: number; totalTimeS?: number; avgTimeS?: number }>(null);
     /** 已存错因回显（app.loadWrongReason；答错时载入，选择后即时高亮） */
     let savedReason = $state<string | undefined>(undefined);
     $effect(() => {
@@ -2050,6 +2050,10 @@ import { ttsSpeak } from "@/core/tts";
 
     async function finishSession() {
       sessionDone = session.finish();
+      // 用时统计（考试 prep 时间管理关键指标）
+      const times = session.answered.map((a) => a.timeMs).filter((t) => t > 0);
+      sessionDone.totalTimeS = Math.round(times.reduce((s, t) => s + t, 0) / 1000);
+      sessionDone.avgTimeS = times.length ? Math.round(times.reduce((s, t) => s + t, 0) / 1000 / times.length) : 0;
       // 48-02 lite：会话结束事件（仅计数，无题干；生态消费者按需重读明细）
       emitExamEvent("session-ended", {
         sessionId: session.id,
@@ -3585,6 +3589,12 @@ import { ttsSpeak } from "@/core/tts";
             <div class="good"><strong>{sessionDone.correct}</strong><span>{t("session.correct")}</span></div>
             <div class="bad"><strong>{sessionDone.wrong}</strong><span>{t("session.wrong")}</span></div>
           </div>
+          {#if sessionDone.totalTimeS}
+            <div class="lv-row" style="justify-content:center;gap:12px;margin:6px 0 2px" role="status">
+              <span class="lv-chip num"><Icon name="clock" size={12} /> {t("session.totalTime")} {sessionDone.totalTimeS >= 60 ? `${Math.floor(sessionDone.totalTimeS / 60)}m${sessionDone.totalTimeS % 60 ? ` ${sessionDone.totalTimeS % 60}s` : ""}` : `${sessionDone.totalTimeS}s`}</span>
+              <span class="lv-chip num">{t("session.avgTime")} {sessionDone.avgTimeS}s</span>
+            </div>
+          {/if}
           {#if checkinStatus && checkinStatus !== "disabled" && checkinStatus !== "below-threshold" && checkinStatus !== "no-api"}
             <!-- 48-03 lite：打卡桥状态（未配置/未达标/打卡未装时安静不显） -->
             <p class="lv-muted" style="margin:2px 0" role="status">
