@@ -184,6 +184,13 @@ import { ttsSpeak } from "@/core/tts";
     let sessionRev = $state(0);
     const curQ = $derived.by(() => { void sessionRev; return session?.current ?? null; });
     const curProgress = $derived.by(() => { void sessionRev; return session ? session.progress : { done: 0, total: 0 }; });
+    /** 当前题的历史统计（作答次数/正确率），驱动会话侧栏"本题统计"chip */
+    const curQStats = $derived.by(() => {
+      void sessionRev;
+      const q = session?.current;
+      if (!q) return null;
+      return app.derived().byQuestion.get(q.id) ?? null;
+    });
     /** 54 第三刀：数值/多空作答框——curSpec 取当前题的结构化作答规则；多空草稿按 ";;" 切分为逐空输入 */
     const curSpec = $derived.by(() => {
       void sessionRev;
@@ -3875,6 +3882,11 @@ import { ttsSpeak } from "@/core/tts";
                 {#if q.source}<span class="lv-chip num" title={t("manual.source")}>{q.source}</span>{/if}
                 {#if q.difficulty}<span class="lv-chip num">★ {q.difficulty}</span>{/if}
                 {#if q.score}<span class="lv-chip num">{t("manual.score")} {q.score}</span>{/if}
+                {#if curQStats && curQStats.attempts > 0}
+                  <span class="lv-chip num" title={t("browse.usage").replace("{a}", String(curQStats.attempts)).replace("{c}", String(Math.round((curQStats.correct / curQStats.attempts) * 100)))}>
+                    <Icon name="chart" size={11} /> {curQStats.attempts} · {Math.round((curQStats.correct / curQStats.attempts) * 100)}%
+                  </span>
+                {/if}
               </div>
             </div>
             <div class="lv-card lv-side-card">
