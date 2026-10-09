@@ -195,14 +195,15 @@ import { ttsSpeak } from "@/core/tts";
     const kpBreakdown = $derived.by(() => {
       void sessionRev;
       if (!sessionDone || !session) return [];
-      const map = new Map<string, { kp: string; correct: number; total: number }>();
+      const map = new Map<string, { kp: string; correct: number; total: number; wrong: number }>();
       for (const a of session.answered) {
         const q = questions.find((x) => x.id === a.qid);
         const key = q?.kp ?? "";
         if (!key) continue;
-        const e = map.get(key) ?? { kp: key, correct: 0, total: 0 };
+        const e = map.get(key) ?? { kp: key, correct: 0, total: 0, wrong: 0 };
         e.total++;
         if (a.grade.verdict === "correct") e.correct++;
+        if (a.grade.verdict === "wrong") e.wrong++;
         map.set(key, e);
       }
       return [...map.values()].sort((a, b) => a.correct / a.total - b.correct / b.total);
