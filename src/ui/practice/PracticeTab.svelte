@@ -191,6 +191,22 @@ import { ttsSpeak } from "@/core/tts";
       if (!q) return null;
       return app.derived().byQuestion.get(q.id) ?? null;
     });
+    /** 结算页知识点分布：按 kp 聚合本次会话的对错，帮助即时识别薄弱考点 */
+    const kpBreakdown = $derived.by(() => {
+      void sessionRev;
+      if (!sessionDone || !session) return [];
+      const map = new Map<string, { kp: string; correct: number; total: number }>();
+      for (const a of session.answered) {
+        const q = questions.find((x) => x.id === a.qid);
+        const key = q?.kp ?? "";
+        if (!key) continue;
+        const e = map.get(key) ?? { kp: key, correct: 0, total: 0 };
+        e.total++;
+        if (a.grade.verdict === "correct") e.correct++;
+        map.set(key, e);
+      }
+      return [...map.values()].sort((a, b) => a.correct / a.total - b.correct / b.total);
+    });
     /** 54 第三刀：数值/多空作答框——curSpec 取当前题的结构化作答规则；多空草稿按 ";;" 切分为逐空输入 */
     const curSpec = $derived.by(() => {
       void sessionRev;
@@ -3600,6 +3616,16 @@ import { ttsSpeak } from "@/core/tts";
             <div class="lv-row" style="justify-content:center;gap:12px;margin:6px 0 2px" role="status">
               <span class="lv-chip num"><Icon name="clock" size={12} /> {t("session.totalTime")} {sessionDone.totalTimeS >= 60 ? `${Math.floor(sessionDone.totalTimeS / 60)}m${sessionDone.totalTimeS % 60 ? ` ${sessionDone.totalTimeS % 60}s` : ""}` : `${sessionDone.totalTimeS}s`}</span>
               <span class="lv-chip num">{t("session.avgTime")} {sessionDone.avgTimeS}s</span>
+            </div>
+          {/if}
+          {#if kpBreakdown.length > 1}
+            <!-- 知识点分布：本次会话按考点聚合对错，帮助即时识别薄弱考点 -->
+            <div class="lv-row" style="flex-wrap:wrap;justify-content:center;gap:4px;margin:8px 0 2px">
+              {#each kpBreakdown as kp}
+                <span class="lv-chip {kp.wrong > 0 ? 'lv-chip--red' : 'lv-chip--grn'} num" title="{kp.kp}: {kp.correct}/{kp.total}">
+                  {kp.kp} {kp.correct}/{kp.total}
+                </span>
+              {/each}
             </div>
           {/if}
           {#if checkinStatus && checkinStatus !== "disabled" && checkinStatus !== "below-threshold" && checkinStatus !== "no-api"}
