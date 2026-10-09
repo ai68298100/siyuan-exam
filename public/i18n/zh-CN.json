@@ -958,5 +958,9 @@
     "ai.preset.jiakao": "驾考",
     "wrongbook.sameKp": "举一反三",
     "wrongbook.sameKpTip": "同考点变式练习",
-    "session.reciteMode": "背题"
+    "session.reciteMode": "背题",
+    "wrongbook.masterAll": "全部标为已掌握",
+    "wrongbook.masterAllTitle": "全部标为已掌握",
+    "wrongbook.masterAllConfirm": "将把当前 {n} 道在册错题全部标记为已掌握（从错题本移出），确定？",
+    "wrongbook.masterAllDone": "已全部标为已掌握（{n} 题）"
 }

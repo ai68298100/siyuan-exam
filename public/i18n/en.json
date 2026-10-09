@@ -958,5 +958,9 @@
     "ai.preset.jiakao": "Driving test",
     "wrongbook.sameKp": "Related",
     "wrongbook.sameKpTip": "Practice same-KP questions",
-    "session.reciteMode": "Review"
+    "session.reciteMode": "Review",
+    "wrongbook.masterAll": "Mark all as mastered",
+    "wrongbook.masterAllTitle": "Mark all as mastered",
+    "wrongbook.masterAllConfirm": "Mark all {n} active wrong questions as mastered (removed from wrongbook)?",
+    "wrongbook.masterAllDone": "All {n} questions marked as mastered"
 }

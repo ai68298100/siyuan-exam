@@ -1218,6 +1218,23 @@ import { ttsSpeak } from "@/core/tts";
       try { await app.setWrongStatus(qid, "mastered"); showMessage(t("wrongbook.masteredDone"), 2400, "info"); } catch { /* 尽力而为 */ }
     }
 
+    let bulkMasterBusy = $state(false);
+    /** 全部标为已掌握（批量处置）：逐题调用同 API，带确认 */
+    async function masterAllWrong() {
+      if (bulkMasterBusy || !wrongList.length) return;
+      const { confirmDialogSync } = await import("../../libs/dialog");
+      if (!(await confirmDialogSync({ title: t("wrongbook.masterAllTitle"), content: t("wrongbook.masterAllConfirm").replace("{n}", String(wrongList.length)) }))) return;
+      bulkMasterBusy = true;
+      let ok = 0;
+      try {
+        for (const w of wrongList) {
+          try { await app.setWrongStatus(w.qid, "mastered"); ok++; } catch { /* 单题失败不中断 */ }
+        }
+        dataRev++;
+        showMessage(t("wrongbook.masterAllDone").replace("{n}", String(ok)), 2800, "info");
+      } finally { bulkMasterBusy = false; }
+    }
+
     // ---------- 收藏（exam-fav；E 键 + 星标 + 过滤） ----------
     async function toggleFavCurrent() {
       const q = session?.current as (Question & { blockId?: string; fav?: boolean }) | undefined;
@@ -4007,6 +4024,10 @@ import { ttsSpeak } from "@/core/tts";
                 <button class="lv-btn" style="width:100%" onclick={() => { filterWrong = true; view = "browse"; void loadQuestions(); }}><Icon name="table" size={15} /> {t("wrongbook.strategy.browse")}</button>
                 <button class="lv-btn" style="width:100%" onclick={() => void startDrill("cram")}><Icon name="flame" size={15} /> {t("mode.cram")}</button>
               </div>
+              <div class="divider" style="margin:12px 0 10px"></div>
+              <button class="lv-btn lv-btn--ghost" style="width:100%;color:var(--lv-text-3)" disabled={!wrongList.length || bulkMasterBusy} onclick={() => void masterAllWrong()}>
+                <Icon name="check" size={14} /> {bulkMasterBusy ? "…" : t("wrongbook.masterAll")}
+              </button>
               <p class="lv-muted" style="font-size:11.5px;margin:10px 0 0">{t("wrongbook.strategy.note")}</p>
             </div>
             <div class="lv-card">
