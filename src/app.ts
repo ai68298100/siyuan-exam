@@ -198,6 +198,7 @@ export class ExamApp {
   private syllabus: SyllabusDoc = EMPTY_SYLLABUS;
   private syllabusTooNew = false;
   private activeSession: PracticeSession | null = null;
+  private mockRunSaveTail: Promise<void> = Promise.resolve();
   kernelOnline = false;
   probeMessage = "";
 
@@ -1356,7 +1357,9 @@ export class ExamApp {
   // ---------- 导出与模考历史（v0.5） ----------
   /** 模考运行快照（U19 最小）：同一 run 恢复答案/标旗/游标/真实剩余时间；交卷后清除 */
   async saveMockRun(snap: MockRunSnapshot): Promise<void> {
-    await this.saves.run(MOCK_RUN_KEY, () => this.deps.storage.save(MOCK_RUN_KEY, snap));
+    const write = this.mockRunSaveTail.then(() => this.saves.run(MOCK_RUN_KEY, () => this.deps.storage.save(MOCK_RUN_KEY, snap)));
+    this.mockRunSaveTail = write.catch(() => undefined);
+    await write;
   }
 
   async loadMockRun(): Promise<MockRunSnapshot | null> {
@@ -1369,8 +1372,12 @@ export class ExamApp {
   }
 
   async clearMockRun(): Promise<void> {
-    this.saves.clear(MOCK_RUN_KEY);
-    await this.deps.storage.save(MOCK_RUN_KEY, null);
+    const clear = this.mockRunSaveTail.then(async () => {
+      this.saves.clear(MOCK_RUN_KEY);
+      await this.deps.storage.save(MOCK_RUN_KEY, null);
+    });
+    this.mockRunSaveTail = clear.catch(() => undefined);
+    await clear;
   }
 
   /** 模考成绩单写入题库"导出"文档（与错题册导出同通道） */
@@ -1417,7 +1424,9 @@ export class ExamApp {
   /** 模考成绩持久化（上限 200 条，FIFO） */
   async saveMockResult(rec: MockRecord): Promise<void> {
     const list = await this.listMockResults();
-    list.push(rec);
+    const existing = rec.runId ? list.findIndex((item) => item.runId === rec.runId) : -1;
+    if (existing >= 0) list[existing] = rec;
+    else list.push(rec);
     while (list.length > 200) list.shift();
     await this.deps.storage.save(MOCK_RESULTS_KEY, list);
   }

@@ -52,6 +52,7 @@
     const typeByQid = new SvelteMap<string, string>();
     let exposureNodes = $state<Record<string, number>>({});
     let openActionList = $state<ActionItem[]>([]);
+    let actionBusyId = $state("");
     let trend30 = $state<{ date: string; attempts: number; correct?: number }[]>([]);
     let errorMsg = $state("");
     let weekCmp = $state<ReturnType<typeof weekCompare> | null>(null);
@@ -340,21 +341,32 @@
 
     /** 下一行动（U15 lite）：完成=用户确认（最小证据）；取消保留记录可回看 */
     async function finishAction(id: string) {
-      if (!app) return;
-      await app.completeAction(id);
-      openActionList = await app.listOpenActions();
+      if (!app || actionBusyId) return;
+      actionBusyId = id;
+      try {
+        await app.completeAction(id);
+        openActionList = await app.listOpenActions();
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
+      } finally { actionBusyId = ""; }
     }
     async function dropAction(id: string) {
-      if (!app) return;
-      await app.cancelAction(id);
-      openActionList = await app.listOpenActions();
+      if (!app || actionBusyId) return;
+      actionBusyId = id;
+      try {
+        await app.cancelAction(id);
+        openActionList = await app.listOpenActions();
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
+      } finally { actionBusyId = ""; }
     }
 
     /** 行动重练（82-04 lite）：单题错题会话 + 完成并记证据 redo-drill；仅当前题库可定位 */
     async function redoAction(a: ActionItem) {
-      if (!app || !a.qid) return;
+      if (!app || !a.qid || actionBusyId) return;
       const q = questions.find((x) => x.id === a.qid);
       if (!q) { showMessage(t("action.redoMissing"), 3400, "info"); return; }
+      actionBusyId = a.id;
       try {
         const bank = app.listBanks()[0];
         await app.startSession([q], "wrong", bank?.id);
@@ -365,6 +377,8 @@
         });
       } catch (e) {
         showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
+      } finally {
+        actionBusyId = "";
       }
     }
 
@@ -409,10 +423,19 @@
     // ---------- 存储占用 / 数据体检 / 数据出库（69-01/69-06/58-01 lite，三十批） ----------
     let storageRows = $state<{ key: string; bytes: number; present: boolean }[]>([]);
     let storageOpen = $state(false);
+    let storageBusy = $state(false);
     const storageTotalKb = $derived(Math.round(storageRows.reduce((s, r) => s + r.bytes, 0) / 1024));
     async function toggleStorage() {
+      if (storageBusy) return;
       storageOpen = !storageOpen;
-      if (storageOpen && app) storageRows = await app.storageUsage();
+      if (!storageOpen || !app) return;
+      storageBusy = true;
+      try {
+        storageRows = await app.storageUsage();
+      } catch (e) {
+        storageOpen = false;
+        showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
+      } finally { storageBusy = false; }
     }
 
     let auditResult = $state<import("@/core/dataAudit").DataAuditReport | null>(null);
@@ -430,6 +453,8 @@
           } catch { /* 单库读取失败跳过 */ }
         }
         auditResult = app.auditData(known);
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
       } finally { auditBusy = false; }
     }
 
@@ -608,11 +633,32 @@
     <div class="lv-skeleton"></div>
   {:else if errorMsg}
     <div class="lv-error">{errorMsg}</div>
+    {#if !bankOptions.length}
+      <div class="lv-card" style="margin-top:12px;padding:18px 20px" role="status">
+        <b>{t("report.noBankTitle")}</b>
+        <p class="lv-muted">{t("report.noBankDesc")}</p>
+        <button class="lv-btn lv-btn--primary" onclick={() => plugin.openPractice?.()}>{t("report.goPractice")}</button>
+      </div>
+    {/if}
+  {:else if !bankOptions.length}
+    <div class="lv-card" style="padding:18px 20px" role="status">
+      <b>{t("report.noBankTitle")}</b>
+      <p class="lv-muted">{t("report.noBankDesc")}</p>
+      <button class="lv-btn lv-btn--primary" onclick={() => plugin.openPractice?.()}>{t("report.goPractice")}</button>
+    </div>
   {:else}
     <p class="lv-muted" style="margin:0 0 8px;font-size:11.5px">{t("report.scopeAll")}</p>
+    {#if kpi.attempts === 0}
+      <div class="lv-empty" style="padding:24px 18px;margin-bottom:12px" role="status">
+        <div class="lv-empty-icon"><Icon name="chart" size={24} /></div>
+        <b>{t("report.noAttemptsTitle")}</b>
+        <p class="lv-muted">{t("report.noAttemptsDesc")}</p>
+        <button class="lv-btn lv-btn--primary sm" style="margin-top:12px" onclick={() => plugin.openPractice?.()}>{t("report.goPractice")}</button>
+      </div>
+    {/if}
     <div class="lv-kpis">
       <div class="lv-card lv-kpi"><div class="l"><span>{t("report.attempts")}</span><Icon name="zap" size={15} /></div><div class="v num">{kpi.attempts}</div></div>
-      <div class="lv-card lv-kpi"><div class="l"><span>{t("report.accuracy")}</span><Icon name="target" size={15} /></div><div class="v num">{kpi.accuracy}%</div></div>
+      <div class="lv-card lv-kpi"><div class="l"><span>{t("report.accuracy")}</span><Icon name="target" size={15} /></div><div class="v num">{kpi.attempts ? `${kpi.accuracy}%` : "—"}</div></div>
       <div class="lv-card lv-kpi"><div class="l"><span>{t("report.eliminated")}</span><Icon name="xcircle" size={15} /></div><div class="v num">{kpi.eliminated}</div></div>
       <div class="lv-card lv-kpi"><div class="l"><span>{t("report.streak")}</span><Icon name="flame" size={15} /></div><div class="v num">{kpi.streak} {t("entry.days")}</div></div>
     </div>
@@ -677,23 +723,21 @@
       </div>
     {/if}
 
-    {#if expOpen}
-      <!-- 63-02/65-06：近期曝光查询（近 7 天 lite；布尔事实，不含题面内容） -->
-      <div class="lv-card lv-section" style="margin-bottom:12px">
-        <b>{t("exposure.title")}</b>
-        {#if Object.keys(exposureNodes).length}
-          <div class="lv-row" style="margin:4px 0 0">
-            {#each Object.entries(exposureNodes) as [node, n] (node)}
-              <span class="lv-chip num" title={t("exposure.node." + node, node)}>{t("exposure.node." + node, node)} ×<span class="num">{n}</span></span>
-            {/each}
-          </div>
-        {/if}
-        <button class="lv-btn sm lv-btn--ghost" style="margin:4px 0" onclick={() => expOpen = !expOpen}>
-          {expOpen ? "▾" : "▸"} {t("exposure.drill")}
-        </button>
-        {#if expOpen}
-          <div class="lv-muted">{t("exposure.empty")}</div>
-        {:else}
+    <!-- 63-02/65-06：近期曝光查询（近 7 天 lite；布尔事实，不含题面内容） -->
+    <div class="lv-card lv-section" style="margin-bottom:12px">
+      <b>{t("exposure.title")}</b>
+      {#if Object.keys(exposureNodes).length}
+        <div class="lv-row" style="margin:4px 0 0">
+          {#each Object.entries(exposureNodes) as [node, n] (node)}
+            <span class="lv-chip num" title={t("exposure.node." + node, node)}>{t("exposure.node." + node, node)} ×<span class="num">{n}</span></span>
+          {/each}
+        </div>
+      {/if}
+      <button class="lv-btn sm lv-btn--ghost" style="margin:4px 0" aria-expanded={expOpen} onclick={() => expOpen = !expOpen}>
+        {expOpen ? "▾" : "▸"} {expOpen ? t("exposure.hide") : t("exposure.drill")}
+      </button>
+      {#if expOpen}
+        {#if expList.length}
           <div class="lv-row" style="margin:6px 0 0;flex-direction:column;align-items:stretch;gap:4px">
             {#each expList as x (x.qid + x.lastTs)}
               {@const stem = questions.find((q) => q.id === x.qid)?.stem}
@@ -706,9 +750,11 @@
               </div>
             {/each}
           </div>
+        {:else}
+          <div class="lv-muted" role="status">{t("exposure.empty")}</div>
         {/if}
-      </div>
-    {/if}
+      {/if}
+    </div>
 
     {#if caList.length || caOpen}
       <!-- 63-03：改答题清单（首答 → 终答 分离；报告口径：终答==首答不列） -->
@@ -946,9 +992,9 @@
           <div class="lv-row" style="margin:4px 0">
             <span class="lv-chip num">{t("action.kind." + a.kind)}</span>
             <span style="flex:1;min-width:140px">{a.detail}</span>
-            {#if a.qid}<button class="lv-btn sm" onclick={() => redoAction(a)}><Icon name="rotate" size={13} /> {t("action.kind.redo")}</button>{/if}
-            <button class="lv-btn sm" onclick={() => finishAction(a.id)}>✓ {t("action.doneBtn")}</button>
-            <button class="lv-btn sm lv-btn--ghost" onclick={() => dropAction(a.id)}>✕</button>
+            {#if a.qid}<button class="lv-btn sm" disabled={!!actionBusyId} onclick={() => redoAction(a)}><Icon name="rotate" size={13} /> {t("action.kind.redo")}</button>{/if}
+            <button class="lv-btn sm" disabled={!!actionBusyId} onclick={() => finishAction(a.id)}>✓ {t("action.doneBtn")}</button>
+            <button class="lv-btn sm lv-btn--ghost" disabled={!!actionBusyId} aria-label={t("action.dismiss")} title={t("action.dismiss")} onclick={() => dropAction(a.id)}>✕</button>
           </div>
         {/each}
         {#if openActionList.length > 10}
@@ -989,8 +1035,8 @@
         <Icon name="activity" size={13} /> {t("diag.export")}
       </button>
       <!-- 69-01/69-06/58-01 lite：存储占用 / 数据体检 / 数据出库 -->
-      <button class="lv-btn sm lv-btn--ghost" style="margin-top:8px" onclick={() => void toggleStorage()}>
-        <Icon name="save" size={13} /> {storageOpen ? t("data.hideStorage") : t("data.showStorage")}{#if storageRows.length}&nbsp;· {storageTotalKb} KB{/if}
+      <button class="lv-btn sm lv-btn--ghost" style="margin-top:8px" disabled={storageBusy} onclick={() => void toggleStorage()}>
+        <Icon name="save" size={13} /> {storageBusy ? "…" : storageOpen ? t("data.hideStorage") : t("data.showStorage")}{#if storageRows.length}&nbsp;· {storageTotalKb} KB{/if}
       </button>
       {#if storageOpen}
         <div class="lv-row" style="margin:6px 0 0">

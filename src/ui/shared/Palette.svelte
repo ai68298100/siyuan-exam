@@ -126,7 +126,7 @@
       </div>
       <div class="lv-palette-list" role="listbox" id={"lv-palette-list-" + uid}>
         {#if !shown.length}
-          <p class="lv-palette-empty">{t("palette.empty", "没有匹配的命令。")}</p>
+          <p class="lv-palette-empty">{t("palette.empty", "没有匹配的命令。试试“练习”“模考”或“导出”。")}</p>
         {:else}
           {#each shown as c, i (c.group + c.label)}
             {#if i === 0 || shown[i - 1].group !== c.group}

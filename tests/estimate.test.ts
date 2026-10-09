@@ -24,10 +24,13 @@ describe("估分", () => {
     const r = estimateScore(" b a d c a ", "BADCA")!;
     expect(r.correct).toBe(5);
   });
-  it("长度不齐按较短者计分", () => {
-    const r = estimateScore("AB", "ABCDE", { scoreEach: 1 })!;
-    expect(r.total).toBe(2);
-    expect(r.full).toBe(2);
+  it("标准化后的长度不齐时拒绝估分", () => {
+    expect(estimateScore("AB", "ABCDE", { scoreEach: 1 })).toBeNull();
+  });
+  it("长度校验前折叠全半角与所有空白", () => {
+    const r = estimateScore("Ａ B\nC", "ABC", { scoreEach: 1 })!;
+    expect(r.total).toBe(3);
+    expect(r.correct).toBe(3);
   });
   it("空输入 → null", () => {
     expect(estimateScore("", "")).toBeNull();

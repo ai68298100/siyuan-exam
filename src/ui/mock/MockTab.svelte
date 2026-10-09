@@ -11,7 +11,7 @@
     import { showMessage } from "siyuan";
     import { assemble, blueprintTotals, dedupeSectionNames, MockSession, validateBlueprint, type Blueprint, type BlueprintSection, type MockRunSnapshot, type MockScore } from "../../core/mock";
     import { newRunId } from "../../core/ids";
-    import { estimateScore } from "../../core/estimate";
+    import { estimateScore, normalizeEstimateInput } from "../../core/estimate";
     import Icon from "../shared/Icon.svelte";
     import Palette from "../shared/Palette.svelte";
     import type { PaletteCommand } from "../shared/Palette.svelte";
@@ -67,6 +67,9 @@
     let resumable = $state<MockRunSnapshot | null>(null);
     let restoreNote = $state("");
     let lastSnapAt = 0;
+    let submitError = $state("");
+    let extraTimeBusy = $state(false);
+    let blueprintBusy = $state(false);
 
     /** 快照节流保存（3s）：关页/休眠后按 wall clock 恢复同一 run */
     function persistRun() {
@@ -74,7 +77,24 @@
       const now = Date.now();
       if (now - lastSnapAt < 3000) return;
       lastSnapAt = now;
-      void app.saveMockRun(session.toSnapshot(runId, now));
+      void app.saveMockRun(session.toSnapshot(runId, now)).catch(() => undefined);
+    }
+
+    async function extendExamTime() {
+      if (!session || !runId || extraTimeBusy || session.state.extraTimeS) return;
+      extraTimeBusy = true;
+      const previousExtraTime = session.state.extraTimeS ?? 0;
+      try {
+        session.extendTime(300);
+        await app.saveMockRun(session.toSnapshot(runId, Date.now()));
+        lastSnapAt = Date.now();
+        showMessage(t("mock.extraAdded"), 3000, "info");
+      } catch (e) {
+        session.state.extraTimeS = previousExtraTime;
+        showMessage(t("mock.extraSaveFailed").replace("{message}", String(e instanceof Error ? e.message : e)), 4200, "error");
+      } finally {
+        extraTimeBusy = false;
+      }
     }
 
     onMount(async () => {
@@ -149,13 +169,21 @@
 
     /** 蓝图持久化（TODO 27 P2）：保存/恢复命名蓝图 */
     async function saveBlueprint() {
-      try { await (app as any).deps.storage.save("mock/blueprint", JSON.parse(JSON.stringify(bp))); showMessage(t("mock.bpSaved"), 3000, "info"); } catch { /* 忽略 */ }
+      if (blueprintBusy) return;
+      blueprintBusy = true;
+      try { await (app as any).deps.storage.save("mock/blueprint", JSON.parse(JSON.stringify(bp))); showMessage(t("mock.bpSaved"), 3000, "info"); }
+      catch (e) { showMessage(t("mock.bpSaveFailed").replace("{message}", String(e instanceof Error ? e.message : e)), 4200, "error"); }
+      finally { blueprintBusy = false; }
     }
     async function restoreBlueprint() {
+      if (blueprintBusy) return;
+      blueprintBusy = true;
       try {
         const saved = (await (app as any).deps.storage.load("mock/blueprint")) as Blueprint | undefined;
-        if (saved?.sections?.length) bp = saved;
-      } catch { /* 忽略 */ }
+        if (saved?.sections?.length) { bp = saved; showMessage(t("mock.bpRestored"), 3000, "info"); }
+        else showMessage(t("mock.bpRestoreEmpty"), 3000, "info");
+      } catch (e) { showMessage(String(e instanceof Error ? e.message : e), 4200, "error"); }
+      finally { blueprintBusy = false; }
     }
 
     async function startExam() {
@@ -306,6 +334,7 @@
         }
       }
       submitting = true;
+      submitError = "";
       try {
         if (timer) { clearInterval(timer); timer = null; }
         session.submit(Date.now());
@@ -343,9 +372,32 @@
         }
         await app.clearMockRun();   // 交卷回执落定后清除运行快照
         view = "report";
+      } catch (e) {
+        submitError = t("mock.submitFailed").replace("{message}", String(e instanceof Error ? e.message : e));
       } finally {
         submitting = false;
       }
+    }
+
+    async function retryFinishExam() {
+      if (!session || submitting) return;
+      // submit() is idempotent; retry only persists the already computed score.
+      submitting = true;
+      try {
+        if (!session.submitted) session.submit(Date.now());
+        await app.flush();
+        const effectiveRunId = runId || "mock-" + bp.id;
+        score = session.score();
+        if (score) {
+          await app.saveMockResult({ id: bp.id, runId: effectiveRunId, name: bp.name, startedAt, total: score.total, full: score.full, percent: score.percent, pass: score.pass, sections: score.sections.map((s) => ({ name: s.name, score: s.score, full: s.full, correct: s.correct, total: s.total })), extraTimeS: session.state.extraTimeS });
+          history = await app.listMockResults();
+        }
+        await app.clearMockRun();
+        submitError = "";
+        view = "report";
+      } catch (e) {
+        submitError = t("mock.submitFailed").replace("{message}", String(e instanceof Error ? e.message : e));
+      } finally { submitting = false; }
     }
 
     /** 成绩单导出 Markdown（本地下载） */
@@ -364,18 +416,22 @@
 
     /** 错题回炉：本次模考错题开练习会话（启动失败可见化，47-06 lite） */
     async function rewrongDrill() {
-      if (!session) return;
+      if (!session || rewrongBusy || !wrongList.length) return;
       const wrongIds = [...session.answers.values()].filter((a) => a.verdict === "wrong").map((a) => a.qid);
       const wrongs = questions.filter((q) => wrongIds.includes(q.id));
       if (!wrongs.length) return;
+      rewrongBusy = true;
       try {
         await app.startSession(wrongs, "wrong", activeBankId);
       } catch (e) {
         showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
         return;
+      } finally {
+        rewrongBusy = false;
       }
       openPractice();
     }
+    let rewrongBusy = $state(false);
 
     // ---------- 复盘（44-07 lite）：本次错题清单 + 加入下一步行动（U15 去重） ----------
     const wrongList = $derived(score && session
@@ -386,6 +442,7 @@
       : []);
     let mockActionNote = $state("");
     let mockActionBusy = $state(false);
+    let mockReasonBusy = $state(false);
 
     async function wrongsToActions() {
       if (!wrongList.length || mockActionBusy) return;
@@ -405,11 +462,16 @@
 
     /** 批量错因标注（44-07 lite）：本次全部错题标记同一错因（逐题已有细粒度入口） */
     async function bulkWrongReason(reason: "careless" | "unknown" | "trap") {
-      if (!wrongList.length) return;
-      for (const w of wrongList) {
-        try { await app.saveWrongReason(w.qid, reason); } catch { /* 单题失败不中断 */ }
-      }
-      showMessage(t("mock.bulkReasonDone").replace("{n}", String(wrongList.length)), 3000, "info");
+      if (!wrongList.length || mockReasonBusy) return;
+      mockReasonBusy = true;
+      let ok = 0;
+      let failed = 0;
+      try {
+        for (const w of wrongList) {
+          try { await app.saveWrongReason(w.qid, reason); ok++; } catch { failed++; }
+        }
+        showMessage((failed ? t("mock.bulkReasonPartial").replace("{ok}", String(ok)).replace("{failed}", String(failed)) : t("mock.bulkReasonDone").replace("{n}", String(ok))), 4200, failed ? "error" : "info");
+      } finally { mockReasonBusy = false; }
     }
 
     function openPractice() {
@@ -431,10 +493,19 @@
     let estKey = $state("");
     let estMine = $state("");
     let estResult = $state<ReturnType<typeof import("../../core/estimate").estimateScore>>(null);
+    let estResultFor = $state("");
+    let estimateBusy = $state(false);
     let estFromBank = $state(false);
     let activeBankId = $state("");
     let estSourceFilter = $state("");
     let estHistory = $state<any[]>([]);
+    const estimateKeyLength = $derived(normalizeEstimateInput(estKey).length);
+    const estimateMineLength = $derived(normalizeEstimateInput(estMine).length);
+    const estimateInputSignature = $derived(`${normalizeEstimateInput(estKey)}\u0000${normalizeEstimateInput(estMine)}`);
+    const estimateBankPool = $derived.by(() => {
+      const letterTypes = new Set(["single", "multiple", "judge"]);
+      return questions.filter((q) => letterTypes.has(q.type) && (!estSourceFilter.trim() || (q.source ?? "").includes(estSourceFilter.trim())));
+    });
 
     $effect(() => {
       if (app) void app.listEstimates().then((h) => (estHistory = h.reverse()));
@@ -442,19 +513,35 @@
 
     $effect(() => {
       if (estFromBank && questions.length) {
-        const LETTER_TYPES = new Set(["single", "multiple", "judge"]);
-        const pool = estSourceFilter.trim()
-          ? questions.filter((q) => LETTER_TYPES.has(q.type) && (q.source ?? "").includes(estSourceFilter.trim()))
-          : questions.filter((q) => LETTER_TYPES.has(q.type));
-        estKey = pool.map((q) => q.answer).join("");
+        estKey = estimateBankPool.map((q) => q.answer).join("");
       }
     });
 
     async function runEstimate() {
-      estResult = estimateScore(estMine, estKey, { scoreEach: 1, passLine: bp.passLine });
-      if (estResult) {
-        await app.saveEstimate({ key: estKey.slice(0, 40), mine: estMine.slice(0, 40), percent: estResult.percent, score: estResult.score, total: estResult.total });
-        estHistory = [...(await app.listEstimates())].reverse();
+      if (estimateBusy) return;
+      if (!estimateKeyLength || !estimateMineLength || estimateKeyLength !== estimateMineLength) {
+        showMessage(t("estimate.lengthMismatch"), 3200, "error");
+        return;
+      }
+      estimateBusy = true;
+      try {
+        estResult = estimateScore(estMine, estKey, { scoreEach: 1, passLine: bp.passLine });
+        estResultFor = estimateInputSignature;
+        if (estResult) {
+          try {
+            await app.saveEstimate({ key: estKey.slice(0, 40), mine: estMine.slice(0, 40), percent: estResult.percent, score: estResult.score, total: estResult.total });
+          } catch (e) {
+            showMessage(t("estimate.saveFailed").replace("{message}", String(e instanceof Error ? e.message : e)), 4200, "error");
+            return;
+          }
+          try {
+            estHistory = [...(await app.listEstimates())].reverse();
+          } catch (e) {
+            showMessage(t("estimate.historyLoadFailed").replace("{message}", String(e instanceof Error ? e.message : e)), 4200, "error");
+          }
+        }
+      } finally {
+        estimateBusy = false;
       }
     }
 
@@ -539,7 +626,7 @@
         <span class="lv-chip lv-chip--amb num" title={t("mock.extraTip")}><Icon name="clock" size={13} />+{Math.round((session!.state.extraTimeS ?? 0) / 60)}{t("entry.minutes")}</span>
       {/if}
       <!-- 55-06 lite：单次条件覆盖——延时入快照与成绩记录，原卷不变 -->
-      <button class="lv-chip" title={t("mock.extraTip")} onclick={() => { session?.extendTime(300); }}>
+      <button class="lv-chip" title={t("mock.extraTip")} disabled={(session?.state.extraTimeS ?? 0) > 0 || extraTimeBusy} onclick={extendExamTime}>
         <Icon name="clock" size={13} />+5{t("entry.minutes")}
       </button>
     {/if}
@@ -553,8 +640,15 @@
 
   {#if loading}
     <div class="lv-skeleton"></div>
-  {:else if errorMsg}
+  {:else if errorMsg && !questions.length}
     <div class="lv-error">{errorMsg}</div>
+    <button class="lv-btn lv-btn--primary sm" style="margin-top:10px" onclick={() => plugin.openPractice?.()}>{t("mock.goPractice")}</button>
+  {:else if !questions.length}
+    <div class="lv-empty" role="status">
+      <b>{t("state.emptyBank")}</b>
+      <p class="lv-muted">{t("mock.emptyBankDesc")}</p>
+      <button class="lv-btn lv-btn--primary sm" onclick={() => plugin.openPractice?.()}>{t("mock.goPractice")}</button>
+    </div>
   {:else if view === "config"}
     <!-- ===== 恢复进行中的模考（U19：关页/休眠后回到同一 run） ===== -->
     {#if resumable}
@@ -566,15 +660,16 @@
             {t("mock.resumeLeft")} {Math.max(0, Math.round(((resumable.startedAt + resumable.bp.durationS * 1000 - Date.now()) / 60_000)))} min
           </span>
           <span class="fn__flex-1"></span>
-          <button class="lv-btn lv-btn--primary sm" onclick={resumeExam}>{t("mock.resumeGo")}</button>
+        <button class="lv-btn lv-btn--primary sm" onclick={resumeExam}>{t("mock.resumeGo")}</button>
           <button class="lv-btn sm" onclick={discardRun}>{t("mock.resumeDrop")}</button>
         </div>
         <p class="lv-muted" style="margin:6px 0 0">{t("mock.resumeHint")}</p>
       </div>
     {/if}
     <!-- ===== S5 蓝图配置器 ===== -->
+    {#if errorMsg}<div class="lv-error" role="alert" style="margin:8px 12px">{errorMsg}</div>{/if}
     <div class="lv-row">
-      <input class="lv-input" bind:value={bp.name} style="max-width:220px" />
+      <input class="lv-input" bind:value={bp.name} style="max-width:220px" aria-label={t("mock.bpName")} />
       <span class="lv-chip num">{t("mock.totalQ")} {totals.questions}</span>
       <span class="lv-chip num">{t("mock.totalScore")} {totals.score}</span>
       <span class="lv-chip num"><Icon name="clock" size={12} />{Math.round(bp.durationS / 60)} min</span>
@@ -586,16 +681,17 @@
       <div class="lv-bp-row head"><span>{t("mock.sec")}</span><span>{t("mock.count")}</span><span>{t("mock.each")}</span><span>{t("mock.source")}</span><span>{t("mock.secKp")}</span><span></span></div>
       {#each bp.sections as s, i (i)}
         <div class="lv-bp-row">
-          <input class="lv-input" bind:value={s.name} oninput={() => updateSection(i, { name: s.name })} />
-          <input class="lv-input num" type="number" min="0" value={s.count} oninput={(e) => updateSection(i, { count: Math.max(0, parseInt((e.target as HTMLInputElement).value) || 0) })} />
-          <input class="lv-input num" type="number" min="0" step="0.1" value={s.scoreEach} oninput={(e) => updateSection(i, { scoreEach: Math.max(0, parseFloat((e.target as HTMLInputElement).value) || 0) })} />
-          <select class="lv-select" value={s.source} onchange={(e) => updateSection(i, { source: (e.target as HTMLSelectElement).value as any })}>
+          <input class="lv-input" bind:value={s.name} oninput={() => updateSection(i, { name: s.name })} aria-label={t("mock.sec")} />
+          <input class="lv-input num" type="number" min="0" value={s.count} aria-label={t("mock.count")} oninput={(e) => updateSection(i, { count: Math.max(0, parseInt((e.target as HTMLInputElement).value) || 0) })} />
+          <input class="lv-input num" type="number" min="0" step="0.1" value={s.scoreEach} aria-label={t("mock.each")} oninput={(e) => updateSection(i, { scoreEach: Math.max(0, parseFloat((e.target as HTMLInputElement).value) || 0) })} />
+          <select class="lv-select" value={s.source} aria-label={t("mock.source")} onchange={(e) => updateSection(i, { source: (e.target as HTMLSelectElement).value as any })}>
             <option value="mixed">mixed</option><option value="real">{t("mock.sourceReal")}</option><option value="mock">{t("mock.sourceMock")}</option>
           </select>
           <!-- 55-02 lite：考点配额（前缀匹配；缺口显式计入短缺，不用其他考点补齐） -->
           <input class="lv-input" value={s.kp ?? ""} placeholder={t("mock.secKpHint")}
+            aria-label={t("mock.secKp")}
             oninput={(e) => updateSection(i, { kp: (e.target as HTMLInputElement).value.trim() || undefined })} />
-          <button class="lv-btn lv-btn--ghost sm lv-bp-del" title={t("edit.cancel")} aria-label={t("edit.cancel")} onclick={() => removeSection(i)}><Icon name="close" size={13} /></button>
+          <button class="lv-btn lv-btn--ghost sm lv-bp-del" title={t("mock.removeSection")} aria-label={t("mock.removeSection")} onclick={() => removeSection(i)}><Icon name="close" size={13} /></button>
         </div>
       {/each}
       <div style="padding:8px 12px"><button class="lv-btn sm" style="border-style:dashed;width:100%" onclick={addSection}>＋ {t("mock.addSec")}</button></div>
@@ -604,13 +700,13 @@
       <label class="lv-row" style="margin:0"><input type="checkbox" bind:checked={bp.sectionTimed} /> {t("mock.sectionTimed")}</label>
       <label class="lv-row" style="margin:0"><input type="checkbox" bind:checked={bp.shuffleOptions} disabled /> {t("mock.shuffle")}<span class="lv-muted">· {t("todo")}</span></label>
       <label class="lv-row" style="margin:0"><input type="checkbox" bind:checked={bp.lockout} /> {t("mock.lockout")}</label>
-      <span class="lv-chip">{t("mock.passLine")} <input class="lv-input num" style="width:64px" type="number" bind:value={bp.passLine} /></span>
+      <span class="lv-chip">{t("mock.passLine")} <input class="lv-input num" style="width:64px" type="number" bind:value={bp.passLine} aria-label={t("mock.passLine")} /></span>
     </div>
     {#if !bp.sections.length}<div class="lv-empty">{t("mock.needSec")}</div>{/if}
     <div class="lv-row">
-      <button class="lv-btn lv-btn--primary" onclick={startExam} disabled={!bp.sections.length}><Icon name="play" size={16} /> {t("mock.start")}</button>
-      <button class="lv-btn sm" onclick={saveBlueprint}><Icon name="save" size={14} /> {t("mock.bpSave")}</button>
-      <button class="lv-btn sm" onclick={restoreBlueprint}><Icon name="folder" size={14} /> {t("mock.bpRestore")}</button>
+      <button class="lv-btn lv-btn--primary" onclick={startExam} disabled={!bp.sections.length || submitting}><Icon name="play" size={16} /> {t("mock.start")}</button>
+      <button class="lv-btn sm" onclick={saveBlueprint} disabled={blueprintBusy}><Icon name="save" size={14} /> {t("mock.bpSave")}</button>
+      <button class="lv-btn sm" onclick={restoreBlueprint} disabled={blueprintBusy}><Icon name="folder" size={14} /> {t("mock.bpRestore")}</button>
     </div>
     <!-- 考后估分 -->
     <details class="lv-card lv-pad-card" style="padding:12px 16px">
@@ -625,7 +721,7 @@
         <label class="lv-row" style="margin:0"><input type="checkbox" bind:checked={estFromBank} /> {t("estimate.fromBank")}</label>
         {#if estFromBank}
           <input class="lv-input num" style="width:140px" bind:value={estSourceFilter} placeholder={t("estimate.sourceFilter")} />
-          <span class="lv-chip num">{t("estimate.bankQ")} {questions.filter((q) => q.type !== "material" && (!estSourceFilter.trim() || (q.source ?? "").includes(estSourceFilter.trim()))).length}</span>
+          <span class="lv-chip num">{t("estimate.bankQ")} {estimateBankPool.length}</span>
         {:else}
           <span class="lv-chip">{t("estimate.key")}</span>
           <input class="lv-input num" style="flex:1;min-width:160px" bind:value={estKey} placeholder="BADCA…" />
@@ -636,8 +732,9 @@
         <input class="lv-input num" style="flex:1;min-width:160px" bind:value={estMine} placeholder="BADCA…" />
       </div>
       <div class="lv-row">
-        <button class="lv-btn sm" onclick={runEstimate} disabled={!estKey.trim() || !estMine.trim()}>{t("estimate.run")}</button>
-        {#if estResult}
+      <button class="lv-btn sm" onclick={runEstimate} disabled={estimateBusy || !estimateKeyLength || !estimateMineLength || estimateKeyLength !== estimateMineLength} title={estimateKeyLength !== estimateMineLength ? t("estimate.lengthMismatch") : ""}>{estimateBusy ? "…" : t("estimate.run")}</button>
+      {#if estimateKeyLength && estimateMineLength && estimateKeyLength !== estimateMineLength}<span class="lv-chip lv-chip--amb" role="status">{t("estimate.lengthMismatch")}</span>{/if}
+        {#if estResult && estResultFor === estimateInputSignature}
           <span class="lv-chip num">{t("estimate.score")} <b>{estResult.score}</b>/{estResult.full}</span>
           <span class="lv-chip lv-chip--grn num">✓ {estResult.correct}</span>
           <span class="lv-chip lv-chip--red num">✕ {estResult.wrong}</span>
@@ -646,10 +743,9 @@
           <span class="lv-marks num">{estResult.marks.join(" ")}</span>
           {#if estFromBank}
             <div class="lv-row" style="margin:4px 0 0">
-              {#each estKey.split("") as _ans, i (i)}
-                {@const q = questions.filter((x) => x.type !== "material")[i]}
+              {#each estimateBankPool as q, i (i)}
                 {@const mark = estResult.marks[i] ?? "–"}
-                {#if q}<span class="lv-chip num" class:lv-chip--grn={mark === "✓"} class:lv-chip--red={mark === "✕"} class:lv-chip--amb={mark === "–"} title={q.stem.slice(0, 60)}>{i + 1}. {q.answer} {mark}</span>{/if}
+                <span class="lv-chip num" class:lv-chip--grn={mark === "✓"} class:lv-chip--red={mark === "✕"} class:lv-chip--amb={mark === "–"} title={q.stem.slice(0, 60)}>{i + 1}. {q.answer} {mark}</span>
               {/each}
             </div>
           {/if}
@@ -685,6 +781,12 @@
       }}><Icon name="expand" size={14} /></button>
       <button class="lv-btn lv-btn--primary sm" disabled={submitting} onclick={() => finishExam(false)}>{t("mock.handIn")}</button>
     </div>
+    {#if submitError}
+      <div class="lv-error" role="alert" style="margin:8px 0">
+        {submitError}
+        <button class="lv-btn sm" style="margin-left:8px" disabled={submitting} onclick={retryFinishExam}>{submitting ? "…" : t("mock.retrySubmit")}</button>
+      </div>
+    {/if}
     {#if restoreNote}<div class="lv-error">{restoreNote}</div>{/if}
     <div class="lv-card lv-question">
       <div class="lv-stem">{currentQ.stem}</div>
@@ -867,7 +969,7 @@
           <button class="lv-btn sm" disabled={mockActionBusy} onclick={wrongsToActions}><Icon name="pin" size={13} /> {mockActionBusy ? "…" : t("action.addWrong")}</button>
           <span class="lv-muted">{t("session.reason")}:</span>
           {#each ["careless", "unknown", "trap"] as r, _i (_i)}
-            <button class="lv-chip" onclick={() => bulkWrongReason(r as "careless" | "unknown" | "trap")}>{t("reason." + r)}</button>
+            <button class="lv-chip" disabled={mockReasonBusy} onclick={() => bulkWrongReason(r as "careless" | "unknown" | "trap")}>{t("reason." + r)}</button>
           {/each}
           {#if mockActionNote}<span class="lv-muted num">{mockActionNote}</span>{/if}
         </div>
@@ -884,7 +986,7 @@
           showMessage(t("report.dailyDone"), 3200, "info");
         }}><Icon name="book" size={14} /> {t("mock.exportToDoc")}</button>
       {/if}
-      <button class="lv-btn lv-btn--primary" onclick={rewrongDrill}><Icon name="xcircle" size={15} /> {t("mock.rewrong")}</button>
+      {#if wrongList.length}<button class="lv-btn lv-btn--primary" disabled={rewrongBusy} onclick={rewrongDrill}><Icon name="xcircle" size={15} /> {rewrongBusy ? "…" : t("mock.rewrong")}</button>{/if}
       <button class="lv-btn" onclick={() => { view = "config"; }}><Icon name="rotate" size={15} /> {t("mock.again")}</button>
     </div>
   {/if}

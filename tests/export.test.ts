@@ -6,6 +6,7 @@ import { ExamApp, type MockRecord } from "../src/app";
 import { MemoryStorage } from "../src/core/attemptLog";
 import { KernelApiClient } from "../src/kernel/client";
 import type { KernelTransport } from "../src/kernel/client";
+import type { MockRunSnapshot } from "../src/core/mock";
 
 const q = makeQuestion({
   type: "single",
@@ -78,5 +79,85 @@ describe("模考成绩持久化", () => {
   it("空历史", async () => {
     const app = await setup();
     expect(await app.listMockResults()).toEqual([]);
+  });
+
+  it("同一 run 重试保存会更新成绩而不重复占历史", async () => {
+    const app = await setup();
+    const rec: MockRecord = { id: "bp", runId: "run-1", name: "卷", startedAt: 1, total: 6, full: 10, percent: 60, pass: true };
+    await app.saveMockResult(rec);
+    await app.saveMockResult({ ...rec, total: 7, percent: 70 });
+    const list = await app.listMockResults();
+    expect(list).toHaveLength(1);
+    expect(list[0].total).toBe(7);
+  });
+
+  it("并发快照写入按顺序落盘，保留最新状态", async () => {
+    let releaseFirst!: () => void;
+    let markFirstStarted!: () => void;
+    let holdFirst = true;
+    const firstStarted = new Promise<void>((resolve) => { markFirstStarted = resolve; });
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    class DelayedStorage extends MemoryStorage {
+      override async save(key: string, value: unknown) {
+        if (key === "mock/run" && holdFirst) {
+          holdFirst = false;
+          markFirstStarted();
+          await firstGate;
+        }
+        await super.save(key, value);
+      }
+    }
+    const transport: KernelTransport = { async post() { throw new Error("offline"); } };
+    const storage = new DelayedStorage();
+    const app = new ExamApp({ client: new KernelApiClient(transport), storage });
+    await app.init("d-t");
+    const snapshot = (savedAt: number): MockRunSnapshot => ({
+      v: 1,
+      runId: "run-1",
+      bp: { id: "bp", name: "卷", durationS: 3600, passLine: 60, shuffleOptions: false, sectionTimed: false, sections: [] },
+      qids: [], sectionOf: {}, scoreOf: {}, indefinite: [], startedAt: 1, savedAt,
+      answers: [], flags: [], cursor: 0, sectionStart: {}, screenSwitches: 0,
+    });
+    const first = app.saveMockRun(snapshot(1));
+    await firstStarted;
+    const latest = app.saveMockRun(snapshot(2));
+    releaseFirst();
+    await Promise.all([first, latest]);
+    expect((await storage.load("mock/run") as MockRunSnapshot).savedAt).toBe(2);
+  });
+
+  it("清除快照等待先前写入完成，避免结束后恢复已结束的模考", async () => {
+    let releaseFirst!: () => void;
+    let markFirstStarted!: () => void;
+    const firstStarted = new Promise<void>((resolve) => { markFirstStarted = resolve; });
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    class DelayedStorage extends MemoryStorage {
+      private delayFirst = true;
+      override async save(key: string, value: unknown) {
+        if (key === "mock/run" && this.delayFirst) {
+          this.delayFirst = false;
+          markFirstStarted();
+          await firstGate;
+        }
+        await super.save(key, value);
+      }
+    }
+    const transport: KernelTransport = { async post() { throw new Error("offline"); } };
+    const storage = new DelayedStorage();
+    const app = new ExamApp({ client: new KernelApiClient(transport), storage });
+    await app.init("d-t");
+    const snapshot: MockRunSnapshot = {
+      v: 1,
+      runId: "run-1",
+      bp: { id: "bp", name: "卷", durationS: 3600, passLine: 60, shuffleOptions: false, sectionTimed: false, sections: [] },
+      qids: [], sectionOf: {}, scoreOf: {}, indefinite: [], startedAt: 1, savedAt: 1,
+      answers: [], flags: [], cursor: 0, sectionStart: {}, screenSwitches: 0,
+    };
+    const first = app.saveMockRun(snapshot);
+    await firstStarted;
+    const clear = app.clearMockRun();
+    releaseFirst();
+    await Promise.all([first, clear]);
+    expect(await storage.load("mock/run")).toBeNull();
   });
 });

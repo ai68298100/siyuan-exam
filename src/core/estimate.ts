@@ -5,6 +5,11 @@
 // ============================================================
 import { foldText } from "./answer";
 
+/** 估分按题序对照：全半角折叠、去空白、统一大写后再比较。 */
+export function normalizeEstimateInput(value: string): string {
+  return foldText(value).replace(/\s/g, "").toUpperCase();
+}
+
 export interface EstimateResult {
   total: number;
   answered: number;
@@ -26,11 +31,10 @@ export function estimateScore(
 ): EstimateResult | null {
   const scoreEach = opts.scoreEach ?? 1;
   const passLine = opts.passLine ?? 60;
-  const mine = foldText(myAnswers).replace(/\s/g, "").toUpperCase().split("");
-  const std = foldText(key).replace(/\s/g, "").toUpperCase().split("");
-  if (!mine.length || !std.length) return null;
-  const total = Math.min(mine.length, std.length);
-  if (total === 0) return null;
+  const mine = normalizeEstimateInput(myAnswers).split("");
+  const std = normalizeEstimateInput(key).split("");
+  if (!mine.length || !std.length || mine.length !== std.length) return null;
+  const total = mine.length;
   let correct = 0,
     wrong = 0,
     blank = 0;

@@ -1,4 +1,4 @@
-// 原型基准截图：design/prototype 15 路由 → output/playwright/proto-<路由>.png
+// 原型基准截图：design/prototype 17 路由 → output/playwright/proto-<路由>.png
 // 用法：node scripts/visual-harness/shoot-prototype.mjs
 import { createServer } from "node:http";
 import { readFileSync, existsSync, mkdirSync } from "node:fs";

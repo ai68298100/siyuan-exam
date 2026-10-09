@@ -69,6 +69,8 @@ import { ttsSpeak } from "@/core/tts";
     let reciteSessionId = $state("");
     let reciteDone = $state(false);
     let reciteHint = $state(0);
+    let reciteSaving = $state(false);
+    let reciteError = $state("");
     let reciteRatings = $state<number[]>([]);
 
     // 会话态
@@ -195,6 +197,8 @@ import { ttsSpeak } from "@/core/tts";
     const kpBreakdown = $derived.by(() => {
       void sessionRev;
       if (!sessionDone || !session) return [];
+      // 仅用于本次结算的临时聚合器，不作为组件响应式状态。
+      // eslint-disable-next-line svelte/prefer-svelte-reactivity
       const map = new Map<string, { kp: string; correct: number; total: number; wrong: number }>();
       for (const a of session.answered) {
         const q = questions.find((x) => x.id === a.qid);
@@ -1004,7 +1008,7 @@ import { ttsSpeak } from "@/core/tts";
     }
 
     async function createBank() {
-      if (!newBankName.trim() || creating) return;
+      if (!newBankName.trim() || creating) return false;
       creating = true; errorMsg = "";
       try {
         const b = await app.createBank(newBankName);
@@ -1014,8 +1018,10 @@ import { ttsSpeak } from "@/core/tts";
         newBankName = "";
         // 25-P1 首用：建库自带示例题（app.createBank），留在入口视图由 47-02 首用引导接管——
         // 最快首题路径是直接练示例题；导入/手工录题在下方动作区一步可达
+        return true;
       } catch (e) {
         errorMsg = offline ? t("state.offlineHint") : String(e instanceof Error ? e.message : e);
+        return false;
       } finally { creating = false; }
     }
 
@@ -1092,6 +1098,13 @@ import { ttsSpeak } from "@/core/tts";
       const ids = new Set(questions.map((q) => q.id));
       return app.wrongItems().filter((w) => ids.has(w.qid));
     });
+    const practiceQuestions = $derived(questions.filter((q) => q.type !== "material"));
+    const cramCount = $derived(app.cramDrill(practiceQuestions).length);
+    function todayQueueFor(available: Question[], planned: Question[] = plan?.queue ?? []) {
+      return groupAdjacent((planned.length ? planned : available.slice(0, 10)).filter((q) => q.type !== "material"));
+    }
+    const todayQueue = $derived(todayQueueFor(practiceQuestions));
+    const favoriteCount = $derived(practiceQuestions.filter((q) => q.fav).length);
     /** 错因计数：口径在 core/wrongReasonMix（reasons map 优先 → 遗留字段 → 未标注桶） */
     const reasonMap = $derived.by(() => {
       void dataRev;
@@ -1184,17 +1197,17 @@ import { ttsSpeak } from "@/core/tts";
       errorMsg = "";
       sessionSeed = randomSeedId(); // 65-05：抽题与卷序共用同一种子
       const qs = (await loadQuestions()).filter((q) => q.type !== "material");
-      if (!qs.length) { errorMsg = t("state.emptyBank"); showMessage(t("state.emptyBank"), 2800, "info"); return; }
+      if (!qs.length) { showMessage(t("state.emptyBank"), 2800, "info"); return; }
       let picked: Question[];
       if (mode === "wrong") {
         picked = app.wrongDrill(qs);
-        if (!picked.length) { errorMsg = t("state.noWrong"); showMessage(t("state.noWrong"), 2800, "info"); return; }
+        if (!picked.length) { showMessage(t("state.noWrong"), 2800, "info"); return; }
       } else if (mode === "cram") {
         picked = app.cramDrill(qs);
-        if (!picked.length) { errorMsg = t("state.noCram"); showMessage(t("state.noCram"), 2800, "info"); return; }
+        if (!picked.length) { showMessage(t("state.noCram"), 2800, "info"); return; }
       } else if (mode === "fav") {
         picked = app.favDrill(qs);
-        if (!picked.length) { errorMsg = t("state.noFav"); showMessage(t("state.noFav"), 2800, "info"); return; }
+        if (!picked.length) { showMessage(t("state.noFav"), 2800, "info"); return; }
       } else if (mode === "daily") {
         const goal = Number(plugin.settingUtils?.get?.("dailyGoal") ?? 10);
         picked = app.dailyDrill(qs, [], Number.isFinite(goal) && goal > 0 ? goal : 10);
@@ -1353,7 +1366,7 @@ import { ttsSpeak } from "@/core/tts";
       let due: Question[];
       try { due = await (app as any).dueQuestions(bankName, qs); } catch { due = []; }
       rebuildPlan(due);
-      const queue = groupAdjacent((plan?.queue?.length ? plan.queue : qs.slice(0, 10)).filter((q) => q.type !== "material"));
+      const queue = todayQueueFor(qs);
       await safeStart(queue, plan?.mode === "sprint" ? "cram" : "daily", () => {
         feedback = null; selected = ""; confidenceSel = ""; sessionDone = null;
         view = "session";
@@ -1384,16 +1397,25 @@ import { ttsSpeak } from "@/core/tts";
     }
 
     async function rateSelf(rating: 1 | 2 | 3 | 4) {
+      if (reciteSaving) return;
       const q = reciteQueue[reciteCursor];
       if (!q) return;
-      reciteRatings.push(rating);
-      await app.reciteAnswer(bankName, q as Question & { blockId?: string }, rating, reciteSessionId, 0);
-      plugin.refreshDock?.();
-      reciteHint = 0;
-      if (reciteCursor < reciteQueue.length - 1) {
-        reciteCursor++; reciteRevealed = false;
-      } else {
-        reciteDone = true;
+      reciteSaving = true;
+      reciteError = "";
+      try {
+        await app.reciteAnswer(bankName, q as Question & { blockId?: string }, rating, reciteSessionId, 0);
+        reciteRatings.push(rating);
+        plugin.refreshDock?.();
+        reciteHint = 0;
+        if (reciteCursor < reciteQueue.length - 1) {
+          reciteCursor++; reciteRevealed = false;
+        } else {
+          reciteDone = true;
+        }
+      } catch (e) {
+        reciteError = String(e instanceof Error ? e.message : e);
+      } finally {
+        reciteSaving = false;
       }
     }
 
@@ -1418,10 +1440,14 @@ import { ttsSpeak } from "@/core/tts";
 
     async function copyChallengeCode() {
       const paper = buildChallengePaper();
-      if (!paper.questions.length) { errorMsg = t("state.emptyBank"); return; }
-      const { encodeChallengeCopy } = await import("@/core/challenge");
-      await navigator.clipboard.writeText(encodeChallengeCopy(paper));
-      showMessage(t("challenge.copied"), 3600, "info");
+      if (!paper.questions.length) { showMessage(t("state.emptyBank"), 2800, "info"); return; }
+      try {
+        const { encodeChallengeCopy } = await import("@/core/challenge");
+        await navigator.clipboard.writeText(encodeChallengeCopy(paper));
+        showMessage(t("challenge.copied"), 3600, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
+      }
     }
 
     async function importChallengeCode() {
@@ -3122,6 +3148,7 @@ import { ttsSpeak } from "@/core/tts";
       } else if (view === "recite") {
         if (reciteDone || !reciteQueue.length) return;
         if (!reciteRevealed && e.key === " ") { e.preventDefault(); reciteRevealed = true; return; }
+        if (!reciteRevealed && reciteHint === 1 && e.key.toLowerCase() === "h" && reciteQueue[reciteCursor]?.analysis) { e.preventDefault(); reciteHint = 2; return; }
         if (reciteRevealed && /^[1-4]$/.test(e.key)) { e.preventDefault(); void rateSelf(Number(e.key) as 1 | 2 | 3 | 4); }
       }
     }
@@ -3407,7 +3434,7 @@ import { ttsSpeak } from "@/core/tts";
           <div class="lv-row lv-center-text"><span class="lv-muted">{t("guard.or")}</span></div>
           <div class="lv-row">
             <button class="lv-btn" style="flex:1" onclick={downloadTemplate}><Icon name="import" size={15} /> {t("import.template")}</button>
-            <button class="lv-btn" style="flex:1" onclick={() => view = "import"}><Icon name="import" size={15} /> {t("import.title")}</button>
+            <button class="lv-btn" style="flex:1" disabled={creating || !newBankName.trim()} onclick={async () => { if (await createBank()) view = "import"; }}><Icon name="import" size={15} /> {t("guard.createAndImport")}</button>
           </div>
           <p class="lv-hint">{t("guard.needBankFirst")}</p>
         </div>
@@ -3493,12 +3520,13 @@ import { ttsSpeak } from "@/core/tts";
               {/if}
               <!-- 原型：主操作在 hero 卡内部，与上下文成组；空队列禁用防无效点击 -->
               <div class="lv-hero-actions">
-                <button class="lv-btn lv-btn--primary" onclick={startToday} disabled={!plan.queue.length} title={plan.queue.length ? "" : t("state.emptyBank")}><Icon name="play" size={16} /> {t("entry.startToday")}</button>
+                <button class="lv-btn lv-btn--primary" onclick={startToday} disabled={!todayQueue.length} title={todayQueue.length ? "" : t("state.emptyBank")}><Icon name="play" size={16} /> {t("entry.startToday")}</button>
+                {#if !plan.queue.length && todayQueue.length}<span class="lv-muted" role="status">{t("entry.queueFallback")}</span>{/if}
               </div>
             </div>
             <div class="lv-entry-num">
               <div class="lv-entry-countwrap">
-                <span class="num lv-entry-count">{plan.queue.length}</span>
+                <span class="num lv-entry-count">{todayQueue.length}</span>
                 <span class="lv-entry-unit">{t("browse.count")}</span>
               </div>
               <div class="lv-entry-label">{t("entry.queueLabel")}</div>
@@ -3538,25 +3566,25 @@ import { ttsSpeak } from "@/core/tts";
         <div class="lv-section-title"><span>{t("entry.modes")}</span></div>
         <!-- 层级：队列驱动三模式（快速/每日/错题）为一级 accent 键帽；低频三模式降噪为中性键帽 -->
         <div class="lv-modes">
-          <button class="lv-mode" onclick={() => startDrill("quick")}>
+          <button class="lv-mode" disabled={!practiceQuestions.length} title={!practiceQuestions.length ? t("state.emptyBank") : ""} onclick={() => startDrill("quick")}>
             <span class="lv-mode-icon"><Icon name="zap" /></span><span class="lv-mode-body"><b>{t("mode.quick")}</b><span class="lv-muted">{t("mode.quick.desc")}</span></span>
           </button>
-          <button class="lv-mode" onclick={() => startDrill("daily")}>
+          <button class="lv-mode" disabled={!practiceQuestions.length} title={!practiceQuestions.length ? t("state.emptyBank") : ""} onclick={() => startDrill("daily")}>
             <span class="lv-mode-icon"><Icon name="calendar" /></span><span class="lv-mode-body"><b>{t("mode.daily")}</b><span class="lv-muted">{t("mode.daily.desc")}</span></span>
           </button>
-          <button class="lv-mode" onclick={() => startDrill("wrong")}>
-            <span class="lv-mode-icon"><Icon name="xcircle" /></span><span class="lv-mode-body"><b>{t("mode.wrong")}</b><span class="lv-muted num">{app.wrongItems().length} {t("mode.wrong.unit")}</span></span>
+          <button class="lv-mode" disabled={!wrongList.length} title={!wrongList.length ? t("state.noWrong") : ""} onclick={() => startDrill("wrong")}>
+            <span class="lv-mode-icon"><Icon name="xcircle" /></span><span class="lv-mode-body"><b>{t("mode.wrong")}</b><span class="lv-muted num">{wrongList.length} {t("mode.wrong.unit")}</span></span>
           </button>
-          <button class="lv-mode lv-mode--minor" onclick={() => startRecite()}>
+          <button class="lv-mode lv-mode--minor" disabled={!practiceQuestions.length} title={!practiceQuestions.length ? t("state.emptyBank") : ""} onclick={() => startRecite()}>
             <span class="lv-mode-icon"><Icon name="rotate" /></span><span class="lv-mode-body"><b>{t("mode.recite")}</b><span class="lv-muted">{t("mode.recite.desc")}</span></span>
           </button>
-          <button class="lv-mode lv-mode--minor" onclick={() => startDrill("cram")}>
+          <button class="lv-mode lv-mode--minor" disabled={!cramCount} title={!cramCount ? t("state.noCram") : ""} onclick={() => startDrill("cram")}>
             <span class="lv-mode-icon"><Icon name="flame" /></span><span class="lv-mode-body"><b>{t("mode.cram")}</b><span class="lv-muted">{t("mode.cram.desc")}</span></span>
           </button>
-          <button class="lv-mode lv-mode--minor" onclick={() => startDrill("fav")}>
-            <span class="lv-mode-icon"><Icon name="star" /></span><span class="lv-mode-body"><b>{t("mode.fav")}</b><span class="lv-muted">{t("mode.fav.desc")}（<span class="num">{questions.filter((q) => q.fav).length}</span> {t("mode.wrong.unit")}）</span></span>
+          <button class="lv-mode lv-mode--minor" disabled={!favoriteCount} title={!favoriteCount ? t("state.noFav") : ""} onclick={() => startDrill("fav")}>
+            <span class="lv-mode-icon"><Icon name="star" /></span><span class="lv-mode-body"><b>{t("mode.fav")}</b><span class="lv-muted">{t("mode.fav.desc")}（<span class="num">{favoriteCount}</span> {t("mode.wrong.unit")}）</span></span>
           </button>
-          <button class="lv-mode lv-mode--disabled" title={t("todo")}>
+          <button class="lv-mode lv-mode--disabled" title={t("todo")} disabled aria-disabled="true">
             <span class="lv-mode-icon"><Icon name="layers" /></span><span class="lv-mode-body"><b>{t("mode.special")}</b><span class="lv-muted">{t("todo")}</span></span>
           </button>
         </div>
@@ -3622,7 +3650,7 @@ import { ttsSpeak } from "@/core/tts";
           {#if kpBreakdown.length > 1}
             <!-- 知识点分布：本次会话按考点聚合对错，帮助即时识别薄弱考点 -->
             <div class="lv-row" style="flex-wrap:wrap;justify-content:center;gap:4px;margin:8px 0 2px">
-              {#each kpBreakdown as kp}
+              {#each kpBreakdown as kp (kp.kp)}
                 <span class="lv-chip {kp.wrong > 0 ? 'lv-chip--red' : 'lv-chip--grn'} num" title="{kp.kp}: {kp.correct}/{kp.total}">
                   {kp.kp} {kp.correct}/{kp.total}
                 </span>
@@ -3964,11 +3992,8 @@ import { ttsSpeak } from "@/core/tts";
           {/if}
           {#if stemHtml}<div class="lv-stem lv-rich b3-typography">{@html stemHtml}</div>{:else}<div class="lv-stem">{q.stem}</div>{/if}
           {#if !reciteRevealed}
-            {#if q.kp}
-              <div class="lv-row"><button class="lv-chip" onclick={() => reciteHint = 1}><Icon name="bulb" size={12} /> {t("recite.hint1")}：{q.kp}</button></div>
-            {/if}
-            {#if reciteHint >= 2 && q.analysis}
-              <div class="lv-row"><span class="lv-chip"><Icon name="bulb" size={12} /> {t("recite.hint2")}：{q.analysis.slice(0, 24)}…</span></div>
+            {#if q.kp || q.analysis}
+              <div class="lv-row"><button class="lv-chip" onclick={() => reciteHint = reciteHint === 0 ? (q.kp ? 1 : 2) : reciteHint === 1 && q.analysis ? 2 : 1} title={q.analysis ? t("recite.hint2Key") : ""}><Icon name="bulb" size={12} /> {reciteHint >= 2 ? t("recite.hint2") : t("recite.hint1")}：{reciteHint >= 2 ? (q.analysis ?? "").slice(0, 24) : (q.kp ?? q.analysis ?? "").slice(0, 24)}</button></div>
             {/if}
             <div class="lv-row" style="justify-content:center">
               <button class="lv-btn lv-btn--primary" onclick={() => reciteRevealed = true}>{t("recite.reveal")}</button>
@@ -3987,12 +4012,13 @@ import { ttsSpeak } from "@/core/tts";
             {#if q.analysis}<div class="lv-analysis">{q.analysis}</div>{/if}
             <div class="lv-rate">
               <!-- Anki 现代改造式自评：数字键帽常显语义色（红/琥珀/绿/主色），可扫视；hover 再整钮染色 -->
-              <button class="lv-btn r1" onclick={() => rateSelf(1)}><span class="lv-rate-key">1</span> {t("rate.1")}</button>
-              <button class="lv-btn r2" onclick={() => rateSelf(2)}><span class="lv-rate-key">2</span> {t("rate.2")}</button>
-              <button class="lv-btn r3" onclick={() => rateSelf(3)}><span class="lv-rate-key">3</span> {t("rate.3")}</button>
-              <button class="lv-btn r4" onclick={() => rateSelf(4)}><span class="lv-rate-key">4</span> {t("rate.4")}</button>
+              <button class="lv-btn r1" disabled={reciteSaving} onclick={() => rateSelf(1)}><span class="lv-rate-key">1</span> {reciteSaving ? "…" : t("rate.1")}</button>
+              <button class="lv-btn r2" disabled={reciteSaving} onclick={() => rateSelf(2)}><span class="lv-rate-key">2</span> {reciteSaving ? "…" : t("rate.2")}</button>
+              <button class="lv-btn r3" disabled={reciteSaving} onclick={() => rateSelf(3)}><span class="lv-rate-key">3</span> {reciteSaving ? "…" : t("rate.3")}</button>
+              <button class="lv-btn r4" disabled={reciteSaving} onclick={() => rateSelf(4)}><span class="lv-rate-key">4</span> {reciteSaving ? "…" : t("rate.4")}</button>
             </div>
           {/if}
+          {#if reciteError}<div class="lv-error" role="alert">{reciteError}</div>{/if}
         </div>
       {/if}
     </div>
@@ -4071,7 +4097,7 @@ import { ttsSpeak } from "@/core/tts";
               <div class="stack-sm" style="margin-top:10px">
                 <button class="lv-btn lv-btn--primary" style="width:100%" onclick={() => void startDrill("wrong")}><Icon name="rotate" size={15} /> {t("wrongbook.strategy.weighted")}</button>
                 <button class="lv-btn" style="width:100%" onclick={() => { filterWrong = true; view = "browse"; void loadQuestions(); }}><Icon name="table" size={15} /> {t("wrongbook.strategy.browse")}</button>
-                <button class="lv-btn" style="width:100%" onclick={() => void startDrill("cram")}><Icon name="flame" size={15} /> {t("mode.cram")}</button>
+                <button class="lv-btn" style="width:100%" disabled={!cramCount} title={!cramCount ? t("state.noCram") : ""} onclick={() => void startDrill("cram")}><Icon name="flame" size={15} /> {t("mode.cram")}{!cramCount ? ` (${t("state.noCram")})` : ""}</button>
               </div>
               <div class="divider" style="margin:12px 0 10px"></div>
               <button class="lv-btn lv-btn--ghost" style="width:100%;color:var(--lv-text-3)" disabled={!wrongList.length || bulkMasterBusy} onclick={() => void masterAllWrong()}>
@@ -4350,9 +4376,9 @@ import { ttsSpeak } from "@/core/tts";
       </div>
       <div class="lv-card" style="margin-top:10px">
         <div class="lv-row">
-          <label class="lv-btn">
+          <label class="lv-btn" class:disabled={materialsBusy || offline || app.materialsReadonly} style={(materialsBusy || offline || app.materialsReadonly) ? "opacity:.62;cursor:not-allowed;pointer-events:none" : ""} aria-disabled={materialsBusy || offline || app.materialsReadonly} title={app.materialsReadonly ? t("materials.readonly") : offline ? t("state.offlineHint") : ""}>
             <Icon name="paperclip" size={14} /> {t("materials.pickFile")}
-            <input type="file" accept=".pdf,.mp4,.webm,.m4v,.mp3,.m4a,.wav,.ogg,.png,.jpg,.jpeg,.gif,.webp,.md,.txt,.docx,.epub" style="display:none" onchange={onMaterialFile} disabled={materialsBusy || offline} />
+            <input type="file" accept=".pdf,.mp4,.webm,.m4v,.mp3,.m4a,.wav,.ogg,.png,.jpg,.jpeg,.gif,.webp,.md,.txt,.docx,.epub" style="display:none" onchange={onMaterialFile} disabled={materialsBusy || offline || app.materialsReadonly} />
           </label>
           <span class="lv-muted">{t("materials.copyHint")}</span>
         </div>
@@ -4360,7 +4386,7 @@ import { ttsSpeak } from "@/core/tts";
           <span class="lv-chip"><Icon name="link" size={12} /> {t("materials.link")}</span>
           <input class="lv-input" style="flex:1;min-width:200px" placeholder="https://…" bind:value={matLink} />
           <input class="lv-input" style="max-width:150px" placeholder={t("materials.linkTitle")} bind:value={matLinkTitle} />
-          <button class="lv-btn" onclick={registerMaterialLink} disabled={materialsBusy || offline || !matLink.trim()}>{t("materials.register")}</button>
+          <button class="lv-btn" onclick={registerMaterialLink} disabled={materialsBusy || offline || app.materialsReadonly || !matLink.trim()} title={app.materialsReadonly ? t("materials.readonly") : ""}>{t("materials.register")}</button>
         </div>
         <div class="lv-row lv-muted" style="font-size:11px">
           <span>{t("materials.meta")}</span>
@@ -4388,7 +4414,7 @@ import { ttsSpeak } from "@/core/tts";
               <span class="fn__flex-1"></span>
               <button class="lv-btn sm" onclick={() => toggleNotes(m)}><Icon name="pencil" size={13} /> {t("materials.notes")}（<span class="num">{app.listMaterialNotes(m.id).length}</span>）</button>
               <button class="lv-btn sm" onclick={() => openMaterial(m)}>↗ {t("materials.open")}</button>
-              <button class="lv-btn sm lv-btn--ghost" onclick={() => void removeMaterialEntry(m)} disabled={materialsBusy}><Icon name="trash" size={13} /></button>
+              <button class="lv-btn sm lv-btn--ghost" onclick={() => void removeMaterialEntry(m)} disabled={materialsBusy || app.materialsReadonly} title={app.materialsReadonly ? t("materials.readonly") : t("materials.removeTitle")}><Icon name="trash" size={13} /></button>
             </div>
             <div class="lv-row lv-muted" style="font-size:11px;flex-wrap:wrap">
               {#each m.locations as l, _li (_li)}
@@ -4414,24 +4440,24 @@ import { ttsSpeak } from "@/core/tts";
                       <div style="font-size:13px;overflow-wrap:anywhere">{n.text}</div>
                     </div>
                     {#if n.locator}<button class="lv-btn sm" onclick={() => openMaterialAt(m, n)}>↗ {t("materials.openAt")}</button>{/if}
-                    <button class="lv-btn sm lv-btn--ghost" onclick={() => startEditNote(n)}><Icon name="pencil" size={12} /></button>
-                    <button class="lv-btn sm lv-btn--ghost" onclick={() => void removeNoteEntry(m, n)} disabled={materialsBusy}><Icon name="trash" size={13} /></button>
+                    <button class="lv-btn sm lv-btn--ghost" onclick={() => startEditNote(n)} disabled={app.materialsReadonly} title={app.materialsReadonly ? t("materials.readonly") : t("materials.noteEdit")}><Icon name="pencil" size={12} /></button>
+                    <button class="lv-btn sm lv-btn--ghost" onclick={() => void removeNoteEntry(m, n)} disabled={materialsBusy || app.materialsReadonly} title={app.materialsReadonly ? t("materials.readonly") : t("materials.removeTitle")}><Icon name="trash" size={13} /></button>
                   </div>
                 {/each}
                 {#if !notesCache.length}<div class="lv-muted" style="font-size:12px">{t("materials.noteEmpty")}</div>{/if}
                 <div class="lv-row" style="margin:8px 0 2px"><b class="lv-muted" style="font-size:12px">{noteEditingId ? t("materials.noteEdit") : t("materials.noteAdd")}</b></div>
                 <div class="lv-row" style="flex-wrap:wrap">
                   {#if m.kind === "pdf"}
-                    <input class="lv-input" style="max-width:90px" placeholder={t("materials.page")} bind:value={notePage} />
+                    <input class="lv-input" style="max-width:90px" placeholder={t("materials.page")} bind:value={notePage} disabled={app.materialsReadonly} />
                   {:else if m.kind === "video" || m.kind === "audio"}
-                    <input class="lv-input" style="max-width:110px" placeholder="mm:ss" bind:value={noteTime} />
+                    <input class="lv-input" style="max-width:110px" placeholder="mm:ss" bind:value={noteTime} disabled={app.materialsReadonly} />
                   {/if}
-                  <input class="lv-input" style="flex:1;min-width:160px" placeholder={t("materials.quote")} bind:value={noteQuote} />
+                  <input class="lv-input" style="flex:1;min-width:160px" placeholder={t("materials.quote")} bind:value={noteQuote} disabled={app.materialsReadonly} />
                 </div>
-                <textarea class="lv-input lv-textarea" rows="2" placeholder={t("materials.notePlaceholder")} bind:value={noteText}></textarea>
+                <textarea class="lv-input lv-textarea" rows="2" placeholder={t("materials.notePlaceholder")} bind:value={noteText} disabled={app.materialsReadonly}></textarea>
                 <div class="lv-row">
-                  <input class="lv-input" style="flex:1;min-width:160px" placeholder={t("materials.tagsPlaceholder")} bind:value={noteTags} />
-                  <button class="lv-btn lv-btn--primary sm" onclick={() => void saveNote(m)} disabled={!noteText.trim() || materialsBusy}>{noteEditingId ? t("materials.noteUpdate") : t("materials.noteAddBtn")}</button>
+                  <input class="lv-input" style="flex:1;min-width:160px" placeholder={t("materials.tagsPlaceholder")} bind:value={noteTags} disabled={app.materialsReadonly} />
+                  <button class="lv-btn lv-btn--primary sm" onclick={() => void saveNote(m)} disabled={!noteText.trim() || materialsBusy || app.materialsReadonly}>{noteEditingId ? t("materials.noteUpdate") : t("materials.noteAddBtn")}</button>
                   {#if noteEditingId}<button class="lv-btn sm lv-btn--ghost" onclick={resetNoteForm}>{t("edit.cancel")}</button>{/if}
                 </div>
                 {#if noteFormError}<div class="lv-error">{noteFormError}</div>{/if}
@@ -5343,11 +5369,12 @@ import { ttsSpeak } from "@/core/tts";
   .lv-mat-chip { display: inline-flex; align-items: center; gap: 5px; }
   .lv-modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
   .lv-mode { padding: 16px 17px; border-radius: var(--lv-r-3); text-align: left; background: var(--lv-surface); border: 1px solid var(--lv-border); cursor: pointer; transition: background-color var(--lv-dur-micro) var(--lv-ease-out), border-color var(--lv-dur-micro) var(--lv-ease-out), box-shadow var(--lv-dur-micro) var(--lv-ease-out), transform var(--lv-dur-micro) var(--lv-ease-out); display: flex; align-items: flex-start; gap: 12px; }
-  .lv-mode:hover:not(.lv-mode--disabled) { box-shadow: var(--lv-sh-2); border-color: var(--lv-accent); transform: translateY(-1px); }
+  .lv-mode:hover:not(:disabled):not(.lv-mode--disabled) { box-shadow: var(--lv-sh-2); border-color: var(--lv-accent); transform: translateY(-1px); }
   .lv-mode .lv-mode-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 13px; background: var(--lv-accent-soft); flex-shrink: 0; font-size: 19px; }
   .lv-mode .lv-mode-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
   .lv-mode b { font-size: 14px; font-weight: 650; }
   .lv-mode--disabled { opacity: .55; cursor: not-allowed; }
+  .lv-mode:disabled { opacity: .62; cursor: not-allowed; }
   /* 低频模式降噪：中性键帽 + 收紧字号，与一级队列模式拉开层级 */
   .lv-mode--minor .lv-mode-icon { background: var(--lv-surface-2); color: var(--lv-text-2); }
   .lv-mode--minor b { font-size: 13px; font-weight: 600; }
