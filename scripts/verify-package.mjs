@@ -8,7 +8,7 @@ const ALLOW = [
   /^index\.css$/,
   /^plugin\.json$/,
   /^icon\.png$/,
-  /^preview\.png$/,
+  /^preview\.jpg$/,
   /^i18n\/[a-zA-Z-]+\.json$/,
   /^README(\.en-US)?\.md$/,
   // 打包器拆出的 vendored 依赖 chunk（如 xlsx-C6P8P8QC.cjs / gen-BS969Kwy.cjs）

@@ -1,4 +1,4 @@
-// 合成市场预览图 preview.png（1024×768 @2x）：真实截图（隐藏 harness 工具条）× 产品设计语言
+// 合成市场预览图 preview.jpg（1600×1200）：真实截图（隐藏 harness 工具条）× 产品设计语言
 // 用法：node scripts/visual-harness/make-preview.mjs
 import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
@@ -102,10 +102,10 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><style>
   <div class="shot side2"><img src="${img("pv-mock.png")}" alt=""><span class="cap">模考场 · 蓝图配卷</span></div>
 </body></html>`;
 
-const page = await (await browser.newContext({ viewport: { width: 1024, height: 768 }, deviceScaleFactor: 2 })).newPage();
+const page = await (await browser.newContext({ viewport: { width: 1024, height: 768 }, deviceScaleFactor: 1.5625 })).newPage();
 await page.setContent(html, { waitUntil: "networkidle" });
 await page.waitForTimeout(300);
-await page.screenshot({ path: resolve("preview.png") });
+await page.screenshot({ path: resolve("preview.jpg"), type: "jpeg", quality: 94 });
 await browser.close();
 server.close();
-console.log("preview.png 已重新合成（无 harness 痕迹）");
+console.log("preview.jpg 已重新合成（无 harness 痕迹）");

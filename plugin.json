@@ -2,7 +2,7 @@
   "name": "siyuan-exam",
   "author": "ai68298100",
   "url": "https://github.com/ai68298100/siyuan-exam",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "minAppVersion": "3.8.0",
   "backends": [
     "windows",
@@ -35,7 +35,7 @@
     "en_US": "README.en-US.md"
   },
   "icon": "icon.png",
-  "preview": "preview.png",
+  "preview": "preview.jpg",
   "keywords": [
     "exam",
     "quiz",
