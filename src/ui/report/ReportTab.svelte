@@ -334,9 +334,7 @@
       const picked = questions.filter((q) => q.type !== "material" && q.kp?.split("/")[0] === root);
       if (!picked.length) { showMessage(t("state.emptyBank"), 3000, "error"); return; }
       (plugin as any).pendingPractice = picked;
-      void import("siyuan").then(({ openTab }) => {
-        openTab({ app: (plugin as any).app ?? (plugin as any), custom: { id: ((plugin as any).name ?? "siyuan-exam") + "exam-practice", icon: "iconExam", title: t("tab.practice"), data: { plugin, examApp: app } } } as any);
-      });
+      plugin.openPractice?.();
     }
 
     /** 下一行动（U15 lite）：完成=用户确认（最小证据）；取消保留记录可回看 */
@@ -372,9 +370,7 @@
         await app.startSession([q], "wrong", bank?.id);
         await app.completeAction(a.id, "redo-drill");
         openActionList = await app.listOpenActions();
-        void import("siyuan").then(({ openTab }) => {
-          openTab({ app: (plugin as any).app ?? (plugin as any), custom: { id: ((plugin as any).name ?? "siyuan-exam") + "exam-practice", icon: "iconExam", title: t("tab.practice"), data: { plugin, examApp: app } } } as any);
-        });
+        plugin.openPractice?.();
       } catch (e) {
         showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
       } finally {

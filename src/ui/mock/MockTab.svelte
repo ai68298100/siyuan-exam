@@ -475,9 +475,7 @@
     }
 
     function openPractice() {
-      void import("siyuan").then(({ openTab }) => {
-        openTab({ app: (plugin as any).app ?? (plugin as any), custom: { id: ((plugin as any).name ?? "siyuan-exam") + "exam-practice", icon: "iconExam", title: t("tab.practice"), data: { plugin, examApp: app } } } as any);
-      });
+      plugin.openPractice?.();
     }
 
     function historyPoints(): string {

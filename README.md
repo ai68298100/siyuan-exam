@@ -10,21 +10,26 @@
 
 [![Release](https://img.shields.io/github/v/release/ai68298100/siyuan-exam?logo=github)](https://github.com/ai68298100/siyuan-exam/releases)
 [![CI](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml/badge.svg)](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml)
-[![Tests](https://img.shields.io/badge/tests-585%20passed-brightgreen)](#开发)
+[![Tests](https://img.shields.io/badge/tests-586%20passed-brightgreen)](#开发)
 [![SiYuan](https://img.shields.io/badge/SiYuan-%3E%3D%203.8.0-blue)](https://github.com/siyuan-note/siyuan)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 [English](README.en-US.md) · [当前状态](docs/STATUS.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md) · [下载发行包](https://github.com/ai68298100/siyuan-exam/releases) · [查看 UI 设计原型](design/prototype/index.html) · [反馈问题](https://github.com/ai68298100/siyuan-exam/issues) · [参与讨论](https://github.com/ai68298100/siyuan-exam/discussions)
 
-## 本次更新：v0.9.3 → v0.9.4（2026-10-10）
+## 本次更新：v0.9.4 → v0.9.5（2026-10-10）
 
-本次为思源集市上架准备补丁：优化预览图体积并同步发行包校验，插件功能保持不变。
+本次修复思源打开自定义页签时因序列化插件实例而报循环引用错误的问题，并统一模考、报告页内的练习台跳转入口。
 
-- **优化：** 将集市预览图缩至 1600×1200 并转换为高质量 JPEG，满足图片大小限制且保留界面可读性。
-- **修复：** 清单、README 与发行包白名单校验统一引用 `preview.jpg`，确保 GitHub Release 包含正确的预览资源。
+- **修复：** 自定义页签不再将 Plugin / ExamApp 实例写入会被思源保存的 `custom.data`，避免 `plugin.app.plugins` 循环导致顶栏打开失败。
+- **优化：** 模考、报告中的练习入口统一调用插件页签管理逻辑，保留单例聚焦和待练题移交。
+- **验证：** 新增循环引用回归测试；发布验证结果见下方折叠版本记录。
 
 <details>
-<summary>查看更早版本更新（v0.9.3 及之前）</summary>
+<summary>查看更早版本更新（v0.9.4 及之前）</summary>
+
+### v0.9.4 · 集市上架准备
+
+将预览图缩至 1600×1200 的 JPEG，并同步清单、README 和发行包校验，符合集市图片大小限制。
 
 ### v0.9.3 · 模考记录与状态反馈
 
@@ -118,7 +123,7 @@ AI 只产生候选与解释，不应直接改原答案、正式成绩、题源�
 
 思阅、思播、思盘以及本地软件按具体版本和公开接口研究；无法定位或回传时，提供手工页码/时间点与返回学习上下文。小驴打卡、雷切、拾遗、人脉等系列桥也按需探测、单独开启，未安装不阻断学习。名称出现在设计中，不表示已兼容或已实现双向同步。详见 [资料与工具融合研究](research/17-付费资料与本地网盘媒体联动调研.md)。
 
-## 功能概览（v0.9.4）
+## 功能概览（v0.9.5）
 
 以下为当前源码中的主要能力。自动化测试覆盖核心逻辑；真实思源内核、移动 WebView、大题库和完整界面旅程仍有待验证项，见[发版检查清单](docs/23-发版检查清单.md)。
 

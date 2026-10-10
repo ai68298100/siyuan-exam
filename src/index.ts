@@ -13,6 +13,7 @@ import { createExamApp } from "./app-runtime";
 import type { ExamApp } from "./app";
 import { streak } from "./core/replayer";
 import { emitExamEvent } from "./core/bus";
+import { createExamTabDescriptor } from "./core/pluginTab";
 import { registerExamDailySummary } from "./ecosystem/speedSwitch";
 
 const TAB_PRACTICE = "exam-practice";
@@ -26,7 +27,11 @@ const OPEN_TABS_KEY = "lv-exam/lastOpenTab";
 const OPEN_TAB_TYPES = [TAB_PRACTICE, TAB_MOCK, TAB_REPORT];
 function rememberOpenTab(type: string) {
   if (!OPEN_TAB_TYPES.includes(type)) return;
-  try { localStorage.setItem(OPEN_TABS_KEY, type); } catch { /* 隐私模式静默 */ }
+  try {
+    localStorage.setItem(OPEN_TABS_KEY, type);
+  } catch {
+    /* 隐私模式静默 */
+  }
 }
 
 export default class LvExamPlugin extends Plugin {
@@ -365,6 +370,9 @@ export default class LvExamPlugin extends Plugin {
   }
 
   private registerTabs() {
+    // 页签工厂闭包持有运行时实例；custom.data 会被思源保存布局并 JSON 序列化，
+    // 因此不能把 Plugin / ExamApp 放进其中（Plugin.app.plugins 会形成循环引用）。
+    const getPlugin = () => this;
     const tabs: Array<[string, any]> = [
       [TAB_PRACTICE, PracticeTab],
       [TAB_MOCK, MockTab],
@@ -376,18 +384,19 @@ export default class LvExamPlugin extends Plugin {
         init() {
           const el = document.createElement("div");
           el.classList.add("fn__flex-1", "lv-exam-tab");
+          const plugin = getPlugin();
           const instance = mount(component, {
             target: el,
-            props: { plugin: this.data.plugin, examApp: this.data.examApp },
+            props: { plugin, examApp: plugin.examApp },
           });
-          this.data.plugin.tabApps[type] = instance;
+          plugin.tabApps[type] = instance;
           this.element.appendChild(el);
         },
         destroy() {
-          const owner = this.data.plugin as LvExamPlugin;
-          if (owner.tabApps[type]) {
-            unmount(owner.tabApps[type]);
-            delete owner.tabApps[type];
+          const plugin = getPlugin();
+          if (plugin.tabApps[type]) {
+            unmount(plugin.tabApps[type]);
+            delete plugin.tabApps[type];
           }
         },
       });
@@ -534,7 +543,9 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
       if (type === TAB_PRACTICE) this.openPractice();
       else if (type === TAB_MOCK) this.openMock();
       else if (type === TAB_REPORT) this.openReport();
-    } catch { /* localStorage 不可用（隐私模式）：跳过恢复 */ }
+    } catch {
+      /* localStorage 不可用（隐私模式）：跳过恢复 */
+    }
   }
 
   private openTabByType(type: string, icon: string, title: string) {
@@ -550,14 +561,8 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
     rememberOpenTab(type);
     openTab({
       app: this.app as any,
-      custom: {
-        // 宿主以 plugin.name + type 为键查找页签工厂（3.8.6 真机实测：裸 type 匹配不到
-        // models 注册键，页签会渲染成无 init 的空白面板）
-        id: this.name + type,
-        icon,
-        title,
-        data: { plugin: this, examApp: this.examApp },
-      },
+      // 宿主以 plugin.name + type 为键查找页签工厂；descriptor 只含可持久化字段。
+      custom: createExamTabDescriptor(this.name, type, icon, title),
     });
   }
 
