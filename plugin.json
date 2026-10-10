@@ -2,7 +2,7 @@
   "name": "siyuan-exam",
   "author": "ai68298100",
   "url": "https://github.com/ai68298100/siyuan-exam",
-  "version": "0.9.5",
+  "version": "0.9.6",
   "minAppVersion": "3.8.0",
   "backends": [
     "windows",

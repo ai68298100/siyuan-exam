@@ -18,6 +18,8 @@
     import { trendToCsv, heatmapToCsv, hourlyToCsv } from "@/core/exportMd";
     import type { ActionItem } from "@/core/actions";
     import SaveStatus from "../shared/SaveStatus.svelte";
+    import { onExamEvent } from "@/core/bus";
+    import { emitExamEvent } from "@/core/bus";
 
     let { plugin, examApp: app }: { plugin: any; examApp: ExamApp | null } = $props();
     const i18n = $derived(plugin?.i18n ?? {});
@@ -34,7 +36,7 @@
 
     let paletteOpen = $state(false);
     const paletteCommands: PaletteCommand[] = [
-      { group: t("palette.actions"), icon: "rotate", label: t("report.refresh"), keywords: "refresh recompute", run: () => { reportMemo.clear(); computeReport(); } },
+      { group: t("palette.actions"), icon: "rotate", label: t("report.refresh"), keywords: "refresh recompute", run: () => void refreshReport(true) },
       { group: t("palette.actions"), icon: "table", label: t("report.writeDaily"), keywords: "daily write diary", run: () => void writeDaily() },
       { group: t("palette.actions"), icon: "export", label: t("data.export"), keywords: "export data", run: () => void exportAllData() },
       { group: t("palette.tabs"), icon: "home", label: t("tab.practice"), keywords: "practice", run: () => plugin.openPractice?.() },
@@ -57,6 +59,9 @@
     let errorMsg = $state("");
     let weekCmp = $state<ReturnType<typeof weekCompare> | null>(null);
     let reportBusy = $state(false);
+    let reportRefreshing = $state(false);
+    let reportRefreshQueued = false;
+    const BANK_PREF_KEY = "lv-exam/activeBank";
 
     /** 每日战报写入思源日记（联动小驴复盘预留通道） */
     async function writeDaily() {
@@ -283,48 +288,93 @@
       } finally { nextActionBusy = false; }
     }
 
-    onMount(async () => {
-      if (!app) { loading = false; errorMsg = t("state.appNotReady"); return; }
+    // ---------- 题库范围（39-06/U21 lite）：掌握度/薄弱/下钻按所选题库聚合；KPI/热力图为全局口径 ----------
+    let bankOptions = $state<{ id: string; name: string }[]>([]);
+    let bankId = $state("");
+    let scopeLoading = $state(false);
+    let scopeError = $state("");
+
+    /** 重新读取报告依赖的数据，保证从练习/模考返回后报告不会停留在旧快照。 */
+    async function refreshReport(showFeedback = false) {
+      if (!app) return;
+      if (reportRefreshing) {
+        if (!showFeedback) reportRefreshQueued = true;
+        return;
+      }
+      reportRefreshing = true;
+      errorMsg = "";
       try {
         const d = app.derived();
-        weekCmp = weekCompare(weeklyAggregates(d.days, new Date(), 2));
         const { streak } = await import("@/core/replayer");
+        bankOptions = app.listBanks();
+        if (!bankOptions.some((b) => b.id === bankId)) {
+          let rememberedBank = "";
+          try { rememberedBank = localStorage.getItem(BANK_PREF_KEY) ?? ""; } catch { /* 隐私模式 */ }
+          bankId = bankOptions.some((b) => b.id === rememberedBank) ? rememberedBank : bankOptions[0]?.id ?? "";
+        }
+        weekCmp = weekCompare(weeklyAggregates(d.days, new Date(), 2));
         kpi = { attempts: 0, accuracy: 0, eliminated: [...d.wrongbook.values()].filter((w) => w.status === "eliminated").length, streak: streak(d) };
+        reportMemo.clear();
         computeReport();
         heat = heatmap(d.days);
         openActionList = await app.listOpenActions();
-        bankOptions = app.listBanks();
-        bankId = bankOptions[0]?.id ?? "";
-        // 63-01：qid→题型映射全库加载（四象限按题型下钻；单库失败跳过）
+        mockHistory = await app.listMockResults();
+        typeByQid.clear();
+        // qid→题型映射全库加载；单库读失败不阻塞整份报告。
         for (const b of bankOptions) {
           try {
             for (const q of await app.listQuestions(b.id)) typeByQid.set(q.id, q.type);
           } catch { /* 单库读取失败跳过 */ }
         }
-        mockHistory = await app.listMockResults();
         await reloadBankScope(d);
         computeReport();
+        if (showFeedback) showMessage(t("report.refreshDone"), 2600, "info");
       } catch (e) {
         errorMsg = String(e instanceof Error ? e.message : e);
-      } finally { loading = false; }
+      } finally {
+        reportRefreshing = false;
+        if (reportRefreshQueued) {
+          reportRefreshQueued = false;
+          void refreshReport(false);
+        }
+      }
+    }
+
+    onMount(() => {
+      if (!app) { loading = false; errorMsg = t("state.appNotReady"); return; }
+      const refreshAfterChange = () => void refreshReport(false);
+      const offs = [
+        onExamEvent("session-ended", refreshAfterChange),
+        onExamEvent("wrongbook-changed", refreshAfterChange),
+      ];
+      void refreshReport(false).finally(() => { loading = false; });
+      return () => offs.forEach((off) => off());
     });
 
-    // ---------- 题库范围（39-06/U21 lite）：掌握度/薄弱/下钻按所选题库聚合；KPI/热力图为全局口径 ----------
-    let bankOptions = $state<{ id: string; name: string }[]>([]);
-    let bankId = $state("");
-    let scopeLoading = $state(false);
-
     async function reloadBankScope(d = app?.derived()) {
-      if (!app || !d || !bankId) { questions = []; mastery = []; weak = []; return; }
+      if (!app || !d || !bankId) {
+        questions = []; mastery = []; weak = []; scopeError = ""; scopeLoading = false;
+        return;
+      }
       scopeLoading = true;
+      scopeError = "";
       try {
         questions = await app.listQuestions(bankId);
         mastery = masteryByKp(questions, d.byQuestion, app.attempts.all());
         weak = weakTop(mastery);
+      } catch (e) {
+        questions = [];
+        mastery = [];
+        weak = [];
+        scopeError = String(e instanceof Error ? e.message : e);
       } finally { scopeLoading = false; }
     }
 
     async function onBankChange() {
+      try {
+        if (bankId) localStorage.setItem(BANK_PREF_KEY, bankId);
+        else localStorage.removeItem(BANK_PREF_KEY);
+      } catch { /* 隐私模式 */ }
       await reloadBankScope();
     }
 
@@ -334,6 +384,10 @@
       const picked = questions.filter((q) => q.type !== "material" && q.kp?.split("/")[0] === root);
       if (!picked.length) { showMessage(t("state.emptyBank"), 3000, "error"); return; }
       (plugin as any).pendingPractice = picked;
+      // 将当前报告范围的题库一起交给练习台，避免多题库时回落到首个题库。
+      (plugin as any).pendingPracticeBankId = bankId;
+      try { localStorage.setItem(BANK_PREF_KEY, bankId); } catch { /* 隐私模式 */ }
+      emitExamEvent("open-practice-questions", { qids: picked.map((q) => q.id), bank: bankId });
       plugin.openPractice?.();
     }
 
@@ -362,12 +416,25 @@
     /** 行动重练（82-04 lite）：单题错题会话 + 完成并记证据 redo-drill；仅当前题库可定位 */
     async function redoAction(a: ActionItem) {
       if (!app || !a.qid || actionBusyId) return;
-      const q = questions.find((x) => x.id === a.qid);
+      let q = questions.find((x) => x.id === a.qid);
+      let targetBankId = bankId;
+      // 行动记录跨题库保存；当前选中的题库没有该题时，自动定位到包含它的题库。
+      if (!q) {
+        for (const bank of app.listBanks()) {
+          try {
+            const candidate = (await app.listQuestions(bank.id)).find((x) => x.id === a.qid);
+            if (candidate) { q = candidate; targetBankId = bank.id; break; }
+          } catch { /* 继续查找其他题库 */ }
+        }
+      }
       if (!q) { showMessage(t("action.redoMissing"), 3400, "info"); return; }
       actionBusyId = a.id;
       try {
-        const bank = app.listBanks()[0];
-        await app.startSession([q], "wrong", bank?.id);
+        await app.startSession([q], "wrong", targetBankId || undefined);
+        // 练习台已挂载时通过总线同步其本地会话引用；未挂载时 pending 字段由首次挂载消费。
+        (plugin as any).pendingPractice = [q];
+        (plugin as any).pendingPracticeBankId = targetBankId;
+        emitExamEvent("open-practice-questions", { qids: [q.id], bank: targetBankId });
         await app.completeAction(a.id, "redo-drill");
         openActionList = await app.listOpenActions();
         plugin.openPractice?.();
@@ -571,11 +638,11 @@
       <option value={30}>{t("report.range30")}</option>
     </select>
     <!-- 69-04 lite：陈旧态显式控制——流水可能在报告打开期间新增，强制刷新清 memo 重算 -->
-    <button class="lv-btn sm lv-btn--ghost" onclick={() => { reportMemo.clear(); computeReport(); }} title={t("report.refreshTip")}>
-      <Icon name="rotate" size={14} /> {t("report.refresh")}
+    <button class="lv-btn sm lv-btn--ghost" disabled={!app || reportRefreshing} onclick={() => void refreshReport(true)} title={t("report.refreshTip")}>
+      <Icon name="rotate" size={14} /> {reportRefreshing ? "…" : t("report.refresh")}
     </button>
     {#if bankOptions.length > 1}
-      <select class="lv-select" style="max-width:200px" bind:value={bankId} disabled={scopeLoading} onchange={onBankChange}>
+      <select class="lv-select" style="max-width:200px" bind:value={bankId} disabled={scopeLoading || reportRefreshing} onchange={onBankChange}>
         {#each bankOptions as b, _i (_i)}<option value={b.id}>{b.name}</option>{/each}
       </select>
       <span class="lv-muted" style="font-size:11.5px">{t("report.scopeHint")}</span>
@@ -628,7 +695,12 @@
   {#if loading}
     <div class="lv-skeleton"></div>
   {:else if errorMsg}
-    <div class="lv-error">{errorMsg}</div>
+    <div class="lv-error" role="alert">
+      {errorMsg}
+      <button class="lv-btn sm lv-btn--ghost" style="margin-left:8px" disabled={reportRefreshing} onclick={() => void refreshReport(true)}>
+        <Icon name="rotate" size={13} /> {reportRefreshing ? "…" : t("report.retryLoad")}
+      </button>
+    </div>
     {#if !bankOptions.length}
       <div class="lv-card" style="margin-top:12px;padding:18px 20px" role="status">
         <b>{t("report.noBankTitle")}</b>
@@ -644,11 +716,21 @@
     </div>
   {:else}
     <p class="lv-muted" style="margin:0 0 8px;font-size:11.5px">{t("report.scopeAll")}</p>
+    {#if scopeError}
+      <div class="lv-error" style="margin:0 0 10px" role="alert">
+        <span>{t("report.scopeLoadError")}: {scopeError}</span>
+        <button class="lv-btn sm lv-btn--ghost" style="margin-left:8px" disabled={scopeLoading} onclick={() => void reloadBankScope()}>
+          <Icon name="rotate" size={13} /> {scopeLoading ? "…" : t("report.scopeRetry")}
+        </button>
+      </div>
+    {:else if scopeLoading}
+      <div class="lv-muted" style="margin:0 0 10px" role="status">{t("report.scopeLoading")}</div>
+    {/if}
     {#if kpi.attempts === 0}
       <div class="lv-empty" style="padding:24px 18px;margin-bottom:12px" role="status">
         <div class="lv-empty-icon"><Icon name="chart" size={24} /></div>
-        <b>{t("report.noAttemptsTitle")}</b>
-        <p class="lv-muted">{t("report.noAttemptsDesc")}</p>
+        <b>{rangeDays ? t("report.noRangeAttemptsTitle") : t("report.noAttemptsTitle")}</b>
+        <p class="lv-muted">{rangeDays ? t("report.noRangeAttemptsDesc") : t("report.noAttemptsDesc")}</p>
         <button class="lv-btn lv-btn--primary sm" style="margin-top:12px" onclick={() => plugin.openPractice?.()}>{t("report.goPractice")}</button>
       </div>
     {/if}

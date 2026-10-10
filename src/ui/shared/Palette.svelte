@@ -30,11 +30,13 @@
   let q = $state("");
   let sel = $state(0);
   let panelEl: HTMLDivElement | null = $state(null);
+  let ownerEl: HTMLElement | null = null;
   let returnFocus: HTMLElement | null = null;
   let wasOpen = false;
   // 实例级 id 后缀（同页多 Tab 各挂一个面板，避免 aria id 冲突）
   const uid = Math.random().toString(36).slice(2, 8);
   let inputEl: HTMLInputElement | null = $state(null);
+  const ACTIVE_TAB_KEY = "__lvExamActivePaletteTab";
   const shown = $derived.by(() => {
     const query = q.trim().toLowerCase();
     if (!query) return commands;
@@ -54,7 +56,7 @@
       wasOpen = false;
       const target = returnFocus;
       returnFocus = null;
-      tick().then(() => target?.isConnected && target.focus());
+      tick().then(() => target?.isConnected && target.getClientRects().length > 0 && target.focus());
     }
   });
 
@@ -64,8 +66,31 @@
     c.run();
   }
 
+  function rememberActiveTab(e: Event) {
+    const ownerRoot = ownerEl?.closest<HTMLElement>(".lv-exam-tab");
+    const target = e.target instanceof Element ? e.target.closest<HTMLElement>(".lv-exam-tab") : null;
+    if (ownerRoot && target === ownerRoot) (window as any)[ACTIVE_TAB_KEY] = ownerRoot;
+  }
+
   function onKeydown(e: KeyboardEvent) {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      // Each open SiYuan tab mounts its own Palette. Only respond to the
+      // shortcut from this tab so hidden or side-by-side tabs stay closed.
+      const ownerRoot = ownerEl?.closest(".lv-exam-tab");
+      const eventRoot = e.target instanceof Element ? e.target.closest<HTMLElement>(".lv-exam-tab") : null;
+      const visibleRoots = [...document.querySelectorAll<HTMLElement>(".lv-exam-tab")].filter(
+        (root) => root.getClientRects().length > 0,
+      );
+      // When focus is outside the tab content (for example, body focus), a
+      // recently focused plugin tab remains the best target. A single visible
+      // tab is an unambiguous fallback; with split tabs, avoid guessing.
+      const rememberedRoot = (window as any)[ACTIVE_TAB_KEY] as HTMLElement | undefined;
+      const activeRoot = eventRoot
+        ? (eventRoot.getClientRects().length > 0 ? eventRoot : null)
+        : rememberedRoot?.isConnected && visibleRoots.includes(rememberedRoot)
+          ? rememberedRoot
+          : visibleRoots.length === 1 ? visibleRoots[0] : null;
+      if (!ownerRoot || ownerRoot !== activeRoot) return;
       e.preventDefault();
       open = !open;
       return;
@@ -81,9 +106,15 @@
       const focusables = [...panelEl.querySelectorAll<HTMLElement>("input:not([disabled]), button:not([disabled])")];
       const first = focusables[0];
       const last = focusables[focusables.length - 1];
-      if (first && last && (e.shiftKey ? document.activeElement === first : document.activeElement === last)) {
-        e.preventDefault();
-        (e.shiftKey ? last : first).focus();
+      if (first && last) {
+        const idx = focusables.indexOf(document.activeElement as HTMLElement);
+        if (e.shiftKey && idx <= 0) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && (idx === focusables.length - 1 || idx === -1)) {
+          e.preventDefault();
+          first.focus();
+        }
       }
       return;
     }
@@ -100,7 +131,8 @@
   }
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<span bind:this={ownerEl} hidden aria-hidden="true"></span>
+<svelte:window onkeydown={onKeydown} onpointerdown={rememberActiveTab} onfocusin={rememberActiveTab} />
 {#if open}
   <div
     class="lv-palette-overlay"

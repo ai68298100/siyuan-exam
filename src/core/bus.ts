@@ -22,6 +22,7 @@ export interface BusEvent<T extends Record<string, unknown> = Record<string, unk
 /** 事件名 → 总线类型（已登记事件白名单；新增事件必须在此登记） */
 export type BusEventType =
   | "open-question" // {qid} Dock/错题本 → 练习台单题会话
+  | "open-practice-questions" // {qids, bank} 其他板块/块菜单 → 练习台题目集会话
   | "open-in-browse" // {qid, bank} 块菜单 → 浏览视图聚焦
   | "edit-question" // {qid, bank} 块菜单 → 浏览视图编辑
   | "session-ended" // {sessionId, mode, total, correct, wrong} 会话结算（仅计数，无题干）

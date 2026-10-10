@@ -53,7 +53,15 @@
 | AI explanations behind a paywall | **Bring your own AI**: generation, per-option explanations, Socratic follow-ups — via SiYuan's built-in AI or your own OpenAI-compatible endpoint, with explicit data-flow consent |
 | Half-baked mock exams | **CBT engine**: blueprint assembly, section timing, answer-sheet flags, indefinite-question partial credit, answer lockout, post-exam scoring |
 
-## 📦 Feature overview (v0.9.5; journey checks ongoing)
+## 🆕 What's new in v0.9.6
+
+This release improves the first-run path and closes the handoff loop between Practice, Mock Exam, and Reports.
+
+- **First-run guidance and states:** a three-step introduction, bank empty state, load retry, and clear disabled-action reasons.
+- **Cross-module handoff:** weak-topic drills, action redo, and mock wrong-answer review carry the target bank and can hand an active session to an already open Practice tab.
+- **Feedback and navigation:** reports refresh after new results, mock saving and recovery expose errors and busy states, and the command palette respects the visible tab.
+
+## 📦 Feature overview (v0.9.6; journey checks ongoing)
 
 The capabilities below have source implementations and automated coverage where stated. "Journey checks ongoing" means per-screen manual walkthroughs are still in progress — see the [release checklist](docs/23-发版检查清单.md) for known unverified items.
 

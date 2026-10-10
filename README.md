@@ -16,16 +16,21 @@
 
 [English](README.en-US.md) · [当前状态](docs/STATUS.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md) · [下载发行包](https://github.com/ai68298100/siyuan-exam/releases) · [查看 UI 设计原型](design/prototype/index.html) · [反馈问题](https://github.com/ai68298100/siyuan-exam/issues) · [参与讨论](https://github.com/ai68298100/siyuan-exam/discussions)
 
-## 本次更新：v0.9.4 → v0.9.5（2026-10-10）
+## 本次更新：v0.9.5 → v0.9.6（2026-10-10）
 
-本次修复思源打开自定义页签时因序列化插件实例而报循环引用错误的问题，并统一模考、报告页内的练习台跳转入口。
+本次完善首次使用引导、空态与错误反馈，并打通练习台、模考场和报告中心的题目交接与数据刷新。
 
-- **修复：** 自定义页签不再将 Plugin / ExamApp 实例写入会被思源保存的 `custom.data`，避免 `plugin.app.plugins` 循环导致顶栏打开失败。
-- **优化：** 模考、报告中的练习入口统一调用插件页签管理逻辑，保留单例聚焦和待练题移交。
-- **验证：** 新增循环引用回归测试；发布验证结果见下方折叠版本记录。
+- **新增：** 新用户三步引导、题库空态、读取失败重试和按钮前置条件说明。
+- **优化：** 薄弱考点组卷、行动重练和模考错题回炉统一携带题库上下文；报告支持刷新并自动同步新结算数据。
+- **修复：** 已打开练习台无法接管外部新会话、题库切换迟到响应覆盖当前视图等问题。
+- **验证：** `pnpm check`、`pnpm test`、`pnpm lint`、`pnpm build`、`pnpm verify:package`、`pnpm smoke:ui` 全部通过。
 
 <details>
-<summary>查看更早版本更新（v0.9.4 及之前）</summary>
+<summary>查看更早版本更新（v0.9.5 及之前）</summary>
+
+### v0.9.5 · 自定义页签稳定性
+
+修复思源打开自定义页签时因序列化插件实例而报循环引用错误，并统一模考、报告页内的练习台跳转入口。
 
 ### v0.9.4 · 集市上架准备
 

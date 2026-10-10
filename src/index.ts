@@ -254,11 +254,7 @@ export default class LvExamPlugin extends Plugin {
       version: manifest.version,
       open: () => this.openPractice(),
       practice: () => this.openPractice(),
-      wrongbook: () => {
-        this.openPractice();
-        // 深链到练习台错题本视图（bus 信封；已开 Tab 与新开 Tab 同路径）
-        emitExamEvent("open-view", { view: "wrongbook" });
-      },
+      wrongbook: () => this.openWrongbook(),
       mock: () => this.openMock(),
       report: () => this.openReport(),
       stats: () => {
@@ -506,8 +502,8 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
     this.addCommand({
       langKey: "command.openWrongbook",
       hotkey: adaptHotkey("⌥⌘E"),
-      // 桌面端 Dock 由思源侧边栏开关管理；此命令在移动端/快捷键场景打开练习台
-      callback: () => this.openPractice(),
+      // 桌面端 Dock 由思源侧边栏开关管理；此命令在移动端/快捷键场景直达错题本
+      callback: () => this.openWrongbook(),
     });
     this.addCommand({
       langKey: "command.resetSettings",
@@ -602,6 +598,8 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
               return;
             }
             (this as any).pendingPractice = qs;
+            (this as any).pendingPracticeBankId = bank.id;
+            emitExamEvent("open-practice-questions", { qids: qs.map((q) => q.id), bank: bank.id });
             this.openPractice();
           } catch (e) {
             showMessage(String(e instanceof Error ? e.message : e), 4800, "error");
@@ -629,6 +627,8 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
               return;
             }
             (this as any).pendingPractice = [hit.q];
+            (this as any).pendingPracticeBankId = hit.bank.id;
+            emitExamEvent("open-practice-questions", { qids: [hit.q.id], bank: hit.bank.id });
             this.openPractice();
           } catch (e) {
             showMessage(String(e instanceof Error ? e.message : e), 4800, "error");
@@ -749,6 +749,12 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
 
   openPractice() {
     this.openTabByType(TAB_PRACTICE, "iconExam", this.i18n["tab.practice"]);
+  }
+  private openWrongbook() {
+    // 总线处理已打开的练习台；待处理视图补足首次打开时尚无订阅者的情况。
+    (this as any).pendingInitialView = "wrongbook";
+    emitExamEvent("open-view", { view: "wrongbook" });
+    this.openPractice();
   }
   openMock() {
     this.openTabByType(TAB_MOCK, "iconMock", this.i18n["tab.mock"]);
