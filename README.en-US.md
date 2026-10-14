@@ -46,13 +46,13 @@
 
 ---
 
-## Latest release: v0.9.7 (2026-10-14)
+## Latest release: v0.9.8 (2026-10-14)
 
-This release consolidates the R54 visual language into shared UI tokens and adds a safe ordinary-block entry for AI question generation, while keeping the full create → import → practice → mock → review path observable.
+This patch makes Practice tab opening observable: host errors are surfaced with a retry path and repeated clicks are locked while opening. The R54 token system, ordinary-block AI entry and complete state feedback remain included.
 
 - **Added:** “Generate questions from this content” in the ordinary block menu; it reads complete kramdown and opens the existing AI review flow. The 12-question original sample bank remains available for demonstrations.
 - **Improved:** Color, spacing, type, radius, shadow, motion and common control variants now consume shared `lv-*` tokens; import, AI, notes, mock exams and settings retain explicit busy/success/error/empty feedback.
-- **Fixed:** Empty, offline, failed and oversized block material now has readable guidance and retry paths; runtime plugin objects never enter serializable tab data.
+- **Fixed:** Practice tab opening now catches synchronous errors and async rejections, locks duplicate clicks and shows a readable retry message; empty, offline, failed and oversized block material has guidance; runtime plugin objects never enter serializable tab data.
 
 Style snapshot (`pnpm metrics:style`): raw `px` literals fell from about 1,318 to 1,028; shared `lv-*` token kinds grew from about 88 to 124.
 
@@ -80,7 +80,7 @@ QQ group **871707735** is open for bug reports and feature requests.
 | AI explanations behind a paywall | **Bring your own AI**: generation, per-option explanations, Socratic follow-ups — via SiYuan's built-in AI or your own OpenAI-compatible endpoint, with explicit data-flow consent |
 | Half-baked mock exams | **CBT engine**: blueprint assembly, section timing, answer-sheet flags, indefinite-question partial credit, answer lockout, post-exam scoring |
 
-## 🆕 What's new in v0.9.7
+## 🆕 What's new in v0.9.8
 
 This release improves the first-run path and closes the handoff loop between Practice, Mock Exam, and Reports.
 
@@ -88,7 +88,7 @@ This release improves the first-run path and closes the handoff loop between Pra
 - **Cross-module handoff:** weak-topic drills, action redo, and mock wrong-answer review carry the target bank and can hand an active session to an already open Practice tab.
 - **Feedback and navigation:** reports refresh after new results, mock saving and recovery expose errors and busy states, and the command palette respects the visible tab.
 
-## 📦 Feature overview (v0.9.7; journey checks ongoing)
+## 📦 Feature overview (v0.9.8; journey checks ongoing)
 
 The capabilities below have source implementations and automated coverage where stated. "Journey checks ongoing" means per-screen manual walkthroughs are still in progress — see the [release checklist](docs/23-发版检查清单.md) for known unverified items.
 
