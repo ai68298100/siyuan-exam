@@ -144,15 +144,25 @@
   /* 18% 主色环 + 1px surface 断层（Geist/shadcn 式 ring-offset 焦点语言，对齐现代工具链） */
   --lv-ring: 0 0 0 1px var(--lv-surface), 0 0 0 4px color-mix(in srgb, var(--lv-accent) 22%, transparent);
 
+  /* —— 现代微质感表面与内高光 (Subtle Inset Highlight & Micro Depth) —— */
+  --lv-inset-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  --lv-inset-subtle: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  --lv-border-subtle: color-mix(in srgb, var(--lv-border) 80%, transparent);
+  --lv-border-hover: color-mix(in srgb, var(--lv-accent) 36%, var(--lv-border));
+
+  /* 按键拟物微质感 */
+  --lv-keycap-shadow: 0 1px 2px rgba(27, 24, 48, 0.06);
+
   /* —— 浮层遮罩（V04 抽屉/对话框背板；中性深色，token 定义） —— */
   --lv-overlay: rgba(17, 21, 40, 0.46);
 }
 
 /* 深浅两档阴影（中性色允许 alpha 黑白；主题色不允许硬编码） */
 :root {
-  --lv-sh-1: 0 1px 1px rgba(18, 25, 38, 0.03), 0 2px 6px -2px rgba(18, 25, 38, 0.06);
-  --lv-sh-2: 0 1px 2px rgba(18, 25, 38, 0.05), 0 12px 36px -12px rgba(18, 25, 38, 0.16);
-  --lv-sh-pop: 0 2px 4px rgba(18, 25, 38, 0.06), 0 20px 48px -16px rgba(18, 25, 38, 0.22);
+  --lv-sh-1: 0 1px 2px rgba(27, 24, 48, 0.04), 0 2px 6px -1px rgba(27, 24, 48, 0.05);
+  --lv-sh-2: 0 2px 4px rgba(27, 24, 48, 0.04), 0 10px 24px -4px rgba(27, 24, 48, 0.08);
+  --lv-sh-card: 0 1px 2px rgba(27, 24, 48, 0.04), 0 8px 24px -6px rgba(27, 24, 48, 0.07);
+  --lv-sh-pop: 0 4px 6px -1px rgba(27, 24, 48, 0.05), 0 18px 44px -10px rgba(27, 24, 48, 0.16);
   /* 主按钮投影（规范 v6：双层主题色投影 + inset 高光；accent alpha 由 color-mix 生成） */
   --lv-btn-primary-shadow:
     0 1px 2px color-mix(in srgb, var(--b3-theme-primary) 22%, transparent),
@@ -200,9 +210,15 @@ html[data-theme-mode="dark"] {
   --lv-r54-amber: #f4c78a;
   --lv-r54-amber-soft: #3b3126;
   --lv-r54-overlay: rgba(0, 0, 0, .58);
+  --lv-inset-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --lv-inset-subtle: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  --lv-border-subtle: rgba(255, 255, 255, 0.08);
+  --lv-border-hover: rgba(181, 175, 255, 0.35);
+  --lv-keycap-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   --lv-sh-1: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --lv-sh-2: 0 1px 2px rgba(0, 0, 0, 0.4), 0 16px 44px -14px rgba(0, 0, 0, 0.55);
-  --lv-sh-pop: 0 2px 6px rgba(0, 0, 0, 0.4), 0 24px 56px -18px rgba(0, 0, 0, 0.65);
+  --lv-sh-2: 0 2px 4px rgba(0, 0, 0, 0.3), 0 14px 36px -10px rgba(0, 0, 0, 0.55);
+  --lv-sh-card: 0 2px 4px rgba(0, 0, 0, 0.25), 0 12px 30px -8px rgba(0, 0, 0, 0.45);
+  --lv-sh-pop: 0 4px 8px rgba(0, 0, 0, 0.4), 0 24px 56px -18px rgba(0, 0, 0, 0.65);
   /* 暗色主按钮对齐原型：flat 主色 + 去彩色投影；deep 变亮档做 hover 端 */
   --lv-accent-deep: color-mix(in srgb, var(--b3-theme-primary) 84%, #fff);
   --lv-btn-primary-bg: var(--b3-theme-primary);

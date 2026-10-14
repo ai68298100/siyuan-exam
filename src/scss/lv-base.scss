@@ -9,21 +9,23 @@
    动效统一走 --lv-ease-out（规范 v6：同一条曲线，禁回弹） —— */
 .lv-card {
   background: var(--lv-surface);
-  border: 1px solid var(--lv-border);
+  border: 1px solid var(--lv-border-subtle, var(--lv-border));
   border-radius: var(--lv-r-3);
   padding: var(--lv-card-pad);
-  box-shadow: var(--lv-sh-1);
+  box-shadow: var(--lv-sh-card, var(--lv-sh-1)), var(--lv-inset-highlight, inset 0 1px 0 transparent);
   transition:
     box-shadow var(--lv-dur-view) var(--lv-ease-out),
     transform var(--lv-dur-micro) var(--lv-ease-out),
     border-color var(--lv-dur-micro) var(--lv-ease-out);
 
-  &--click:hover {
+  &--click:hover,
+  &--hover:hover {
     transform: translateY(-1px);
-    box-shadow: var(--lv-sh-2);
+    box-shadow: var(--lv-sh-2), var(--lv-inset-highlight, inset 0 1px 0 transparent);
+    border-color: var(--lv-border-hover, var(--lv-accent));
   }
   &--pop {
-    box-shadow: var(--lv-sh-pop);
+    box-shadow: var(--lv-sh-pop), var(--lv-inset-highlight, inset 0 1px 0 transparent);
   }
 }
 
@@ -72,12 +74,18 @@ button.lv-chip {
   transition:
     background-color var(--lv-dur-micro) var(--lv-ease-out),
     border-color var(--lv-dur-micro) var(--lv-ease-out),
+    box-shadow var(--lv-dur-micro) var(--lv-ease-out),
     color var(--lv-dur-micro) var(--lv-ease-out),
     transform var(--lv-dur-micro) var(--lv-ease-out);
 
   &:hover:not(:disabled) {
     border-color: var(--lv-accent);
     color: var(--lv-accent);
+  }
+  &.acc,
+  &[aria-pressed="true"] {
+    border-color: color-mix(in srgb, var(--lv-accent) 28%, transparent);
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--lv-accent) 18%, transparent);
   }
   &:active:not(:disabled) {
     transform: scale(0.97);
@@ -104,6 +112,7 @@ button.lv-chip {
   border: 1px solid var(--lv-ctl-border);
   background: var(--lv-surface);
   color: var(--lv-text);
+  box-shadow: var(--lv-sh-1), var(--lv-inset-subtle, inset 0 1px 0 transparent);
   cursor: pointer;
   transition:
     background-color var(--lv-dur-micro) var(--lv-ease-out),
@@ -113,12 +122,13 @@ button.lv-chip {
     transform var(--lv-dur-micro) var(--lv-ease-out);
 
   &:hover:not(:disabled) {
-    border-color: var(--lv-accent);
+    border-color: var(--lv-border-hover, var(--lv-accent));
     background: var(--lv-accent-soft);
+    box-shadow: var(--lv-sh-2), var(--lv-inset-subtle, inset 0 1px 0 transparent);
   }
   /* 通用按压反馈（primary 单独定义压平）；disabled 前面已返回 */
   &:active:not(:disabled) {
-    transform: translateY(1px);
+    transform: scale(0.985);
   }
   &:disabled {
     opacity: 0.62;
@@ -154,9 +164,10 @@ button.lv-chip {
   border-radius: var(--lv-r-1);
 }
 
-/* —— 下拉框外观（对齐原型 input/select：ctl-border + 11px 圆角；
-   原 Practice/Memory 用 UA 默认样式，观感掉档） —— */
-.lv-select {
+/* —— 下拉框与输入框外观基线（微内高光 + 柔和聚焦环） —— */
+.lv-select,
+.lv-input,
+.lv-textarea {
   min-height: var(--lv-control-height-md);
   padding: var(--lv-component-pad-md);
   border-radius: var(--lv-r-2);
@@ -165,11 +176,25 @@ button.lv-chip {
   color: var(--lv-text);
   font: inherit;
   font-size: var(--lv-font-size-body);
+  box-shadow: var(--lv-sh-1), var(--lv-inset-subtle, inset 0 1px 0 transparent);
+  transition:
+    border-color var(--lv-dur-micro) var(--lv-ease-out),
+    box-shadow var(--lv-dur-micro) var(--lv-ease-out),
+    background-color var(--lv-dur-micro) var(--lv-ease-out);
+
+  &:hover:not(:disabled) {
+    border-color: var(--lv-border-hover, var(--lv-accent));
+  }
 
   &:focus {
     border-color: var(--lv-accent);
-    box-shadow: var(--lv-ring);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--lv-accent) 18%, transparent), var(--lv-inset-subtle, inset 0 1px 0 transparent);
     outline: none;
+  }
+
+  &:disabled {
+    opacity: 0.62;
+    cursor: not-allowed;
   }
 }
 
@@ -198,6 +223,52 @@ button.lv-chip {
   svg {
     display: block;
   }
+}
+
+/* —— 空状态基线（对齐 R54 原型 .empty：圆润次表面底衬 + 柔和发光微图 + 居中文案） —— */
+.lv-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--lv-r-3);
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--lv-text-3);
+  font-size: var(--lv-font-size-body);
+  background: color-mix(in srgb, var(--lv-surface-2) 42%, var(--lv-surface));
+  border: 1.5px dashed var(--lv-border);
+  box-shadow: var(--lv-inset-subtle, inset 0 1px 0 transparent);
+
+  b,
+  strong {
+    display: block;
+    font-size: 18px;
+    font-weight: var(--lv-font-weight-bold);
+    color: var(--lv-text);
+    margin: 14px 0 6px;
+    letter-spacing: -0.01em;
+  }
+
+  .lv-muted,
+  p {
+    max-width: 440px;
+    margin: 0 auto 12px;
+    line-height: 1.65;
+  }
+}
+
+.lv-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  margin: 0 auto;
+  border-radius: 18px;
+  background: var(--lv-accent-soft);
+  color: var(--lv-accent);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--lv-accent) 18%, transparent);
+  flex-shrink: 0;
 }
 
 /* —— 分区标题（原型 .section-title：标题 + 右侧动作，两端对齐） —— */
@@ -406,6 +477,10 @@ input[type="range"] {
   width: 100%;
   border-collapse: collapse;
   font-size: var(--lv-font-size-body-compact);
+  border-radius: var(--lv-r-2);
+  overflow: hidden;
+  border: 1px solid var(--lv-border-subtle, var(--lv-border));
+  box-shadow: var(--lv-sh-1), var(--lv-inset-subtle, inset 0 1px 0 transparent);
 
   table {
     width: 100%;
@@ -415,18 +490,37 @@ input[type="range"] {
   th,
   td {
     padding: var(--lv-space-relaxed) var(--lv-space-3);
-    border-bottom: 1px solid var(--lv-border);
+    border-bottom: 1px solid var(--lv-border-subtle, var(--lv-border));
     text-align: left;
     vertical-align: top;
   }
   th {
     font-size: var(--lv-font-size-sm);
-    font-weight: var(--lv-font-weight-medium);
+    font-weight: var(--lv-font-weight-semibold);
     color: var(--lv-text-3);
     background: var(--lv-surface-2);
+    letter-spacing: 0.3px;
+  }
+  tr:hover td {
+    background: color-mix(in srgb, var(--lv-accent) 4%, var(--lv-surface));
   }
   tr:last-child td {
     border-bottom: 0;
+  }
+}
+
+/* —— 次级详情与抽查渲染卡片（对齐 R54 次表面卡片：微高光 + 柔和次级底衬 + 细边框） —— */
+.lv-detail {
+  padding: 16px 20px;
+  border-radius: var(--lv-r-2);
+  border: 1px solid var(--lv-border-subtle, var(--lv-border));
+  background: color-mix(in srgb, var(--lv-surface-2) 60%, var(--lv-surface));
+  box-shadow: var(--lv-sh-1), var(--lv-inset-subtle, inset 0 1px 0 transparent);
+  transition: border-color var(--lv-dur-micro) var(--lv-ease-out), box-shadow var(--lv-dur-micro) var(--lv-ease-out);
+
+  &:hover {
+    border-color: var(--lv-border-hover, var(--lv-accent));
+    box-shadow: var(--lv-sh-2);
   }
 }
 
@@ -792,14 +886,14 @@ input[type="range"] {
   display: grid;
   place-items: start center;
   padding: 12vh 16px 16px;
-  backdrop-filter: blur(2px);
+  backdrop-filter: blur(8px);
 }
 .lv-palette {
   width: min(620px, 100%);
   background: var(--lv-surface);
-  border: 1px solid var(--lv-border);
+  border: 1px solid var(--lv-border-subtle, var(--lv-border));
   border-radius: var(--lv-r-3);
-  box-shadow: var(--lv-sh-pop);
+  box-shadow: var(--lv-sh-pop), var(--lv-inset-highlight, inset 0 1px 0 transparent);
   overflow: hidden;
   animation: lv-pop-in 0.22s var(--lv-ease-out);
 }
@@ -807,15 +901,16 @@ input[type="range"] {
   display: flex;
   align-items: center;
   gap: var(--lv-space-2);
-  padding: var(--lv-space-3) 18px;
-  border-bottom: 1px solid var(--lv-border);
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--lv-border-subtle, var(--lv-border));
   color: var(--lv-text-3);
+  background: var(--lv-surface);
 }
 .lv-palette-input input {
   border: 0;
   background: transparent;
   box-shadow: none;
-  min-height: 30px;
+  min-height: 32px;
   padding: 0;
   font-size: var(--lv-font-size-h3);
   flex: 1;
@@ -826,7 +921,7 @@ input[type="range"] {
   outline: none;
 }
 .lv-palette-list {
-  max-height: 46vh;
+  max-height: 48vh;
   overflow: auto;
   padding: 8px;
 }
@@ -842,23 +937,26 @@ input[type="range"] {
   display: flex;
   width: 100%;
   align-items: center;
-  gap: 11px;
+  gap: 12px;
   text-align: left;
   background: transparent;
   border: 0;
   border-radius: var(--lv-radius-control-sm);
-  padding: 9px 12px;
-  min-height: 38px;
+  padding: 10px 14px;
+  min-height: 40px;
   color: var(--lv-text);
   font-size: var(--lv-font-size-body);
   cursor: pointer;
+  transition: background-color var(--lv-dur-micro) ease, transform var(--lv-dur-micro) ease;
 
   .lv-icon {
     color: var(--lv-text-2);
+    transition: color var(--lv-dur-micro) ease;
   }
   &:hover,
   &.sel {
     background: var(--lv-accent-soft);
+    transform: translateX(2px);
     .lv-icon {
       color: var(--lv-accent);
     }

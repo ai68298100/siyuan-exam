@@ -46,7 +46,17 @@
 
 ---
 
-## Latest release: v0.9.8 (2026-10-14)
+## Latest release: v0.9.9 (2026-10-15)
+
+This release overhauls the design system and tactile micro-depth: introducing composite ambient shadows, 1px top inset highlights, subtle tinted borders, paper-focus reading typography, tactile keycaps, compact CBT mock answer sheet, and live pulse indicators for background saves.
+
+- **Improved:** Added composite ambient shadows (`--lv-sh-card`), 1px top inset highlights (`--lv-inset-highlight`), subtle tinted borders and tactile keycap shadows. Cards and buttons now feature physical micro-elastic feedback (`active: scale`).
+- **Fixed:** Resolved the critical scoped `.lv-card` override in Practice, Mock, and Report views, restoring deep surface hierarchy across all tabs.
+- **Practice experience:** Elevated question stem typography to 20px / 1.75 line-height for book-like immersive reading; option rows now feature hover slide-in with subtle lavender tint, and monospace A/B/C/D keycaps.
+- **Mock CBT & Analytics:** Restructured mock answer grid into compact square tiles with dual-ring active question radar glow; quadrant cards adopt soft subtle backgrounds with 26px bold figures; 53-week heatmap squares now smoothly scale 1.4x on hover.
+- **Feedback & Primitives:** SaveStatus pill enhanced with live pulse animation while persisting; consolidated global `.lv-empty` and `.lv-detail` primitives, fixing bare unstyled empty states in the Report center; unified 3px soft focus rings across all inputs.
+
+## Previous release: v0.9.8 (2026-10-14)
 
 This patch makes Practice tab opening observable: host errors are surfaced with a retry path and repeated clicks are locked while opening. The R54 token system, ordinary-block AI entry and complete state feedback remain included.
 

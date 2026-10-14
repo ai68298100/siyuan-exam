@@ -352,17 +352,19 @@
     text-align: left;
     padding: 12px 14px;
     background: var(--lv-surface);
-    border: 1px solid var(--lv-border);
+    border: 1px solid var(--lv-border-subtle, var(--lv-border));
     border-radius: var(--lv-r-2);
-    box-shadow: var(--lv-sh-1);
+    box-shadow: var(--lv-sh-card, var(--lv-sh-1)), var(--lv-inset-subtle, inset 0 1px 0 transparent);
     cursor: pointer;
     transition:
+      transform var(--lv-dur-micro) ease,
       box-shadow var(--lv-dur-micro) ease,
       border-color var(--lv-dur-micro) ease;
   }
   .lv-project:hover {
-    border-color: var(--lv-accent);
-    box-shadow: var(--lv-sh-2);
+    transform: translateY(-1px);
+    border-color: var(--lv-border-hover, var(--lv-accent));
+    box-shadow: var(--lv-sh-2), var(--lv-inset-subtle, inset 0 1px 0 transparent);
   }
   .lv-quick-create {
     display: flex;
@@ -372,18 +374,29 @@
     width: 100%;
     min-height: 40px;
     padding: 8px 12px;
-    border: 1px solid transparent;
+    border: 1px solid color-mix(in srgb, var(--lv-accent) 20%, transparent);
     border-radius: var(--lv-radius-control-sm);
     background: var(--lv-accent-soft);
     color: var(--lv-accent);
+    box-shadow: var(--lv-sh-1), var(--lv-inset-subtle, inset 0 1px 0 transparent);
     font: inherit;
     font-size: var(--lv-font-size-meta);
     font-weight: 600;
     cursor: pointer;
+    transition:
+      transform var(--lv-dur-micro) ease,
+      background-color var(--lv-dur-micro) ease,
+      border-color var(--lv-dur-micro) ease,
+      box-shadow var(--lv-dur-micro) ease;
   }
   .lv-quick-create:hover {
+    transform: translateY(-1px);
     border-color: var(--lv-accent);
     background: var(--lv-surface);
+    box-shadow: var(--lv-sh-2);
+  }
+  .lv-quick-create:active {
+    transform: scale(0.98);
   }
   .lv-project-kicker {
     display: block;
@@ -441,18 +454,20 @@
     cursor: pointer;
     transition:
       background-color var(--lv-dur-micro) ease,
-      color var(--lv-dur-micro) ease;
+      color var(--lv-dur-micro) ease,
+      transform var(--lv-dur-micro) ease;
   }
   .lv-rail-btn:hover {
     background: var(--lv-surface);
     color: var(--lv-text);
+    transform: translateX(2px);
   }
   .lv-rail-btn.on {
     background: var(--lv-accent-soft);
     color: var(--lv-accent);
-    border-color: transparent;
+    border-color: color-mix(in srgb, var(--lv-accent) 22%, transparent);
     font-weight: 600;
-    box-shadow: none;
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--lv-accent) 15%, transparent);
   }
   .lv-rail-btn.on::before {
     content: "";
@@ -460,9 +475,10 @@
     left: -1px;
     top: 9px;
     bottom: 9px;
-    width: 3px;
+    width: 3.5px;
     background: var(--lv-accent);
     border-radius: 0 3px 3px 0;
+    box-shadow: 0 0 6px color-mix(in srgb, var(--lv-accent) 60%, transparent);
   }
   .lv-rail-btn--sub {
     color: var(--lv-text-2);
@@ -490,6 +506,8 @@
     border-radius: 14px;
     background: var(--lv-amber-soft);
     color: var(--lv-amber);
+    border: 1px solid color-mix(in srgb, var(--lv-amber) 20%, transparent);
+    box-shadow: var(--lv-sh-1), var(--lv-inset-subtle, inset 0 1px 0 transparent);
     font-size: var(--lv-font-size-sm);
     line-height: 1.65;
   }

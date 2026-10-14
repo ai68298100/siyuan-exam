@@ -6248,8 +6248,8 @@ import { ttsSpeak } from "@/core/tts";
   @container lv-exam (max-width: 960px) { .lv-session-grid { grid-template-columns: minmax(0, 1fr); } .lv-session-side { order: 2; } }
   /* —— 入口 hero 卡（对齐原型 home 首屏；600px 下折叠单列） —— */
   .lv-entry-overview { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: var(--lv-space-loose); align-items: stretch; margin-bottom: 18px; }
-  .lv-entry-hero { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 24px; align-items: center; padding: 26px 28px; position: relative; overflow: hidden; }
-  .lv-entry-hero::after { content: ''; position: absolute; right: -80px; top: -80px; width: 260px; height: 260px; border-radius: var(--lv-radius-round); background: radial-gradient(closest-side, color-mix(in srgb, var(--b3-theme-primary) 8%, transparent), transparent); pointer-events: none; }
+  .lv-entry-hero { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 24px; align-items: center; padding: 26px 28px; position: relative; overflow: hidden; background: linear-gradient(135deg, var(--lv-accent-soft) 0%, color-mix(in srgb, var(--lv-accent-soft) 35%, var(--lv-surface)) 100%); border-color: color-mix(in srgb, var(--lv-accent) 22%, var(--lv-border)); }
+  .lv-entry-hero::after { content: ''; position: absolute; right: -80px; top: -80px; width: 260px; height: 260px; border-radius: var(--lv-radius-round); background: radial-gradient(closest-side, color-mix(in srgb, var(--lv-accent) 12%, transparent), transparent); pointer-events: none; }
   .lv-entry-main { min-width: 0; }
   .lv-entry-reason { font-size: 22px; font-weight: var(--lv-font-weight-semibold); letter-spacing: -.4px; line-height: 1.5; margin: 10px 0; overflow-wrap: anywhere; }
   .lv-entry-num { border-left: 1px solid var(--lv-border); padding: 5px 0 5px 28px; display: flex; flex-direction: column; gap: 7px; align-self: stretch; justify-content: center; }
@@ -6274,7 +6274,7 @@ import { ttsSpeak } from "@/core/tts";
   }
   .lv-center { display: flex; align-items: center; justify-content: center; min-height: 60%; }
   /* —— 视图切换（对齐原型 .subnav：文字 + 底部 2px 指示条，非按钮块） —— */
-  .lv-card { background: var(--lv-surface); border: 1px solid var(--lv-border); border-radius: var(--lv-r-3); padding: var(--lv-space-5) 22px; box-shadow: var(--lv-sh-1); }
+  .lv-card { background: var(--lv-surface); border: 1px solid var(--lv-border-subtle, var(--lv-border)); border-radius: var(--lv-r-3); padding: var(--lv-space-5) 22px; box-shadow: var(--lv-sh-card, var(--lv-sh-1)), var(--lv-inset-highlight, inset 0 1px 0 transparent); transition: box-shadow var(--lv-dur-view) var(--lv-ease-out), transform var(--lv-dur-micro) var(--lv-ease-out), border-color var(--lv-dur-micro) var(--lv-ease-out); }
   .lv-pad-card { margin: 8px 0; }
   .lv-guard { max-width: 460px; width: 100%; }
   .lv-guard--welcome { max-width: 760px; }
@@ -6297,8 +6297,9 @@ import { ttsSpeak } from "@/core/tts";
   .lv-guard-step b { display: block; margin-top: 8px; font-size: var(--lv-font-size-body-compact); }
   .lv-guard-step > span:last-child { display: block; margin-top: 4px; color: var(--lv-text-3); font-size: var(--lv-font-size-caption); line-height: 1.55; }
   .lv-guard-sample-detail { max-width: 620px; margin: 2px auto 0; line-height: 1.55; }
-  .lv-input { min-height: var(--lv-control-height-md); padding: var(--lv-component-pad-md); border-radius: var(--lv-r-2); border: 1px solid var(--lv-ctl-border); background: var(--lv-surface); color: var(--lv-text); font: inherit; font-size: var(--lv-font-size-body); flex: 1; min-width: 140px; }
-  .lv-input:focus { border-color: var(--lv-accent); box-shadow: var(--lv-ring); outline: none; }
+  .lv-input { min-height: var(--lv-control-height-md); padding: var(--lv-component-pad-md); border-radius: var(--lv-r-2); border: 1px solid var(--lv-ctl-border); background: var(--lv-surface); color: var(--lv-text); font: inherit; font-size: var(--lv-font-size-body); flex: 1; min-width: 140px; box-shadow: var(--lv-sh-1), var(--lv-inset-subtle, inset 0 1px 0 transparent); transition: border-color var(--lv-dur-micro) var(--lv-ease-out), box-shadow var(--lv-dur-micro) var(--lv-ease-out); }
+  .lv-input:hover:not(:disabled) { border-color: var(--lv-border-hover, var(--lv-accent)); }
+  .lv-input:focus { border-color: var(--lv-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--lv-accent) 18%, transparent), var(--lv-inset-subtle, inset 0 1px 0 transparent); outline: none; }
   .lv-textarea { width: 100%; min-height: 90px; resize: vertical; line-height: 1.8; padding: 12px; margin: 6px 0; }
   /* .lv-btn/.lv-chip/.lv-select 外观基线上收 lv-base.scss（三 Tab 共用，暗色一致） */
   .lv-btn--ghost.acc-btn { color: var(--lv-accent); background: var(--lv-accent-soft); border-color: transparent; }
@@ -6339,28 +6340,29 @@ import { ttsSpeak } from "@/core/tts";
   .lv-pure .lv-opt .key { filter: none; }
   .lv-pure .lv-opt { justify-content: center; }
   .lv-question { margin-top: 10px; }
-  .lv-stem { font-size: 19.5px; line-height: 1.8; letter-spacing: -.2px; margin-bottom: 16px; white-space: pre-wrap; }
-  .lv-opt { display: flex; gap: 13px; align-items: center; width: 100%; text-align: left; padding: 15px 17px; border-radius: var(--lv-r-2); border: 1px solid var(--lv-ctl-border); margin-bottom: 10px; cursor: pointer; background: var(--lv-surface); font: inherit; color: inherit; transition: background-color var(--lv-dur-micro) ease, border-color var(--lv-dur-micro) ease; }
-  .lv-opt:hover:not([disabled]) { border-color: var(--lv-accent); background: var(--lv-surface-2); }
-  .lv-opt .key { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; flex: none; font-size: var(--lv-font-size-sm); font-weight: var(--lv-font-weight-medium); background: var(--lv-surface); color: var(--lv-text-2); border: 1px solid var(--lv-ctl-border); }
+  .lv-stem { font-size: 20px; line-height: 1.75; font-weight: var(--lv-font-weight-medium); letter-spacing: -0.015em; margin-bottom: 18px; white-space: pre-wrap; }
+  .lv-opt { display: flex; gap: 14px; align-items: center; width: 100%; text-align: left; padding: 15px 18px; border-radius: var(--lv-r-2); border: 1.5px solid var(--lv-ctl-border); margin-bottom: 11px; cursor: pointer; background: var(--lv-surface); font: inherit; color: inherit; box-shadow: var(--lv-sh-1), var(--lv-inset-subtle, inset 0 1px 0 transparent); transition: background-color var(--lv-dur-micro) ease, border-color var(--lv-dur-micro) ease, box-shadow var(--lv-dur-micro) ease, transform var(--lv-dur-micro) ease; }
+  .lv-opt:hover:not([disabled]) { border-color: var(--lv-border-hover, var(--lv-accent)); background: color-mix(in srgb, var(--lv-accent) 4%, var(--lv-surface)); transform: translateX(2px); }
+  .lv-opt:active:not([disabled]) { transform: scale(0.99); }
+  .lv-opt .key { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; flex: none; font-size: 13px; font-weight: var(--lv-font-weight-semibold); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; background: var(--lv-surface-2); color: var(--lv-text-2); border: 1px solid var(--lv-border); box-shadow: var(--lv-keycap-shadow); transition: background-color var(--lv-dur-micro) ease, border-color var(--lv-dur-micro) ease, color var(--lv-dur-micro) ease; }
   /* —— 选项圆点指示（规范 v6 .option：radio 圆 / checkbox 方；随四态着色） —— */
-  .lv-opt-check { width: 17px; height: 17px; border-radius: var(--lv-radius-round); border: 1.5px solid var(--lv-ctl-border); background: var(--lv-surface); flex: none; display: grid; place-items: center; transition: background-color var(--lv-dur-micro) ease, border-color var(--lv-dur-micro) ease; }
+  .lv-opt-check { width: 18px; height: 18px; border-radius: var(--lv-radius-round); border: 1.5px solid var(--lv-ctl-border); background: var(--lv-surface); flex: none; display: grid; place-items: center; transition: background-color var(--lv-dur-micro) ease, border-color var(--lv-dur-micro) ease; }
   .lv-opt-check.box { border-radius: 5px; }
-  .lv-opt-check::after { content: ""; width: 7px; height: 7px; border-radius: var(--lv-radius-round); background: var(--lv-on-accent, var(--b3-theme-on-primary, #fff)); transform: scale(0); transition: transform var(--lv-dur-micro) var(--lv-ease-out); }
+  .lv-opt-check::after { content: ""; width: 8px; height: 8px; border-radius: var(--lv-radius-round); background: var(--lv-on-accent, var(--b3-theme-on-primary, #fff)); transform: scale(0); transition: transform var(--lv-dur-micro) var(--lv-ease-out); }
   .lv-opt-check.box::after { border-radius: 1.5px; }
   .lv-opt.sel .lv-opt-check, .lv-opt.right .lv-opt-check, .lv-opt.wrong .lv-opt-check { border-color: transparent; }
   .lv-opt.sel .lv-opt-check { background: var(--lv-accent); }
   .lv-opt.right .lv-opt-check { background: var(--lv-green); }
   .lv-opt.wrong .lv-opt-check { background: var(--lv-red); }
   .lv-opt.sel .lv-opt-check::after, .lv-opt.right .lv-opt-check::after, .lv-opt.wrong .lv-opt-check::after { transform: scale(1); }
-  .lv-opt.sel { border-color: var(--lv-accent); background: var(--lv-accent-soft); }
-  .lv-opt.sel .key { background: var(--lv-accent); border-color: var(--lv-accent); color: var(--lv-on-accent, var(--b3-theme-on-primary, #fff)); }
+  .lv-opt.sel { border-color: var(--lv-accent); background: var(--lv-accent-soft); box-shadow: 0 2px 8px color-mix(in srgb, var(--lv-accent) 18%, transparent); }
+  .lv-opt.sel .key { background: var(--lv-accent); border-color: var(--lv-accent); color: var(--lv-on-accent, var(--b3-theme-on-primary, #fff)); box-shadow: 0 2px 6px color-mix(in srgb, var(--lv-accent) 28%, transparent); }
   .lv-opt.right { border-color: var(--lv-green); background: var(--lv-green-soft); }
   .lv-opt.right .key { background: var(--lv-green); border-color: var(--lv-green); color: var(--lv-on-green, var(--b3-theme-on-primary, #fff)); }
   .lv-opt.wrong { border-color: var(--lv-red); background: var(--lv-red-soft); }
   .lv-opt.wrong .key { background: var(--lv-red); border-color: var(--lv-red); color: var(--lv-on-red, var(--b3-theme-on-primary, #fff)); }
-  .lv-feedback { margin: 16px 0 12px; padding: 15px 18px; border: 1px solid var(--lv-border); border-left: 3px solid var(--lv-red); border-radius: var(--lv-r-2); font-weight: var(--lv-font-weight-semibold); font-size: var(--lv-font-size-md); background: var(--lv-red-soft); color: var(--lv-red); }
-  .lv-feedback.good { border-left-color: var(--lv-green); background: var(--lv-green-soft); color: var(--lv-green); }
+  .lv-feedback { margin: 16px 0 12px; padding: 15px 18px; border: 1px solid color-mix(in srgb, var(--lv-red) 26%, var(--lv-border)); border-left: 4px solid var(--lv-red); border-radius: var(--lv-r-2); font-weight: var(--lv-font-weight-semibold); font-size: var(--lv-font-size-md); background: color-mix(in srgb, var(--lv-red-soft) 85%, var(--lv-surface)); color: var(--lv-red); box-shadow: 0 2px 10px color-mix(in srgb, var(--lv-red) 12%, transparent); animation: lv-appear var(--lv-dur-view) var(--lv-ease-out); }
+  .lv-feedback.good { border-color: color-mix(in srgb, var(--lv-green) 26%, var(--lv-border)); border-left-color: var(--lv-green); background: color-mix(in srgb, var(--lv-green-soft) 85%, var(--lv-surface)); color: var(--lv-green); box-shadow: 0 2px 10px color-mix(in srgb, var(--lv-green) 12%, transparent); }
   /* —— 作答动作区（原型 .answer-actions：上分隔线 + 层次） —— */
   .lv-answer-actions { margin-top: 14px; padding-top: 18px; border-top: 1px solid var(--lv-border); }
   /* —— 改答原因弹层（63-03：轻量内联，不阻断作答） —— */
@@ -6371,10 +6373,10 @@ import { ttsSpeak } from "@/core/tts";
   .lv-analysis { border-left: 3px solid var(--lv-accent); background: var(--lv-surface-2); border-radius: 0 var(--lv-r-2) var(--lv-r-2) 0; padding: var(--lv-space-3) var(--lv-space-4); font-size: var(--lv-font-size-body); color: var(--lv-text-2); margin-bottom: 10px; white-space: pre-wrap; }
   .lv-success { margin: 8px 0; padding: 10px 14px; border-radius: var(--lv-r-2); background: var(--lv-green-soft); color: var(--lv-green); font-size: var(--lv-font-size-body-compact); font-weight: var(--lv-font-weight-semibold); }
   .lv-error-row { font-size: var(--lv-font-size-meta); color: var(--lv-red); padding: 4px 2px; border-bottom: 1px dashed var(--lv-border); }
-  .lv-empty { border-radius: var(--lv-r-3); padding: 56px 24px; text-align: center; color: var(--lv-text-3); font-size: var(--lv-font-size-body); }
-  .lv-empty-icon { display: grid; place-items: center; width: 56px; height: 56px; margin: 0 auto; border-radius: 16px; background: var(--lv-accent-soft); color: var(--lv-accent); }
-  .lv-empty b { display: block; font-size: 17px; font-weight: var(--lv-font-weight-semibold); color: var(--lv-text); margin: 14px 0 6px; }
-  .lv-empty .lv-muted { max-width: 430px; margin: 0 auto; }
+  .lv-empty { border-radius: var(--lv-r-3); padding: 52px 24px; text-align: center; color: var(--lv-text-3); font-size: var(--lv-font-size-body); background: color-mix(in srgb, var(--lv-surface-2) 40%, var(--lv-surface)); border: 1.5px dashed var(--lv-border); }
+  .lv-empty-icon { display: grid; place-items: center; width: 60px; height: 60px; margin: 0 auto; border-radius: 18px; background: var(--lv-accent-soft); color: var(--lv-accent); box-shadow: 0 4px 16px color-mix(in srgb, var(--lv-accent) 18%, transparent); }
+  .lv-empty b { display: block; font-size: 18px; font-weight: var(--lv-font-weight-bold); color: var(--lv-text); margin: 16px 0 8px; letter-spacing: -0.01em; }
+  .lv-empty .lv-muted { max-width: 440px; margin: 0 auto; line-height: 1.65; }
   /* —— 错题本视图（规范 v6 §6）：指标联排 + 双栏 + 队列行 —— */
   .lv-shell-grid { display: grid; grid-template-columns: minmax(0, 1fr) 288px; gap: var(--lv-space-5); align-items: start; }
   @container lv-exam (max-width: 960px) { .lv-shell-grid { grid-template-columns: minmax(0, 1fr); } }
@@ -6387,13 +6389,14 @@ import { ttsSpeak } from "@/core/tts";
   .task-number { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; border: 1px solid var(--lv-border); background: var(--lv-surface-2); color: var(--lv-accent); font-size: var(--lv-font-size-sm); font-variant-numeric: tabular-nums; flex-shrink: 0; }
   .lv-skeleton { height: 180px; border-radius: var(--lv-r-3); background: linear-gradient(100deg, var(--lv-surface-2) 40%, var(--lv-surface) 50%, var(--lv-surface-2) 60%); background-size: 200% 100%; animation: lv-shimmer 1.4s infinite; border: 1px solid var(--lv-border); }
   @keyframes lv-shimmer { to { background-position: -200% 0; } }
-  .lv-qrow { padding: var(--lv-space-3) var(--lv-space-4); margin-bottom: 8px; transition: border-color var(--lv-dur-micro) var(--lv-ease-out), background-color var(--lv-dur-micro) var(--lv-ease-out); }
+  .lv-qrow { padding: 14px 18px; margin-bottom: 9px; border: 1px solid var(--lv-border-subtle, var(--lv-border)); border-radius: var(--lv-r-2); background: var(--lv-surface); box-shadow: var(--lv-sh-1), var(--lv-inset-subtle, inset 0 1px 0 transparent); transition: transform var(--lv-dur-micro) var(--lv-ease-out), border-color var(--lv-dur-micro) var(--lv-ease-out), background-color var(--lv-dur-micro) var(--lv-ease-out), box-shadow var(--lv-dur-micro) var(--lv-ease-out); }
+  .lv-qrow:hover { transform: translateY(-1px); border-color: var(--lv-border-hover, var(--lv-accent)); box-shadow: var(--lv-sh-2); }
   /* 行头可点可供养：hover 浅底 + 手型；批量模式选中行 accent 描边 */
   .lv-qrow-head { display: flex; gap: var(--lv-space-2); align-items: center; width: calc(100% + 16px); margin: -4px -8px 4px; padding: 4px 8px; border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; flex-wrap: wrap; transition: background-color var(--lv-dur-micro) var(--lv-ease-out); }
   .lv-qrow-head:hover { background: var(--lv-surface-2); }
-  .lv-qrow.sel { border-color: var(--lv-accent); background: var(--lv-accent-soft); }
-  .lv-qrow-src { margin-left: auto; font-size: var(--lv-font-size-caption); }
-  .lv-qrow-stem { font-size: var(--lv-font-size-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lv-qrow.sel { border-color: var(--lv-accent); background: var(--lv-accent-soft); box-shadow: 0 2px 8px color-mix(in srgb, var(--lv-accent) 15%, transparent); }
+  .lv-qrow-src { margin-left: auto; font-size: var(--lv-font-size-caption); color: var(--lv-text-3); }
+  .lv-qrow-stem { font-size: var(--lv-font-size-body); font-weight: var(--lv-font-weight-medium); color: var(--lv-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* —— 工具行「更多」菜单（浮层走卡片语言：surface + pop 阴影 + 38px 行） —— */
   .lv-more { position: relative; display: inline-flex; }
   .lv-more-dot { display: inline-block; width: 6px; height: 6px; margin-left: 5px; border-radius: var(--lv-radius-round); background: var(--lv-accent); }
@@ -6402,18 +6405,19 @@ import { ttsSpeak } from "@/core/tts";
   .lv-more-pop button:hover { background: var(--lv-accent-soft); }
   .lv-more-pop button[aria-checked="true"] { color: var(--lv-accent); font-weight: 600; }
   .lv-more-sep { height: 1px; margin: 4px 6px; background: var(--lv-border); }
-  .lv-rate { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--lv-space-relaxed); margin-top: 12px; }
-  .lv-rate .lv-btn { justify-content: center; }
+  .lv-rate { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 14px; }
+  .lv-rate .lv-btn { justify-content: center; min-height: 48px; padding: 10px 14px; font-weight: var(--lv-font-weight-semibold); box-shadow: var(--lv-sh-1), var(--lv-inset-subtle, inset 0 1px 0 transparent); transition: background-color var(--lv-dur-micro) ease, border-color var(--lv-dur-micro) ease, color var(--lv-dur-micro) ease, transform var(--lv-dur-micro) ease, box-shadow var(--lv-dur-micro) ease; }
+  .lv-rate .lv-btn:active:not(:disabled) { transform: scale(0.97); }
   /* 语义键帽常显（Anki 现代改造融合）：数字块随等级着色，按钮本体保持中性 */
-  .lv-rate-key { display: inline-grid; place-items: center; width: 20px; height: 20px; margin-right: 2px; border-radius: 6px; font-size: var(--lv-font-size-label); font-weight: var(--lv-font-weight-bold); font-variant-numeric: tabular-nums; color: var(--lv-text-2); background: var(--lv-surface-2); border: 1px solid var(--lv-border); transition: background-color var(--lv-dur-micro) var(--lv-ease-out), color var(--lv-dur-micro) var(--lv-ease-out), border-color var(--lv-dur-micro) var(--lv-ease-out); }
+  .lv-rate-key { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-right: 6px; border-radius: 7px; font-size: var(--lv-font-size-label); font-weight: var(--lv-font-weight-bold); font-variant-numeric: tabular-nums; font-family: ui-monospace, monospace; color: var(--lv-text-2); background: var(--lv-surface-2); border: 1px solid var(--lv-border); box-shadow: var(--lv-keycap-shadow); transition: background-color var(--lv-dur-micro) var(--lv-ease-out), color var(--lv-dur-micro) var(--lv-ease-out), border-color var(--lv-dur-micro) var(--lv-ease-out); }
   .lv-rate .r1 .lv-rate-key { color: var(--lv-red); background: var(--lv-red-soft); border-color: transparent; }
   .lv-rate .r2 .lv-rate-key { color: var(--lv-amber); background: var(--lv-amber-soft); border-color: transparent; }
   .lv-rate .r3 .lv-rate-key { color: var(--lv-green); background: var(--lv-green-soft); border-color: transparent; }
   .lv-rate .r4 .lv-rate-key { color: var(--lv-accent); background: var(--lv-accent-soft); border-color: transparent; }
-  .lv-rate .r1:hover { border-color: var(--lv-red); color: var(--lv-red); }
-  .lv-rate .r2:hover { border-color: var(--lv-amber); color: var(--lv-amber); }
-  .lv-rate .r3:hover { border-color: var(--lv-green); color: var(--lv-green); }
-  .lv-rate .r4:hover { border-color: var(--lv-accent); color: var(--lv-accent); }
+  .lv-rate .r1:hover { border-color: var(--lv-red); color: var(--lv-red); background: color-mix(in srgb, var(--lv-red-soft) 60%, var(--lv-surface)); box-shadow: 0 4px 12px color-mix(in srgb, var(--lv-red) 18%, transparent); }
+  .lv-rate .r2:hover { border-color: var(--lv-amber); color: var(--lv-amber); background: color-mix(in srgb, var(--lv-amber-soft) 60%, var(--lv-surface)); box-shadow: 0 4px 12px color-mix(in srgb, var(--lv-amber) 18%, transparent); }
+  .lv-rate .r3:hover { border-color: var(--lv-green); color: var(--lv-green); background: color-mix(in srgb, var(--lv-green-soft) 60%, var(--lv-surface)); box-shadow: 0 4px 12px color-mix(in srgb, var(--lv-green) 18%, transparent); }
+  .lv-rate .r4:hover { border-color: var(--lv-accent); color: var(--lv-accent); background: color-mix(in srgb, var(--lv-accent-soft) 60%, var(--lv-surface)); box-shadow: 0 4px 12px color-mix(in srgb, var(--lv-accent) 18%, transparent); }
   @container lv-exam (max-width: 960px) { .lv-modes { grid-template-columns: repeat(2, 1fr); } }
   @container lv-exam (max-width: 480px) { .lv-modes { grid-template-columns: 1fr; } }
   @media (prefers-reduced-motion: reduce) { .lv-skeleton { animation: none; } .lv-mode, .lv-btn, .lv-opt { transition: none; } }

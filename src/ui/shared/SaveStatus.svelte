@@ -53,7 +53,49 @@
     </button>
 {/if}
 <style>
-    .lv-save-status { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: var(--lv-radius-pill); font-size: var(--lv-font-size-sm); font-weight: var(--lv-font-weight-medium); border: 1px solid var(--lv-border); cursor: pointer; background: var(--lv-surface-2); color: var(--lv-text-2); }
-    .lv-save-failed { color: var(--lv-red); background: var(--lv-red-soft); border-color: transparent; }
-    .lv-save-unknown { color: var(--lv-amber); background: var(--lv-amber-soft); border-color: transparent; }
+    .lv-save-status { 
+        display: inline-flex; 
+        align-items: center; 
+        gap: 6px; 
+        padding: 4px 12px; 
+        border-radius: var(--lv-radius-pill); 
+        font-size: var(--lv-font-size-sm); 
+        font-weight: var(--lv-font-weight-medium); 
+        border: 1px solid var(--lv-border-subtle, var(--lv-border)); 
+        cursor: pointer; 
+        background: var(--lv-surface); 
+        color: var(--lv-text-2); 
+        box-shadow: var(--lv-sh-1), var(--lv-inset-subtle, inset 0 1px 0 transparent);
+        transition: transform var(--lv-dur-micro) var(--lv-ease-out), box-shadow var(--lv-dur-micro) var(--lv-ease-out), background-color var(--lv-dur-micro) var(--lv-ease-out);
+    }
+    .lv-save-status:hover {
+        transform: translateY(-1px);
+        box-shadow: var(--lv-sh-2);
+    }
+    .lv-save-status:active {
+        transform: scale(0.98);
+    }
+    .lv-save-pending {
+        color: var(--lv-accent);
+        background: var(--lv-accent-soft);
+        border-color: color-mix(in srgb, var(--lv-accent) 25%, transparent);
+        animation: lv-pulse 2s infinite ease-in-out;
+    }
+    .lv-save-failed { 
+        color: var(--lv-red); 
+        background: var(--lv-red-soft); 
+        border-color: color-mix(in srgb, var(--lv-red) 30%, transparent); 
+    }
+    .lv-save-unknown { 
+        color: var(--lv-amber); 
+        background: var(--lv-amber-soft); 
+        border-color: color-mix(in srgb, var(--lv-amber) 30%, transparent); 
+    }
+    @keyframes lv-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.65; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .lv-save-pending { animation: none; }
+    }
 </style>
