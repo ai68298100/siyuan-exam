@@ -4,20 +4,19 @@
 // 本脚本驱动真实 UI 流并断言状态迁移与流水落盘（主动）：
 //   36     作答信心 → attempts 事件 confidence 字段
 //   63-03  改答轨迹：改答 → 终答落事件
-//   27     模考作答 → 刷新 → 恢复卡片 → 恢复后卷序与进度保留
+//   27     模考作答 → 立即切页 → 快照落盘 → 刷新 → 恢复卡片与卷序保留
 //   28     过期恢复：改写快照 startedAt → 过期标识 + 过期卷面不崩
 //   38     AI 离线/stub 通道 → 结果或错误卡优雅降级
 // 前置：npx vite build --config scripts/visual-harness/vite.config.ts
 // 用法：node scripts/visual-harness/smoke-ui.mjs
-// 退出码：0 = 全过；1 = 有失败（Edge 偶发断连时自动整轮重试一次）
+// 退出码：0 = 全过；1 = 有失败（浏览器偶发断连时自动整轮重试一次）
 // ============================================================
 import { createServer } from "node:http";
 import { readFileSync, existsSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
-import { chromium } from "playwright-core";
+import { launchHarnessBrowser } from "./browser.mjs";
 
 const ROOT = resolve(import.meta.dirname, "../../output/harness");
-const EDGE = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
 if (!existsSync(join(ROOT, "index.html"))) {
   console.error("✗ 先构建 harness：npx vite build --config scripts/visual-harness/vite.config.ts");
   process.exit(1);
@@ -41,7 +40,7 @@ const server = createServer((req, res) => {
   }
 });
 await new Promise((r) => server.listen(4202, r));
-let browser = await chromium.launch({ executablePath: EDGE });
+let browser = await launchHarnessBrowser();
 
 /** 单轮完整走查：新开 context（干净库），返回 { results, pageErrors } */
 async function runSuite() {
@@ -139,16 +138,60 @@ async function runSuite() {
     record("63-03 改答轨迹→终答", false, String(e).slice(0, 90));
   }
 
+  // ---------- Practice delayed work:背题自动提交必须在 Tab 卸载时取消 ----------
+  try {
+    const before = await page.evaluate(() => window.__app.attempts.all().length);
+    await page.locator('#app button[title="背题"]').click({ timeout: 3000 });
+    // 50ms 的自动揭示窗口内切换 Tab，验证 onMount 清理确实阻止卸载后的提交。
+    await page.evaluate(() => window.__show("mock"));
+    await page.waitForTimeout(120);
+    const after = await page.evaluate(() => window.__app.attempts.all().length);
+    record("Practice 背题延迟提交在切页时取消", after === before, `流水 ${before} → ${after}`);
+  } catch (e) {
+    record("Practice 背题延迟提交在切页时取消", false, String(e).slice(0, 90));
+  }
+
   // ---------- 流程 27：模考作答 → 刷新 → 恢复 ----------
   try {
     await page.evaluate(() => window.__show("mock"));
     await page.waitForTimeout(600);
+    await page.evaluate(() => {
+      const storage = window.__app.deps.storage;
+      const originalSave = storage.save;
+      let rejectOnce = true;
+      storage.save = async function (key, value) {
+        if (key === "mock/run" && rejectOnce) {
+          rejectOnce = false;
+          throw new Error("测试存储暂不可用");
+        }
+        return originalSave.call(this, key, value);
+      };
+      window.__app.__restoreHarnessStorageSave = () => { storage.save = originalSave; };
+    });
     await T("开始模考");
     await page.waitForTimeout(1200);
+    const snapshotError = page.locator('#app .lv-error:has(button:has-text("重试保存进度"))');
+    await snapshotError.waitFor({ state: "visible", timeout: 4000 });
+    const saveErrorText = await snapshotError.textContent();
+    await snapshotError.locator("button").click();
+    await page.waitForFunction(() => {
+      const store = JSON.parse(localStorage.getItem("lv-harness-storage") ?? "{}");
+      return !!store["mock/run"]?.runId && !document.querySelector('#app .lv-error button');
+    }, undefined, { timeout: 5000 });
+    const retrySaved = await page.evaluate(() => !!JSON.parse(localStorage.getItem("lv-harness-storage") ?? "{}")["mock/run"]?.runId);
+    await page.evaluate(() => window.__app.__restoreHarnessStorageSave?.());
+    record("27 模考进度保存失败可读且可重试", retrySaved && saveErrorText.includes("测试存储暂不可用"), retrySaved ? "重试后快照已落盘" : "重试未落盘");
     const before =
       (await page.locator("#app .lv-chip.num").allTextContents()).find((t) => /^\d+\/\d+$/.test(t.trim())) ?? "";
     await answerSomehow("A");
-    await page.waitForTimeout(3600); // persistRun 3s 节流 + 落盘余量
+    // 刻意在快照节流窗口内切出模考，验证离开页签时会强制保存最新答案。
+    await page.evaluate(() => window.__show("practice"));
+    await page.waitForFunction(() => {
+      const store = JSON.parse(localStorage.getItem("lv-harness-storage") ?? "{}");
+      return Array.isArray(store["mock/run"]?.answers) && store["mock/run"].answers.length > 0;
+    }, undefined, { timeout: 5000 });
+    const savedAnswers = await page.evaluate(() => JSON.parse(localStorage.getItem("lv-harness-storage") ?? "{}")["mock/run"]?.answers?.length ?? 0);
+    record("27 模考切页立即保存", savedAnswers > 0, `快照答案=${savedAnswers}`);
     await page.reload();
     await page.waitForTimeout(1200);
     // 刷新后默认在练习台：切到模考场，MockTab 初始化时载入 run 快照并显示恢复卡
@@ -252,6 +295,52 @@ async function runSuite() {
     record("38 AI 通道优雅降级", false, String(e).slice(0, 90));
   }
 
+  // ---------- 模考估分：读取失败可重试、字段校验定位、写入失败可重试 ----------
+  try {
+    await page.evaluate(() => {
+      window.__show("mock");
+      const app = window.__app;
+      window.__baseListEstimates = app.listEstimates.bind(app);
+      let failOnce = true;
+      app.listEstimates = async () => {
+        if (failOnce) { failOnce = false; throw new Error("临时读取失败"); }
+        return window.__baseListEstimates();
+      };
+    });
+    await page.locator('#app summary:has-text("考后估分")').click();
+    await page.getByRole("alert").filter({ hasText: "估分历史读取失败" }).waitFor();
+    await page.getByRole("button", { name: "重试读取" }).click();
+    await page.getByText("还没有估分记录", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "开始第一次估分" }).click();
+    const mineInput = page.locator("#estimate-mine-input");
+    const focused = await mineInput.evaluate((input) => input === document.activeElement);
+    await page.locator("#estimate-key-input").fill("ABC");
+    await mineInput.fill("AB");
+    const invalid = (await mineInput.getAttribute("aria-invalid")) === "true" && await page.locator("#estimate-length-error").count() === 1;
+    await mineInput.fill("ABC");
+    await page.evaluate(() => {
+      const app = window.__app;
+      window.__baseSaveEstimate = app.saveEstimate.bind(app);
+      let failOnce = true;
+      app.saveEstimate = async (record) => {
+        if (failOnce) { failOnce = false; throw new Error("临时写入失败"); }
+        return window.__baseSaveEstimate(record);
+      };
+    });
+    await page.getByRole("button", { name: "估分", exact: true }).click();
+    await page.getByRole("alert").filter({ hasText: "历史记录未保存" }).waitFor();
+    await page.getByRole("button", { name: "重试保存这次估分" }).click();
+    await page.locator("#app .lv-row").filter({ hasText: "历史" }).getByText("100%", { exact: true }).waitFor();
+    record("模考估分失败可重试", focused && invalid, `空态引导聚焦=${focused} · 字段错误定位=${invalid}`);
+    record("模考估分写入可重试", await page.getByText("100%", { exact: true }).count() > 0, "失败后重试已写入历史");
+    await page.evaluate(() => {
+      window.__app.listEstimates = window.__baseListEstimates;
+      window.__app.saveEstimate = window.__baseSaveEstimate;
+    });
+  } catch (e) {
+    record("模考估分交互", false, String(e).slice(0, 100));
+  }
+
   await ctx.close();
   return { results, pageErrors };
 }
@@ -260,13 +349,13 @@ const progress = (t) => (t || "").trim();
 
 let { results, pageErrors } = await runSuite();
 if (results.some((r) => !r) || pageErrors.length) {
-  console.log("\n… 存在失败/异常：Edge 偶发断连常见——重启浏览器整轮重试一次");
+  console.log("\n… 存在失败/异常：浏览器偶发断连时重启整轮重试一次");
   try {
     await browser.close();
   } catch {
     /* 已死 */
   }
-  browser = await chromium.launch({ executablePath: EDGE });
+  browser = await launchHarnessBrowser();
   const retry = await runSuite();
   results = retry.results;
   pageErrors = retry.pageErrors;

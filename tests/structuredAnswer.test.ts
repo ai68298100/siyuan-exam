@@ -55,6 +55,8 @@ describe("54-02 数值判分（54-02 验收 fixtures：边界/负数/小数分�
   it("等价单位换算：m→km 因子换算后判分；单位后缀剥离", () => {
     expect(gradeNumeric(spec, "1", "1000 m").reason).toBe("unit-converted");
     expect(gradeNumeric(spec, "1", "1000m").correct).toBe(true);
+    expect(gradeNumeric(spec, "1 km", "1 km").correct).toBe(true);
+    expect(gradeNumeric(spec, "1 km", "1000 m").correct).toBe(true);
     expect(gradeNumeric(spec, "1", "999 m").correct).toBe(true); // 999m=0.999km，在 absTol 0.01km 内
     expect(gradeNumeric(spec, "1", "900 m").correct).toBe(false); // 0.9km 超容差
   });

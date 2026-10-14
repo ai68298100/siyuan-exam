@@ -1,18 +1,24 @@
 # 小驴考试当前状态
 
-> 更新日期：2026-10-09 · 版本：v0.9.2 · 分支：`main`
+> 更新日期：2026-10-14 · 版本：v0.9.7 · 分支：main（待推送）
 
 这份文档记录当前源码和自动化检查的事实。它区分“已有实现”和“真实思源/移动端已验证”，避免把设计、截图或离线测试误写成宿主支持。发布摘要与版本边界以 [CHANGELOG](../CHANGELOG.md) 为准。
 
-## 隔离靶场验证批次（2026-10-09，v0.9.1 后未发布修复）
+## 当前验证批次（2026-10-14，v0.9.7 工作区）
 
-在 3.8.6 无头内核隔离靶场（独立 workspace + 端口 + token）完成 22 轮真机检查（行为走查 + 静态审查 + 数据边界 + 组合场景），发现并修复 **3 P0 + 8 P1**，全部有真机复验证据，已提交 5 个 conventional commits（`a436472..7e74e8f`）：
+在本地隔离 UI harness 和纯逻辑测试中完成 R54 界面、示例题库、练习/模考/报告导航、资料草稿、AI 候选、导入及共享交互检查；本轮新增 UI token 指标脚本与普通块出题入口。未配置思源实例，因此没有宣称新的真实思源宿主验证。
+
+## 此前已记录的隔离靶场修复（2026-10-09，v0.9.1 后）
+
+以下是历史验证，不代表本轮重新运行：
 
 - **P0**：`openTab` custom.id 需 `plugin.name + type` 前缀（否则三主页签空白）；`questionToMarkdown` IAL 缺右花括号导致**所有写入题目在 attributes 表不可见**（v0.1 起即坏）；3.8.6 `/api/query/sql` 默认 64 行截断（请求级 limit 无效，须 SQL 文本 LIMIT）。
-- **P1**：插件存储 `loadData` 空串归一化（错题处置 TypeError）；browser/mobile 前端需单文件构建（`inlineDynamicImports`）；错题本/驾驶舱响应性（总线驱动 dataRev）；内核断连在线标记翻转（`kernel-connection` 事件）；每日战报写回撞索引滞后；多库切换入口与记忆；重载后页签自动恢复。
+- **P1**：插件存储 `loadData` 空串归一化（错题处置 TypeError）；browser/mobile 前端需单文件构建（当前 Vite 使用 `codeSplitting: false`，旧版字段为 `inlineDynamicImports`）；错题本/驾驶舱响应性（总线驱动 dataRev）；内核断连在线标记翻转（`kernel-connection` 事件）；每日战报写回撞索引滞后；多库切换入口与记忆；重载后页签自动恢复。
 - **其他**：双语 i18n 漏网 26 键、按钮防折行、placeholder 降调、收藏按钮语义 aria-label。
 
-**验证证据（全绿）**：581 单测（106 文件）· `guard` 七检 · 内核靶场 preflight 16/16 + 数据生命周期 6/6 + CSV 5/5 + perf（500 题 28ms）· 真机 UI 走查（含 390px、双主题、双语宿主、离线降级、纸笔回录判分写入持久化、批量编辑+撤销、挑战码非法拒绝、考点合并应用对账）。
+**当前验证证据**：113 个测试文件、652 项测试通过；`pnpm guard`、生产构建、UI harness 构建、`pnpm smoke:ui`（12/12）、报告行动 smoke、包白名单校验和 `pnpm release:check`（8 项）通过。此前原型状态 smoke 覆盖所列页面状态及 390px 横向溢出，但不等同于所有中间断点的视觉验收。未配置思源实例，因此不把内核写入、真实权限、移动 WebView 或真实 AI 端点列为已验证。
+
+**性能证据边界**：当前发行包 `dist/index.js` 为 1,196,450 bytes（Vite gzip 375.96 kB），`dist/index.css` 为 66,943 bytes（gzip 11.15 kB），`package.zip` 为 663,984 bytes。Chrome 单文件 harness 的静态/延迟初始化对照各 20 次，主界面 shell 可见 p50/p95 为 171/206 与 172/205 ms；首模考为 57/76 与 62/81 ms，报告为 62/70 与 65/68 ms；两版资源体积、CLS（0）和 DOM（403）相同，当前没有足够证据说明生产懒加载能稳定改善体验，因此生产继续同步挂载 Tab。完整方法、分位数和局限见 `docs/DELIVERY.md`。源码无图片、视频/音频或自定义字体资源；真实宿主长列表数据也不足以支撑图片/字体处理或虚拟滚动改造。
 
 **已核实的非缺陷**：考点合并“已应用”与内核瞬时分布不一致＝属性索引收敛窗口误读；报告写入按钮/`toggleFav` 两起“崩溃”均为测试传参或视口外坐标。
 
@@ -28,20 +34,26 @@
 - 报告趋势、热力、错因分布、信心校准、行动队列和数据导出。
 - 学习资料登记、定位、笔记、题目关联、考纲覆盖、缺口清单和勘误回导。
 - AI 提示、追问、讲解、错因假设、报告解读、下一行动、闪卡候选，以及生成/复核/修复管线。
-- v6 UI：共享 Rail、窄屏抽屉、⌘K 命令面板、今日驾驶舱、独立错题本、报告和模考图表。
+- R54 UI：共享 Rail、窄屏抽屉、⌘K 命令面板、今日入口、独立错题本、报告和模考图表；R54 原型作为当前 UI 设计与状态规格，旧 v6 原型保留作历史资料。
 - 外链安全：资料入口使用 origin 判定，题面/材料/导入抽查富文本外链经统一确认闸门，危险协议阻断并使用 `noopener,noreferrer` 打开。
 
 ## 当前验证证据
 
 | 检查 | 结果 | 范围 |
 |---|---:|---|
-| `pnpm test` | 106 文件 / 577 项通过 | 纯逻辑、数据、内核客户端、URL policy 和回归测试 |
-| `pnpm check` | 通过 | 类型、Svelte、i18n、架构、样式；Svelte 0 警告 |
-| `pnpm lint` | 通过 | ESLint |
-| `pnpm build` | 通过 | 生产构建和插件包生成 |
-| `pnpm verify:package` | 通过 | 30 文件白名单 |
-| `pnpm release:check` | 8/8 通过 | 版本、翻译、依赖、构建、链接和包 |
-| `pnpm smoke:ui` | 7/7 通过 | 本地可视化 harness 的 UI 流程 |
+| `pnpm test` | 114 文件 / 655 项通过 | 纯逻辑、数据、内核客户端、URL policy、示例题库、报告和回归测试 |
+| `pnpm run check:svelte` | 通过 | Svelte 类型与模板检查，0 errors / 0 warnings |
+| `pnpm run check:styles` | 通过 | token 与样式审计 |
+| `pnpm run build:app` | 通过 | 生产构建并生成 `dist/package.zip` |
+| `pnpm exec vite build --config scripts/visual-harness/vite.config.ts` | 通过 | 真实 Svelte UI 的隔离 harness 构建 |
+| `node scripts/visual-harness/smoke-prototype-states.mjs` | 通过 | R54 页面状态、失败恢复、加载锁和 390px 横向溢出 |
+| `node scripts/visual-harness/smoke-workflows-ux.mjs` | 通过 | 导入、录题、资料草稿、AI、拖拽与快捷键 |
+| `node scripts/visual-harness/smoke-sample-ui.mjs` | 通过 | 示例题库、练习、模考、报告导航与移动宽度 |
+| `node scripts/visual-harness/smoke-shared-ux.mjs` | 通过 | 命令面板、抽屉、焦点恢复、异常收集 |
+| `pnpm run lint` | 通过 | R54 原型已按浏览器脚本配置 globals，原型脚本无 ESLint 错误 |
+| `pnpm smoke:ui` | 7/7 通过 | 生产 UI 核心流程与错误恢复 |
+| `pnpm verify:package` | 通过 | 当前发行包白名单 9 个文件 |
+| `pnpm release:check` | 8/8 通过 | 版本、翻译、依赖、构建、链接和包检查 |
 
 2026-10-07 批次（v0.8.1–0.8.3）修复了原生包导入的 multipart transport、请求取消信号、练习键盘返回、UI smoke 题型假设、命令面板焦点、Tab ARIA 关系、图表语义、窄屏触控尺寸、长文本换行和确认对话框净化。
 
@@ -55,6 +67,8 @@ v0.9.1 批次（2026-10-08）统一插件名称为「小驴考试（内测版）
 - 超过 5000 题题库的真实宿主性能。
 - 完整读屏、200% 缩放、第三方主题、forced-colors 和插件卸载资源释放。
 - 富文本外链在真实思源桌面/Android WebView 中的 `window.open`、剪贴板和敏感查询参数行为。
+- R54 原型与实现的逐项视觉差异、真实思源权限/登录、远端请求取消与移动 WebView 仍需宿主条件具备后验证。
+- 原型与生产 UI 目前通过任务面/状态映射和浏览器 smoke 核对；没有逐像素视觉差异报告，不能宣称所有组件已达到像素级镜像。
 
 `pnpm preflight`、`pnpm smoke` 和 `pnpm e2e` 需要外部思源实例的 `SIYUAN_TOKEN`、`SIYUAN_BASE_URL` 或 `SIYUAN_WORKSPACE`；当前环境未提供这些参数，因此不能把它们记为通过。
 

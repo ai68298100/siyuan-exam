@@ -64,9 +64,11 @@ describe("模考成绩持久化", () => {
         id: "bp",
         name: "卷" + i,
         startedAt: i,
-        total: i,
+        total: Math.min(i, 100),
         full: 100,
-        percent: i,
+        // percent is a bounded percentage; keep the FIFO fixture valid while
+        // still varying each record's total/identity.
+        percent: Math.min(i, 100),
         pass: i >= 60,
       };
       await app.saveMockResult(rec);

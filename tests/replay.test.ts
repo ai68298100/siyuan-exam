@@ -221,6 +221,21 @@ describe("PracticeSession", () => {
     s.setDraft(qs[0].id, "A");
     expect(s.getDraft(qs[0].id)).toBe("A");
   });
+  it("各题草稿独立，答错重排队的新尝试清空旧答案，回退仍能查看作答快照", () => {
+    const s = new PracticeSession(qs.slice(0, 2), "single", undefined, stepClock());
+    s.setDraft(qs[0].id, "B");
+    s.submit("B");
+    s.next();
+    expect(s.getDraft(qs[1].id)).toBe("");
+    s.setDraft(qs[1].id, "对");
+    s.submit("对");
+    s.next();
+    expect(s.current?.id).toBe(qs[0].id);
+    expect(s.getDraft(qs[0].id)).toBe("");
+    expect(s.state.answered?.[0].myAnswer).toBe("B");
+    s.prev();
+    expect(s.getDraft(qs[1].id)).toBe("对");
+  });
   it("恢复模式保留游标", () => {
     const saved = {
       id: "s-x",

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { ExamApp } from "../src/app";
 import { MemoryStorage } from "../src/core/attemptLog";
 import type { KernelApiClient } from "../src/kernel/client";
@@ -83,5 +83,15 @@ describe("38-03 applyAnswerUpdates（四八批）", () => {
     expect(r.missing).toBe(1);
     const r2 = await app.applyAnswerUpdates([{ row: 2, q: incoming }], [existing]);
     expect(r2.failed).toBe(1);
+  });
+
+  it("取消更新在题目之间生效，未处理项不再写入", async () => {
+    let cancelled = false;
+    const write = vi.fn(async () => { cancelled = true; });
+    const app = mkApp({ setExamAttrs: write });
+    const other = { ...existing, id: "other", hash: "other-hash", blockId: "other-block" };
+    const r = await app.applyAnswerUpdates([{ row: 2, q: incoming }, { row: 3, q: other }], [existing, other], { isCancelled: () => cancelled });
+    expect(r).toEqual({ ok: 1, failed: 0, missing: 0, unprocessed: 1 });
+    expect(write).toHaveBeenCalledTimes(1);
   });
 });

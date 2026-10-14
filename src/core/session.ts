@@ -104,6 +104,7 @@ export class PracticeSession {
       this.state.cursor++;
       skipped++;
     }
+    this.clearPreviousAttemptDraft();
     return skipped;
   }
 
@@ -116,6 +117,8 @@ export class PracticeSession {
   next(): boolean {
     if (this.state.cursor < this.state.qids.length - 1) {
       this.state.cursor++;
+      // 答错后追加到队尾的同一道题是新一次尝试，不继承上次已提交的草稿。
+      this.clearPreviousAttemptDraft();
       this.touch();
       return true;
     }
@@ -144,6 +147,12 @@ export class PracticeSession {
 
   private touch() {
     this.state.updatedAt = this.now();
+  }
+
+  private clearPreviousAttemptDraft() {
+    const qid = this.state.qids[this.state.cursor];
+    if (this.state.answered?.some((a) => a.qid === qid && a.pos < this.state.cursor)
+        && !this.state.answered.some((a) => a.pos === this.state.cursor)) delete this.state.drafts[qid];
   }
 }
 

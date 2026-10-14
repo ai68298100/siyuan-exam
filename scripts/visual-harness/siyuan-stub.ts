@@ -5,9 +5,14 @@ class Dialog {
   constructor(opts = {}) {
     this.element = document.createElement("div");
     this.element.className = "b3-dialog";
-    this.element.innerHTML = `<div class="b3-dialog__content">${opts.content ?? ""}</div>
-      <div class="b3-dialog__action"><button class="b3-button b3-button--cancel">取消</button>
-      <button class="b3-button b3-button--text">确定</button></div>`;
+    this.element.setAttribute("role", "dialog");
+    this.element.setAttribute("aria-modal", "true");
+    this.element.innerHTML = opts.content ?? "";
+    if (opts.title) {
+      const title = document.createElement("h2");
+      title.textContent = opts.title;
+      this.element.prepend(title);
+    }
     document.body.appendChild(this.element);
   }
   destroy() { this.element.remove(); }
@@ -71,7 +76,15 @@ export class SettingUtils {
   save() { return Promise.resolve(); }
 }
 
-export const showMessage = (msg) => console.log("[showMessage]", msg);
+export const showMessage = (msg, timeout = 3000, type = "info") => {
+  const notice = document.createElement("div");
+  notice.className = `b3-snackbar b3-snackbar--${type}`;
+  notice.setAttribute("role", type === "error" ? "alert" : "status");
+  notice.textContent = String(msg);
+  document.body.appendChild(notice);
+  window.setTimeout(() => notice.remove(), timeout);
+  console.log("[showMessage]", msg);
+};
 export const getFrontend = () => "desktop";
 export const adaptHotkey = (k) => k;
 export const openTab = () => {};

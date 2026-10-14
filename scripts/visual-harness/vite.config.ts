@@ -20,6 +20,8 @@ export default defineConfig({
         emptyOutDir: true,
         rollupOptions: {
             input: resolve(import.meta.dirname, "index.html"),
+            // Match the SiYuan plugin's shipping constraint: one JS asset.
+            output: { codeSplitting: false },
         },
     },
     plugins: [svelte()],

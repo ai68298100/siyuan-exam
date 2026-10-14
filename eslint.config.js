@@ -8,7 +8,17 @@ import prettier from "eslint-config-prettier";
 import globals from "globals";
 
 export default tseslint.config(
-  { ignores: ["dist/", "node_modules/", "output/", "coverage/", "*.d.ts", "design/prototype/prototype.js", "scripts/visual-harness/"] },
+  {
+    ignores: [
+      "dist/",
+      "node_modules/",
+      "output/",
+      "coverage/",
+      "*.d.ts",
+      "design/prototype/prototype.js",
+      "scripts/visual-harness/",
+    ],
+  },
   js.configs.recommended,
   ...tseslint.config({
     files: ["**/*.ts"],
@@ -28,6 +38,19 @@ export default tseslint.config(
       // 工具脚本直接 console 输出运行/校验结果，属设计行为
       "no-console": "off",
     },
+  },
+  {
+    files: ["design/prototype-r54/**/*.js"],
+    languageOptions: { globals: { ...globals.browser } },
+    rules: {
+      // R54 is a browser-only static prototype; its DOM globals are intentional.
+      "no-console": "off",
+    },
+  },
+  {
+    files: ["design/prototype-r54/**/*.mjs"],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
+    rules: { "no-console": "off" },
   },
   ...svelte.configs["flat/recommended"],
   {

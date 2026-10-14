@@ -81,16 +81,14 @@ export function gradeNumeric(
   // given 可能带单位后缀（如 "1.5 km"）：剥末尾单位词再解析数值
   let givenText = String(givenRaw ?? "").trim();
   let givenUnit = spec.unit ?? "";
-  if (spec.altUnits?.length) {
-    for (const au of spec.altUnits) {
-      if (givenText.toLowerCase().endsWith(au.unit.toLowerCase())) {
-        givenUnit = au.unit;
-        givenText = givenText.slice(0, givenText.length - au.unit.length).trim();
-        break;
-      }
-    }
-  } else if (spec.unit && givenText.toLowerCase().endsWith(spec.unit.toLowerCase())) {
-    givenText = givenText.slice(0, givenText.length - spec.unit.length).trim();
+  const units = [
+    ...(spec.altUnits ?? []).map((unit) => unit.unit),
+    ...(spec.unit ? [spec.unit] : []),
+  ].sort((a, b) => b.length - a.length);
+  const matchedUnit = units.find((unit) => givenText.toLowerCase().endsWith(unit.toLowerCase()));
+  if (matchedUnit) {
+    givenUnit = matchedUnit;
+    givenText = givenText.slice(0, givenText.length - matchedUnit.length).trim();
   }
   const given = parseNumeric(givenText);
   if (given == null || expected == null) {

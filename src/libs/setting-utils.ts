@@ -85,10 +85,42 @@ export class SettingUtils {
   settings: Map<string, ISettingUtilsItem> = new Map();
   elements: Map<string, HTMLElement> = new Map();
 
+  /** Validate settings at the boundary so malformed legacy values cannot
+   * reach scheduling, date arithmetic or API requests. */
+  private validateValue(key: string, item: ISettingUtilsItem, value: unknown): any {
+    if (item.type === "checkbox") return Boolean(value);
+    if (item.type === "number" || item.type === "slider") {
+      const n = typeof value === "number" ? value : Number(value);
+      if (!Number.isFinite(n)) throw new Error(`${item.title}必须是有效数字`);
+      const min = item.type === "slider" ? item.slider?.min : item.number?.min;
+      const max = item.type === "slider" ? item.slider?.max : item.number?.max;
+      if (min !== undefined && n < min) throw new Error(`${item.title}不能小于 ${min}`);
+      if (max !== undefined && n > max) throw new Error(`${item.title}不能大于 ${max}`);
+      if (n < 0) throw new Error(`${item.title}不能为负数`);
+      return n;
+    }
+    if (key === "examDate") {
+      const text = String(value ?? "").trim();
+      if (!text) return "";
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+      if (!match) throw new Error("考试日期格式应为 YYYY-MM-DD");
+      const date = new Date(`${text}T00:00:00Z`);
+      if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== text) {
+        throw new Error("考试日期不是有效日期");
+      }
+      return text;
+    }
+    if (item.type === "textinput" || item.type === "textarea" || item.type === "select") {
+      return String(value ?? "");
+    }
+    return value;
+  }
+
   constructor(args: {
     plugin: Plugin;
     name?: string;
     callback?: (data: any) => void;
+    onSaveError?: (error: unknown) => void;
     width?: string;
     height?: string;
   }) {
@@ -98,16 +130,24 @@ export class SettingUtils {
     this.plugin.setting = new Setting({
       width: args.width,
       height: args.height,
-      confirmCallback: () => {
+      confirmCallback: async () => {
         for (const key of this.settings.keys()) {
           this.updateValueFromElement(key);
         }
         const data = this.dump();
-        if (args.callback !== undefined) {
-          args.callback(data);
+        try {
+          for (const [key, item] of this.settings) {
+            if (item.type !== "button") item.value = this.validateValue(key, item, item.value);
+          }
+          const validated = this.dump();
+          this.plugin.data[this.name] = validated;
+          await this.save(validated);
+        } catch (error) {
+          // 设置表单可能已被宿主关闭，保留新值，重新打开后可直接重试保存。
+          args.onSaveError?.(error);
+          return;
         }
-        this.plugin.data[this.name] = data;
-        this.save(data);
+        args.callback?.(data);
       },
       destroyCallback: () => {
         //Restore the original value
@@ -124,7 +164,13 @@ export class SettingUtils {
     console.debug("Load config keys:", data ? Object.keys(data) : []);
     if (data) {
       for (const [key, item] of this.settings) {
-        item.value = data?.[key] ?? item.value;
+        if (data?.[key] === undefined) continue;
+        try {
+          item.value = this.validateValue(key, item, data[key]);
+        } catch (error) {
+          // Keep the shipped default and allow the user to correct the field.
+          console.warn(`[lv-exam] ignoring invalid setting ${key}:`, error);
+        }
       }
     }
     this.plugin.data[this.name] = this.dump();
@@ -133,6 +179,9 @@ export class SettingUtils {
 
   async save(data?: any) {
     data = data ?? this.dump();
+    for (const [key, item] of this.settings) {
+      if (item.type !== "button" && data[key] !== undefined) data[key] = this.validateValue(key, item, data[key]);
+    }
     await this.plugin.saveData(this.file, data);
     // Keep diagnostics useful without leaking secrets or user-entered endpoints.
     console.debug("Save config keys:", Object.keys(data));
@@ -291,9 +340,9 @@ export class SettingUtils {
   createDefaultElement(item: ISettingUtilsItem) {
     let itemElement: HTMLElement;
     //阻止思源内置的回车键确认
-    const preventEnterConfirm = (e) => {
+    const preventEnterConfirm = (e: KeyboardEvent) => {
       if (e.key === "Enter") {
-        e.preventDefault();
+        if (!e.isComposing && e.keyCode !== 229) e.preventDefault();
         e.stopImmediatePropagation();
       }
     };
@@ -362,6 +411,9 @@ export class SettingUtils {
         numberElement.type = "number";
         numberElement.className = "b3-text-field fn__flex-center fn__size200";
         numberElement.value = item.value;
+        if (item.number?.min !== undefined) numberElement.min = String(item.number.min);
+        if (item.number?.max !== undefined) numberElement.max = String(item.number.max);
+        if (item.number?.step !== undefined) numberElement.step = String(item.number.step);
         numberElement.onchange = item.action?.callback ?? (() => {});
         itemElement = numberElement;
         numberElement.addEventListener("keydown", preventEnterConfirm);
@@ -381,6 +433,11 @@ export class SettingUtils {
         itemElement = hintElement;
         break;
       }
+    }
+    if (itemElement instanceof HTMLInputElement || itemElement instanceof HTMLTextAreaElement || itemElement instanceof HTMLSelectElement) {
+      itemElement.setAttribute("aria-label", item.title);
+      if (item.placeholder && "placeholder" in itemElement) itemElement.placeholder = item.placeholder;
+      if (item.spellcheck !== undefined) itemElement.spellcheck = item.spellcheck;
     }
     return itemElement;
   }

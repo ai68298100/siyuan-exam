@@ -175,6 +175,85 @@ describe("HttpTransport 429 限流处理（3.8.6 真机发现）", () => {
     expect(uploaded).toBeInstanceOf(File);
     expect((uploaded as File).name).toBe("bank.sy.zip");
   });
+
+  it("retryable=false 禁止写请求自动重试", async () => {
+    let calls = 0;
+    const t = new HttpTransport("http://x", "tok", (async () => {
+      calls++;
+      return { ok: false, status: 429, text: async () => "" };
+    }) as never, 100, 3);
+    await expect(t.post("/api/write", {}, { retryable: false })).rejects.toThrow(/429/);
+    expect(calls).toBe(1);
+  });
+
+  it("外层取消会中止当前请求且不会进入下一次重试", async () => {
+    let calls = 0;
+    const ctrl = new AbortController();
+    const t = new HttpTransport(
+      "http://x",
+      "tok",
+      ((_url, init) => {
+        calls++;
+        return new Promise((_resolve, reject) => {
+          init.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+          setTimeout(() => ctrl.abort(), 2);
+        });
+      }) as never,
+      100,
+      3,
+    );
+    await expect(t.post("/api/read", {}, { signal: ctrl.signal, retryable: true })).rejects.toThrow(/Aborted|取消|abort/i);
+    expect(calls).toBe(1);
+  });
+});
+
+describe("KernelApiClient 读取服务层（去重与 latest-wins）", () => {
+  it("相同资源的并发读取只发出一次请求", async () => {
+    let calls = 0;
+    let resolve!: (r: { code: number; msg: string; data: unknown }) => void;
+    const pending = new Promise<{ code: number; msg: string; data: unknown }>((r) => (resolve = r));
+    const t: KernelTransport = { post: async () => { calls++; return pending; } };
+    const client = new KernelApiClient(t);
+    const a = client.getNotebookConf("nb-1");
+    const b = client.getNotebookConf("nb-1");
+    resolve({ code: 0, msg: "", data: { name: "题库", conf: {} } });
+    await expect(Promise.all([a, b])).resolves.toEqual([
+      { name: "题库", dailyNoteSavePath: "" },
+      { name: "题库", dailyNoteSavePath: "" },
+    ]);
+    expect(calls).toBe(1);
+  });
+
+  it("同一 requestKey 的新读取使旧响应失效，即使底层桩忽略 AbortSignal", async () => {
+    const waits: Array<(r: { code: number; msg: string; data: unknown }) => void> = [];
+    const t: KernelTransport = {
+      post: async (_endpoint, payload) => {
+        const p = new Promise<{ code: number; msg: string; data: unknown }>((resolve) => waits.push(resolve));
+        // Keep payload referenced so this test proves two distinct requests.
+        void payload;
+        return p;
+      },
+    };
+    const client = new KernelApiClient(t);
+    const oldRead = client.sql("SELECT old", { requestKey: "questions" });
+    const newRead = client.sql("SELECT new", { requestKey: "questions" });
+    waits[1]({ code: 0, msg: "", data: [{ value: "new" }] });
+    waits[0]({ code: 0, msg: "", data: [{ value: "old" }] });
+    await expect(newRead).resolves.toEqual([{ value: "new" }]);
+    await expect(oldRead).rejects.toThrow(/取消|cancel|abort/i);
+  });
+
+  it("写请求显式关闭重试，避免重复副作用", async () => {
+    let received: Record<string, unknown> | undefined;
+    const t: KernelTransport = {
+      post: async (_endpoint, _payload, options) => {
+        received = options as Record<string, unknown>;
+        return { code: 0, msg: "", data: "nb-1" };
+      },
+    };
+    await new KernelApiClient(t).createNotebook("示例题库");
+    expect(received).toMatchObject({ retryable: false, retries: 0 });
+  });
 });
 
 describe("createNotebook 三形态（3.8.6 漂移：perf-bank 脚本实测发现；② 为旧版 preflight/mock 形态）", () => {

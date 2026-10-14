@@ -1,6 +1,7 @@
-# 小驴考试 · 设计原型与规范 v6
+# 小驴考试 · 设计原型与规范 v6（历史存档）
 
-> 配套原型：`design/prototype/index.html`（直接浏览器打开；⌘K / Ctrl+K 呼出命令面板）
+> 本文件记录 2026-10 的 v6 设计基线，保留用于追溯，不是当前 UI 事实源。当前可点击原型为 [`design/prototype-r54/index.html`](prototype-r54/index.html)，实现与状态契约见 [`docs/DELIVERY.md`](../docs/DELIVERY.md) 和 [`docs/UI-COMPONENTS.md`](../docs/UI-COMPONENTS.md)。
+> 历史配套原型：`design/prototype/index.html`（仅用于复盘旧版；⌘K / Ctrl+K 呼出命令面板）
 > 基准截图：`output/playwright/proto-*.png`（`node scripts/visual-harness/shoot-prototype.mjs` 再生成）
 > 实现映射：`src/scss/lv-tokens.scss`（token）+ `src/scss/lv-base.scss`（组件基线）
 > 本版依据 2026-10 调研更新（Anki 23.10+ / Obsidian-SR / 墨墨 / Linear，依据见 §10）。
@@ -64,7 +65,7 @@
 
 ---
 
-## 4. Design Tokens（`prototype.css` :root；实现见 `lv-tokens.scss`）
+## 4. Design Tokens（历史 `prototype.css` :root；当前以 R54 CSS 和 `lv-tokens.scss` 为准）
 
 ### 4.1 中性面（4 层明度差，靠明度分层不靠描边堆叠）
 

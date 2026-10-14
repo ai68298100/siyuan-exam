@@ -17,12 +17,33 @@
     const worst = $derived(s.failed.length ? "failed" : s.unknown.length ? "unknown" : s.pending.length ? "pending" : "");
     const count = $derived(worst === "failed" ? s.failed.length : worst === "unknown" ? s.unknown.length : s.pending.length);
 
+    function targetLabel(key: string) {
+        const targets: Record<string, [string, string]> = {
+            "session/active": ["save.targetPractice", "练习进度"],
+            "mock/run": ["save.targetMock", "模考进度"],
+            "actions/items": ["save.targetActions", "下一步行动"],
+            "materials/registry": ["save.targetMaterials", "学习资料"],
+            "materials/notes": ["save.targetNotes", "学习笔记"],
+            "materials/qrefs": ["save.targetLinks", "资料与题目的关联"],
+            "ai/misdiagnosis": ["save.targetReflection", "AI 错因分析"],
+            "syllabus/tree": ["save.targetSyllabus", "考纲"],
+        };
+        if (targets[key]) return t(...targets[key]);
+        if (/^(mark-kp|edit-q|batch-edit|answer-update)\//.test(key)) return t("save.targetQuestion", "题目更改");
+        if (key.startsWith("rollback/")) return t("save.targetRollback", "撤销导入");
+        if (key.startsWith("daily-report/")) return t("save.targetDailyReport", "学习日报");
+        return t("save.targetOther", "其他更改");
+    }
+
     function detail() {
+        // 状态可能在两次轮询之间完成；点击时直接读最新回执。
+        tick++;
+        const summary = gate.summary();
         const parts: string[] = [];
-        if (s.failed.length) parts.push(`${t("save.failed")}：${s.failed.map((f) => f.key + (f.error ? `（${f.error}）` : "")).join("、")}`);
-        if (s.unknown.length) parts.push(`${t("save.unknown")}：${s.unknown.join("、")}`);
-        if (s.pending.length) parts.push(`${t("save.pending")}：${s.pending.join("、")}`);
-        showMessage(parts.join("\n") || t("save.allOk"), 5600, s.failed.length ? "error" : "info");
+        if (summary.failed.length) parts.push(`${t("save.failed")}：${summary.failed.map((f) => targetLabel(f.key) + (f.error ? `（${f.error}）` : "")).join("、")}`, t("save.failedHelp", "请保留当前页面，检查思源连接与存储是否可用后，再保存对应内容。"));
+        if (summary.unknown.length) parts.push(`${t("save.unknown")}：${summary.unknown.map(targetLabel).join("、")}`, t("save.unknownHelp", "保存请求尚未返回明确结果，请稍后再次查看状态。"));
+        if (summary.pending.length) parts.push(`${t("save.pending")}：${summary.pending.map(targetLabel).join("、")}`);
+        showMessage(parts.join("\n") || t("save.allOk"), 5600, summary.failed.length ? "error" : "info");
     }
 </script>
 
@@ -32,7 +53,7 @@
     </button>
 {/if}
 <style>
-    .lv-save-status { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 550; border: 1px solid var(--lv-border); cursor: pointer; background: var(--lv-surface-2); color: var(--lv-text-2); }
+    .lv-save-status { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: var(--lv-radius-pill); font-size: var(--lv-font-size-sm); font-weight: var(--lv-font-weight-medium); border: 1px solid var(--lv-border); cursor: pointer; background: var(--lv-surface-2); color: var(--lv-text-2); }
     .lv-save-failed { color: var(--lv-red); background: var(--lv-red-soft); border-color: transparent; }
     .lv-save-unknown { color: var(--lv-amber); background: var(--lv-amber-soft); border-color: transparent; }
 </style>

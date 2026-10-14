@@ -18,19 +18,31 @@
     import { trendToCsv, heatmapToCsv, hourlyToCsv } from "@/core/exportMd";
     import type { ActionItem } from "@/core/actions";
     import SaveStatus from "../shared/SaveStatus.svelte";
-    import { onExamEvent } from "@/core/bus";
-    import { emitExamEvent } from "@/core/bus";
+    import { emitExamEvent, onExamEvent } from "@/core/bus";
+    import { openPracticeView } from "@/core/pluginTab";
+    import type { AttemptEvent } from "@/core/types";
+    import { reportWindowStart, reportDateKey } from "@/core/reportWindow";
 
     let { plugin, examApp: app }: { plugin: any; examApp: ExamApp | null } = $props();
     const i18n = $derived(plugin?.i18n ?? {});
     const t = (k: string, fb = "") => i18n[k] ?? fb;
-
-    /** 侧栏项目卡显示名：当前题库（无题库时回退建库引导文案） */
-    const railBankName = $derived(((app?.listBanks?.() ?? [])[0])?.name || t("guard.title"));
+    const writeLocal = (key: string, value: string | null) => {
+      try {
+        if (value == null) globalThis.localStorage?.removeItem(key);
+        else globalThis.localStorage?.setItem(key, value);
+      } catch { /* optional browser preference */ }
+    };
 
     let railOpen = $state(false);
     let menuBtn: HTMLButtonElement | null = null;
     function closeRail() { railOpen = false; menuBtn?.focus(); }
+
+    function onTaskNav(target: "today" | "bank" | "create" | "mock" | "report") {
+      if (target === "report") return;
+      if (target === "mock") return plugin.openMock?.();
+      const next = target === "today" ? "entry" : target === "bank" ? "browse" : "manual";
+      openPracticeView(plugin, next);
+    }
 
     let loading = $state(true);
 
@@ -52,9 +64,11 @@
     let quad = $state<QuadrantReport | null>(null);
     let quadSignals = $state<string[]>([]);
     const typeByQid = new SvelteMap<string, string>();
-    let exposureNodes = $state<Record<string, number>>({});
+    let reportEvents = $state<AttemptEvent[]>([]);
+    const exposureNodes = $derived(exposureStats(reportEvents).nodes);
     let openActionList = $state<ActionItem[]>([]);
     let actionBusyId = $state("");
+    let diagnosticsBusy = $state(false);
     let trend30 = $state<{ date: string; attempts: number; correct?: number }[]>([]);
     let errorMsg = $state("");
     let weekCmp = $state<ReturnType<typeof weekCompare> | null>(null);
@@ -70,7 +84,8 @@
       try {
         const banks = app.listBanks();
         if (!banks.length) throw new Error(t("guard.needBankFirst"));
-        await app.writeDailyReport(banks[0].id, banks[0].name);
+        const bank = banks.find((b) => b.id === bankId) ?? banks[0];
+        await app.writeDailyReport(bank.id, bank.name);
         showMessage(t("report.dailyDone"), 3600, "info");
       } catch (e) {
         showMessage(String(e instanceof Error ? e.message : e), 4800, "error");
@@ -85,7 +100,7 @@
       if (now.getDay() !== 1) return;
       const K = "lv-exam-weekly-nudge";
       const wk = `${now.getFullYear()}-W${Math.ceil(now.getDate() / 7)}`;
-      if (localStorage.getItem(K) === wk) return;
+      try { if (localStorage.getItem(K) === wk) return; } catch { /* 隐私模式不阻断报告 */ }
       const d = app.derived();
       // effect 内一次性临时量（非组件状态），不转 SvelteDate
       // eslint-disable-next-line svelte/prefer-svelte-reactivity
@@ -93,7 +108,7 @@
       lastMonday.setDate(now.getDate() - 7);
       const k2 = `${lastMonday.getFullYear()}-${String(lastMonday.getMonth() + 1).padStart(2, "0")}-${String(lastMonday.getDate()).padStart(2, "0")}`;
       if ([...d.days.keys()].some((k) => k.startsWith(k2.slice(0, 7)))) {
-        localStorage.setItem(K, wk);
+        try { localStorage.setItem(K, wk); } catch { /* 本页仍以 weeklyNudged 防重 */ }
         weeklyNudged = true;
         showMessage(t("report.weeklyNudge"), 5200, "info");
       }
@@ -102,6 +117,8 @@
     /** 39-06 lite：统计日期范围（0=全部）。口径：作答量/正确率/时段/校准按范围过滤；
      *  消灭错题与连续天数为状态类指标保持全局；掌握度按题库范围（reloadBankScope） */
     let rangeDays = $state(0);
+    // R54：报告按「概览 / 考点与错题 / 记录与证据」分段，降低长页滚动成本。
+    let reportSection = $state<"overview" | "knowledge" | "evidence">("overview");
     /** 69-03：聚合结果 memo——追加式流水 → (rangeDays, 条数, 末位 eid) 命中即免重算。
      *  报告页每次挂载/切日期范围都调 computeReport；重开面板不再付全量聚合成本。 */
     const reportMemo = new SvelteMap<string, { kpi: typeof kpi; hours: number[]; calib: CalibrationReport | null; quad: QuadrantReport | null; quadSignals: string[]; trend30: { date: string; attempts: number }[] }>();
@@ -109,16 +126,17 @@
       if (!app) return;
       const d = app.derived();
       const all = app.attempts.all();
+      const cutoff = reportWindowStart(rangeDays);
+      const events = all.filter((e) => !cutoff || e.ts >= cutoff);
+      reportEvents = events;
       const last = all[all.length - 1];
-      const memoKey = `${rangeDays}|${all.length}|${last ? last.eid : "-"}|${typeByQid.size}`;
+      const memoKey = `${cutoff}|${all.length}|${last ? last.eid : "-"}|${typeByQid.size}`;
       const cached = reportMemo.get(memoKey);
       if (cached) {
         kpi = cached.kpi; hours = cached.hours; calib = cached.calib;
         quad = cached.quad; quadSignals = cached.quadSignals; trend30 = cached.trend30;
         return;
       }
-      const cutoff = rangeDays > 0 ? Date.now() - rangeDays * 86_400_000 : 0;
-      const events = all.filter((e) => !cutoff || e.ts >= cutoff);
       let attempts = 0, correct = 0;
       for (const e of events) {
         if (e.verdict === "not_attempted") continue;
@@ -135,8 +153,7 @@
         rangeDays,
       );
       quadSignals = quadrantSignals(quad);
-      exposureNodes = exposureStats(events).nodes;
-      const cutoffDate = cutoff ? new Date(cutoff).toISOString().slice(0, 10) : "";
+      const cutoffDate = cutoff ? reportDateKey(cutoff) : "";
       trend30 = cutoff ? dailyTrend(d.days).filter((p) => p.date >= cutoffDate) : dailyTrend(d.days);
       reportMemo.set(memoKey, { kpi, hours, calib, quad, quadSignals, trend30 });
       if (reportMemo.size > 8) reportMemo.delete(reportMemo.keys().next().value as string); // FIFO 上限
@@ -146,15 +163,28 @@
     let explainBusy = $state(false);
     let explainText = $state("");
     let explainError = $state("");
+    let reportContextVersion = 0;
+
+    function resetAiResults() {
+      reportContextVersion++;
+      explainText = ""; explainError = "";
+      nextActionText = ""; nextActionError = "";
+    }
+
+    function onRangeChange() {
+      resetAiResults();
+      computeReport();
+    }
 
     function windowLabel(): string {
       return rangeDays === 1 ? t("report.rangeToday") : rangeDays === 7 ? t("report.range7") : rangeDays === 30 ? t("report.range30") : t("report.rangeAll");
     }
 
     async function runReportExplain() {
-      if (!app || explainBusy) return;
+      if (!app || explainBusy || loading || reportRefreshing || scopeLoading) return;
       if (!app.kernelOnline) { explainError = t("state.offlineHint"); return; }
       explainBusy = true; explainError = ""; explainText = "";
+      const requestedVersion = reportContextVersion;
       try {
         const { SiyuanAiChannel, OpenAiChannel } = await import("@/ai/client");
         const { buildReportExplainMessages } = await import("@/ai/reportExplain");
@@ -165,15 +195,15 @@
         const ch = endpoint && key
           ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
           : new SiyuanAiChannel((app as any).deps.client);
-        const cutoff = rangeDays > 0 ? Date.now() - rangeDays * 86_400_000 : 0;
-        const events = app.attempts.all().filter((e) => !cutoff || e.ts >= cutoff);
+        const cutoff = reportWindowStart(rangeDays);
+        const events = reportEvents;
         let attempts = 0, correct = 0;
         for (const e of events) {
           if (e.verdict === "not_attempted") continue;
           attempts++;
           if (e.verdict === "correct") correct++;
         }
-        const cutoffDate = cutoff ? new Date(cutoff).toISOString().slice(0, 10) : "";
+        const cutoffDate = cutoff ? reportDateKey(cutoff) : "";
         const facts: import("@/ai/reportExplain").ReportFactsInput = {
           windowLabel: windowLabel(),
           attempts,
@@ -197,14 +227,18 @@
           sessionId: "",
         };
         const env = await new AiTaskRunner(ch).run(reqCtx, messages);
+        if (env.status === "ok" && env.data.text) void app.recordAiUsage(ch.id, env.tokens, 1);
+        if (requestedVersion !== reportContextVersion) {
+          showMessage(t("report.aiScopeChanged", "统计范围已变化，本次 AI 结果未应用，请基于当前范围重新生成。"), 3400, "info");
+          return;
+        }
         if (env.status === "ok" && env.data.text) {
           explainText = env.data.text;
-          void app.recordAiUsage(ch.id, env.tokens, 1);
         } else {
           explainError = `${env.summary}${env.error ? "：" + env.error : ""}`;
         }
       } catch (e) {
-        explainError = String(e instanceof Error ? e.message : e);
+        if (requestedVersion === reportContextVersion) explainError = String(e instanceof Error ? e.message : e);
       } finally { explainBusy = false; }
     }
 
@@ -214,9 +248,10 @@
     let nextActionError = $state("");
 
     async function runNextAction() {
-      if (!app || nextActionBusy) return;
+      if (!app || nextActionBusy || loading || reportRefreshing || scopeLoading) return;
       if (!app.kernelOnline) { nextActionError = t("state.offlineHint"); return; }
       nextActionBusy = true; nextActionError = ""; nextActionText = "";
+      const requestedVersion = reportContextVersion;
       try {
         const { SiyuanAiChannel, OpenAiChannel } = await import("@/ai/client");
         const { buildNextActionMessages } = await import("@/ai/nextAction");
@@ -242,8 +277,7 @@
           ? estimatePlanMinutes(redoQueue, avgMsByType(app.attempts.all(), (qid) => typeOf.get(qid)))
           : null;
         const openActions = await app.listOpenActions();
-        const cutoff = rangeDays > 0 ? Date.now() - rangeDays * 86_400_000 : 0;
-        const events = app.attempts.all().filter((e) => !cutoff || e.ts >= cutoff);
+        const events = reportEvents;
         let attempts = 0, correct = 0;
         for (const e of events) {
           if (e.verdict === "not_attempted") continue;
@@ -266,6 +300,7 @@
           recentAccuracy: attempts ? Math.round((correct / attempts) * 100) : null,
         };
         const messages = buildNextActionMessages(facts);
+        if (requestedVersion !== reportContextVersion) return;
         const reqCtx: import("@/ai/task").AiTaskContext = {
           templateId: "plan.nextaction",
           templateVersion: 1,
@@ -277,20 +312,26 @@
           sessionId: "",
         };
         const env = await new AiTaskRunner(ch).run(reqCtx, messages);
+        if (env.status === "ok" && env.data.text) void app.recordAiUsage(ch.id, env.tokens, 1);
+        if (requestedVersion !== reportContextVersion) {
+          showMessage(t("report.aiScopeChanged", "统计范围已变化，本次 AI 结果未应用，请基于当前范围重新生成。"), 3400, "info");
+          return;
+        }
         if (env.status === "ok" && env.data.text) {
           nextActionText = env.data.text;
-          void app.recordAiUsage(ch.id, env.tokens, 1);
         } else {
           nextActionError = `${env.summary}${env.error ? "：" + env.error : ""}`;
         }
       } catch (e) {
-        nextActionError = String(e instanceof Error ? e.message : e);
+        if (requestedVersion === reportContextVersion) nextActionError = String(e instanceof Error ? e.message : e);
       } finally { nextActionBusy = false; }
     }
 
     // ---------- 题库范围（39-06/U21 lite）：掌握度/薄弱/下钻按所选题库聚合；KPI/热力图为全局口径 ----------
     let bankOptions = $state<{ id: string; name: string }[]>([]);
     let bankId = $state("");
+    /** 侧栏项目卡与当前报告题库范围保持一致。 */
+    const railBankName = $derived(bankOptions.find((b) => b.id === bankId)?.name || t("guard.title"));
     let scopeLoading = $state(false);
     let scopeError = $state("");
 
@@ -302,6 +343,7 @@
         return;
       }
       reportRefreshing = true;
+      resetAiResults();
       errorMsg = "";
       try {
         const d = app.derived();
@@ -346,12 +388,19 @@
       const offs = [
         onExamEvent("session-ended", refreshAfterChange),
         onExamEvent("wrongbook-changed", refreshAfterChange),
+        onExamEvent<{ bank: string }>("bank-changed", (event) => {
+          resetAiResults();
+          bankId = event.payload.bank;
+          refreshAfterChange();
+        }),
       ];
       void refreshReport(false).finally(() => { loading = false; });
       return () => offs.forEach((off) => off());
     });
 
     async function reloadBankScope(d = app?.derived()) {
+      const requestedVersion = ++scopeReadVersion;
+      const targetBankId = bankId;
       if (!app || !d || !bankId) {
         questions = []; mastery = []; weak = []; scopeError = ""; scopeLoading = false;
         return;
@@ -359,36 +408,34 @@
       scopeLoading = true;
       scopeError = "";
       try {
-        questions = await app.listQuestions(bankId);
+        const loaded = await app.listQuestions(targetBankId);
+        if (requestedVersion !== scopeReadVersion || targetBankId !== bankId) return;
+        questions = loaded;
         mastery = masteryByKp(questions, d.byQuestion, app.attempts.all());
         weak = weakTop(mastery);
       } catch (e) {
+        if (requestedVersion !== scopeReadVersion || targetBankId !== bankId) return;
         questions = [];
         mastery = [];
         weak = [];
         scopeError = String(e instanceof Error ? e.message : e);
-      } finally { scopeLoading = false; }
+      } finally { if (requestedVersion === scopeReadVersion) scopeLoading = false; }
     }
+    let scopeReadVersion = 0;
 
     async function onBankChange() {
-      try {
-        if (bankId) localStorage.setItem(BANK_PREF_KEY, bankId);
-        else localStorage.removeItem(BANK_PREF_KEY);
-      } catch { /* 隐私模式 */ }
+      resetAiResults();
+      writeLocal(BANK_PREF_KEY, bankId || null);
       await reloadBankScope();
     }
 
-    /** 薄弱考点一键组卷：按考点首段过滤 → pendingPractice 移交练习台 */
+    /** 薄弱考点下钻：打开对应题库并带入考点搜索，先核对题目再决定如何练习。 */
     function drillWeak(root: string) {
       if (!app) return;
       const picked = questions.filter((q) => q.type !== "material" && q.kp?.split("/")[0] === root);
       if (!picked.length) { showMessage(t("state.emptyBank"), 3000, "error"); return; }
-      (plugin as any).pendingPractice = picked;
-      // 将当前报告范围的题库一起交给练习台，避免多题库时回落到首个题库。
-      (plugin as any).pendingPracticeBankId = bankId;
-      try { localStorage.setItem(BANK_PREF_KEY, bankId); } catch { /* 隐私模式 */ }
-      emitExamEvent("open-practice-questions", { qids: picked.map((q) => q.id), bank: bankId });
-      plugin.openPractice?.();
+      writeLocal(BANK_PREF_KEY, bankId);
+      openPracticeView(plugin, "browse", { bankId, search: root });
     }
 
     /** 下一行动（U15 lite）：完成=用户确认（最小证据）；取消保留记录可回看 */
@@ -397,7 +444,10 @@
       actionBusyId = id;
       try {
         await app.completeAction(id);
-        openActionList = await app.listOpenActions();
+        openActionList = openActionList.filter((item) => item.id !== id);
+        showMessage(t("action.completed", "行动已完成"), 2600, "info");
+        try { openActionList = await app.listOpenActions(); }
+        catch (e) { showMessage(t("action.refreshFailed", "行动已更新，但列表刷新失败。请重新打开报告查看。") + ` ${String(e instanceof Error ? e.message : e)}`, 4800, "error"); }
       } catch (e) {
         showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
       } finally { actionBusyId = ""; }
@@ -406,16 +456,26 @@
       if (!app || actionBusyId) return;
       actionBusyId = id;
       try {
+        const { confirmDialogSync } = await import("../../libs/dialog");
+        if (!(await confirmDialogSync({
+          title: t("action.dismissTitle", "取消这项行动？"),
+          content: t("action.dismissConfirm", "这会将行动标记为已取消并从待办列表移除；记录仍可在历史中查看。"),
+        }))) return;
         await app.cancelAction(id);
-        openActionList = await app.listOpenActions();
+        openActionList = openActionList.filter((item) => item.id !== id);
+        showMessage(t("action.dismissed", "行动已取消，记录仍保留"), 2600, "info");
+        try { openActionList = await app.listOpenActions(); }
+        catch (e) { showMessage(t("action.refreshFailed", "行动已更新，但列表刷新失败。请重新打开报告查看。") + ` ${String(e instanceof Error ? e.message : e)}`, 4800, "error"); }
       } catch (e) {
         showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
       } finally { actionBusyId = ""; }
     }
 
-    /** 行动重练（82-04 lite）：单题错题会话 + 完成并记证据 redo-drill；仅当前题库可定位 */
+    /** 行动重练只启动题目；完成作答后由用户确认完成，不把打开题目当作已完成。 */
     async function redoAction(a: ActionItem) {
       if (!app || !a.qid || actionBusyId) return;
+      actionBusyId = a.id;
+      try {
       let q = questions.find((x) => x.id === a.qid);
       let targetBankId = bankId;
       // 行动记录跨题库保存；当前选中的题库没有该题时，自动定位到包含它的题库。
@@ -428,16 +488,13 @@
         }
       }
       if (!q) { showMessage(t("action.redoMissing"), 3400, "info"); return; }
-      actionBusyId = a.id;
-      try {
         await app.startSession([q], "wrong", targetBankId || undefined);
         // 练习台已挂载时通过总线同步其本地会话引用；未挂载时 pending 字段由首次挂载消费。
         (plugin as any).pendingPractice = [q];
         (plugin as any).pendingPracticeBankId = targetBankId;
         emitExamEvent("open-practice-questions", { qids: [q.id], bank: targetBankId });
-        await app.completeAction(a.id, "redo-drill");
-        openActionList = await app.listOpenActions();
         plugin.openPractice?.();
+        showMessage(t("action.redoStarted", "已进入重练。完成作答后回到报告确认完成；仅打开题目不会结清行动。"), 3600, "info");
       } catch (e) {
         showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
       } finally {
@@ -447,7 +504,8 @@
 
     /** 诊断信息导出（7A/46-06 lite）：脱敏 JSON → 剪贴板；不含题干/key/路径/个人内容 */
     async function exportDiagnostics() {
-      if (!app) return;
+      if (!app || diagnosticsBusy) return;
+      diagnosticsBusy = true;
       try {
         const d = app.derived();
         const usage = await app.aiUsage();
@@ -480,32 +538,43 @@
         showMessage(t("diag.copied"), 3800, "info");
       } catch (e) {
         showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
-      }
+      } finally { diagnosticsBusy = false; }
     }
 
     // ---------- 存储占用 / 数据体检 / 数据出库（69-01/69-06/58-01 lite，三十批） ----------
-    let storageRows = $state<{ key: string; bytes: number; present: boolean }[]>([]);
+    let storageRows = $state<{ key: string; bytes: number; present: boolean; error?: string }[]>([]);
     let storageOpen = $state(false);
     let storageBusy = $state(false);
+    let storageError = $state("");
     const storageTotalKb = $derived(Math.round(storageRows.reduce((s, r) => s + r.bytes, 0) / 1024));
+    async function loadStorage() {
+      if (!app || storageBusy) return;
+      storageBusy = true;
+      storageError = "";
+      try {
+        storageRows = await app.storageUsage();
+      } catch (e) {
+        storageError = String(e instanceof Error ? e.message : e);
+        showMessage(storageError, 4200, "error");
+      } finally { storageBusy = false; }
+    }
     async function toggleStorage() {
       if (storageBusy) return;
       storageOpen = !storageOpen;
       if (!storageOpen || !app) return;
-      storageBusy = true;
-      try {
-        storageRows = await app.storageUsage();
-      } catch (e) {
-        storageOpen = false;
-        showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
-      } finally { storageBusy = false; }
+      await loadStorage();
     }
 
     let auditResult = $state<import("@/core/dataAudit").DataAuditReport | null>(null);
     let auditBusy = $state(false);
+    let auditError = $state("");
+    let auditSkippedBanks = $state(0);
     async function runDataAudit() {
       if (!app || auditBusy) return;
       auditBusy = true;
+      auditResult = null;
+      auditError = "";
+      auditSkippedBanks = 0;
       try {
         // 孤儿检测口径：当前所有已加载题库的题目 id（跨库扫描；空题库=跳过孤儿项）
         // eslint-disable-next-line svelte/prefer-svelte-reactivity -- 函数内累加器（非组件状态）
@@ -513,28 +582,32 @@
         for (const b of app.listBanks()) {
           try {
             for (const q of await app.listQuestions(b.id)) known.add(q.id);
-          } catch { /* 单库读取失败跳过 */ }
+          } catch { auditSkippedBanks++; }
         }
         auditResult = app.auditData(known);
       } catch (e) {
-        showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
+        auditError = String(e instanceof Error ? e.message : e);
+        showMessage(auditError, 4200, "error");
       } finally { auditBusy = false; }
     }
 
+    let exportBusy = $state(false);
     async function exportAllData() {
-      if (!app) return;
+      if (!app || exportBusy) return;
+      exportBusy = true;
       try {
         const json = await app.exportAllData();
         const blob = new Blob([json], { type: "application/json;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
+        a.href = url;
         a.download = `小驴考试（内测版）-数据出库 ${new Date().toISOString().slice(0, 10)}.json`;
         a.click();
-        URL.revokeObjectURL(a.href);
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
         showMessage(t("data.exportDone"), 3200, "info");
       } catch (e) {
         showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
-      }
+      } finally { exportBusy = false; }
     }
 
     /** 清除插件数据（58-03 lite）：双确认 → 逐键置空 → 逐对象回执。
@@ -544,15 +617,16 @@
     let purgeBusy = $state(false);
     async function purgeAllData() {
       if (!app || purgeBusy) return;
-      const { confirmDialogSync } = await import("../../libs/dialog");
-      if (!(await confirmDialogSync({ title: t("data.purgeTitle"), content: t("data.purgeScope") }))) return;
-      // 第二次确认：不可撤销（建议先「数据出库」备份）
-      if (!(await confirmDialogSync({ title: t("data.purgeTitle"), content: t("data.purgeFinal") }))) return;
       purgeBusy = true;
       try {
+        const { confirmDialogSync } = await import("../../libs/dialog");
+        if (!(await confirmDialogSync({ title: t("data.purgeTitle"), content: t("data.purgeScope") }))) return;
+        // 第二次确认：不可撤销（建议先「数据出库」备份）。忙碌锁同时覆盖确认阶段。
+        if (!(await confirmDialogSync({ title: t("data.purgeTitle"), content: t("data.purgeFinal") }))) return;
         purgeReceipts = await app.purgeAllData();
         const failed = purgeReceipts.filter((r) => !r.ok).length;
         showMessage(failed ? t("data.purgePartial").replace("{f}", String(failed)) : t("data.purgeDone"), 5600, failed ? "error" : "info");
+        await refreshReport(false);
       } catch (e) {
         showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
       } finally { purgeBusy = false; }
@@ -562,19 +636,23 @@
     const maxHour = $derived(Math.max(1, ...hours));
     const hoursSvg = $derived(hours.map((n, i) => `${(i / 23) * 300},${40 - Math.round((n / maxHour) * 36)}`).join(" "));
     const maxTrend = $derived(Math.max(1, ...trend30.map((p) => p.attempts)));
+    const trendSpan = $derived(Math.max(1, trend30.length - 1));
     /** 55-04 lite：正确率折线点——有作答日连成段（0 题日以 null 断开），比例尺 0-100% 对满高（viewBox 600×90） */
-    const trendAccPoints = $derived(
-      trend30
-        .map((p, i) => (p.attempts > 0 ? { x: (i / 29) * 600, y: 86 - Math.round(((p.correct ?? 0) / p.attempts) * 78) } : null))
-        .filter((pt): pt is { x: number; y: number } => pt != null)
-        .map((pt) => `${pt.x},${pt.y}`)
-        .join(" "),
-    );
+    const trendAccLines = $derived.by(() => {
+      const lines: string[] = [];
+      let points: string[] = [];
+      for (const [i, p] of trend30.entries()) {
+        if (p.attempts > 0) points.push(`${(i / trendSpan) * 600},${86 - Math.round(((p.correct ?? 0) / p.attempts) * 78)}`);
+        else if (points.length) { lines.push(points.join(" ")); points = []; }
+      }
+      if (points.length) lines.push(points.join(" "));
+      return lines;
+    });
 
     /** v6 图表质感：题量面积多边形（渐变填充）与最后一个有作答日的末点坐标 */
     const trendArea = $derived.by(() => {
       const pts = trend30
-        .map((p, i) => (p.attempts > 0 ? `${(i / 29) * 600},${86 - Math.round((p.attempts / maxTrend) * 78)}` : null))
+        .map((p, i) => `${(i / trendSpan) * 600},${86 - Math.round((p.attempts / maxTrend) * 78)}`)
         .filter(Boolean);
       if (!pts.length) return "";
       const lastX = pts[pts.length - 1].split(",")[0];
@@ -582,7 +660,7 @@
     });
     const trendLastDot = $derived.by(() => {
       for (let i = trend30.length - 1; i >= 0; i--) {
-        if (trend30[i].attempts > 0) return { x: (i / 29) * 600, y: 86 - Math.round((trend30[i].attempts / maxTrend) * 78) };
+        if (trend30[i].attempts > 0) return { x: (i / trendSpan) * 600, y: 86 - Math.round((trend30[i].attempts / maxTrend) * 78) };
       }
       return null;
     });
@@ -590,37 +668,34 @@
     // 44-02 lite：确定-错 下钻（展开时从流水实时取，随报告数据同源）
     let cwOpen = $state(false);
     let caOpen = $state(false);
-    const caList = $derived(caOpen && app ? changedAnswerList(app.attempts.all()) : []);
+    const caList = $derived(changedAnswerList(reportEvents));
     let expOpen = $state(false);
-    const expList = $derived(expOpen && app ? recentExposureList(app.attempts.all(), 7 * 86_400_000, Date.now()) : []);
-    const cwList = $derived(cwOpen && app ? confidentWrongList(app.attempts.all()) : []);
+    const expList = $derived(expOpen ? recentExposureList(reportEvents, 7 * 86_400_000, Date.now()) : []);
+    const cwList = $derived(cwOpen ? confidentWrongList(reportEvents) : []);
     // 44-02 lite 对偶：不确定-对 下钻
     let ucOpen = $state(false);
-    const ucList = $derived(ucOpen && app ? uncertainCorrectList(app.attempts.all()) : []);
+    const ucList = $derived(ucOpen ? uncertainCorrectList(reportEvents) : []);
     // 39-08 lite：延迟独立回忆（错后隔日首次作答；随日期范围联动）
-    const recall = $derived(app ? delayedRecall(app.attempts.all().filter((e) => !rangeDays || e.ts >= Date.now() - rangeDays * 86_400_000)) : null);
+    const recall = $derived(delayedRecall(reportEvents));
     // 52-02/114-01 呈现端：独立/受助/先回忆三口径（随日期范围联动）
-    const exposure = $derived.by(() => {
-      if (!app) return null;
-      const cutoff = rangeDays > 0 ? Date.now() - rangeDays * 86_400_000 : 0;
-      return exposureStats(app.attempts.all().filter((e) => !cutoff || e.ts >= cutoff));
-    });
+    const exposure = $derived(exposureStats(reportEvents));
 
     // 45-08：图表数据表展开态（单选一个卡）+ CSV 下载（与 SVG 同一数据快照）
     let tableOpen = $state<"trend" | "heat" | "hourly" | "">("");
     function downloadChartCsv(csv: string, name: string) {
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
+      a.href = url;
       a.download = `小驴考试（内测版）-报告-${name}-${new Date().toISOString().slice(0, 10)}.csv`;
       a.click();
-      URL.revokeObjectURL(a.href);
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 </script>
 
 <div class="fn__flex-1 lv-exam-tab">
   <div class="block__icons">
-    <button class="lv-menu-btn" aria-label={t("menu.open")} bind:this={menuBtn} onclick={() => railOpen = true}><Icon name="menu" size={16} /></button>
+    <button class="lv-menu-btn" aria-label={t("menu.open")} aria-expanded={railOpen} bind:this={menuBtn} onclick={() => railOpen = true}><Icon name="menu" size={16} /></button>
     <div class="lv-crumbs">
       <span class="lv-crumb">{railBankName}</span>
       <span class="lv-crumb-sep" aria-hidden="true">/</span>
@@ -631,7 +706,7 @@
       <Icon name="search" size={13} /> <span class="lv-palette-label">{t("palette.open")}</span> <span class="lv-kbd">⌘K</span>
     </button>
     <!-- 39-06 lite：统计日期范围（消灭错题/连续天数为状态类指标保持全局） -->
-    <select class="lv-select" bind:value={rangeDays} onchange={computeReport} title={t("report.rangeTip")}>
+    <select class="lv-select" bind:value={rangeDays} onchange={onRangeChange} disabled={loading || reportRefreshing} title={t("report.rangeTip")}>
       <option value={0}>{t("report.rangeAll")}</option>
       <option value={1}>{t("report.rangeToday")}</option>
       <option value={7}>{t("report.range7")}</option>
@@ -645,50 +720,54 @@
       <select class="lv-select" style="max-width:200px" bind:value={bankId} disabled={scopeLoading || reportRefreshing} onchange={onBankChange}>
         {#each bankOptions as b, _i (_i)}<option value={b.id}>{b.name}</option>{/each}
       </select>
-      <span class="lv-muted" style="font-size:11.5px">{t("report.scopeHint")}</span>
+      <span class="lv-muted" style="font-size:var(--lv-font-size-caption)">{t("report.scopeHint")}</span>
     {/if}
     <span class="fn__flex-1"></span>
     <!-- 117-01 T11 / 117-02：AI 解读与 AI 下一行动（按当前统计范围；只解释/建议，不重算不虚构） -->
-    <button class="lv-btn sm" onclick={() => void runReportExplain()} disabled={explainBusy}>
+    <button class="lv-btn sm" onclick={() => void runReportExplain()} disabled={!app || loading || reportRefreshing || scopeLoading || explainBusy} aria-busy={explainBusy}>
       <Icon name="sparkles" size={13} /> {explainBusy ? "…" : t("reportExplain.ask")}
     </button>
-    <button class="lv-btn sm" onclick={() => void runNextAction()} disabled={nextActionBusy}>
+    <button class="lv-btn sm" onclick={() => void runNextAction()} disabled={!app || loading || reportRefreshing || scopeLoading || nextActionBusy} aria-busy={nextActionBusy}>
       <Icon name="target" size={13} /> {nextActionBusy ? "…" : t("nextAction.ask")}
     </button>
     <span class="lv-chip">{t("report.dataFromLog")}</span>
   </div>
 <div class="fn__flex-1 lv-shell">
-  <Rail active="report" {plugin} open={railOpen} onclose={closeRail}
+  <Rail active="report" taskactive="report" ontasknavigate={onTaskNav} {plugin} open={railOpen} onclose={closeRail}
     project={{ name: railBankName || t("guard.title"), kicker: t("rail.projectKicker") }} onproject={() => plugin.openPractice?.()} />
   <div class="lv-main">
   <div class="fn__flex-1 lv-pad">
   <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.report.eyebrow")}</span><h1 class="lv-h1">{t("head.report.title")}</h1><p>{t("head.report.desc")}</p></div>
 
+  {#if explainBusy}<p class="lv-muted" role="status">{t("reportExplain.generating", "正在解读当前统计，请稍候…")}</p>{/if}
+  {#if nextActionBusy}<p class="lv-muted" role="status">{t("nextAction.generating", "正在根据当前统计生成行动建议，请稍候…")}</p>{/if}
   {#if explainError}
-    <div class="lv-error" style="margin:0 0 8px">{explainError}</div>
+    <div class="lv-error" role="alert" style="margin:0 0 8px">{explainError}</div>
+    <p class="lv-muted">{t("report.aiSetupHint", "AI 需要先配置：可使用思源设置中的可用模型，或在本插件设置中填写兼容端点、模型与密钥。统计和手动练习无需 AI。")}</p>
   {:else if explainText}
     <div class="lv-card" style="margin:0 0 10px;padding:10px 14px">
       <div class="lv-row" style="margin:0 0 4px">
-        <b class="lv-card-title" style="font-size:13px"><Icon name="flask" size={14} /> {t("reportExplain.title")}</b>
+        <b class="lv-card-title" style="font-size:var(--lv-font-size-body-compact)"><Icon name="flask" size={14} /> {t("reportExplain.title")}</b>
         <span class="lv-chip">{windowLabel()}</span>
         <span class="fn__flex-1"></span>
         <button class="lv-btn sm lv-btn--ghost" onclick={() => { explainText = ""; }}>{t("edit.cancel")}</button>
       </div>
-      <div style="font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere">{explainText}</div>
-      <div class="lv-muted" style="font-size:10.5px;margin-top:4px">{t("reportExplain.disclaimer")}</div>
+      <div style="font-size:var(--lv-font-size-body-compact);white-space:pre-wrap;overflow-wrap:anywhere">{explainText}</div>
+      <div class="lv-muted" style="font-size:var(--lv-font-size-compact);margin-top:4px">{t("reportExplain.disclaimer")}</div>
     </div>
   {/if}
   {#if nextActionError}
-    <div class="lv-error" style="margin:0 0 8px">{nextActionError}</div>
+    <div class="lv-error" role="alert" style="margin:0 0 8px">{nextActionError}</div>
+    <p class="lv-muted">{t("report.aiSetupHint", "AI 需要先配置：可使用思源设置中的可用模型，或在本插件设置中填写兼容端点、模型与密钥。统计和手动练习无需 AI。")}</p>
   {:else if nextActionText}
     <div class="lv-card" style="margin:0 0 10px;padding:10px 14px">
       <div class="lv-row" style="margin:0 0 4px">
-        <b style="font-size:13px"><Icon name="target" size={14} /> {t("nextAction.title")}</b>
+        <b style="font-size:var(--lv-font-size-body-compact)"><Icon name="target" size={14} /> {t("nextAction.title")}</b>
         <span class="fn__flex-1"></span>
         <button class="lv-btn sm lv-btn--ghost" onclick={() => { nextActionText = ""; }}>{t("edit.cancel")}</button>
       </div>
-      <div style="font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere">{nextActionText}</div>
-      <div class="lv-muted" style="font-size:10.5px;margin-top:4px">{t("nextAction.disclaimer")}</div>
+      <div style="font-size:var(--lv-font-size-body-compact);white-space:pre-wrap;overflow-wrap:anywhere">{nextActionText}</div>
+      <div class="lv-muted" style="font-size:var(--lv-font-size-compact);margin-top:4px">{t("nextAction.disclaimer")}</div>
     </div>
   {/if}
 
@@ -715,7 +794,7 @@
       <button class="lv-btn lv-btn--primary" onclick={() => plugin.openPractice?.()}>{t("report.goPractice")}</button>
     </div>
   {:else}
-    <p class="lv-muted" style="margin:0 0 8px;font-size:11.5px">{t("report.scopeAll")}</p>
+    <p class="lv-muted" style="margin:0 0 8px;font-size:var(--lv-font-size-caption)">{t("report.scopeDetails", "作答统计：{range}，全部题库。考点掌握与薄弱项：{bank}，历史累计。热力图、连胜与消灭错题为全局历史状态。").replace("{range}", windowLabel()).replace("{bank}", railBankName)}</p>
     {#if scopeError}
       <div class="lv-error" style="margin:0 0 10px" role="alert">
         <span>{t("report.scopeLoadError")}: {scopeError}</span>
@@ -726,7 +805,20 @@
     {:else if scopeLoading}
       <div class="lv-muted" style="margin:0 0 10px" role="status">{t("report.scopeLoading")}</div>
     {/if}
-    {#if kpi.attempts === 0}
+    <div class="lv-report-tabs" role="group" aria-label={t("report.sectionsLabel", "报告分区")}>
+      <button class="lv-report-tab" class:active={reportSection === "overview"} aria-pressed={reportSection === "overview"} onclick={() => reportSection = "overview"}>{t("report.sectionOverview", "概览")}</button>
+      <button class="lv-report-tab" class:active={reportSection === "knowledge"} aria-pressed={reportSection === "knowledge"} onclick={() => reportSection = "knowledge"}>{t("report.sectionKnowledge", "考点与错题")}</button>
+      <button class="lv-report-tab" class:active={reportSection === "evidence"} aria-pressed={reportSection === "evidence"} onclick={() => reportSection = "evidence"}>{t("report.sectionEvidence", "记录与证据")}</button>
+    </div>
+    {#if reportSection === "evidence" && reportEvents.length === 0}
+      <div class="lv-empty" style="padding:20px 18px;margin-bottom:12px" role="status">
+        <div class="lv-empty-icon"><Icon name="file-text" size={22} /></div>
+        <b>{t("report.noEvidenceTitle", "还没有学习记录")}</b>
+        <p class="lv-muted">{t("report.noEvidenceDesc", "完成一次练习或模考后，作答过程与证据会显示在这里。")}</p>
+        <button class="lv-btn lv-btn--primary sm" style="margin-top:10px" onclick={() => plugin.openPractice?.()}>{t("report.goPractice")}</button>
+      </div>
+    {/if}
+    {#if kpi.attempts === 0 && reportSection === "overview"}
       <div class="lv-empty" style="padding:24px 18px;margin-bottom:12px" role="status">
         <div class="lv-empty-icon"><Icon name="chart" size={24} /></div>
         <b>{rangeDays ? t("report.noRangeAttemptsTitle") : t("report.noAttemptsTitle")}</b>
@@ -734,18 +826,25 @@
         <button class="lv-btn lv-btn--primary sm" style="margin-top:12px" onclick={() => plugin.openPractice?.()}>{t("report.goPractice")}</button>
       </div>
     {/if}
-    <div class="lv-kpis">
+    <div class="lv-kpis" class:lv-report-section--hidden={reportSection !== "overview"}>
       <div class="lv-card lv-kpi"><div class="l"><span>{t("report.attempts")}</span><Icon name="zap" size={15} /></div><div class="v num">{kpi.attempts}</div></div>
       <div class="lv-card lv-kpi"><div class="l"><span>{t("report.accuracy")}</span><Icon name="target" size={15} /></div><div class="v num">{kpi.attempts ? `${kpi.accuracy}%` : "—"}</div></div>
       <div class="lv-card lv-kpi"><div class="l"><span>{t("report.eliminated")}</span><Icon name="xcircle" size={15} /></div><div class="v num">{kpi.eliminated}</div></div>
       <div class="lv-card lv-kpi"><div class="l"><span>{t("report.streak")}</span><Icon name="flame" size={15} /></div><div class="v num">{kpi.streak} {t("entry.days")}</div></div>
     </div>
-
-    {#if weekCmp}
+    {#if reportSection === "overview" && (weak.length || weekCmp)}
+      <div class="lv-report-overview-grid" class:has-both={weak.length > 0 && Boolean(weekCmp)}>
+      {#if weak.length}
+        <div class="lv-card lv-report-next">
+          <div><span class="lv-eyebrow">{t("report.nextStep", "建议下一步")}</span><b>{weak[0].root}</b><p class="lv-muted">{t("report.nextStepHint", "从当前薄弱考点开始重练，练习结果会继续记入本地报告。")}</p></div>
+          <button class="lv-btn lv-btn--primary sm" onclick={() => drillWeak(weak[0].root)}>{t("report.drillKp")}</button>
+        </div>
+      {/if}
+      {#if weekCmp}
       <!-- 周对比（原型 chart-row 数据语言：双条对比 + 带数值 delta，替代孤箭头 chip） -->
       {@const delta = weekCmp.thisWeek.attempts - weekCmp.lastWeek.attempts}
       {@const maxW = Math.max(weekCmp.thisWeek.attempts, weekCmp.lastWeek.attempts, 1)}
-      <div class="lv-card lv-section" style="margin-bottom:12px">
+      <div class="lv-card lv-section lv-report-week">
         <div class="lv-row" style="margin:0 0 6px;justify-content:space-between">
           <b>{t("report.weekCompare")}</b>
           {#if delta !== 0}
@@ -754,14 +853,17 @@
             <span class="lv-chip num">±0</span>
           {/if}
         </div>
+        <p class="lv-muted lv-report-week-scope">{t("report.weekCompareScope")}</p>
         <div class="lv-chart-row"><span>{t("report.thisWeek")}</span><div class="lv-progress"><i style="width:{Math.round((weekCmp.thisWeek.attempts / maxW) * 100)}%"></i></div><b class="num">{weekCmp.thisWeek.attempts}</b></div>
         <div class="lv-chart-row"><span>{t("report.lastWeek")}</span><div class="lv-progress"><i style="width:{Math.round((weekCmp.lastWeek.attempts / maxW) * 100)}%"></i></div><b class="num">{weekCmp.lastWeek.attempts}</b></div>
+      </div>
+      {/if}
       </div>
     {/if}
 
     {#if quad}
       <!-- 63-01：信心×结果四象限（独立练习口径；置信度缺失不补猜测） -->
-      <div class="lv-card lv-section" style="margin-bottom:12px">
+      <div class="lv-card lv-section" class:lv-report-section--hidden={reportSection !== "knowledge"} style="margin-bottom:12px">
         <b>{t("quad.title")}</b>
         {#if quad.denominator === 0}
           <div class="lv-muted">{t("quad.empty")}</div>
@@ -773,7 +875,7 @@
             <div class="lv-quad"><span class="v num">{quad.cells.fuzzyRight}</span><span class="l">{t("quad.fuzzyRight")}</span></div>
           </div>
           {#if quad.cells.noConfidence}
-            <div class="lv-row lv-muted" style="font-size:11.5px;margin:8px 0 0">{t("quad.noConf").replace("{n}", String(quad.cells.noConfidence))}</div>
+            <div class="lv-row lv-muted" style="font-size:var(--lv-font-size-caption);margin:8px 0 0">{t("quad.noConf").replace("{n}", String(quad.cells.noConfidence))}</div>
           {/if}
           {#if quad.lowSample}
             <div class="lv-row" style="margin:8px 0 0"><span class="lv-chip lv-chip--amb">{t("quad.lowSample")}</span></div>
@@ -802,7 +904,7 @@
     {/if}
 
     <!-- 63-02/65-06：近期曝光查询（近 7 天 lite；布尔事实，不含题面内容） -->
-    <div class="lv-card lv-section" style="margin-bottom:12px">
+    <div class="lv-card lv-section" class:lv-report-section--hidden={reportSection !== "evidence"} style="margin-bottom:12px">
       <b>{t("exposure.title")}</b>
       {#if Object.keys(exposureNodes).length}
         <div class="lv-row" style="margin:4px 0 0">
@@ -816,7 +918,7 @@
       </button>
       {#if expOpen}
         {#if expList.length}
-          <div class="lv-row" style="margin:6px 0 0;flex-direction:column;align-items:stretch;gap:4px">
+          <div class="lv-row" style="margin:6px 0 0;flex-direction:column;align-items:stretch;gap:var(--lv-space-1)">
             {#each expList as x (x.qid + x.lastTs)}
               {@const stem = questions.find((q) => q.id === x.qid)?.stem}
               <div class="lv-error-row" style="white-space:normal" title={stem ?? x.qid}>
@@ -836,13 +938,13 @@
 
     {#if caList.length || caOpen}
       <!-- 63-03：改答题清单（首答 → 终答 分离；报告口径：终答==首答不列） -->
-      <div class="lv-card lv-section" style="margin-bottom:12px">
+      <div class="lv-card lv-section" class:lv-report-section--hidden={reportSection !== "evidence"} style="margin-bottom:12px">
         <b>{t("report.changedTitle")}</b>
         <button class="lv-btn sm lv-btn--ghost" style="margin-top:4px" onclick={() => caOpen = !caOpen}>
           {caOpen ? "▾" : "▸"} {t("report.changedDrill")}（<span class="num">{caList.length}</span>）
         </button>
         {#if caOpen}
-          <div class="lv-row" style="margin:6px 0 0;flex-direction:column;align-items:stretch;gap:4px">
+          <div class="lv-row" style="margin:6px 0 0;flex-direction:column;align-items:stretch;gap:var(--lv-space-1)">
             {#each caList as c, _ci (_ci)}
               {@const stem = questions.find((x) => x.id === c.qid)?.stem}
               <div class="lv-error-row" style="white-space:normal" title={stem ?? c.qid}>
@@ -860,8 +962,8 @@
     {/if}
 
     {#if trend30.some((p) => p.attempts > 0)}
-      <div class="lv-card lv-section" style="margin-bottom:12px">
-        <b>{t("report.trend30")}</b>
+      <div class="lv-card lv-section" class:lv-report-section--hidden={reportSection !== "overview"} style="margin-bottom:12px">
+        <b>{rangeDays ? t("report.trendWindow", "{range}作答趋势").replace("{range}", windowLabel()) : t("report.trend30")}</b>
         <!-- 全宽趋势图（6.7:1 viewBox）：随卡片伸缩，不在大卡里缩成小图 -->
         <svg viewBox="0 0 600 90" style="width:100%;display:block" role="img" aria-label={t("report.trend30")}>
           <defs>
@@ -872,15 +974,15 @@
           </defs>
           <line x1="0" y1="88.5" x2="600" y2="88.5" stroke="var(--lv-border)" stroke-width="1" />
           {#if trendArea}<polygon points={trendArea} fill="url(#lv-trend-fill)" />{/if}
-          <polyline points={trend30.map((p, i) => `${(i / 29) * 600},${86 - Math.round((p.attempts / maxTrend) * 78)}`).join(" ")} fill="none" stroke="var(--lv-accent)" stroke-width="2" />
+          <polyline points={trend30.map((p, i) => `${(i / trendSpan) * 600},${86 - Math.round((p.attempts / maxTrend) * 78)}`).join(" ")} fill="none" stroke="var(--lv-accent)" stroke-width="2" />
           {#if trendLastDot}<circle cx={trendLastDot.x} cy={trendLastDot.y} r="3" fill="var(--lv-accent)" stroke="var(--lv-surface)" stroke-width="1.5" />{/if}
           <!-- 55-04 lite：正确率曲线（有作答日连成段，0 题日断点；比例尺 0-100% 对满高） -->
-          <polyline points={trendAccPoints} fill="none" stroke="var(--lv-green)" stroke-width="1.6" stroke-dasharray="3 2" />
+          {#each trendAccLines as points (points)}<polyline {points} fill="none" stroke="var(--lv-green)" stroke-width="1.6" stroke-dasharray="3 2" />{/each}
           <!-- Anki hover-columns 灵感：逐日透明命中区 + SVG 原生 title（零 JS，悬浮看当日题量/正确率） -->
           {#each trend30 as p, i (p.date)}
             {#if p.attempts > 0}
-              <circle cx={(i / 29) * 600} cy={86 - Math.round((p.attempts / maxTrend) * 78)} r="9" fill="transparent" style="cursor:default">
-                <title>{p.date} · {p.attempts} {t("browse.count")}{#if (p.correct ?? 0) > 0} · {t("report.accuracy")} {Math.round(((p.correct ?? 0) / p.attempts) * 100)}%{/if}</title>
+              <circle cx={(i / trendSpan) * 600} cy={86 - Math.round((p.attempts / maxTrend) * 78)} r="9" fill="transparent" style="cursor:default">
+                <title>{p.date} · {p.attempts} {t("browse.count")} · {t("report.accuracy")} {Math.round(((p.correct ?? 0) / p.attempts) * 100)}%</title>
               </circle>
             {/if}
           {/each}
@@ -890,7 +992,7 @@
           <span class="lv-chip num">{t("report.trendSum")} {trend30.reduce((n, p) => n + p.attempts, 0)}</span>
           <span class="lv-chip lv-chip--grn">— {t("report.accuracyTrend")}</span>
           <!-- 45-08：SVG 图表的文本等价物 + CSV（同一数据快照，读屏/打印/导出数字一致） -->
-          <button class="lv-btn sm lv-btn--ghost" onclick={() => tableOpen = tableOpen === "trend" ? "" : "trend"}><Icon name="table" size={13} /> {t("data.table")}</button>
+          <button class="lv-btn sm lv-btn--ghost" aria-expanded={tableOpen === "trend"} onclick={() => tableOpen = tableOpen === "trend" ? "" : "trend"}><Icon name="table" size={13} /> {t("data.table")}</button>
           <button class="lv-btn sm lv-btn--ghost" onclick={() => downloadChartCsv(trendToCsv(trend30), "trend30")}><Icon name="export" size={13} /> CSV</button>
         </div>
         {#if tableOpen === "trend"}
@@ -906,31 +1008,33 @@
       </div>
     {/if}
 
-    <div class="lv-card lv-section">
+    <div class="lv-card lv-section" class:lv-report-section--hidden={reportSection !== "overview"}>
       <b>{t("report.heat")}</b>
       <div class="lv-heat">
         {#each heat as c, _i (_i)}
           <i class={heatColor(c.count)} title="{c.date} · {c.count}"></i>
         {/each}
       </div>
-      <div class="lv-row" style="margin:6px 0 0">
-        <button class="lv-btn sm lv-btn--ghost" onclick={() => tableOpen = tableOpen === "heat" ? "" : "heat"}><Icon name="table" size={13} /> {t("data.table")}</button>
+        <div class="lv-row" style="margin:6px 0 0">
+        <button class="lv-btn sm lv-btn--ghost" aria-expanded={tableOpen === "heat"} onclick={() => tableOpen = tableOpen === "heat" ? "" : "heat"}><Icon name="table" size={13} /> {t("data.table")}</button>
         <button class="lv-btn sm lv-btn--ghost" onclick={() => downloadChartCsv(heatmapToCsv(heat), "heatmap")}><Icon name="export" size={13} /> CSV</button>
       </div>
       {#if tableOpen === "heat"}
         <div class="lv-row" style="margin:6px 0 0;flex-direction:column;align-items:stretch;gap:2px;max-height:180px;overflow:auto">
-          {#each heat.filter((c) => c.count > 0) as c, _i (_i)}
-            <span class="lv-muted num">{c.date} · {c.count}</span>
-          {/each}
+          {#if heat.some((c) => c.count > 0)}
+            {#each heat.filter((c) => c.count > 0) as c, _i (_i)}
+              <span class="lv-muted num">{c.date} · {c.count}</span>
+            {/each}
+          {:else}<span class="lv-muted" role="status">{t("report.noData")}</span>{/if}
         </div>
       {/if}
     </div>
 
-    <div class="lv-card lv-section">
+    <div class="lv-card lv-section" class:lv-report-section--hidden={reportSection !== "knowledge"}>
       <b>{t("report.mastery")}</b>
       {#if mastery.length}
         <!-- 39-07：算法与口径标注（启发式估计；非真实 FSRS 卡片状态） -->
-        <div class="lv-row lv-muted" style="font-size:11px;margin:2px 0 6px">{t("report.masteryNote")}</div>
+        <div class="lv-row lv-muted" style="font-size:var(--lv-font-size-label);margin:2px 0 6px">{t("report.masteryNote")}</div>
       {/if}
       {#if !mastery.length}
         <p class="lv-muted">{t("report.noData")}</p>
@@ -953,13 +1057,13 @@
     </div>
 
     {#if weak.length}
-      <div class="lv-card lv-section">
+      <div class="lv-card lv-section" class:lv-report-section--hidden={reportSection !== "knowledge"}>
         <b>{t("report.weak")}</b>
         {#each weak.slice(0, 5) as w, i (i)}
           <div class="lv-row" style="margin:4px 0">
             <span class="lv-chip lv-chip--red num">{i + 1}</span>
             <span style="flex:1">{w.root}</span>
-            <span class="num" style="color:var(--lv-red);font-weight:700">{Math.round(w.accuracy * 100)}%</span>
+            <span class="num" style="color:var(--lv-red);font-weight:var(--lv-font-weight-bold)">{Math.round(w.accuracy * 100)}%</span>
             <button class="lv-btn sm" onclick={() => drillWeak(w.root)}>{t("report.drillKp")}</button>
           </div>
         {/each}
@@ -967,7 +1071,7 @@
     {/if}
 
     {#if calib && (calib.rows.length || calib.unreported)}
-      <div class="lv-card lv-section">
+      <div class="lv-card lv-section" class:lv-report-section--hidden={reportSection !== "knowledge"}>
         <b>{t("report.calibration")}</b>
         <p class="lv-muted" style="margin:0 0 8px">{t("report.calibrationHint")}</p>
         {#each calib.rows as r, _i (_i)}
@@ -988,7 +1092,7 @@
             {cwOpen ? "▾" : "▸"} {t("report.cwDrill")}
           </button>
           {#if cwOpen}
-            <div class="lv-row" style="margin:6px 0 0;flex-direction:column;align-items:stretch;gap:4px">
+            <div class="lv-row" style="margin:6px 0 0;flex-direction:column;align-items:stretch;gap:var(--lv-space-1)">
               {#each cwList as c, _ci (_ci)}
                 {@const stem = questions.find((x) => x.id === c.qid)?.stem}
                 <div class="lv-error-row" style="white-space:normal" title={stem ?? c.qid}>
@@ -1008,12 +1112,12 @@
             {ucOpen ? "▾" : "▸"} {t("report.ucDrill")}
           </button>
           {#if ucOpen}
-            <div class="lv-row" style="margin:6px 0 0;flex-direction:column;align-items:stretch;gap:4px">
+            <div class="lv-row" style="margin:6px 0 0;flex-direction:column;align-items:stretch;gap:var(--lv-space-1)">
               {#each ucList as u, _ui (_ui)}
                 {@const stem = questions.find((x) => x.id === u.qid)?.stem}
                 <div class="lv-row" style="margin:0;white-space:normal" title={stem ?? u.qid}>
                   <span class="lv-chip num">{t("confidence." + u.confidence)}</span>
-                  <span style="font-size:12.5px">{stem ? stem.slice(0, 70) : u.qid}</span>
+                  <span style="font-size:var(--lv-font-size-meta)">{stem ? stem.slice(0, 70) : u.qid}</span>
                   <span class="lv-muted num"> · {new Date(u.ts).toLocaleDateString()}</span>
                 </div>
               {:else}
@@ -1035,9 +1139,9 @@
 
     {#if recall && recall.pairs > 0}
       <!-- 39-08 lite：延迟独立回忆（错后隔日首次作答口径；受助单列防虚增留存） -->
-      <div class="lv-card lv-section">
+      <div class="lv-card lv-section" class:lv-report-section--hidden={reportSection !== "knowledge"}>
         <b>{t("report.recallTitle")}</b>
-        <p class="lv-muted" style="margin:0 0 8px;font-size:11.5px">{t("report.recallHint")}</p>
+        <p class="lv-muted" style="margin:0 0 8px;font-size:var(--lv-font-size-caption)">{t("report.recallHint")}</p>
         <div class="lv-row" style="margin:4px 0">
           <span class="lv-chip num">{t("report.recallPairs").replace("{n}", String(recall.pairs))}</span>
           <span class="lv-chip acc num">{t("report.recallIndependent").replace("{n}", String(recall.independentRecall))}</span>
@@ -1050,9 +1154,9 @@
 
     {#if exposure && exposure.attempts > 0}
       <!-- 52-02/114-01 呈现端：独立/受助/先回忆三口径分栏（互不混算） -->
-      <div class="lv-card lv-section">
+      <div class="lv-card lv-section" class:lv-report-section--hidden={reportSection !== "evidence"}>
         <b>{t("report.exposureTitle")}</b>
-        <p class="lv-muted" style="margin:0 0 8px;font-size:11.5px">{t("report.exposureHint")}</p>
+        <p class="lv-muted" style="margin:0 0 8px;font-size:var(--lv-font-size-caption)">{t("report.exposureHint")}</p>
         <div class="lv-row" style="margin:4px 0">
           <span class="lv-chip acc num">{t("report.exposureIndependent").replace("{n}", String(exposure.independent))}</span>
           {#if exposure.assisted}<span class="lv-chip lv-chip--amb num">{t("report.exposureAssisted").replace("{n}", String(exposure.assisted))}</span>{/if}
@@ -1063,16 +1167,16 @@
     {/if}
 
     {#if openActionList.length}
-      <div class="lv-card lv-section">
+      <div class="lv-card lv-section" class:lv-report-section--hidden={reportSection !== "evidence"}>
         <b>{t("action.title")}（{openActionList.length}）</b>
         <p class="lv-muted" style="margin:0 0 8px">{t("action.hint")}</p>
         {#each openActionList.slice(0, 10) as a, _i (_i)}
           <div class="lv-row" style="margin:4px 0">
             <span class="lv-chip num">{t("action.kind." + a.kind)}</span>
             <span style="flex:1;min-width:140px">{a.detail}</span>
-            {#if a.qid}<button class="lv-btn sm" disabled={!!actionBusyId} onclick={() => redoAction(a)}><Icon name="rotate" size={13} /> {t("action.kind.redo")}</button>{/if}
-            <button class="lv-btn sm" disabled={!!actionBusyId} onclick={() => finishAction(a.id)}>✓ {t("action.doneBtn")}</button>
-            <button class="lv-btn sm lv-btn--ghost" disabled={!!actionBusyId} aria-label={t("action.dismiss")} title={t("action.dismiss")} onclick={() => dropAction(a.id)}>✕</button>
+            {#if a.qid}<button class="lv-btn sm" disabled={!!actionBusyId} aria-busy={actionBusyId === a.id} onclick={() => redoAction(a)}><Icon name="rotate" size={13} /> {actionBusyId === a.id ? t("action.working", "处理中…") : t("action.kind.redo")}</button>{/if}
+            <button class="lv-btn sm" disabled={!!actionBusyId} aria-busy={actionBusyId === a.id} onclick={() => finishAction(a.id)}>{actionBusyId === a.id ? t("action.working", "处理中…") : `✓ ${t("action.doneBtn")}`}</button>
+            <button class="lv-btn sm lv-btn--ghost" disabled={!!actionBusyId} aria-busy={actionBusyId === a.id} aria-label={t("action.dismiss")} title={t("action.dismiss")} onclick={() => dropAction(a.id)}>{actionBusyId === a.id ? "…" : "✕"}</button>
           </div>
         {/each}
         {#if openActionList.length > 10}
@@ -1082,51 +1186,92 @@
     {/if}
 
     {#if mockHistory.length >= 2}
-      <div class="lv-card lv-section">
+    <div class="lv-card lv-section" class:lv-report-section--hidden={reportSection !== "evidence"}>
         <b>{t("mock.history")}</b>
+        <p class="lv-muted">{t("mock.historyScope", "历史记录可能来自不同题库、卷面或时长，百分比仅供回看，不直接比较进步或能力。")}</p>
         <svg viewBox="0 0 300 110" style="width:100%;max-width:420px;display:block" role="img" aria-label={t("mock.history")}>
           <polyline points={mockHistory.map((h, i) => `${(i / Math.max(1, mockHistory.length - 1)) * 300},${100 - Math.round(h.percent)}`).join(" ")} fill="none" stroke="var(--lv-accent)" stroke-width="2" />
         </svg>
       </div>
     {/if}
 
-    <div class="lv-card lv-section">
+    <div class="lv-card lv-section" class:lv-report-section--hidden={reportSection !== "evidence"}>
       <b>{t("report.hourly")}</b>
       <svg viewBox="0 0 300 46" style="width:100%;max-width:420px;display:block" role="img" aria-label={t("report.hourly")}>
         <polyline points={hoursSvg} fill="none" stroke="var(--lv-accent)" stroke-width="2" />
       </svg>
       <div class="lv-row" style="margin:4px 0 0">
-        <button class="lv-btn sm lv-btn--ghost" onclick={() => tableOpen = tableOpen === "hourly" ? "" : "hourly"}><Icon name="table" size={13} /> {t("data.table")}</button>
+        <button class="lv-btn sm lv-btn--ghost" aria-expanded={tableOpen === "hourly"} onclick={() => tableOpen = tableOpen === "hourly" ? "" : "hourly"}><Icon name="table" size={13} /> {t("data.table")}</button>
         <button class="lv-btn sm lv-btn--ghost" onclick={() => downloadChartCsv(hourlyToCsv(hours), "hourly")}><Icon name="export" size={13} /> CSV</button>
       </div>
       {#if tableOpen === "hourly"}
         <div class="lv-row" style="margin:6px 0 0;flex-direction:column;align-items:stretch;gap:2px;max-height:180px;overflow:auto">
-          {#each hours.map((n, i) => [i, n] as const).filter(([, n]) => n > 0) as [h, n], _i (_i)}
-            <span class="lv-muted num">{String(h).padStart(2, "0")}:00 · {n}</span>
-          {/each}
+          {#if hours.some((n) => n > 0)}
+            {#each hours.map((n, i) => [i, n] as const).filter(([, n]) => n > 0) as [h, n], _i (_i)}
+              <span class="lv-muted num">{String(h).padStart(2, "0")}:00 · {n}</span>
+            {/each}
+          {:else}<span class="lv-muted" role="status">{t("report.noData")}</span>{/if}
         </div>
       {/if}
-      <button class="lv-btn sm" style="margin-top:8px" disabled={reportBusy} onclick={writeDaily}>
+      <button class="lv-btn sm" style="margin-top:8px" disabled={reportBusy || reportRefreshing} onclick={writeDaily} title={t("report.dailyScope", "写入当前题库今日作答的战报，与上方日期筛选无关。") }>
         <Icon name="table" size={14} /> {reportBusy ? "…" : t("report.writeDaily")}
       </button>
-      <button class="lv-btn sm lv-btn--ghost" style="margin-top:8px" onclick={exportDiagnostics}>
-        <Icon name="activity" size={13} /> {t("diag.export")}
+      <p class="lv-muted lv-daily-report-scope">{t("report.dailyScope", "写入当前题库今日作答的战报，与上方日期筛选无关。")}</p>
+      <button class="lv-btn sm lv-btn--ghost" style="margin-top:8px" disabled={diagnosticsBusy} aria-busy={diagnosticsBusy} onclick={exportDiagnostics}>
+        <Icon name="activity" size={13} /> {diagnosticsBusy ? t("diag.exporting", "正在生成诊断信息…") : t("diag.export")}
       </button>
       <!-- 69-01/69-06/58-01 lite：存储占用 / 数据体检 / 数据出库 -->
       <button class="lv-btn sm lv-btn--ghost" style="margin-top:8px" disabled={storageBusy} onclick={() => void toggleStorage()}>
         <Icon name="save" size={13} /> {storageBusy ? "…" : storageOpen ? t("data.hideStorage") : t("data.showStorage")}{#if storageRows.length}&nbsp;· {storageTotalKb} KB{/if}
       </button>
       {#if storageOpen}
-        <div class="lv-row" style="margin:6px 0 0">
-          {#each storageRows as r, _i (_i)}
-            <span class="lv-chip num" class:lv-chip--amb={!r.present} title={r.key}>{r.key} · {Math.round(r.bytes / 1024 * 10) / 10}K</span>
-          {/each}
-        </div>
-        <div class="lv-muted" style="margin-top:4px;font-size:11.5px">{t("data.storageNote")}</div>
+        {#if storageBusy}
+          <p class="lv-muted" role="status" aria-busy="true" style="margin:6px 0 0">{t("data.storageLoading", "正在读取插件存储占用…")}</p>
+        {:else if storageError}
+          <div class="lv-error" role="alert" style="margin:6px 0 0;overflow-wrap:anywhere">
+            <span>{t("data.storageReadError", "读取存储占用失败")}: {storageError}</span>
+            <button class="lv-btn sm lv-btn--ghost" style="margin-left:8px" disabled={storageBusy} onclick={() => void loadStorage()}>
+              <Icon name="rotate" size={13} /> {storageBusy ? "…" : t("data.auditRetry", "重试")}
+            </button>
+          </div>
+        {:else if storageRows.length}
+          <div class="lv-row" style="margin:6px 0 0">
+            {#each storageRows as r, _i (_i)}
+              <span class="lv-chip num" class:lv-chip--amb={!r.present} class:lv-chip--red={!!r.error} title={r.error ? `${r.key}: ${r.error}` : r.key}>{r.key} · {r.error ? t("data.storageUnknown", "读取失败") : `${Math.round(r.bytes / 1024 * 10) / 10}K`}</span>
+            {/each}
+          </div>
+        {:else}
+          <div class="lv-empty" role="status" style="margin-top:6px;padding:12px">
+            <div class="lv-empty-icon"><Icon name="save" size={18} /></div>
+            <span>{t("data.storageEmpty", "没有可显示的存储记录")}</span>
+            <button class="lv-btn sm lv-btn--ghost" style="margin-top:6px" disabled={storageBusy} onclick={() => void loadStorage()}>
+              <Icon name="rotate" size={13} /> {t("data.auditRetry", "重新读取")}
+            </button>
+          </div>
+        {/if}
+        <div class="lv-muted" style="margin-top:4px;font-size:var(--lv-font-size-caption)">{t("data.storageNote")}</div>
       {/if}
       <button class="lv-btn sm lv-btn--ghost" style="margin-top:8px" disabled={auditBusy} onclick={() => void runDataAudit()}>
         {auditBusy ? "…" : t("data.audit")}
       </button>
+      {#if auditBusy}
+        <p class="lv-muted" role="status" aria-busy="true" style="margin:6px 0 0">{t("data.auditLoading", "正在扫描题库与作答流水…")}</p>
+      {:else if auditError}
+        <div class="lv-error" role="alert" style="margin:6px 0 0;overflow-wrap:anywhere">
+          <span>{t("data.auditReadError", "数据体检失败")}: {auditError}</span>
+          <button class="lv-btn sm lv-btn--ghost" style="margin-left:8px" disabled={auditBusy} onclick={() => void runDataAudit()}>
+            <Icon name="rotate" size={13} /> {t("data.auditRetry", "重试")}
+          </button>
+        </div>
+      {/if}
+      {#if auditSkippedBanks > 0 && !auditBusy && !auditError}
+        <div class="lv-error" role="alert" style="margin:6px 0 0;overflow-wrap:anywhere">
+          <span>{t("data.auditPartial", "有 {n} 个题库读取失败，本次体检结果不完整。请重试。").replace("{n}", String(auditSkippedBanks))}</span>
+          <button class="lv-btn sm lv-btn--ghost" style="margin-left:8px" disabled={auditBusy} onclick={() => void runDataAudit()}>
+            <Icon name="rotate" size={13} /> {t("data.auditRetry", "重试")}
+          </button>
+        </div>
+      {/if}
       {#if auditResult}
         <div class="lv-row" style="margin:6px 0 0" role="status">
           <span class="lv-chip num">{t("data.auditEvents").replace("{n}", String(auditResult.events))}</span>
@@ -1140,7 +1285,7 @@
           {#if auditResult.orphanEvents}<span class="lv-chip num" title={t("data.auditOrphanTip")}>{t("data.auditOrphan").replace("{n}", String(auditResult.orphanEvents))}</span>{/if}
         </div>
       {/if}
-      <button class="lv-btn sm lv-btn--ghost" style="margin-top:8px" onclick={() => void exportAllData()}>
+      <button class="lv-btn sm lv-btn--ghost" style="margin-top:8px" disabled={exportBusy} onclick={() => void exportAllData()}>
         <Icon name="export" size={14} /> {t("data.export")}
       </button>
       <button class="lv-btn sm" style="margin-top:8px" disabled={purgeBusy} onclick={() => void purgeAllData()}>
@@ -1153,7 +1298,7 @@
             <span class="lv-chip num" class:lv-chip--red={!r.ok} title={r.key}>{r.key} {r.ok ? "✓" : "✕"}</span>
           {/each}
         </div>
-        <div class="lv-muted" style="margin-top:4px;font-size:11.5px">{t("data.purgeNote")}</div>
+        <div class="lv-muted" style="margin-top:4px;font-size:var(--lv-font-size-caption)">{t("data.purgeNote")}</div>
       {/if}
     </div>
   {/if}
@@ -1164,25 +1309,40 @@
 </div>
 
 <style>
-  .lv-pad { padding: 16px 22px 48px; overflow: auto; }
+  .lv-pad { padding: var(--lv-space-4) 22px var(--lv-space-9); overflow: auto; }
+  .lv-report-tabs { display: flex; gap: var(--lv-space-2); margin: var(--lv-space-3) 0 var(--lv-space-3); padding: var(--lv-space-1); border: 1px solid var(--lv-border); border-radius: var(--lv-r-1); background: var(--lv-surface-2); width: fit-content; max-width: 100%; overflow-x: auto; }
+  .lv-report-tab { min-height: var(--lv-control-height-sm); padding: 6px var(--lv-space-3); border: 0; border-radius: var(--lv-r-1); color: var(--lv-text-3); background: transparent; font-size: var(--lv-font-size-meta); font-weight: 600; white-space: nowrap; cursor: pointer; transition: background-color var(--lv-duration-micro) var(--lv-ease-out), color var(--lv-duration-micro) var(--lv-ease-out); }
+  .lv-report-tab:hover { color: var(--lv-text); background: color-mix(in srgb, var(--lv-accent-soft) 60%, transparent); }
+  .lv-report-tab.active { color: var(--lv-accent); background: var(--lv-surface); box-shadow: var(--lv-sh-1); }
+  .lv-report-section--hidden { display: none !important; }
+  .lv-report-overview-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--lv-space-3); align-items: stretch; margin-bottom: 12px; }
+  .lv-report-overview-grid.has-both { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lv-report-overview-grid > .lv-card { margin-bottom: 0; }
+  .lv-report-next { display: flex; align-items: center; justify-content: space-between; gap: var(--lv-space-4); padding: 14px 16px; border-color: color-mix(in srgb, var(--lv-accent) 24%, var(--lv-border)); background: color-mix(in srgb, var(--lv-accent-soft) 52%, var(--lv-surface)); }
+  .lv-report-next b { display: block; margin-top: 3px; font-size: var(--lv-font-size-h3); }
+  .lv-report-next p { margin: 4px 0 0; }
+  .lv-daily-report-scope { max-width: 480px; margin: 4px 0 10px; }
+  .lv-report-week-scope { margin: 0 0 8px; font-size: var(--lv-font-size-caption); line-height: 1.5; }
+  @container lv-exam (max-width: 960px) { .lv-report-overview-grid.has-both { grid-template-columns: minmax(0, 1fr); } }
+  @container lv-exam (max-width: 600px) { .lv-report-tabs { width: 100%; } .lv-report-tab { flex: 1 0 auto; } .lv-report-next { align-items: flex-start; flex-direction: column; } .lv-quad-grid { grid-template-columns: minmax(0, 1fr); } }
   /* .lv-btn/.lv-select 外观基线上收 lv-base.scss（修复暗色露 UA 白底） */
-  .lv-card-title { display: inline-flex; align-items: center; gap: 6px; }
+  .lv-card-title { display: inline-flex; align-items: center; gap: var(--lv-space-compact); }
   .lv-inline-icon { display: inline-flex; margin-right: 5px; }
-  .lv-card { background: var(--lv-surface); border: 1px solid var(--lv-border); border-radius: var(--lv-r-3); padding: 20px 22px; box-shadow: var(--lv-sh-1); margin-bottom: 14px; }
+  .lv-card { background: var(--lv-surface); border: 1px solid var(--lv-border); border-radius: var(--lv-r-3); padding: var(--lv-space-5) 22px; box-shadow: var(--lv-sh-1); margin-bottom: var(--lv-space-3); }
   .lv-row.low-sample { opacity: .55; }
-  .lv-section b { display: block; font-size: 15px; font-weight: 650; letter-spacing: -.2px; margin-bottom: 12px; }
-  .lv-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 7px; font-size: 12px; font-weight: 550; color: var(--lv-text-2); background: var(--lv-surface-2); border: 1px solid transparent; }
+  .lv-section b { display: block; font-size: var(--lv-font-size-h3); font-weight: var(--lv-font-weight-semibold); letter-spacing: -.2px; margin-bottom: 12px; }
+  .lv-chip { display: inline-flex; align-items: center; gap: var(--lv-space-1); padding: 3px var(--lv-space-3); border-radius: var(--lv-r-1); font-size: var(--lv-font-size-sm); font-weight: var(--lv-font-weight-medium); color: var(--lv-text-2); background: var(--lv-surface-2); border: 1px solid transparent; }
   .lv-chip.acc { color: var(--lv-accent); background: var(--lv-accent-soft); }
   .lv-chip.lv-chip--red { color: var(--lv-red); background: var(--lv-red-soft); }
   /* —— 63-01 四象限（原型 .metric 风格的象限格） —— */
-  .lv-quad-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-  .lv-quad { border: 1px solid var(--lv-border); border-radius: var(--lv-r-2); padding: 12px 14px; background: var(--lv-surface-2); display: flex; flex-direction: column; gap: 4px; }
-  .lv-quad .v { font-size: 22px; font-weight: 650; letter-spacing: -.4px; font-variant-numeric: tabular-nums; }
-  .lv-quad .l { font-size: 11.5px; color: var(--lv-text-3); }
+  .lv-quad-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--lv-space-3); }
+  .lv-quad { border: 1px solid var(--lv-border); border-radius: var(--lv-r-2); padding: 12px 14px; background: var(--lv-surface-2); display: flex; flex-direction: column; gap: var(--lv-space-1); }
+  .lv-quad .v { font-size: 22px; font-weight: var(--lv-font-weight-semibold); letter-spacing: -.4px; font-variant-numeric: tabular-nums; }
+  .lv-quad .l { font-size: var(--lv-font-size-caption); color: var(--lv-text-3); }
   .lv-quad--grn { background: var(--lv-green-soft); border-color: transparent; } .lv-quad--grn .v, .lv-quad--grn .l { color: var(--lv-green); }
   .lv-quad--red { background: var(--lv-red-soft); border-color: transparent; } .lv-quad--red .v, .lv-quad--red .l { color: var(--lv-red); }
   .lv-quad--amb { background: var(--lv-amber-soft); border-color: transparent; } .lv-quad--amb .v, .lv-quad--amb .l { color: var(--lv-amber); }
-  @media (max-width: 960px) { .lv-quad-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @container lv-exam (max-width: 960px) { .lv-quad-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   .lv-heat { display: grid; grid-template-columns: repeat(53, 1fr); gap: 2.5px; }
   /* 空格子 = 卡片上的轻微抬升（border 混合），暗色不再呈黑洞；有值格子在抬升底上叠主色 */
   .lv-heat i { aspect-ratio: 1; border-radius: 2.5px; background: color-mix(in srgb, var(--lv-border) 45%, var(--lv-surface)); }
@@ -1190,19 +1350,19 @@
   .lv-heat i.l2 { background: color-mix(in srgb, var(--lv-accent) 48%, color-mix(in srgb, var(--lv-border) 45%, var(--lv-surface))); }
   .lv-heat i.l3 { background: color-mix(in srgb, var(--lv-accent) 72%, color-mix(in srgb, var(--lv-border) 45%, var(--lv-surface))); }
   .lv-heat i.l4 { background: var(--lv-accent); }
-  .progress { height: 6px; border-radius: 999px; background: var(--lv-surface-2); overflow: hidden; }
-  .progress i { display: block; height: 100%; border-radius: 999px; background: var(--lv-accent-grad); }
+  .progress { height: 6px; border-radius: var(--lv-radius-pill); background: var(--lv-surface-2); overflow: hidden; }
+  .progress i { display: block; height: 100%; border-radius: var(--lv-radius-pill); background: var(--lv-accent-grad); }
   .progress i.ok { background: var(--lv-green); }
   .progress i.mid { background: var(--lv-amber); }
   .progress i.low { background: var(--lv-red); }
   /* —— 考点掌握度行：五列栅格（考点/条/掌握度/题数/独立题·覆盖），窄屏末列折行 —— */
-  .lv-mastery-row { display: grid; grid-template-columns: 88px minmax(0, 1fr) 52px 64px minmax(0, 150px); gap: 10px; align-items: center; margin: 8px 0; font-size: 12.5px; }
+  .lv-mastery-row { display: grid; grid-template-columns: 88px minmax(0, 1fr) 52px 64px minmax(0, 150px); gap: var(--lv-space-relaxed); align-items: center; margin: 8px 0; font-size: var(--lv-font-size-meta); }
   .lv-mastery-row > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  @media (max-width: 720px) {
+  @container lv-exam (max-width: 720px) {
     .lv-mastery-row { grid-template-columns: 72px minmax(0, 1fr) 48px; }
     .lv-mastery-row > span:last-child { grid-column: 2 / -1; }
   }
-  .lv-error { margin: 8px 0; padding: 10px 14px; border-radius: var(--lv-r-2); background: var(--lv-red-soft); color: var(--lv-red); font-size: 13px; }
+  .lv-error { margin: 8px 0; padding: 10px 14px; border-radius: var(--lv-r-2); background: var(--lv-red-soft); color: var(--lv-red); font-size: var(--lv-font-size-body-compact); }
   .lv-skeleton { height: 160px; border-radius: var(--lv-r-3); background: linear-gradient(100deg, var(--lv-surface-2) 40%, var(--lv-surface) 50%, var(--lv-surface-2) 60%); background-size: 200% 100%; animation: lv-shim 1.4s infinite; }
   @keyframes lv-shim { to { background-position: -200% 0; } }
   @media (prefers-reduced-motion: reduce) { .lv-skeleton { animation: none; } }

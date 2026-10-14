@@ -1,39 +1,51 @@
 <script lang="ts">
   // 侧栏导航 rail（原型 .sidebar shell 的共享实现）：品牌位 + 全局三项导航 +
   // 各 Tab 上下文导航项（可选）+ 底部隐私说明。三 Tab（练习/模考/报告）共用。
-  // V04：窄屏抽屉契约——open 时 fixed 抽屉 + 遮罩；Esc/遮罩/关闭钮关闭；
+  // V04：窄屏抽屉契约——open 时在插件面板内显示抽屉 + 遮罩；Esc/遮罩/关闭钮关闭；
   // 打开聚焦关闭钮，Tab 焦点循环锁在 rail 内，关闭后由父级归还焦点。
   import { tick } from "svelte";
   import Icon from "./Icon.svelte";
+  import { openPracticeView } from "../../core/pluginTab";
+
+  type TaskTarget = "today" | "bank" | "create" | "mock" | "report";
 
   let {
     active,
     plugin,
     items = [],
-    onnavigate,
+    taskactive,
+    ontasknavigate,
+    tasknavhidden = false,
     open = false,
     onclose,
     project,
     onproject,
+    onquickcreate,
   }: {
     active: "practice" | "mock" | "report";
     plugin: any;
     /** Tab 内上下文导航项（如练习台的浏览/错题本/导入/录题…） */
     items?: { icon: string; name: string; on: boolean; badge?: string; onclick: () => void }[];
-    /** 全局项点击的 Tab 内接管（缺省走 plugin.openPractice/openMock/openReport） */
-    onnavigate?: (target: "practice" | "mock" | "report") => void;
+    /** R54 五项任务导航的当前项及宿主接管。 */
+    taskactive?: TaskTarget;
+    ontasknavigate?: (target: TaskTarget) => void;
+    tasknavhidden?: boolean;
     /** 窄屏抽屉开合（桌面端常显，不受影响） */
     open?: boolean;
     onclose?: () => void;
     /** 73-02/原型 project-switch：当前题库上下文卡（品牌位下方） */
     project?: { name: string; kicker: string };
     onproject?: () => void;
+    /** R54 任务入口：在练习工作台直接录入一道题。 */
+    onquickcreate?: () => void;
   } = $props();
 
   const t = (k: string, fb = "") => ((plugin?.i18n as Record<string, string>) ?? {})[k] ?? fb;
 
-  let asideEl: HTMLElement | null = null;
+  let asideEl: HTMLElement | null = $state(null);
   let closeBtn: HTMLButtonElement | null = null;
+  let returnFocus: HTMLElement | null = null;
+  let wasDrawerOpen = false;
 
   // The rail is a desktop sidebar until the responsive breakpoint. Keep the
   // drawer contract scoped to the narrow layout so a resize while it is open
@@ -42,12 +54,16 @@
   const drawerOpen = $derived(open && narrow);
 
   $effect(() => {
-    if (typeof window === "undefined") return;
-    const media = window.matchMedia("(max-width: 1023px)");
-    const update = () => (narrow = media.matches);
-    update();
-    media.addEventListener?.("change", update);
-    return () => media.removeEventListener?.("change", update);
+    const container = asideEl?.closest<HTMLElement>(".lv-exam-tab");
+    if (!container || typeof ResizeObserver === "undefined") return;
+    const update = (width: number) => (narrow = width <= 759);
+    update(container.getBoundingClientRect().width);
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width;
+      if (typeof width === "number") update(width);
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
   });
 
   // A modal drawer must remove the shell's background surfaces from both
@@ -88,14 +104,29 @@
     };
   });
 
-  // 打开时聚焦关闭钮（焦点移入抽屉）
+  // 聚焦与归还都等待 inert 更新；父页面立即聚焦触发钮时，背景可能仍被锁定。
   $effect(() => {
-    if (drawerOpen) tick().then(() => closeBtn?.focus());
+    if (drawerOpen) {
+      if (!wasDrawerOpen && document.activeElement instanceof HTMLElement) returnFocus = document.activeElement;
+      wasDrawerOpen = true;
+      tick().then(() => { if (drawerOpen) closeBtn?.focus(); });
+    } else if (wasDrawerOpen) {
+      wasDrawerOpen = false;
+      const target = returnFocus;
+      returnFocus = null;
+      tick().then(() => {
+        if (target?.isConnected && target.getClientRects().length) target.focus();
+        else if (asideEl?.getClientRects().length) asideEl.querySelector<HTMLElement>(".lv-rail-btn[aria-current='page']")?.focus();
+      });
+    }
   });
 
   function onKeydown(e: KeyboardEvent) {
-    if (!drawerOpen) return;
+    if (!drawerOpen || !asideEl?.getClientRects().length) return;
+    // 命令面板可能在导航抽屉上方打开；抽屉仅接管自己的焦点，避免互相锁死。
+    if (!(e.target instanceof Node) || !asideEl.contains(e.target)) return;
     if (e.key === "Escape") {
+      e.preventDefault();
       e.stopPropagation();
       onclose?.();
       return;
@@ -123,18 +154,22 @@
     if (drawerOpen) onclose?.();
   }
 
-  function go(target: "practice" | "mock" | "report") {
-    if (onnavigate) return onnavigate(target);
-    if (target === "practice") plugin?.openPractice?.();
-    else if (target === "mock") plugin?.openMock?.();
-    else plugin?.openReport?.();
+  function goTask(target: TaskTarget) {
+    if (ontasknavigate) return ontasknavigate(target);
+    if (target === "mock") return plugin?.openMock?.();
+    if (target === "report") return plugin?.openReport?.();
+    const view = target === "today" ? "entry" : target === "bank" ? "browse" : "manual";
+    openPracticeView(plugin, view);
   }
 
   const globals = [
-    { target: "practice" as const, icon: "home", label: t("tab.practice", "练习台") },
-    { target: "mock" as const, icon: "clock", label: t("tab.mock", "模考场") },
-    { target: "report" as const, icon: "chart", label: t("tab.report", "报告中心") },
+    { target: "today" as const, icon: "home", label: t("task.today", "今日") },
+    { target: "bank" as const, icon: "book", label: t("task.bank", "题库") },
+    { target: "create" as const, icon: "pencil", label: t("task.create", "出题") },
+    { target: "mock" as const, icon: "clock", label: t("task.mock", "模考") },
+    { target: "report" as const, icon: "chart", label: t("task.report", "复盘") },
   ];
+  const activeTask = $derived(taskactive ?? (active === "practice" ? "today" : active));
 </script>
 
 <svelte:window onkeydown={onKeydown} />
@@ -151,7 +186,7 @@
   </div>
   {#if project}
     <!-- 原型 .project-switch：当前题库上下文卡（surface 底+阴影；点击回入口/练习台） -->
-    <button class="lv-project" onclick={() => onproject?.()} title={project.name}>
+    <button class="lv-project" onclick={() => nav({ onclick: () => onproject?.() })} title={project.name}>
       <span class="lv-project-kicker">{project.kicker}</span>
       <span class="lv-project-row">
         <span class="lv-project-name">{project.name}</span>
@@ -159,18 +194,23 @@
       </span>
     </button>
   {/if}
+  {#if onquickcreate}
+    <button class="lv-quick-create" title={t("rail.quickCreate", "录入一道题")} onclick={() => nav({ onclick: () => onquickcreate?.() })}>
+      <Icon name="plus" size={15} /> {t("rail.quickCreate", "录入一道题")}
+    </button>
+  {/if}
   <div>
     <p class="lv-nav-label">{t("rail.workbench", "")}</p>
     <nav class="lv-rail-nav">
       {#each globals as g (g.target)}
-        <button class="lv-rail-btn" class:on={active === g.target} onclick={() => { go(g.target); if (drawerOpen) onclose?.(); }} aria-current={active === g.target ? "page" : undefined}>
+        <button class="lv-rail-btn" class:on={activeTask === g.target} title={g.label} aria-label={g.label} onclick={() => { goTask(g.target); if (drawerOpen) onclose?.(); }} aria-current={activeTask === g.target ? "page" : undefined}>
           <Icon name={g.icon} size={16} /> {g.label}
         </button>
       {/each}
       {#if items.length}
         <div class="lv-rail-divider" role="separator"></div>
         {#each items as it (it.name)}
-          <button class="lv-rail-btn lv-rail-btn--sub" class:on={it.on} onclick={() => nav(it)} aria-current={it.on ? "page" : undefined}>
+          <button class="lv-rail-btn lv-rail-btn--sub" class:on={it.on} title={it.name} onclick={() => nav(it)} aria-current={it.on ? "page" : undefined}>
             <Icon name={it.icon} size={16} /> {it.name}
             {#if it.badge}<span class="lv-rail-badge">{it.badge}</span>{/if}
           </button>
@@ -180,39 +220,46 @@
   </div>
   <div class="lv-rail-note">{t("rail.note", "")}</div>
 </aside>
+<nav class="lv-mobile-tasknav" class:focus={tasknavhidden} aria-label={t("rail.tasks", "主要功能")}>
+  {#each globals as g (g.target)}
+    <button class="lv-mobile-task" class:on={activeTask === g.target} aria-current={activeTask === g.target ? "page" : undefined} onclick={() => goTask(g.target)}>
+      <Icon name={g.icon} size={18} />
+      <span>{g.label}</span>
+    </button>
+  {/each}
+</nav>
 
 <style>
   .lv-rail {
     border-right: 1px solid var(--lv-border);
     background: color-mix(in srgb, var(--lv-text) 3%, var(--lv-surface-2));
-    padding: 18px 12px 14px;
+    padding: 26px 14px 18px;
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: var(--lv-space-section);
     overflow: auto;
   }
   .lv-brand {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 0 8px;
+    gap: 9px;
+    padding: 0 10px;
   }
   .lv-brand-mark {
-    width: 37px;
-    height: 40px;
-    border-radius: 12px;
+    width: 29px;
+    height: 34px;
+    border-radius: 0;
     display: grid;
     place-items: center;
-    background: var(--lv-accent);
-    color: var(--b3-theme-on-primary, #fff);
+    background: transparent;
+    color: var(--lv-accent);
     font-family: Georgia, "Songti SC", serif;
     font-size: 22px;
-    box-shadow: var(--lv-btn-primary-shadow);
     flex-shrink: 0;
   }
   .lv-brand-name {
-    font-size: 15px;
-    font-weight: 650;
+    font-size: var(--lv-font-size-h3);
+    font-weight: var(--lv-font-weight-semibold);
     line-height: 1.25;
   }
   .lv-brand-sub {
@@ -225,7 +272,78 @@
   }
   .lv-rail-nav {
     display: grid;
-    gap: 4px;
+    gap: var(--lv-space-1);
+  }
+  .lv-mobile-tasknav {
+    display: none;
+    position: absolute;
+    inset: auto 0 0;
+    z-index: 80;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    padding: 4px 8px max(4px, env(safe-area-inset-bottom));
+    border-top: 1px solid var(--lv-border);
+    background: var(--lv-surface);
+    box-shadow: 0 -4px 16px color-mix(in srgb, var(--lv-text) 8%, transparent);
+  }
+  .lv-mobile-task {
+    display: grid;
+    min-width: 0;
+    min-height: 52px;
+    place-items: center;
+    align-content: center;
+    gap: 3px;
+    padding: 5px 2px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--lv-text-2);
+    font: inherit;
+    font-size: var(--lv-font-size-label);
+    line-height: 1.2;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .lv-mobile-task.on {
+    background: var(--lv-accent-soft);
+    color: var(--lv-accent);
+    font-weight: 600;
+  }
+  .lv-mobile-task:focus-visible {
+    outline: 2px solid var(--lv-accent);
+    outline-offset: 1px;
+  }
+  @container lv-exam (min-width: 760px) and (max-width: 1119px) {
+    .lv-rail {
+      padding: 22px 10px;
+    }
+    .lv-brand {
+      justify-content: center;
+      padding: 0;
+    }
+    .lv-brand-name,
+    .lv-project,
+    .lv-nav-label,
+    .lv-rail-note {
+      display: none;
+    }
+    .lv-quick-create {
+      justify-content: center;
+      min-height: 44px;
+      padding: 10px;
+      font-size: 0;
+    }
+    .lv-rail-btn {
+      justify-content: center;
+      min-height: 44px;
+      padding: 10px;
+      font-size: 0;
+    }
+    .lv-rail-btn :global(svg) {
+      flex: 0 0 auto;
+    }
+    .lv-rail-badge {
+      display: none;
+    }
   }
   /* 原型 .project-switch：当前题库上下文卡 */
   .lv-project {
@@ -246,6 +364,27 @@
     border-color: var(--lv-accent);
     box-shadow: var(--lv-sh-2);
   }
+  .lv-quick-create {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--lv-space-2);
+    width: 100%;
+    min-height: 40px;
+    padding: 8px 12px;
+    border: 1px solid transparent;
+    border-radius: var(--lv-radius-control-sm);
+    background: var(--lv-accent-soft);
+    color: var(--lv-accent);
+    font: inherit;
+    font-size: var(--lv-font-size-meta);
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .lv-quick-create:hover {
+    border-color: var(--lv-accent);
+    background: var(--lv-surface);
+  }
   .lv-project-kicker {
     display: block;
     color: var(--lv-text-3);
@@ -257,7 +396,7 @@
   .lv-project-name {
     flex: 1;
     min-width: 0;
-    font-size: 13.5px;
+    font-size: var(--lv-font-size-body);
     font-weight: 600;
     line-height: 1.5;
     color: var(--lv-text);
@@ -269,12 +408,12 @@
   .lv-project-row {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--lv-space-compact);
     min-width: 0;
   }
   .lv-project-go {
     flex-shrink: 0;
-    font-size: 11px;
+    font-size: var(--lv-font-size-label);
     color: var(--lv-text-3);
   }
   /* 原型 .nav-label：10px 字距分组标签 */
@@ -289,16 +428,16 @@
     position: relative;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--lv-space-relaxed);
     width: 100%;
     text-align: left;
-    padding: 8px 12px;
+    padding: 10px 14px;
     border: 1px solid transparent;
-    border-radius: 9px;
+    border-radius: var(--lv-radius-control-sm);
     background: transparent;
     color: var(--lv-text-2);
-    font-size: 13px;
-    min-height: 38px;
+    font-size: var(--lv-font-size-body-compact);
+    min-height: 46px;
     cursor: pointer;
     transition:
       background-color var(--lv-dur-micro) ease,
@@ -309,11 +448,11 @@
     color: var(--lv-text);
   }
   .lv-rail-btn.on {
-    background: var(--lv-surface);
+    background: var(--lv-accent-soft);
     color: var(--lv-accent);
-    border-color: var(--lv-border);
+    border-color: transparent;
     font-weight: 600;
-    box-shadow: var(--lv-sh-1);
+    box-shadow: none;
   }
   .lv-rail-btn.on::before {
     content: "";
@@ -331,7 +470,7 @@
   /* 组级徽标（规范 v6：错题在册数等计数；tabular） */
   .lv-rail-badge {
     margin-left: auto;
-    font-size: 11px;
+    font-size: var(--lv-font-size-label);
     background: var(--lv-accent-soft);
     color: var(--lv-accent);
     border-radius: 6px;
@@ -345,14 +484,18 @@
   }
   .lv-rail-note {
     margin-top: auto;
-    padding: 10px 8px 0;
-    font-size: 11px;
-    line-height: 1.8;
-    color: var(--lv-text-3);
+    margin-left: 8px;
+    margin-right: 8px;
+    padding: 13px 12px;
+    border-radius: 14px;
+    background: var(--lv-amber-soft);
+    color: var(--lv-amber);
+    font-size: var(--lv-font-size-sm);
+    line-height: 1.65;
   }
   /* V04 抽屉件：遮罩 + 关闭钮（窄屏） */
   .lv-nav-backdrop {
-    position: fixed;
+    position: absolute;
     inset: 0;
     z-index: 89;
     background: var(--lv-overlay);
@@ -373,9 +516,19 @@
     margin-left: auto;
     flex-shrink: 0;
   }
-  @media (max-width: 1023px) {
+  @container lv-exam (max-width: 759px) {
+    .lv-mobile-tasknav {
+      display: grid;
+    }
+    .lv-mobile-tasknav.focus {
+      display: none;
+    }
     .lv-drawer-close {
       display: grid;
+      width: 44px;
+      height: 44px;
+      min-width: 44px;
+      min-height: 44px;
     }
   }
 </style>

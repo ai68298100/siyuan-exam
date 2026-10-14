@@ -1,4 +1,4 @@
-// 一次性显影未检 UI 面板：批量编辑/题库健康/勘误/纸笔回录/Hint 递进/退出确认/背诵完成
+// 一次性显影未检 UI 面板：批量编辑/题库健康/勘误/纸笔回录/逐步提示/退出确认/背诵完成
 // 用法：node scripts/visual-harness/shoot-panels.mjs [前缀=ux2]
 import { createServer } from "node:http";
 import { readFileSync, existsSync, mkdirSync } from "node:fs";
@@ -114,7 +114,7 @@ await shot("more-menu", { steps: [...MORE] });
 await shot("hint-panel", {
   steps: [
     { click: "#app .lv-mode:has-text('快速刷题')", wait: 1100 },
-    { click: "#app button:has-text('Hint 递进')", wait: 800 },
+    { click: "#app button:has-text('逐步提示')", wait: 800 },
   ],
 });
 await shot("exit-confirm", {

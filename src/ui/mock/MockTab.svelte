@@ -9,9 +9,12 @@
     import Rail from "../shared/Rail.svelte";
     import type { Question } from "../../core/types";
     import { showMessage } from "siyuan";
-    import { assemble, blueprintTotals, dedupeSectionNames, MockSession, validateBlueprint, type Blueprint, type BlueprintSection, type MockRunSnapshot, type MockScore } from "../../core/mock";
+    import { assemble, blueprintTotals, defaultMockSections, dedupeSectionNames, MockSession, validateBlueprint, type Blueprint, type BlueprintSection, type MockRunSnapshot, type MockScore } from "../../core/mock";
     import { newRunId } from "../../core/ids";
-    import { emitExamEvent } from "../../core/bus";
+    import { emitExamEvent, onExamEvent } from "../../core/bus";
+    import { openPracticeView } from "../../core/pluginTab";
+    import { answerChoices, isChoiceQuestion, toggleChoice } from "../../core/answerChoices";
+    import { specOf, splitBlanks, joinBlanks } from "../../core/structuredAnswer";
     import { estimateScore, normalizeEstimateInput } from "../../core/estimate";
     import Icon from "../shared/Icon.svelte";
     import Palette from "../shared/Palette.svelte";
@@ -24,9 +27,11 @@
     const t = (k: string, fb = "") => i18n[k] ?? fb;
 
     /** 侧栏项目卡显示名：当前题库（无题库时回退建库引导文案） */
-    const railBankName = $derived(((app?.listBanks?.() ?? [])[0])?.name || t("guard.title"));
+    let activeBankName = $state("");
+    const railBankName = $derived(activeBankName || t("guard.title"));
 
     let railOpen = $state(false);
+    let tabRoot: HTMLDivElement | null = null;
     let menuBtn: HTMLButtonElement | null = null;
     function closeRail() { railOpen = false; menuBtn?.focus(); }
 
@@ -34,7 +39,7 @@
     let view: View = $state("config");
     let paletteOpen = $state(false);
     const paletteCommands: PaletteCommand[] = [
-      { group: t("palette.views"), icon: "clock", label: t("tab.mock"), keywords: "mock config blueprint", run: () => { if (view !== "exam") view = "config"; } },
+      { group: t("palette.views"), icon: "clock", label: t("tab.mock"), keywords: "mock config blueprint", run: () => { if (view !== "exam") showConfig(); } },
       { group: t("palette.actions"), icon: "play", label: t("mock.start"), keywords: "start exam", run: () => { if (view === "config") void startExam(); } },
       { group: t("palette.actions"), icon: "rotate", label: t("mock.resumeGo"), keywords: "resume", run: () => { if (view === "config" && resumable) void resumeExam(); } },
       { group: t("palette.tabs"), icon: "home", label: t("tab.practice"), keywords: "practice", run: () => plugin.openPractice?.() },
@@ -65,9 +70,16 @@
     // ---------- 运行快照（U19/U20 最小）：runId 与蓝图分离；交卷防重 ----------
     let runId = $state("");
     let submitting = $state(false);
+    let handInConfirming = $state(false);
     let resumable = $state<MockRunSnapshot | null>(null);
     let restoreNote = $state("");
     let lastSnapAt = 0;
+    let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
+    let runSaveBusy = $state(false);
+    let runSaveQueued = $state(false);
+    let runSaveConfirmed = $state(false);
+    let runSaveError = $state("");
+    let runSaveRevision = 0;
     let submitError = $state("");
     let extraTimeBusy = $state(false);
     let blueprintBusy = $state(false);
@@ -75,11 +87,35 @@
     let starting = $state(false);
     let resumeBusy = $state(false);
     let discardBusy = $state(false);
+    // 考试/成绩页保留原题库上下文；配置页再消费题库变化，读取中的后续变化合并重试。
+    let bankDataDirty = false;
+    let mockDataLoading = false;
+    let pendingBankId: string | null = null;
+    let historyLoading = $state(true);
+    let historyError = $state("");
+    let historyRequest = 0;
+
+    async function reloadMockHistory() {
+      const request = ++historyRequest;
+      historyLoading = true;
+      historyError = "";
+      try {
+        const next = await app.listMockResults();
+        if (request === historyRequest) history = next;
+      } catch (e) {
+        if (request === historyRequest) {
+          history = [];
+          historyError = t("mock.historyLoadFailed", "模考历史读取失败：{message}").replace("{message}", String(e instanceof Error ? e.message : e));
+        }
+      } finally {
+        if (request === historyRequest) historyLoading = false;
+      }
+    }
 
     const blueprintIssues = $derived(validateBlueprint(bp));
     const blueprintBlockingIssues = $derived(blueprintIssues.filter((x) => !x.includes("题数为 0")));
     const hasPositiveSection = $derived(bp.sections.some((s) => s.count > 0));
-    const canStartExam = $derived(Boolean(questions.length && bp.sections.length && hasPositiveSection && !blueprintBlockingIssues.length && !starting && !submitting));
+    const canStartExam = $derived(Boolean(questions.length && bp.sections.length && hasPositiveSection && !blueprintBlockingIssues.length && !loading && !starting && !submitting && !resumeBusy && !discardBusy && !blueprintBusy));
     const examLocked = $derived(submitting || Boolean(session?.submitted));
 
     function emitMockSessionEnded() {
@@ -103,15 +139,53 @@
 
     onDestroy(() => {
       if (timer) { clearInterval(timer); timer = null; }
+      // Ensure answers entered during the 3s throttle window survive leaving this tab.
+      if (snapshotTimer) { clearTimeout(snapshotTimer); snapshotTimer = null; }
+      runSaveQueued = false;
+      persistRun(true);
     });
 
     /** 快照节流保存（3s）：关页/休眠后按 wall clock 恢复同一 run */
-    function persistRun() {
+    function persistRun(force = false) {
       if (!session || session.submitted || !runId) return;
       const now = Date.now();
-      if (now - lastSnapAt < 3000) return;
+      if (!force && now - lastSnapAt < 3000) {
+        runSaveConfirmed = false;
+        runSaveQueued = true;
+        if (!snapshotTimer) {
+          snapshotTimer = setTimeout(() => {
+            snapshotTimer = null;
+            persistRun(true);
+          }, 3000 - (now - lastSnapAt));
+        }
+        return;
+      }
+      if (snapshotTimer) { clearTimeout(snapshotTimer); snapshotTimer = null; }
+      runSaveQueued = false;
       lastSnapAt = now;
-      void app.saveMockRun(session.toSnapshot(runId, now)).catch(() => undefined);
+      const revision = ++runSaveRevision;
+      runSaveBusy = true;
+      runSaveConfirmed = false;
+      runSaveError = "";
+      // ExamApp.saveMockRun serializes writes through its mockRunSaveTail. This
+      // lets a newer snapshot queue behind an older one while preserving the
+      // latest-answer-wins ordering even when storage is slow or a retry is
+      // triggered during an earlier write.
+      void app.saveMockRun(session.toSnapshot(runId, now)).then(() => {
+        if (revision === runSaveRevision) runSaveConfirmed = true;
+      }).catch((e) => {
+        if (revision === runSaveRevision) {
+          runSaveError = t("mock.runSaveFailed", "答题进度保存失败：{message}。当前答案仍保留在页面中，可重试保存。")
+            .replace("{message}", String(e instanceof Error ? e.message : e));
+        }
+      }).finally(() => {
+        if (revision === runSaveRevision) runSaveBusy = false;
+      });
+    }
+
+    function retryRunSave() {
+      if (runSaveBusy) return;
+      persistRun(true);
     }
 
     async function extendExamTime() {
@@ -133,7 +207,15 @@
 
     /** 读取当前题库并恢复进行中的模考。索引尚未完成时允许在当前页重试。 */
     async function loadMockData() {
+      if (view !== "config" || starting || resumeBusy || discardBusy || mockDataLoading) {
+        bankDataDirty = true;
+        return;
+      }
       if (!app) { loading = false; errorMsg = t("state.appNotReady"); return; }
+      mockDataLoading = true;
+      bankDataDirty = false;
+      const requestedBankId = pendingBankId;
+      pendingBankId = null;
       loading = true;
       errorMsg = "";
       try {
@@ -141,6 +223,7 @@
         if (!banks.length) {
           questions = [];
           activeBankId = "";
+          activeBankName = "";
           resumable = null;
           loading = false;
           errorMsg = t("guard.needBankFirst");
@@ -148,16 +231,20 @@
         }
         let rememberedBank = "";
         try { rememberedBank = localStorage.getItem(BANK_PREF_KEY) ?? ""; } catch { /* 隐私模式 */ }
-        activeBankId = banks.some((b) => b.id === rememberedBank) ? rememberedBank : banks[0].id;
+        const previousBankId = activeBankId;
+        const preferredBankId = requestedBankId ?? rememberedBank;
+        activeBankId = banks.some((b) => b.id === preferredBankId) ? preferredBankId : banks[0].id;
+        activeBankName = banks.find((b) => b.id === activeBankId)?.name ?? "";
         questions = await app.listQuestions(activeBankId);
         // 仅在没有可编辑蓝图时生成默认模块，重试不会覆盖用户已经配置的内容。
-        if (!bp.sections.length) bp.sections = defaultSections(questions);
+        if (!bp.sections.length || (previousBankId && previousBankId !== activeBankId)) bp.sections = defaultMockSections(questions);
         // 历史成绩用于恢复报告中的趋势对比；历史读取失败不应阻断当前模考。
-        try { history = await app.listMockResults(); } catch { history = []; }
+        await reloadMockHistory();
 
         // 恢复提示（读不到快照=无进行中考试，静默即可；题库不可读时不给恢复入口）
         try {
           const snap = await app.loadMockRun();
+          resumable = null;
           if (snap?.finishedAt) await app.clearMockRun();
           else if (snap && questions.length) resumable = snap;
         } catch { /* 恢复快照失败不应阻断题库使用 */ }
@@ -165,26 +252,33 @@
         questions = [];
         errorMsg = String(e instanceof Error ? e.message : e);
       } finally {
+        mockDataLoading = false;
         loading = false;
+        refreshPendingBankData();
       }
     }
 
-    onMount(() => { void loadMockData(); });
-
-    /** 默认蓝图：按考点首段聚类（无考点 → 单段全量） */
-    function defaultSections(qs: Question[]): BlueprintSection[] {
-      if (!qs.length) return [];
-      // 函数内非响应式累加器（非组件状态），不转 SvelteMap
-      // eslint-disable-next-line svelte/prefer-svelte-reactivity
-      const byRoot = new Map<string, number>();
-      for (const q of qs) {
-        const root = q.kp?.split("/")[0] ?? "全部";
-        byRoot.set(root, (byRoot.get(root) ?? 0) + 1);
-      }
-      return [...byRoot.entries()].slice(0, 5).map(([name, n]) => ({
-        name, count: Math.min(n, 20), scoreEach: 1, source: "mixed" as const, types: [],
-      }));
+    function refreshPendingBankData() {
+      if (bankDataDirty && view === "config" && !starting && !resumeBusy && !discardBusy) void loadMockData();
     }
+
+    /** 所有回配置页的入口统一在此消费考试/成绩期间积累的题库变化。 */
+    function showConfig() {
+      if (scoreWriteBusy || scoreExportBusy || rewrongBusy) return;
+      view = "config";
+      refreshPendingBankData();
+    }
+
+    onMount(() => {
+      void loadMockData();
+      void loadEstimateHistory();
+      return onExamEvent<{ bank: string }>("bank-changed", (event) => {
+        bankDataDirty = true;
+        pendingBankId = event.payload.bank;
+        // 考试与成绩页都保留本次卷面、题库和蓝图，回到配置页后再读取。
+        refreshPendingBankData();
+      });
+    });
 
     const totals = $derived(blueprintTotals(bp));
     const current = $derived(session ? session.state.qids[cursor] : null);
@@ -198,10 +292,24 @@
     });
 
     function addSection() {
-      bp.sections = [...bp.sections, { name: t("mock.newSection"), count: 10, scoreEach: 1, source: "mixed", types: [] }];
+      bp.sections = [...bp.sections, { name: t("mock.newSection"), count: 10, scoreEach: 1, source: "mixed", types: ["single", "multiple", "judge", "fill"] }];
     }
-    function removeSection(i: number) {
-      bp.sections = bp.sections.filter((_, j) => j !== i);
+    let sectionRemoveBusy = $state(false);
+    async function removeSection(i: number) {
+      if (sectionRemoveBusy || !bp.sections[i]) return;
+      sectionRemoveBusy = true;
+      try {
+        const sectionName = bp.sections[i].name || t("mock.sec");
+        const { confirmDialogSync } = await import("../../libs/dialog");
+        if (!(await confirmDialogSync({
+          title: t("mock.removeSectionTitle", "删除考试模块？"),
+          content: t("mock.removeSectionConfirm", "将从当前蓝图移除「{name}」模块及其题量、分值和配额。若尚未保存，无法恢复。")
+            .replace("{name}", sectionName),
+        }))) return;
+        bp.sections = bp.sections.filter((_, j) => j !== i);
+      } catch (e) {
+        errorMsg = String(e instanceof Error ? e.message : e);
+      } finally { sectionRemoveBusy = false; }
     }
     function updateSection(i: number, patch: Partial<BlueprintSection>) {
       bp.sections = bp.sections.map((s, j) => (j === i ? { ...s, ...patch } : s));
@@ -227,7 +335,7 @@
     async function saveBlueprint() {
       if (blueprintBusy) return;
       blueprintBusy = true;
-      try { await (app as any).deps.storage.save("mock/blueprint", JSON.parse(JSON.stringify(bp))); showMessage(t("mock.bpSaved"), 3000, "info"); }
+      try { await app.saveAux("mock/blueprint", JSON.parse(JSON.stringify(bp))); showMessage(t("mock.bpSaved"), 3000, "info"); }
       catch (e) { showMessage(t("mock.bpSaveFailed").replace("{message}", String(e instanceof Error ? e.message : e)), 4200, "error"); }
       finally { blueprintBusy = false; }
     }
@@ -235,15 +343,26 @@
       if (blueprintBusy) return;
       blueprintBusy = true;
       try {
-        const saved = (await (app as any).deps.storage.load("mock/blueprint")) as Blueprint | undefined;
-        if (saved?.sections?.length) { bp = saved; showMessage(t("mock.bpRestored"), 3000, "info"); }
+        const saved = await app.loadAux<Blueprint>("mock/blueprint");
+        if (Array.isArray(saved?.sections) && saved.sections.length) {
+          if (!saved.sections.every((s) => typeof s?.name === "string" && Array.isArray(s.types))) {
+            throw new Error(t("mock.bpInvalid", "保存的蓝图内容不完整，请重新配置并保存。"));
+          }
+          const { confirmDialogSync } = await import("../../libs/dialog");
+          if (!(await confirmDialogSync({
+            title: t("mock.restoreBlueprintTitle", "恢复已保存的蓝图？"),
+            content: t("mock.restoreBlueprintConfirm", "这会覆盖当前未保存的蓝图设置，且无法自动撤销。")
+          }))) return;
+          bp = saved;
+          showMessage(t("mock.bpRestored"), 3000, "info");
+        }
         else showMessage(t("mock.bpRestoreEmpty"), 3000, "info");
       } catch (e) { showMessage(String(e instanceof Error ? e.message : e), 4200, "error"); }
       finally { blueprintBusy = false; }
     }
 
     async function startExam() {
-      if (starting) return;
+      if (starting || loading || resumeBusy || discardBusy || blueprintBusy) return;
       starting = true;
       errorMsg = "";
       try {
@@ -260,6 +379,10 @@
         }
         const r = assemble(workingBp, questions);
         if (!r.paper.length) { errorMsg = t("state.emptyBank"); return; }
+        if (r.paper.some((q) => q.type === "short" || q.type === "material")) {
+          errorMsg = t("mock.unscoredTypes", "当前模考仅支持可自动判分的单选、多选、判断和填空。请在蓝图中排除简答、材料题，或到练习台使用自评。");
+          return;
+        }
         // 40-02：蓝图短缺不阻断开考，但实际题数/实际满分必须在开考前明示（不由其他题偷偷补齐）
         const requested = workingBp.sections.reduce((n, s) => n + s.count, 0);
         if (r.paper.length < requested) {
@@ -275,6 +398,7 @@
           if (!ok) return;
         }
         startedAt = Date.now();
+        scoreWriteError = "";
         runId = newRunId();
         bp = workingBp; // 本次考试使用去重/剔除后的蓝图（保存蓝图仍由用户显式操作）
         session = new MockSession(bp, r.paper, { sectionOf: r.sectionOf, scoreOf: r.scoreOf }, startedAt);
@@ -288,6 +412,7 @@
         errorMsg = String(e instanceof Error ? e.message : e);
       } finally {
         starting = false;
+        refreshPendingBankData();
       }
     }
 
@@ -313,7 +438,7 @@
 
     /** 恢复进行中的 run：答案/标旗/游标原样回填；已过期仅触发一次自动交卷（U19） */
     async function resumeExam() {
-      if (!resumable || resumeBusy) return;
+      if (!resumable || resumeBusy || loading || starting || discardBusy || blueprintBusy) return;
       resumeBusy = true;
       errorMsg = "";
       const snap = resumable;
@@ -325,6 +450,7 @@
           return;
         }
         session = r.session;
+        scoreWriteError = "";
         runId = snap.runId;
         startedAt = snap.startedAt;
         bp = snap.bp;
@@ -336,7 +462,7 @@
         if (r.alreadySubmitted) {
           // 残留已交卷快照：只重放报告，不重写流水/成绩（U20 恢复不重复交卷）
           score = session.score();
-          history = await app.listMockResults().catch(() => history);
+          await reloadMockHistory();
           await app.clearMockRun();
           view = "report";
           return;
@@ -357,14 +483,20 @@
         errorMsg = t("mock.restoreEmpty") + " " + String(e instanceof Error ? e.message : e);
       } finally {
         resumeBusy = false;
+        refreshPendingBankData();
       }
     }
 
     /** 放弃进行中的 run（快照清除；答案不写流水） */
     async function discardRun() {
-      if (discardBusy) return;
+      if (discardBusy || resumeBusy || starting) return;
       discardBusy = true;
       try {
+        const { confirmDialogSync } = await import("../../libs/dialog");
+        if (!(await confirmDialogSync({
+          title: t("mock.discardTitle", "放弃这场模考？"),
+          content: t("mock.discardConfirm", "将删除本机恢复快照和未提交答案，无法恢复；不会生成成绩或作答记录。"),
+        }))) return;
         await app.clearMockRun();
         resumable = null;
         errorMsg = "";
@@ -372,27 +504,22 @@
         errorMsg = String(e instanceof Error ? e.message : e);
       } finally {
         discardBusy = false;
+        refreshPendingBankData();
       }
     }
 
     function pickOption(letter: string) {
       if (!current || !currentQ || feedbackOn || examLocked) return;
-      if (currentQ.type === "multiple") {
-        // 40-01：多选 toggle 组合答案（同一字母再点=取消；grade 侧 normalizeAnswer 排序去重同一规范）
-        // eslint-disable-next-line svelte/prefer-svelte-reactivity -- 局部临时 Set，非响应式状态
-        const cur = new Set((answeredMap[current] ?? "").split(""));
-        if (cur.has(letter)) cur.delete(letter);
-        else cur.add(letter);
-        const combo = [...cur].sort().join("");
-        selected = combo;
-        session?.setAnswer(current, combo, Date.now());
-        answeredMap = { ...answeredMap, [current]: combo };
-      } else {
-        // 单选/判断互斥
-        selected = letter;
-        session?.setAnswer(current, letter, Date.now());
-        answeredMap = { ...answeredMap, [current]: letter };
-      }
+      selected = toggleChoice(currentQ.type, answeredMap[current] ?? "", letter);
+      session?.setAnswer(current, selected, Date.now());
+      answeredMap = { ...answeredMap, [current]: selected };
+      persistRun();
+    }
+
+    function setTextAnswer(value: string) {
+      if (!current || examLocked) return;
+      session?.setAnswer(current, value, Date.now());
+      answeredMap = { ...answeredMap, [current]: value };
       persistRun();
     }
 
@@ -409,11 +536,17 @@
       if (submitting || !session || session.submitted) return;   // 双击/计时器竞态：只交一次（U20 幂等交卷）
       // 提前交卷二次确认（TODO 27：未答完且非自动交卷；45-04 lite 可访问对话框）
       if (!auto && !session.shouldAutoSubmit(Date.now())) {
-        const unanswered = session.state.qids.length - session.answers.size;
-        if (unanswered > 0) {
+        if (handInConfirming) return;
+        handInConfirming = true;
+        const targetSession = session;
+        const unanswered = session.state.qids.length - [...session.answers.values()].filter((a) => a.answer?.trim()).length;
+        try {
           const { confirmDialogSync } = await import("../../libs/dialog");
-          if (!(await confirmDialogSync({ title: t("mock.handIn"), content: t("mock.confirmHandIn").replace("{n}", String(unanswered)) }))) return;
-        }
+          const prompt = unanswered > 0 ? t("mock.confirmHandIn").replace("{n}", String(unanswered)) : t("mock.confirmHandInAll", "所有题目均已填写，确认交卷？");
+          if (!(await confirmDialogSync({ title: t("mock.handIn"), content: prompt + "\n" + t("mock.confirmHandInImpact", "交卷后答案将锁定、计时停止；未答题按 0 分计入本卷成绩。") }))) return;
+        } finally { handInConfirming = false; }
+        // 确认框打开期间可能已到时自动交卷，不能再次写入相同流水。
+        if (submitting || targetSession !== session || session.submitted) return;
       }
       submitting = true;
       submitError = "";
@@ -450,7 +583,7 @@
             sections: score.sections.map((s) => ({ name: s.name, score: s.score, full: s.full, correct: s.correct, total: s.total })),
             extraTimeS: session.state.extraTimeS,
           });
-          try { history = await app.listMockResults(); } catch { history = []; }
+          await reloadMockHistory();
         }
         await app.clearMockRun();   // 交卷回执落定后清除运行快照
         emitMockSessionEnded();
@@ -475,7 +608,7 @@
         score = session.score();
         if (score) {
           await app.saveMockResult({ id: bp.id, runId: effectiveRunId, name: bp.name, startedAt, total: score.total, full: score.full, percent: score.percent, pass: score.pass, sections: score.sections.map((s) => ({ name: s.name, score: s.score, full: s.full, correct: s.correct, total: s.total })), extraTimeS: session.state.extraTimeS });
-          try { history = await app.listMockResults(); } catch { history = []; }
+          await reloadMockHistory();
         }
         await app.clearMockRun();
         submitError = "";
@@ -487,17 +620,39 @@
     }
 
     /** 成绩单导出 Markdown（本地下载） */
-    function exportScoreMd() {
-      if (!score) return;
-      void import("@/core/exportScore").then((m) => {
+    let scoreExportBusy = $state(false);
+    let scoreWriteBusy = $state(false);
+    let scoreWriteError = $state("");
+    async function exportScoreMd() {
+      if (!score || scoreExportBusy) return;
+      scoreExportBusy = true;
+      try {
+        const m = await import("@/core/exportScore");
         const md = m.scoreToMarkdown(bp, score!, startedAt);
         const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = `模考成绩单 ${bp.name}.md`;
-        a.click();
-        URL.revokeObjectURL(a.href);
-      });
+        downloadBlob(blob, `模考成绩单 ${bp.name}.md`);
+        showMessage(t("mock.exportReady", "已开始下载文件。"), 3000, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
+      } finally { scoreExportBusy = false; }
+    }
+
+    async function writeScoreDoc() {
+      if (!score || !activeBankId || scoreWriteBusy) return;
+      scoreWriteBusy = true;
+      scoreWriteError = "";
+      // 写入时固定当前成绩与目标，返回配置或切库不会把它写入另一份题库。
+      const targetBankId = activeBankId;
+      const result = score;
+      const blueprint = JSON.parse(JSON.stringify(bp)) as Blueprint;
+      const resultStartedAt = startedAt;
+      try {
+        const { scoreToMarkdown } = await import("@/core/exportScore");
+        await app.writeScoreDoc(targetBankId, scoreToMarkdown(blueprint, result, resultStartedAt));
+        showMessage(t("mock.scoreWritten", "成绩单已写入本题库的「导出」文档。"), 3200, "info");
+      } catch (e) {
+        scoreWriteError = t("mock.scoreWriteFailed", "成绩单写入失败，成绩仍保留，可重试或下载：{message}").replace("{message}", String(e instanceof Error ? e.message : e));
+      } finally { scoreWriteBusy = false; }
     }
 
     /** 错题回炉：本次模考错题开练习会话（启动失败可见化，47-06 lite） */
@@ -568,13 +723,21 @@
       plugin.openPractice?.();
     }
 
+    function onTaskNav(target: "today" | "bank" | "create" | "mock" | "report") {
+      if (target === "mock") return;
+      if (target === "report") return plugin.openReport?.();
+      const next = target === "today" ? "entry" : target === "bank" ? "browse" : "manual";
+      openPracticeView(plugin, next);
+    }
+
     function historyPoints(): string {
       return history.map((h, i) => `${(i / Math.max(1, history.length - 1)) * 300},${100 - Math.round(h.percent)}`).join(" ");
     }
     /** 三线对比数据（docs/11 S7）：本次 / 历史均值 / 及格线目标（本地版以及格线为目标锚） */
     const tri = $derived(score ? {
       this: percentBar(score.total, score.full),
-      avg: history.length > 1 ? Math.round(history.slice(0, -1).reduce((n, h) => n + h.percent, 0) / (history.length - 1)) : null,
+      // 历史记录尚未保存完整卷面与评分条件，不能把不同卷子的百分比混算作进步基线。
+      avg: null as number | null,
       target: bp.passLine,
     } : null);
     // ---------- 考后估分（v0.5）：答案串对比 / 题库真题序列 ----------
@@ -587,17 +750,38 @@
     let activeBankId = $state("");
     let estSourceFilter = $state("");
     let estHistory = $state<any[]>([]);
+    let estHistoryLoading = $state(false);
+    let estHistoryError = $state("");
+    let estHistoryRequest = 0;
+    let estimateSaveError = $state("");
+    let pendingEstimateSave = $state<{ key: string; mine: string; percent: number; score: number; total: number } | null>(null);
+    let estimateMineInput = $state<HTMLInputElement | null>(null);
     const estimateKeyLength = $derived(normalizeEstimateInput(estKey).length);
     const estimateMineLength = $derived(normalizeEstimateInput(estMine).length);
     const estimateInputSignature = $derived(`${normalizeEstimateInput(estKey)}\u0000${normalizeEstimateInput(estMine)}`);
+    const estimateLengthMismatch = $derived(Boolean(estimateKeyLength && estimateMineLength && estimateKeyLength !== estimateMineLength));
     const estimateBankPool = $derived.by(() => {
       const letterTypes = new Set(["single", "multiple", "judge"]);
       return questions.filter((q) => letterTypes.has(q.type) && (!estSourceFilter.trim() || (q.source ?? "").includes(estSourceFilter.trim())));
     });
 
-    $effect(() => {
-      if (app) void app.listEstimates().then((h) => (estHistory = h.reverse()));
-    });
+    async function loadEstimateHistory() {
+      if (!app) return;
+      const request = ++estHistoryRequest;
+      estHistoryLoading = true;
+      estHistoryError = "";
+      try {
+        const next = await app.listEstimates();
+        if (request === estHistoryRequest) estHistory = [...next].reverse();
+      } catch (e) {
+        if (request === estHistoryRequest) {
+          estHistory = [];
+          estHistoryError = t("estimate.historyLoadFailed").replace("{message}", String(e instanceof Error ? e.message : e));
+        }
+      } finally {
+        if (request === estHistoryRequest) estHistoryLoading = false;
+      }
+    }
 
     $effect(() => {
       if (estFromBank && questions.length) {
@@ -608,28 +792,38 @@
     async function runEstimate() {
       if (estimateBusy) return;
       if (!estimateKeyLength || !estimateMineLength || estimateKeyLength !== estimateMineLength) {
-        showMessage(t("estimate.lengthMismatch"), 3200, "error");
         return;
       }
       estimateBusy = true;
+      estimateSaveError = "";
       try {
         estResult = estimateScore(estMine, estKey, { scoreEach: 1, passLine: bp.passLine });
         estResultFor = estimateInputSignature;
         if (estResult) {
-          try {
-            await app.saveEstimate({ key: estKey.slice(0, 40), mine: estMine.slice(0, 40), percent: estResult.percent, score: estResult.score, total: estResult.total });
-          } catch (e) {
-            showMessage(t("estimate.saveFailed").replace("{message}", String(e instanceof Error ? e.message : e)), 4200, "error");
-            return;
-          }
-          try {
-            estHistory = [...(await app.listEstimates())].reverse();
-          } catch (e) {
-            showMessage(t("estimate.historyLoadFailed").replace("{message}", String(e instanceof Error ? e.message : e)), 4200, "error");
-          }
+          pendingEstimateSave = { key: estKey.slice(0, 40), mine: estMine.slice(0, 40), percent: estResult.percent, score: estResult.score, total: estResult.total };
+          await persistEstimateResult();
         }
       } finally {
         estimateBusy = false;
+      }
+    }
+
+    async function saveEstimateResult() {
+      if (!pendingEstimateSave || estimateBusy) return;
+      estimateBusy = true;
+      await persistEstimateResult();
+      estimateBusy = false;
+    }
+
+    async function persistEstimateResult() {
+      if (!pendingEstimateSave) return;
+      estimateSaveError = "";
+      try {
+        await app.saveEstimate(pendingEstimateSave);
+        pendingEstimateSave = null;
+        await loadEstimateHistory();
+      } catch (e) {
+        estimateSaveError = t("estimate.saveFailed").replace("{message}", String(e instanceof Error ? e.message : e));
       }
     }
 
@@ -660,28 +854,74 @@
     let mockTableOpen = $state(false);
     function downloadMockCsv(csv: string, name: string) {
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      downloadBlob(blob, `小驴考试（内测版）-模考-${name}-${new Date().toISOString().slice(0, 10)}.csv`);
+      showMessage(t("mock.exportReady", "已开始下载文件。"), 3000, "info");
+    }
+
+    function downloadBlob(blob: Blob, filename: string) {
+      const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `小驴考试（内测版）-模考-${name}-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.href = url;
+      a.download = filename;
+      a.hidden = true;
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(a.href);
+      a.remove();
+      // Let the browser begin consuming the object URL before releasing it.
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    async function toggleExamFullscreen(target: EventTarget | null) {
+      try {
+        if (document.fullscreenElement) {
+          if (!document.exitFullscreen) throw new Error(t("mock.fullscreenUnavailable", "当前环境不支持退出全屏。"));
+          await document.exitFullscreen();
+          return;
+        }
+        const el = (target as HTMLElement | null)?.closest<HTMLElement>(".lv-pad");
+        if (!el?.requestFullscreen) throw new Error(t("mock.fullscreenUnavailable", "当前环境不支持全屏。"));
+        await el.requestFullscreen();
+      } catch (e) {
+        showMessage(t("mock.fullscreenFailed", "无法切换全屏：{message}").replace("{message}", String(e instanceof Error ? e.message : e)), 4200, "error");
+      }
     }
 
     /** 40-06：模考键盘作答——A-J 选择/多选 toggle、←/→ 导航；
      *  守卫 textarea/input/select/contenteditable 与 IME 组合期/修饰键 */
     function onExamKey(e: KeyboardEvent) {
       if (view !== "exam" || !session || !currentQ || examLocked) return;
+      if (!tabRoot?.getClientRects().length) return;
       const tgt = e.target as HTMLElement | null;
+      if (tgt && tgt !== document.body && !tabRoot.contains(tgt)) return;
       if (tgt && (tgt.tagName === "TEXTAREA" || tgt.tagName === "INPUT" || tgt.tagName === "SELECT" || tgt.isContentEditable)) return;
       if (e.isComposing || e.metaKey || e.ctrlKey || e.altKey) return;
       const key = e.key.toUpperCase();
       if (/^[A-J]$/.test(key)) {
         const idx = key.charCodeAt(0) - 65;
-        if (idx < currentQ.options.length) {
+        const choice = isChoiceQuestion(currentQ) ? answerChoices(currentQ)[idx] : null;
+        if (choice) {
           e.preventDefault();
-          pickOption(key);
+          pickOption(choice.value);
         }
         return;
+      }
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+        const optionGroup = tgt?.closest<HTMLElement>('[role="radiogroup"], [role="group"]');
+        if (optionGroup) {
+          e.preventDefault();
+          const options = [...optionGroup.querySelectorAll<HTMLButtonElement>('[role="radio"], [role="checkbox"]')]
+            .filter((option) => !option.disabled);
+          if (!options.length) return;
+          const currentOption = options.indexOf(tgt as HTMLButtonElement);
+          const direction = e.key === "ArrowRight" ? 1 : -1;
+          const nextIndex = (currentOption + direction + options.length) % options.length;
+          options[nextIndex].focus();
+          if (options[nextIndex].getAttribute("role") === "radio") {
+            const choice = answerChoices(currentQ)[nextIndex];
+            if (choice) pickOption(choice.value);
+          }
+          return;
+        }
       }
       if (e.key === "ArrowRight") {
         e.preventDefault();
@@ -695,15 +935,16 @@
 
 <svelte:window onblur={onBlur} onkeydown={onExamKey} />
 
-<div class="fn__flex-1 lv-exam-tab">
-  <div class="block__icons">
-    <button class="lv-menu-btn" aria-label={t("menu.open")} bind:this={menuBtn} onclick={() => railOpen = true}><Icon name="menu" size={16} /></button>
-    <div class="lv-crumbs">
+<div class="fn__flex-1 lv-exam-tab" bind:this={tabRoot}>
+  <div class="block__icons" class:lv-focus-toolbar={view === "exam"}>
+    <button class="lv-menu-btn" aria-label={t("menu.open")} aria-expanded={railOpen} bind:this={menuBtn} onclick={() => railOpen = true}><Icon name="menu" size={16} /></button>
+    {#if view === "exam"}<div class="lv-focus-brand"><Icon name="clock" size={15} /><strong>{t("mock.focusTitle", "专注模考")}</strong></div>{/if}
+    <div class="lv-crumbs" class:lv-focus-context={view === "exam"}>
       <span class="lv-crumb">{railBankName}</span>
       <span class="lv-crumb-sep" aria-hidden="true">/</span>
       <span class="lv-crumb-current">{t("tab.mock")}</span>
     </div>
-    <SaveStatus gate={app.saves} {t} />
+    {#if app}<SaveStatus gate={app.saves} {t} />{/if}
     <span class="fn__flex-1"></span>
     <button class="lv-btn lv-btn--ghost sm lv-palette-btn" onclick={() => paletteOpen = true} title="Ctrl / ⌘ K">
       <Icon name="search" size={13} /> <span class="lv-palette-label">{t("palette.open")}</span> <span class="lv-kbd">⌘K</span>
@@ -714,20 +955,25 @@
         <span class="lv-chip lv-chip--amb num" title={t("mock.extraTip")}><Icon name="clock" size={13} />+{Math.round((session!.state.extraTimeS ?? 0) / 60)}{t("entry.minutes")}</span>
       {/if}
       <!-- 55-06 lite：单次条件覆盖——延时入快照与成绩记录，原卷不变 -->
-      <button class="lv-chip" title={t("mock.extraTip")} disabled={(session?.state.extraTimeS ?? 0) > 0 || extraTimeBusy || examLocked} onclick={extendExamTime}>
+        <button class="lv-chip" title={t("mock.extraTip")} disabled={(session?.state.extraTimeS ?? 0) > 0 || extraTimeBusy || examLocked} onclick={extendExamTime}>
         <Icon name="clock" size={13} />+5{t("entry.minutes")}
       </button>
     {/if}
   </div>
-<div class="fn__flex-1 lv-shell">
-  <Rail active="mock" {plugin} open={railOpen} onclose={closeRail}
+<div class="fn__flex-1 lv-shell" class:lv-shell-focus={view === "exam" || view === "report"}>
+  <Rail active="mock" taskactive="mock" tasknavhidden={view === "exam" || view === "report"} ontasknavigate={onTaskNav} {plugin} open={railOpen} onclose={closeRail}
     project={{ name: railBankName || t("guard.title"), kicker: t("rail.projectKicker") }} onproject={() => plugin.openPractice?.()} />
   <div class="lv-main">
   <div class="fn__flex-1 lv-pad">
-  <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.mock.eyebrow")}</span><h1 class="lv-h1">{t("head.mock.title")}</h1><p>{t("head.mock.desc")}</p></div>
+  {#if view === "config"}
+    <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.mock.eyebrow")}</span><h1 class="lv-h1">{t("head.mock.title")}</h1><p>{t("head.mock.desc")}</p></div>
+  {/if}
 
   {#if loading}
-    <div class="lv-skeleton"></div>
+    <div aria-busy="true">
+      <p class="lv-muted" role="status" aria-live="polite">{t("mock.loadingBank", "正在读取题库…")}</p>
+      <div class="lv-skeleton" aria-hidden="true"></div>
+    </div>
   {:else if errorMsg && !questions.length}
     <div class="lv-error" role="alert">{errorMsg}</div>
     <div class="lv-row" style="margin-top:10px">
@@ -743,6 +989,10 @@
       <button class="lv-btn lv-btn--primary sm" onclick={() => plugin.openPractice?.()}>{t("mock.goPractice")}</button>
     </div>
   {:else if view === "config"}
+    <div class="lv-card" style="padding:14px 16px;margin-bottom:14px">
+      <b>{t("mock.setupGuideTitle", "先确认本次模考条件")}</b>
+      <p class="lv-muted" style="margin:6px 0">{t("mock.setupGuide", "默认蓝图已按考点配置可自动判分题。先核对模块、题数与分值，再设置时长和及格百分比；开考后独立作答，统一交卷。简答题请在练习台或背诵模式自评。")}</p>
+    </div>
     <!-- ===== 恢复进行中的模考（U19：关页/休眠后回到同一 run） ===== -->
     {#if resumable}
       <div class="lv-card" style="margin-bottom:14px;border-color:var(--lv-accent)">
@@ -753,8 +1003,8 @@
             {t("mock.resumeLeft")} {Math.max(0, Math.round(((resumable.startedAt + resumable.bp.durationS * 1000 - Date.now()) / 60_000)))} min
           </span>
           <span class="fn__flex-1"></span>
-        <button class="lv-btn lv-btn--primary sm" disabled={resumeBusy || discardBusy} onclick={resumeExam}>{resumeBusy ? "…" : t("mock.resumeGo")}</button>
-          <button class="lv-btn sm" disabled={resumeBusy || discardBusy} onclick={discardRun}>{discardBusy ? "…" : t("mock.resumeDrop")}</button>
+        <button class="lv-btn lv-btn--primary sm" disabled={resumeBusy || discardBusy || starting || blueprintBusy} onclick={resumeExam}>{resumeBusy ? "…" : t("mock.resumeGo")}</button>
+          <button class="lv-btn sm" disabled={resumeBusy || discardBusy || starting || blueprintBusy} onclick={discardRun}>{discardBusy ? "…" : t("mock.resumeDrop")}</button>
         </div>
         <p class="lv-muted" style="margin:6px 0 0">{t("mock.resumeHint")}</p>
       </div>
@@ -778,35 +1028,36 @@
           <input class="lv-input num" type="number" min="0" value={s.count} aria-label={t("mock.count")} oninput={(e) => updateSection(i, { count: Math.max(0, parseInt((e.target as HTMLInputElement).value) || 0) })} />
           <input class="lv-input num" type="number" min="0" step="0.1" value={s.scoreEach} aria-label={t("mock.each")} oninput={(e) => updateSection(i, { scoreEach: Math.max(0, parseFloat((e.target as HTMLInputElement).value) || 0) })} />
           <select class="lv-select" value={s.source} aria-label={t("mock.source")} onchange={(e) => updateSection(i, { source: (e.target as HTMLSelectElement).value as any })}>
-            <option value="mixed">mixed</option><option value="real">{t("mock.sourceReal")}</option><option value="mock">{t("mock.sourceMock")}</option>
+            <option value="mixed">{t("mock.sourceMixed", "不限来源")}</option><option value="real">{t("mock.sourceReal")}</option><option value="mock">{t("mock.sourceMock")}</option>
           </select>
           <!-- 55-02 lite：考点配额（前缀匹配；缺口显式计入短缺，不用其他考点补齐） -->
           <input class="lv-input" value={s.kp ?? ""} placeholder={t("mock.secKpHint")}
             aria-label={t("mock.secKp")}
             oninput={(e) => updateSection(i, { kp: (e.target as HTMLInputElement).value.trim() || undefined })} />
-          <button class="lv-btn lv-btn--ghost sm lv-bp-del" title={t("mock.removeSection")} aria-label={t("mock.removeSection")} onclick={() => removeSection(i)}><Icon name="close" size={13} /></button>
+          <button class="lv-btn lv-btn--ghost sm lv-bp-del" title={t("mock.removeSection")} aria-label={`${t("mock.removeSection")}：${s.name}`} aria-busy={sectionRemoveBusy} disabled={sectionRemoveBusy} onclick={() => void removeSection(i)}><Icon name="close" size={13} /></button>
         </div>
       {/each}
       <div style="padding:8px 12px"><button class="lv-btn sm" style="border-style:dashed;width:100%" onclick={addSection}>＋ {t("mock.addSec")}</button></div>
     </div>
     <div class="lv-row">
+      <label class="lv-row" style="margin:0">{t("mock.durationMinutes", "考试时长（分钟）")} <input class="lv-input num" type="number" min="1" step="1" value={bp.durationS / 60} oninput={(e) => bp.durationS = Number((e.target as HTMLInputElement).value) * 60} /></label>
       <label class="lv-row" style="margin:0"><input type="checkbox" bind:checked={bp.sectionTimed} /> {t("mock.sectionTimed")}</label>
-      <label class="lv-row" style="margin:0"><input type="checkbox" bind:checked={bp.shuffleOptions} disabled /> {t("mock.shuffle")}<span class="lv-muted">· {t("todo")}</span></label>
+      <span class="lv-chip" title={t("mock.shuffleUnavailable", "选项乱序暂未开放")}>{t("mock.keepOptionOrder", "选项保持原顺序")}</span>
       <label class="lv-row" style="margin:0"><input type="checkbox" bind:checked={bp.lockout} /> {t("mock.lockout")}</label>
-      <span class="lv-chip">{t("mock.passLine")} <input class="lv-input num" style="width:64px" type="number" bind:value={bp.passLine} aria-label={t("mock.passLine")} /></span>
+      <span class="lv-chip">{t("mock.passLine")} <input class="lv-input num" style="width:64px" type="number" min="0" max="100" bind:value={bp.passLine} aria-label={t("mock.passLine")} />%</span>
     </div>
     {#if !bp.sections.length}<div class="lv-empty">{t("mock.needSec")}</div>{/if}
     <div class="lv-row">
       <button class="lv-btn lv-btn--primary" onclick={startExam} disabled={!canStartExam} title={!canStartExam ? startDisabledReason : ""}><Icon name="play" size={16} /> {starting ? "…" : t("mock.start")}</button>
-      <button class="lv-btn sm" onclick={saveBlueprint} disabled={blueprintBusy}><Icon name="save" size={14} /> {t("mock.bpSave")}</button>
-      <button class="lv-btn sm" onclick={restoreBlueprint} disabled={blueprintBusy}><Icon name="folder" size={14} /> {t("mock.bpRestore")}</button>
+      <button class="lv-btn sm" onclick={saveBlueprint} disabled={blueprintBusy || starting || resumeBusy || discardBusy} aria-busy={blueprintBusy}><Icon name="save" size={14} /> {blueprintBusy ? "…" : t("mock.bpSave")}</button>
+      <button class="lv-btn sm" onclick={restoreBlueprint} disabled={blueprintBusy || starting || resumeBusy || discardBusy} aria-busy={blueprintBusy}><Icon name="folder" size={14} /> {blueprintBusy ? "…" : t("mock.bpRestore")}</button>
     </div>
     {#if !canStartExam && startDisabledReason}<p class="lv-muted" role="status" style="margin:4px 0">{startDisabledReason}</p>{/if}
     <!-- 考后估分 -->
-    <details class="lv-card lv-pad-card" style="padding:12px 16px">
-      <summary style="cursor:pointer;font-weight:650;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+    <details class="lv-card lv-pad-card" style="padding: var(--lv-space-3) var(--lv-space-4)">
+      <summary style="cursor:pointer;font-weight:var(--lv-font-weight-semibold);display:flex;align-items:center;justify-content:space-between;gap:var(--lv-space-3);flex-wrap:wrap">
         <span>{t("estimate.title")}</span>
-        <span class="lv-muted" style="font-weight:400;font-size:12px">{t("estimate.hint")}</span>
+        <span class="lv-muted" style="font-weight:400;font-size:var(--lv-font-size-sm)">{t("estimate.hint")}</span>
       </summary>
       {#if !questions.length}
         <p class="lv-muted">{t("state.emptyBank")}</p>
@@ -817,17 +1068,18 @@
           <input class="lv-input num" style="width:140px" bind:value={estSourceFilter} placeholder={t("estimate.sourceFilter")} />
           <span class="lv-chip num">{t("estimate.bankQ")} {estimateBankPool.length}</span>
         {:else}
-          <span class="lv-chip">{t("estimate.key")}</span>
-          <input class="lv-input num" style="flex:1;min-width:160px" bind:value={estKey} placeholder="BADCA…" />
+          <label class="lv-chip" for="estimate-key-input">{t("estimate.key")}</label>
+          <input id="estimate-key-input" class="lv-input num" style="flex:1;min-width:160px" bind:value={estKey} placeholder="BADCA…" aria-invalid={estimateLengthMismatch} aria-describedby={estimateLengthMismatch ? "estimate-length-error" : undefined} />
         {/if}
       </div>
       <div class="lv-row" style="margin-top:6px">
-        <span class="lv-chip">{t("estimate.mine")}</span>
-        <input class="lv-input num" style="flex:1;min-width:160px" bind:value={estMine} placeholder="BADCA…" />
+        <label class="lv-chip" for="estimate-mine-input">{t("estimate.mine")}</label>
+        <input id="estimate-mine-input" bind:this={estimateMineInput} class="lv-input num" style="flex:1;min-width:160px" bind:value={estMine} placeholder="BADCA…" aria-invalid={estimateLengthMismatch} aria-describedby={estimateLengthMismatch ? "estimate-length-error" : undefined} />
       </div>
       <div class="lv-row">
-      <button class="lv-btn sm" onclick={runEstimate} disabled={estimateBusy || !estimateKeyLength || !estimateMineLength || estimateKeyLength !== estimateMineLength} title={estimateKeyLength !== estimateMineLength ? t("estimate.lengthMismatch") : ""}>{estimateBusy ? "…" : t("estimate.run")}</button>
-      {#if estimateKeyLength && estimateMineLength && estimateKeyLength !== estimateMineLength}<span class="lv-chip lv-chip--amb" role="status">{t("estimate.lengthMismatch")}</span>{/if}
+      <button class="lv-btn sm" onclick={runEstimate} disabled={estimateBusy || !estimateKeyLength || !estimateMineLength || estimateLengthMismatch} aria-busy={estimateBusy} title={estimateLengthMismatch ? t("estimate.lengthMismatch") : ""}>{estimateBusy ? "…" : t("estimate.run")}</button>
+      {#if estimateLengthMismatch}<span id="estimate-length-error" class="lv-chip lv-chip--amb" role="alert">{t("estimate.lengthMismatch")}</span>{/if}
+      {#if estimateSaveError}<div class="lv-error" role="alert" style="width:100%">{estimateSaveError} <button class="lv-btn sm" disabled={estimateBusy} onclick={() => void saveEstimateResult()}>{estimateBusy ? "…" : t("estimate.retrySave")}</button></div>{/if}
         {#if estResult && estResultFor === estimateInputSignature}
           <span class="lv-chip num">{t("estimate.score")} <b>{estResult.score}</b>/{estResult.full}</span>
           <span class="lv-chip lv-chip--grn num">✓ {estResult.correct}</span>
@@ -845,12 +1097,22 @@
           {/if}
         {/if}
       </div>
-      {#if estHistory.length}
+      {#if estHistoryLoading}
+        <p class="lv-muted" role="status" aria-live="polite">{t("estimate.historyLoading")}</p>
+      {:else if estHistoryError}
+        <div class="lv-error" role="alert">{estHistoryError} <button class="lv-btn sm" disabled={estHistoryLoading} onclick={() => void loadEstimateHistory()}>{estHistoryLoading ? "…" : t("estimate.retryHistory")}</button></div>
+      {:else if estHistory.length}
         <div class="lv-row" style="margin:6px 0 0">
           <span class="lv-muted">{t("estimate.history")}</span>
           {#each estHistory.slice(0, 8) as h, _i (_i)}
             <span class="lv-chip num" title={new Date(h.at).toLocaleString()}>{h.percent}%</span>
           {/each}
+        </div>
+      {:else}
+        <div class="lv-empty" style="margin-top:10px">
+          <b>{t("estimate.historyEmptyTitle")}</b>
+          <p class="lv-muted">{t("estimate.historyEmptyDesc")}</p>
+          <button class="lv-btn sm" onclick={() => estimateMineInput?.focus()}>{t("estimate.getStarted")}</button>
         </div>
       {/if}
       {/if}
@@ -867,13 +1129,9 @@
       {/if}
       <span class="lv-chip num">{cursor + 1}/{session.state.qids.length}</span>
       <span class="fn__flex-1"></span>
-      <button class="lv-btn sm lv-flag-btn" class:lv-flag-btn--on={session.flags.has(current)} title={t("mock.flag")} aria-pressed={session.flags.has(current)} disabled={examLocked} onclick={() => { session?.toggleFlag(current); persistRun(); }}><Icon name="pin" size={14} /></button>
-      <button class="lv-btn sm" title={t("mock.fullscreen")} disabled={examLocked} onclick={(e) => {
-        const el = (e.target as HTMLElement).closest(".lv-pad");
-        if (!document.fullscreenElement) el?.requestFullscreen?.();
-        else document.exitFullscreen?.();
-      }}><Icon name="expand" size={14} /></button>
-      <button class="lv-btn lv-btn--primary sm" disabled={examLocked} aria-busy={submitting} onclick={() => finishExam(false)}>{submitting ? t("mock.savingScore", "正在保存成绩…") : t("mock.handIn")}</button>
+      <button class="lv-btn sm lv-flag-btn" class:lv-flag-btn--on={session.flags.has(current)} title={t("mock.flag")} aria-label={t("mock.flag")} aria-pressed={session.flags.has(current)} disabled={examLocked} onclick={() => { session?.toggleFlag(current); persistRun(); }}><Icon name="pin" size={14} /></button>
+      <button class="lv-btn sm" title={t("mock.fullscreen")} aria-label={t("mock.fullscreen")} disabled={examLocked} onclick={(e) => void toggleExamFullscreen(e.currentTarget)}><Icon name="expand" size={14} /></button>
+      <button class="lv-btn lv-btn--primary sm" disabled={examLocked || handInConfirming} aria-busy={submitting || handInConfirming} onclick={() => finishExam(false)}>{submitting ? t("mock.savingScore", "正在保存成绩…") : handInConfirming ? t("mock.confirmingHandIn", "等待交卷确认…") : t("mock.handIn")}</button>
     </div>
     {#if submitError}
       <div class="lv-error" role="alert" style="margin:8px 0">
@@ -883,43 +1141,81 @@
     {/if}
     {#if restoreNote}<div class="lv-error">{restoreNote}</div>{/if}
     <div class="lv-card lv-question">
+      <span class="lv-chip lv-chip--acc">{t("qtype." + currentQ.type)}</span>
       <div class="lv-stem">{currentQ.stem}</div>
-      {#if currentQ.options.length}
+      <p class="lv-muted">{t("session.guide." + currentQ.type)}</p>
+      {#if runSaveBusy}
+        <p class="lv-hint" role="status" aria-live="polite">{t("mock.runSaving", "正在保存答题进度…")}</p>
+      {:else if runSaveError}
+        <div class="lv-error" role="alert">{runSaveError}
+          <button class="lv-btn sm" disabled={runSaveBusy} aria-busy={runSaveBusy} onclick={retryRunSave}>{t("mock.runSaveRetry", "重试保存进度")}</button>
+        </div>
+      {:else if runSaveQueued}
+        <p class="lv-hint" role="status" aria-live="polite">{t("mock.runSaveQueued", "答案已更新，正在等待自动保存…")}</p>
+      {:else if runSaveConfirmed}
+        <p class="lv-muted" role="status" aria-live="polite">{t("mock.runSaved", "答题进度已保存")}</p>
+      {:else}
+        <p class="lv-hint">{t("mock.answerSaveHint")}</p>
+      {/if}
+      {#key current}
+      {#if isChoiceQuestion(currentQ)}
+        {@const choices = answerChoices(currentQ)}
+        {#if !choices.length}<div class="lv-error" role="alert">{t("session.missingOptions")}</div>{/if}
         <!-- 45-03：多选 checkbox/group 语义，单选/判断 radiogroup -->
         <div role={currentQ.type === "multiple" ? "group" : "radiogroup"} aria-label={t("session.options")}>
-          {#each currentQ.options as opt, i (i)}
-            {@const L = String.fromCharCode(65 + i)}
-            <button class="lv-opt" class:sel={currentQ.type === "multiple" ? (answeredMap[current] ?? "").includes(L) : selected === L} disabled={examLocked}
+          {#each choices as choice (choice.value)}
+            <button class="lv-opt" class:sel={currentQ.type === "multiple" ? (answeredMap[current] ?? "").includes(choice.value) : selected === choice.value} disabled={examLocked}
               role={currentQ.type === "multiple" ? "checkbox" : "radio"}
-              aria-checked={currentQ.type === "multiple" ? (answeredMap[current] ?? "").includes(L) : selected === L}
-              onclick={() => pickOption(L)}>
+              aria-checked={currentQ.type === "multiple" ? (answeredMap[current] ?? "").includes(choice.value) : selected === choice.value}
+              onclick={() => pickOption(choice.value)}>
               <span class="lv-opt-check" class:box={currentQ.type === "multiple"} aria-hidden="true"></span>
-              <span class="key">{L}</span><span>{opt}</span>
+              <span class="key">{choice.letter}</span><span>{choice.text}</span>
             </button>
           {/each}
         </div>
       {:else}
-        <textarea class="lv-input lv-textarea" value={answeredMap[current] ?? ""} disabled={examLocked}
-          oninput={(e) => { session?.setAnswer(current, (e.target as HTMLTextAreaElement).value, Date.now()); answeredMap = { ...answeredMap, [current]: (e.target as HTMLTextAreaElement).value }; persistRun(); }}></textarea>
+        {@const spec = specOf(currentQ)}
+        {#if spec?.kind === "numeric"}
+          <input class="lv-input lv-answer-num" type="text" inputmode="decimal" value={answeredMap[current] ?? ""} disabled={examLocked}
+            placeholder={spec.unit ? t("session.numericUnit").replace("{u}", spec.unit) : t("session.numericPlain")}
+            oninput={(e) => setTextAnswer((e.target as HTMLInputElement).value)} />
+          {#if spec.unit}<span class="lv-chip">{t("session.unitLabel")}: {spec.unit}</span>{/if}
+        {:else if spec?.kind === "multiBlank"}
+          {@const parts = splitBlanks(answeredMap[current] ?? "", spec.blanks.length)}
+          <p class="lv-hint">{t("session.blankHint")}</p>
+          {#each parts as part, i (i)}
+            <input class="lv-input lv-answer-blank" value={part} disabled={examLocked} placeholder={t("session.blankN").replace("{n}", String(i + 1))}
+              oninput={(e) => { const next = [...parts]; next[i] = (e.target as HTMLInputElement).value; setTextAnswer(joinBlanks(next)); }} />
+          {/each}
+        {:else}
+          <textarea class="lv-input lv-textarea" value={answeredMap[current] ?? ""} disabled={examLocked}
+            placeholder={currentQ.type === "short" ? t("session.shortPlaceholder") : t("session.fillPlaceholder")}
+            oninput={(e) => setTextAnswer((e.target as HTMLTextAreaElement).value)}></textarea>
+        {/if}
       {/if}
+      {/key}
     </div>
     <!-- 答题卡 -->
     <div class="lv-sheet">
       {#each session.state.qids as qid, i (i)}
-        <button class="lv-cell" class:done={!!answeredMap[qid]} class:flag={session.flags.has(qid)} disabled={examLocked}
-          class:cur={i === cursor} onclick={() => goto(i)}>{i + 1}</button>
+        {@const answered = Boolean(answeredMap[qid]?.trim())}
+        {@const flagged = session.flags.has(qid)}
+        <button class="lv-cell" class:done={answered} class:flag={flagged} disabled={examLocked}
+          class:cur={i === cursor} aria-current={i === cursor ? "step" : undefined}
+          aria-label={`${t("mock.questionN", "第 {n} 题").replace("{n}", String(i + 1))}，${answered ? t("mock.legend.done") : t("mock.unanswered", "未答")}，${flagged ? t("mock.legend.flag") : t("mock.unflagged", "未标记")}${i === cursor ? `，${t("mock.legend.cur")}` : ""}`}
+          onclick={() => goto(i)}>{i + 1}</button>
       {/each}
     </div>
     <!-- 三态图例：新用户无需猜测紫底/琥珀框/实心的含义 -->
-    <div class="lv-row lv-muted" style="margin:0;font-size:11px;gap:14px">
+    <div class="lv-row lv-muted" style="margin:0;font-size:var(--lv-font-size-label);gap:var(--lv-space-loose)">
       <span class="lv-legend"><i class="dot" style="background:var(--lv-accent-soft)"></i>{t("mock.legend.done")}</span>
       <span class="lv-legend"><i class="dot" style="background:transparent;border:2px solid var(--lv-amber)"></i>{t("mock.legend.flag")}</span>
       <span class="lv-legend"><i class="dot" style="background:var(--lv-accent)"></i>{t("mock.legend.cur")}</span>
     </div>
     <div class="lv-row" style="margin-top:2px">
       <!-- 人机对话模式不可回退：左键不再「向左却前进」（误触会不可逆跳题），与右键一起仅保留前进 -->
-      <button class="lv-btn sm" onclick={() => goto(cursor - 1)} disabled={examLocked || bp.lockout || cursor === 0} title={bp.lockout ? t("mock.lockout") : t("session.kbdPrev")}><Icon name="chev-left" size={14} /></button>
-      <button class="lv-btn sm" onclick={() => goto(cursor + 1)} disabled={examLocked || cursor >= session.state.qids.length - 1} title={t("session.next")}><Icon name="chev-right" size={14} /></button>
+      <button class="lv-btn sm" onclick={() => goto(cursor - 1)} disabled={examLocked || bp.lockout || cursor === 0} aria-label={t("session.kbdPrev")} title={bp.lockout ? t("mock.lockout") : t("session.kbdPrev")}><Icon name="chev-left" size={14} /></button>
+      <button class="lv-btn sm" onclick={() => goto(cursor + 1)} disabled={examLocked || cursor >= session.state.qids.length - 1} aria-label={t("session.next")} title={t("session.next")}><Icon name="chev-right" size={14} /></button>
       <!-- 位置读数：顺序作答模式下尤其需要知道当前进度 -->
       <span class="lv-muted num">{cursor + 1} / {session.state.qids.length}</span>
     </div>
@@ -937,7 +1233,7 @@
       <div class="lv-row" style="align-items:center;padding:6px 4px">
         <span class="num" style="font-size:40px;font-weight:800;color:var(--lv-accent)">{score.total}</span>
         <span class="lv-muted">/ {score.full}</span>
-        <span class="lv-chip" class:grn={score.pass} class:red={!score.pass}>{score.pass ? t("mock.pass") : t("mock.fail")}（{t("mock.passLine")} {bp.passLine}）</span>
+        <span class="lv-chip" class:grn={score.pass} class:red={!score.pass}>{score.pass ? t("mock.pass") : t("mock.fail")}（{t("mock.passLine")} {bp.passLine}%）</span>
         <span class="lv-chip num">{score.percent}%</span>
         {#if tri}
           <div class="lv-row" style="width:100%;margin:10px 0 0">
@@ -967,9 +1263,16 @@
         {/if}
       </div>
     {/each}
+    {#if historyLoading}
+      <p class="lv-muted" role="status" aria-live="polite">{t("mock.historyLoading", "正在读取模考历史…")}</p>
+    {:else if historyError}
+      <div class="lv-error" role="alert">{historyError} <button class="lv-btn sm" disabled={historyLoading} onclick={() => void reloadMockHistory()}>{historyLoading ? "…" : t("mock.historyRetry", "重试读取")}</button></div>
+    {:else if history.length < 2}
+      <p class="lv-muted">{t("mock.historyEmpty", "完成两场模考后，这里会显示历史趋势。")}</p>
+    {/if}
     <!-- 45-08 收口：分段/历史图表的文本等价物 + CSV（同一数据快照） -->
     <div class="lv-row" style="margin:6px 0">
-      <button class="lv-btn sm lv-btn--ghost" onclick={() => mockTableOpen = !mockTableOpen}><Icon name="table" size={13} /> {t("data.table")}</button>
+      <button class="lv-btn sm lv-btn--ghost" aria-expanded={mockTableOpen} onclick={() => mockTableOpen = !mockTableOpen}><Icon name="table" size={13} /> {t("data.table")}</button>
       <button class="lv-btn sm lv-btn--ghost" onclick={() => downloadMockCsv(mockSectionsToCsv(score.sections), "sections")}><Icon name="export" size={13} /> CSV</button>
       {#if history.length}
         <button class="lv-btn sm lv-btn--ghost" onclick={() => downloadMockCsv(mockHistoryToCsv(history), "history")}><Icon name="export" size={13} /> CSV {t("mock.history")}</button>
@@ -989,7 +1292,7 @@
     {/if}
     {#if score.sections.length >= 3}
       <div class="lv-card" style="margin:12px 0">
-        <b style="font-size:13px">{t("mock.radar")}</b>
+        <b style="font-size:var(--lv-font-size-body-compact)">{t("mock.radar")}</b>
         <svg viewBox="0 0 220 190" style="width:100%;max-width:300px;margin:0 auto;display:block" role="img" aria-label={t("mock.radar")}>
           <polygon points={radarPoints(score.sections.map(() => 1))} fill="none" stroke="var(--lv-border)" />
           <polygon points={radarPoints(score.sections.map(() => 0.5))} fill="none" stroke="var(--lv-border)" stroke-dasharray="3 3" />
@@ -1011,12 +1314,9 @@
     </div>
     {#if history.length >= 2}
       <div class="lv-card" style="margin:12px 0">
-        <b style="font-size:13px">{t("mock.history")}</b>
-        {#if tri}
-          <span class="lv-chip num" style="margin-left:auto">{t("mock.weekTri").replace("{this}", String(tri.this)).replace("{avg}", String(tri.avg ?? "–"))}</span>
-        {/if}
+        <b style="font-size:var(--lv-font-size-body-compact)">{t("mock.history")}</b>
+        <p class="lv-muted">{t("mock.historyScope", "历史记录可能来自不同题库、卷面或时长，百分比仅供回看，不直接比较进步或能力。")}</p>
         <svg viewBox="0 0 300 110" style="width:100%;max-width:420px;display:block" role="img" aria-label={t("mock.history")}>
-          <line x1="0" y1={100 - bp.passLine} x2="300" y2={100 - bp.passLine} stroke="var(--lv-green)" stroke-dasharray="4 4" />
           <polyline points={historyPoints()} fill="none" stroke="var(--lv-accent)" stroke-width="2" />
           {#each history as h, i (i)}
             <circle cx={(i / Math.max(1, history.length - 1)) * 300} cy={100 - Math.round(h.percent)} r="3" fill="var(--lv-accent)"><title>{h.name} {h.percent}%</title></circle>
@@ -1024,9 +1324,10 @@
         </svg>
         <div class="lv-row" style="margin:6px 0 0">
           {#each history.slice(-5) as h, i (i)}
-            <button class="lv-chip num" class:acc={historyDetail === history.length - 5 + i}
+            <button class="lv-chip num" class:acc={historyDetail === Math.max(0, history.length - 5) + i}
               title={new Date(h.startedAt).toLocaleString()}
-              onclick={() => historyDetail = historyDetail === history.length - 5 + i ? -1 : history.length - 5 + i}>
+              aria-pressed={historyDetail === Math.max(0, history.length - 5) + i}
+              onclick={() => historyDetail = historyDetail === Math.max(0, history.length - 5) + i ? -1 : Math.max(0, history.length - 5) + i}>
               {h.name} {h.percent}%{h.pass ? " ✓" : ""}
             </button>
           {/each}
@@ -1034,7 +1335,7 @@
         {#if historyDetail >= 0 && history[historyDetail]}
           {@const h = history[historyDetail]}
           <div class="lv-card" style="padding:10px 14px;margin-top:8px">
-            <b class="num" style="font-size:13px">{h.name} · {h.percent}%</b>
+            <b class="num" style="font-size:var(--lv-font-size-body-compact)">{h.name} · {h.percent}%</b>
             {#if h.sections?.length}
               {#each h.sections as s, _i (_i)}
                 <div class="lv-row" style="margin:3px 0">
@@ -1052,8 +1353,8 @@
     {/if}
     {#if wrongList.length}
       <div class="lv-card" style="margin:12px 0">
-        <b style="font-size:13px">{t("mock.wrongList")}（{wrongList.length}）</b>
-        <div class="lv-row" style="margin:8px 0 0;gap:6px">
+        <b style="font-size:var(--lv-font-size-body-compact)">{t("mock.wrongList")}（{wrongList.length}）</b>
+        <div class="lv-row" style="margin:8px 0 0;gap:var(--lv-space-compact)">
           {#each wrongList.slice(0, 12) as w, _i (_i)}
             <span class="lv-chip num" title={w.stem}>{w.stem}</span>
           {/each}
@@ -1070,19 +1371,14 @@
       </div>
     {/if}
     <div class="lv-row">
-      <button class="lv-btn ghost sm" onclick={exportScoreMd}><Icon name="table" size={13} /> {t("mock.exportScore")}</button>
+      <button class="lv-btn lv-btn--ghost sm" onclick={exportScoreMd} disabled={scoreExportBusy}><Icon name="table" size={13} /> {scoreExportBusy ? "…" : t("mock.exportScore")}</button>
       {#if activeBankId}
-        <button class="lv-btn ghost sm" onclick={async () => {
-          if (!score) return;
-          const { scoreToMarkdown } = await import("@/core/exportScore");
-          const md = scoreToMarkdown(bp, score, startedAt);
-          await (app as any).writeScoreDoc(activeBankId, md);
-          showMessage(t("report.dailyDone"), 3200, "info");
-        }}><Icon name="book" size={14} /> {t("mock.exportToDoc")}</button>
+        <button class="lv-btn lv-btn--ghost sm" onclick={writeScoreDoc} disabled={scoreWriteBusy} aria-busy={scoreWriteBusy}><Icon name="book" size={14} /> {scoreWriteBusy ? t("mock.scoreWriting", "正在写入成绩单…") : scoreWriteError ? t("mock.scoreWriteRetry", "重试写入成绩单") : t("mock.exportToDoc")}</button>
       {/if}
       {#if wrongList.length}<button class="lv-btn lv-btn--primary" disabled={rewrongBusy} onclick={rewrongDrill}><Icon name="xcircle" size={15} /> {rewrongBusy ? "…" : t("mock.rewrong")}</button>{/if}
-      <button class="lv-btn" onclick={() => { view = "config"; }}><Icon name="rotate" size={15} /> {t("mock.again")}</button>
+      <button class="lv-btn" onclick={showConfig} disabled={scoreWriteBusy || scoreExportBusy || rewrongBusy}><Icon name="rotate" size={15} /> {t("mock.again")}</button>
     </div>
+    {#if scoreWriteError}<div class="lv-error" role="alert">{scoreWriteError}</div>{/if}
   {/if}
 </div>
   </div>
@@ -1091,54 +1387,54 @@
 </div>
 
 <style>
-  .lv-pad { padding: 16px 22px 48px; overflow: auto; }
-  .lv-input { min-height: 44px; padding: 9px 12px; border-radius: 11px; border: 1px solid var(--lv-ctl-border); background: var(--lv-surface); color: var(--lv-text); font: inherit; font-size: 13px; }
+  .lv-pad { padding: var(--lv-space-4) 22px var(--lv-space-9); overflow: auto; }
+  .lv-input { min-height: var(--lv-control-height-md); padding: var(--lv-component-pad-md); border-radius: var(--lv-r-2); border: 1px solid var(--lv-ctl-border); background: var(--lv-surface); color: var(--lv-text); font: inherit; font-size: var(--lv-font-size-body); }
   .lv-input:focus { border-color: var(--lv-accent); box-shadow: var(--lv-ring); outline: none; }
   .lv-input.num { width: 72px; }
   .lv-textarea { width: 100%; min-height: 80px; resize: vertical; }
   /* .lv-btn/.lv-select 外观基线上收 lv-base.scss */
   .lv-flag-btn { min-width: 34px; padding: 5px 8px; }
   .lv-flag-btn--on { border-color: var(--lv-amber); color: var(--lv-amber); background: var(--lv-amber-soft); }
-  .lv-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 7px; font-size: 12px; font-weight: 550; color: var(--lv-text-2); background: var(--lv-surface-2); border: 1px solid transparent; }
+  .lv-chip { display: inline-flex; align-items: center; gap: var(--lv-space-1); padding: 3px var(--lv-space-3); border-radius: var(--lv-r-1); font-size: var(--lv-font-size-sm); font-weight: var(--lv-font-weight-medium); color: var(--lv-text-2); background: var(--lv-surface-2); border: 1px solid transparent; }
   .lv-chip.grn { color: var(--lv-green); background: var(--lv-green-soft); }
   .lv-chip.red { color: var(--lv-red); background: var(--lv-red-soft); }
-  .lv-card { background: var(--lv-surface); border: 1px solid var(--lv-border); border-radius: var(--lv-r-3); padding: 18px 20px; box-shadow: var(--lv-sh-1); }
-  .lv-stem { font-size: 19px; line-height: 1.8; letter-spacing: -.2px; margin-bottom: 16px; white-space: pre-wrap; }
+  .lv-card { background: var(--lv-surface); border: 1px solid var(--lv-border); border-radius: var(--lv-r-3); padding: var(--lv-space-5) var(--lv-space-6); box-shadow: var(--lv-sh-1); }
+  .lv-stem { font-size: var(--lv-font-size-stat); line-height: 1.8; letter-spacing: -.2px; margin-bottom: 16px; white-space: pre-wrap; }
   .lv-opt { display: flex; gap: 13px; align-items: center; width: 100%; text-align: left; padding: 14px 17px; border-radius: var(--lv-r-2); border: 1px solid var(--lv-ctl-border); margin-bottom: 10px; cursor: pointer; background: var(--lv-surface); font: inherit; color: inherit; transition: background-color var(--lv-dur-micro) ease, border-color var(--lv-dur-micro) ease; }
   .lv-opt:hover { border-color: var(--lv-accent); background: var(--lv-surface-2); }
-  .lv-opt .key { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; flex: none; font-size: 12px; font-weight: 550; background: var(--lv-surface); color: var(--lv-text-2); border: 1px solid var(--lv-ctl-border); }
-  .lv-opt-check { width: 17px; height: 17px; border-radius: 50%; border: 1.5px solid var(--lv-ctl-border); background: var(--lv-surface); flex: none; display: grid; place-items: center; transition: background-color var(--lv-dur-micro) ease, border-color var(--lv-dur-micro) ease; }
+  .lv-opt .key { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; flex: none; font-size: var(--lv-font-size-sm); font-weight: var(--lv-font-weight-medium); background: var(--lv-surface); color: var(--lv-text-2); border: 1px solid var(--lv-ctl-border); }
+  .lv-opt-check { width: 17px; height: 17px; border-radius: var(--lv-radius-round); border: 1.5px solid var(--lv-ctl-border); background: var(--lv-surface); flex: none; display: grid; place-items: center; transition: background-color var(--lv-dur-micro) ease, border-color var(--lv-dur-micro) ease; }
   .lv-opt-check.box { border-radius: 5px; }
-  .lv-opt-check::after { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--b3-theme-on-primary, #fff); transform: scale(0); transition: transform var(--lv-dur-micro) var(--lv-ease-out); }
+  .lv-opt-check::after { content: ""; width: 7px; height: 7px; border-radius: var(--lv-radius-round); background: var(--lv-on-accent, var(--b3-theme-on-primary, #fff)); transform: scale(0); transition: transform var(--lv-dur-micro) var(--lv-ease-out); }
   .lv-opt-check.box::after { border-radius: 1.5px; }
   .lv-opt.sel .lv-opt-check { border-color: transparent; background: var(--lv-accent); }
   .lv-opt.sel .lv-opt-check::after { transform: scale(1); }
   .lv-opt.sel { border-color: var(--lv-accent); background: var(--lv-accent-soft); }
-  .lv-opt.sel .key { background: var(--lv-accent); border-color: var(--lv-accent); color: var(--b3-theme-on-primary, #fff); }
+  .lv-opt.sel .key { background: var(--lv-accent); border-color: var(--lv-accent); color: var(--lv-on-accent, var(--b3-theme-on-primary, #fff)); }
   .lv-bp-table { border: 1px solid var(--lv-border); border-radius: 12px; overflow-x: auto; margin: 10px 0; }
-  .lv-bp-row { display: grid; grid-template-columns: 1.1fr .5fr .5fr .8fr 1fr 36px; gap: 8px; padding: 8px 12px; border-bottom: 1px dashed var(--lv-border); align-items: center; min-width: 560px; }
+  .lv-bp-row { display: grid; grid-template-columns: 1.1fr .5fr .5fr .8fr 1fr 36px; gap: var(--lv-space-2); padding: 8px 12px; border-bottom: 1px dashed var(--lv-border); align-items: center; min-width: 560px; }
   .lv-bp-row:last-child { border-bottom: none; }
   .lv-bp-row:not(.head):hover { background: var(--lv-surface-2); }
-  .lv-bp-row.head { background: var(--lv-surface-2); font-size: 11.5px; font-weight: 700; color: var(--lv-text-3); border-bottom: 1px solid var(--lv-border); }
+  .lv-bp-row.head { background: var(--lv-surface-2); font-size: var(--lv-font-size-caption); font-weight: var(--lv-font-weight-bold); color: var(--lv-text-3); border-bottom: 1px solid var(--lv-border); }
   /* 蓝图行数据网格密度（规范 v6）：34px 控件，行更紧凑 */
-  .lv-bp-row .lv-input, .lv-bp-row .lv-select { min-height: 34px; padding: 5px 10px; border-radius: 9px; font-size: 13px; }
+  .lv-bp-row .lv-input, .lv-bp-row .lv-select { min-height: 34px; padding: 5px 10px; border-radius: var(--lv-radius-control-sm); font-size: var(--lv-font-size-body-compact); }
   .lv-bp-del:hover:not(:disabled) { border-color: var(--lv-red); color: var(--lv-red); background: var(--lv-red-soft); }
   /* 答题卡（规范 v6 §5.4）：5 列 44px 格，密度对齐原型——宽屏限宽防格子被拉成横条 */
-  .lv-sheet { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 12px 0; max-width: 660px; }
+  .lv-sheet { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--lv-space-2); margin: 12px 0; max-width: 660px; }
   /* 三态图例小方块 */
   .lv-legend { display: inline-flex; align-items: center; gap: 5px; }
   .lv-legend .dot { display: inline-block; width: 11px; height: 11px; border-radius: 3px; flex: none; }
-  .lv-cell { min-width: 0; min-height: 44px; border-radius: 8px; border: 1px solid var(--lv-border); background: var(--lv-surface); font-size: 12px; font-variant-numeric: tabular-nums; color: var(--lv-text-2); cursor: pointer; transition: background-color var(--lv-dur-micro) var(--lv-ease-out), border-color var(--lv-dur-micro) var(--lv-ease-out), color var(--lv-dur-micro) var(--lv-ease-out); }
+  .lv-cell { min-width: 0; min-height: 44px; border-radius: 8px; border: 1px solid var(--lv-border); background: var(--lv-surface); font-size: var(--lv-font-size-sm); font-variant-numeric: tabular-nums; color: var(--lv-text-2); cursor: pointer; transition: background-color var(--lv-dur-micro) var(--lv-ease-out), border-color var(--lv-dur-micro) var(--lv-ease-out), color var(--lv-dur-micro) var(--lv-ease-out); }
   .lv-cell.done { background: var(--lv-accent-soft); color: var(--lv-accent); border-color: transparent; }
   .lv-cell.flag { outline: 2px solid var(--lv-amber); outline-offset: -2px; }
-  .lv-cell.cur { background: var(--lv-accent); color: var(--b3-theme-on-primary, #fff); border-color: transparent; }
-  .lv-empty { border: 1.5px dashed var(--lv-border); border-radius: 14px; padding: 26px; text-align: center; color: var(--lv-text-3); }
+  .lv-cell.cur { background: var(--lv-accent); color: var(--lv-on-accent, var(--b3-theme-on-primary, #fff)); border-color: transparent; }
+  .lv-empty { border: 1.5px dashed var(--lv-border); border-radius: var(--lv-r-2); padding: var(--lv-space-7); text-align: center; color: var(--lv-text-3); }
   .lv-skeleton { height: 160px; border-radius: var(--lv-r-3); background: linear-gradient(100deg, var(--lv-surface-2) 40%, var(--lv-surface) 50%, var(--lv-surface-2) 60%); background-size: 200% 100%; animation: lv-shim 1.4s infinite; }
   @keyframes lv-shim { to { background-position: -200% 0; } }
-  .progress { height: 6px; border-radius: 999px; background: var(--lv-surface-2); overflow: hidden; }
-  .progress i { display: block; height: 100%; background: var(--lv-accent-grad); border-radius: 999px; }
+  .progress { height: 6px; border-radius: var(--lv-radius-pill); background: var(--lv-surface-2); overflow: hidden; }
+  .progress i { display: block; height: 100%; background: var(--lv-accent-grad); border-radius: var(--lv-radius-pill); }
   @media (prefers-reduced-motion: reduce) { .lv-skeleton { animation: none; } .lv-opt, .lv-btn { transition: none; } }
-  @media (max-width: 480px) {
+  @container lv-exam (max-width: 480px) {
     /* 极窄屏适配：答题卡 3 列、蓝图表格保持横滚 */
     .lv-sheet { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .lv-btn { white-space: nowrap; }

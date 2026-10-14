@@ -52,6 +52,62 @@ describe("SaveGate 对象级保存确认（Q2/U06）", () => {
     expect(g.state("k")).toBe("confirmed");
   });
 
+  it("runLatest：在途期间只保留最后一个快照，并在首写完成后补写", async () => {
+    const g = new SaveGate();
+    const writes: number[] = [];
+    let release!: () => void;
+    const hold = new Promise<void>((resolve) => (release = resolve));
+    const first = g.runLatest("snapshot", async () => {
+      writes.push(1);
+      await hold;
+      return 1;
+    });
+    const second = g.runLatest("snapshot", async () => {
+      writes.push(2);
+      return 2;
+    });
+    const third = g.runLatest("snapshot", async () => {
+      writes.push(3);
+      return 3;
+    });
+    release();
+    expect(await first).toBe(1);
+    expect(await second).toBe(3);
+    expect(await third).toBe(3);
+    expect(writes).toEqual([1, 3]);
+    expect(g.state("snapshot")).toBe("confirmed");
+  });
+
+  it("runLatest：首写失败仍会执行最新快照，排队调用只收到最新结果", async () => {
+    const g = new SaveGate();
+    let release!: () => void;
+    const hold = new Promise<void>((resolve) => (release = resolve));
+    const first = g.runLatest("snapshot", async () => {
+      await hold;
+      throw new Error("old write failed");
+    });
+    const latest = g.runLatest("snapshot", async () => "latest");
+    release();
+    await expect(first).rejects.toThrow("old write failed");
+    await expect(latest).resolves.toBe("latest");
+    expect(g.state("snapshot")).toBe("confirmed");
+  });
+
+  it("runLatest 可接管 legacy run 的在途写入", async () => {
+    const g = new SaveGate();
+    let release!: () => void;
+    const hold = new Promise<void>((resolve) => (release = resolve));
+    const first = g.run("legacy", async () => {
+      await hold;
+      return "old";
+    });
+    const latest = g.runLatest("legacy", async () => "new");
+    release();
+    await expect(first).resolves.toBe("old");
+    await expect(latest).resolves.toBe("new");
+    expect(g.state("legacy")).toBe("confirmed");
+  });
+
   it("超时 → unknown（结果未知≠失败）；底层完成后升级为 confirmed", async () => {
     const g = new SaveGate(undefined, 15);
     let release: () => void = () => {};

@@ -5,9 +5,13 @@
 // 本层不承诺两卷等难；复现标识随结算页展示）。
 // ============================================================
 
-/** 生成可读的随机种子（会话级；base36 时间戳 + 随机尾） */
+let seedIdSequence = 0;
+
+/** 生成可读的随机种子（会话级；时间戳 + 进程内序号 + 随机尾） */
 export function randomSeedId(): string {
-  return `s-${Date.now().toString(36)}-${Math.floor(Math.random() * 1296).toString(36)}`;
+  const sequence = (seedIdSequence++).toString(36);
+  const suffix = Math.floor(Math.random() * 1296).toString(36);
+  return `s-${Date.now().toString(36)}-${sequence}-${suffix}`;
 }
 
 /** FNV-1a：种子字符串 → u32（PRNG 初值） */

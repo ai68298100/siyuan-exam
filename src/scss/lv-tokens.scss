@@ -7,36 +7,58 @@
 // ============================================================
 
 :root {
+  /* R54 palette primitives. Components consume the scoped --lv-* aliases;
+     keeping these values here lets the visual language stay stable across
+     host themes while dark mode remains explicit below. */
+  --lv-r54-canvas: #f7f7fc;
+  --lv-r54-surface: #fff;
+  --lv-r54-soft: #f1f1f9;
+  --lv-r54-ink: #2c2b3e;
+  --lv-r54-ink-2: #555366;
+  --lv-r54-muted: #6c6a7f;
+  --lv-r54-line: #e6e5f0;
+  --lv-r54-control: #c9c7d6;
+  --lv-r54-accent: #5e59cb;
+  --lv-r54-accent-hi: #706be0;
+  --lv-r54-lavender: #eeecfb;
+  --lv-r54-accent-deep: #504abd;
+  --lv-r54-on-accent: #fff;
+  --lv-r54-green: #32654d;
+  --lv-r54-green-soft: #edf6f1;
+  --lv-r54-on-green: #fff;
+  --lv-r54-red: #a34151;
+  --lv-r54-red-soft: #fcf0f1;
+  --lv-r54-on-red: #fff;
+  --lv-r54-amber: #855318;
+  --lv-r54-amber-soft: #fff0d4;
+  --lv-r54-overlay: rgba(17, 21, 40, .46);
   /* —— 强调与语义（跟随用户思源主题） —— */
-  --lv-accent: var(--b3-theme-primary);
-  --lv-accent-hi: var(--b3-theme-primary-light, var(--b3-theme-primary));
-  --lv-accent-soft: color-mix(in srgb, var(--b3-theme-primary) 10%, transparent);
-  --lv-accent-grad: linear-gradient(
-    135deg,
-    var(--b3-theme-primary),
-    var(--b3-theme-primary-light, var(--b3-theme-primary))
-  );
+  --lv-accent: var(--b3-theme-primary, #5e59cb);
+  --lv-accent-hi: var(--b3-theme-primary-light, var(--lv-accent));
+  --lv-accent-soft: color-mix(in srgb, var(--lv-accent) 10%, transparent);
+  --lv-accent-grad: var(--lv-accent);
   /* 设计规范 v6：主按钮垂直渐变（deep=主题色压深一档，主题自适应；
      78% 对齐原型亮色 deep 对 #6153d5→#4a3fb8 的压深比） */
-  --lv-accent-deep: color-mix(in srgb, var(--b3-theme-primary) 78%, #000);
-  --lv-btn-primary-bg: linear-gradient(180deg, var(--b3-theme-primary), var(--lv-accent-deep));
-  --lv-green: var(--b3-theme-success, #189a58);
+  --lv-accent-deep: color-mix(in srgb, var(--lv-accent) 78%, #000);
+  --lv-btn-primary-bg: var(--lv-accent);
+  --lv-green: var(--b3-theme-success, #32654d);
   --lv-green-soft: color-mix(in srgb, var(--lv-green) 11%, transparent);
-  --lv-red: var(--b3-theme-error, #e5484d);
+  --lv-red: var(--b3-theme-error, #a34151);
   --lv-red-soft: color-mix(in srgb, var(--lv-red) 10%, transparent);
-  --lv-amber: var(--b3-theme-warning, #d9930d);
+  --lv-amber: var(--b3-theme-warning, #855318);
   --lv-amber-soft: color-mix(in srgb, var(--lv-amber) 12%, transparent);
 
   /* —— 表面与文字（三档对比） —— */
-  --lv-surface: var(--b3-theme-surface);
-  --lv-surface-2: var(--b3-theme-background);
-  --lv-border: var(--b3-border-color);
+  --lv-canvas: var(--b3-theme-background, #f7f7fc);
+  --lv-surface: var(--b3-theme-surface, #fff);
+  --lv-surface-2: var(--b3-theme-background, #f7f7fc);
+  --lv-border: var(--b3-border-color, #e6e5f0);
   /* 必要控件边界（V01/原型 control-border）：比分隔线深一档，用于按钮/输入框/选项边界 */
-  --lv-ctl-border: color-mix(in srgb, var(--b3-theme-on-background) 26%, transparent);
-  --lv-text: var(--b3-theme-on-background);
-  --lv-text-2: color-mix(in srgb, var(--b3-theme-on-background) 70%, transparent);
+  --lv-text: var(--b3-theme-on-background, #2c2b3e);
+  --lv-ctl-border: color-mix(in srgb, var(--lv-text) 26%, transparent);
+  --lv-text-2: color-mix(in srgb, var(--lv-text) 70%, transparent);
   /* 辅助小字对比档：52% 起（浅色实测 ≥4.5:1，V01 口径） */
-  --lv-text-3: color-mix(in srgb, var(--b3-theme-on-background) 54%, transparent);
+  --lv-text-3: color-mix(in srgb, var(--lv-text) 54%, transparent);
 
   /* —— 圆角体系（r-3=卡片，对齐原型 .card 18px） —— */
   --lv-r-1: 8px;
@@ -44,20 +66,83 @@
   --lv-r-3: 18px;
   --lv-r-4: 20px;
 
+  /* —— 4px spacing grid / semantic geometry —— */
+  --lv-space-1: 4px;
+  --lv-space-2: 8px;
+  --lv-space-3: 12px;
+  --lv-space-4: 16px;
+  --lv-space-5: 20px;
+  --lv-space-6: 24px;
+  --lv-space-7: 32px;
+  --lv-space-8: 40px;
+  --lv-space-9: 48px;
+  /* 语义间距别名：兼容原型中的紧凑节奏，同时让页面只引用 token。 */
+  --lv-space-tight: 4px;
+  --lv-space-compact: 6px;
+  --lv-space-relaxed: 10px;
+  --lv-space-loose: 14px;
+  --lv-space-panel: 18px;
+  --lv-space-section: 22px;
+  --lv-space-hero: 30px;
+  --lv-space-paper: 34px;
+  --lv-control-height-sm: 34px;
+  --lv-control-height-md: 44px;
+  --lv-control-height-lg: 48px;
+  --lv-component-pad-sm: var(--lv-space-2) var(--lv-space-3);
+  --lv-component-pad-md: 9px var(--lv-space-4);
+  --lv-card-pad: var(--lv-space-6);
+
+  /* —— finite type scale: size / line-height / weight —— */
+  --lv-font-size-xs: 11px;
+  --lv-font-size-sm: 12px;
+  --lv-font-size-meta: 12.5px;
+  --lv-font-size-body: 13.5px;
+  --lv-font-size-md: 14px;
+  --lv-font-size-h3: 15px;
+  --lv-font-size-h2: 17px;
+  --lv-font-size-h1: 28px;
+  --lv-font-size-display: 46px;
+  --lv-font-size-compact: 10.5px;
+  --lv-font-size-label: 11px;
+  --lv-font-size-caption: 11.5px;
+  --lv-font-size-body-compact: 13px;
+  --lv-font-size-body-emphasis: 14.5px;
+  --lv-font-size-stat: 19px;
+  --lv-font-size-kpi: 30px;
+  --lv-font-size-kpi-mobile: 24px;
+  --lv-line-height-tight: 1.35;
+  --lv-line-height-snug: 1.5;
+  --lv-line-height-body: 1.65;
+  --lv-line-height-relaxed: 1.8;
+  --lv-line-height-loose: 2.05;
+  --lv-font-weight-regular: 400;
+  --lv-font-weight-medium: 550;
+  --lv-font-weight-semibold: 650;
+  --lv-font-weight-bold: 700;
+  --lv-letter-tight: -0.02em;
+  --lv-letter-label: 0.6px;
+
   /* —— 动效（规范 v6 三档：140/220/320ms，统一曲线） —— */
   --lv-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --lv-ease-spring: cubic-bezier(0.3, 1.4, 0.4, 1);
   --lv-dur-micro: 140ms;
   --lv-dur-view: 220ms;
   --lv-dur-slow: 320ms;
+  --lv-duration-micro: var(--lv-dur-micro);
+  --lv-duration-view: var(--lv-dur-view);
+  --lv-duration-slow: var(--lv-dur-slow);
+
+  /* 组件专用圆角别名，避免页面继续出现散落的裸值。 */
+  --lv-radius-icon: 13px;
+  --lv-radius-control-sm: 9px;
+  --lv-radius-pill: 999px;
+  --lv-radius-round: 50%;
 
   /* —— 焦点环 —— */
   /* 目标环 mask（几何遮罩色，非产品色；#000 仅作 mask 不透明段） */
   --lv-goal-mask: radial-gradient(closest-side, transparent 62%, #000 63%);
   /* 18% 主色环 + 1px surface 断层（Geist/shadcn 式 ring-offset 焦点语言，对齐现代工具链） */
-  --lv-ring:
-    0 0 0 1px var(--lv-surface),
-    0 0 0 4px color-mix(in srgb, var(--b3-theme-primary) 22%, transparent);
+  --lv-ring: 0 0 0 1px var(--lv-surface), 0 0 0 4px color-mix(in srgb, var(--lv-accent) 22%, transparent);
 
   /* —— 浮层遮罩（V04 抽屉/对话框背板；中性深色，token 定义） —— */
   --lv-overlay: rgba(17, 21, 40, 0.46);
@@ -93,6 +178,28 @@
 
 body.dark,
 html[data-theme-mode="dark"] {
+  --lv-r54-canvas: #181820;
+  --lv-r54-surface: #22222d;
+  --lv-r54-soft: #2a2936;
+  --lv-r54-ink: #f0eef8;
+  --lv-r54-ink-2: #c4c0d3;
+  --lv-r54-muted: #b2aec4;
+  --lv-r54-line: #393744;
+  --lv-r54-control: #5a5768;
+  --lv-r54-accent: #b5afff;
+  --lv-r54-accent-hi: #c3beff;
+  --lv-r54-lavender: #343046;
+  --lv-r54-accent-deep: #c3beff;
+  --lv-r54-on-accent: #1b1a27;
+  --lv-r54-green: #a0d9bb;
+  --lv-r54-green-soft: #28382f;
+  --lv-r54-on-green: #15251c;
+  --lv-r54-red: #ffadb9;
+  --lv-r54-red-soft: #402b33;
+  --lv-r54-on-red: #2a141a;
+  --lv-r54-amber: #f4c78a;
+  --lv-r54-amber-soft: #3b3126;
+  --lv-r54-overlay: rgba(0, 0, 0, .58);
   --lv-sh-1: 0 1px 2px rgba(0, 0, 0, 0.35);
   --lv-sh-2: 0 1px 2px rgba(0, 0, 0, 0.4), 0 16px 44px -14px rgba(0, 0, 0, 0.55);
   --lv-sh-pop: 0 2px 6px rgba(0, 0, 0, 0.4), 0 24px 56px -18px rgba(0, 0, 0, 0.65);

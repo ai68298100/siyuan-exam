@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; connect-src 'none'; font-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>小驴考试 · R54 重构原型</title>
+    <link rel="icon" href="./favicon.svg" />
+    <link rel="stylesheet" href="./prototype.css" />
+    <script src="./prototype.js" defer></script>
+  </head>
+  <body>
+    <div class="lv-exam-demo" data-theme="light">
+      <header class="review-bar">
+        <div><strong>小驴考试 · R54</strong><span class="review-caption">交互原型 · 合成数据</span></div>
+        <div class="review-controls">
+          <label for="page-picker">页面</label
+          ><select id="page-picker" aria-label="预览页面"></select>
+          <label for="state-picker">状态</label
+          ><select id="state-picker" aria-label="预览状态">
+            <option value="ready">正常</option>
+            <option value="empty">首次进入 / 空库</option>
+            <option value="loading">加载中</option>
+            <option value="error">读取失败</option>
+            <option value="partial">部分成功</option>
+            <option value="unknown">结果待核对</option>
+            <optgroup label="练习台">
+              <option value="practice-loading">题库加载中</option>
+              <option value="practice-empty">没有可练习题</option>
+              <option value="practice-load-error">题库读取失败</option>
+              <option value="today-no-attempts">近七天无作答记录</option>
+            </optgroup>
+            <optgroup label="资料">
+              <option value="materials-empty">没有资料</option>
+              <option value="materials-no-match">搜索无匹配</option>
+              <option value="materials-saving">保存中 / 控件锁定</option>
+              <option value="materials-error">保存失败 / 可重试</option>
+            </optgroup>
+            <optgroup label="模考">
+              <option value="mock-loading">题库加载中</option>
+              <option value="mock-load-error">题库读取失败</option>
+              <option value="mock-empty-bank">空题库</option>
+              <option value="mock-blueprint-invalid">蓝图配额不足</option>
+              <option value="mock-invalid">题量不足 / 禁止开考</option>
+              <option value="mock-submit-error">交卷失败 / 重试</option>
+            </optgroup>
+            <optgroup label="复盘">
+              <option value="report-loading">报告加载中</option>
+              <option value="report-error">报告读取失败</option>
+              <option value="report-no-bank">没有题库</option>
+              <option value="scope-loading">题库范围加载中</option>
+              <option value="scope-error">题库范围读取失败</option>
+              <option value="report-no-attempts">当前范围无作答</option>
+              <option value="report-no-evidence">没有学习记录</option>
+            </optgroup>
+            <optgroup label="复盘 · 数据与存储演练">
+              <option value="report-storage-loading">存储占用加载中</option>
+              <option value="report-storage-empty">存储占用为空</option>
+              <option value="report-storage-error">存储占用读取失败</option>
+              <option value="report-audit-loading">数据体检中</option>
+              <option value="report-audit-partial">数据体检部分成功</option>
+              <option value="report-audit-error">数据体检失败</option>
+            </optgroup>
+          </select>
+          <button id="width-toggle" aria-pressed="false">390px</button>
+          <button id="theme-toggle" aria-pressed="false">深色</button>
+          <button id="reset-demo">重置演练</button>
+        </div>
+      </header>
+      <div id="app" class="canvas">
+        <div id="shell" class="shell">
+          <aside id="sidebar" class="sidebar" aria-label="主导航"></aside>
+            <button id="nav-backdrop" class="nav-backdrop" data-action="nav-backdrop" aria-label="关闭导航" hidden></button>
+          <div id="workspace" class="workspace">
+            <header id="topbar" class="topbar"></header>
+            <main id="screen" class="main" tabindex="-1"></main>
+            <nav id="mobile-nav" class="mobile-nav" aria-label="底部主导航"></nav>
+          </div>
+        </div>
+      </div>
+      <footer class="review-foot">
+        <span>参考小驴闪卡 R54 · 考试任务重新编排 · 浅深色与容器响应式</span
+        ><span>不连接思源、不调用模型、不写入数据；刷新后恢复样例。</span>
+      </footer>
+      <dialog id="dialog" aria-labelledby="dialog-title"></dialog>
+      <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    </div>
+  </body>
+</html>

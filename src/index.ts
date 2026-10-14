@@ -3,9 +3,8 @@ import "./index.scss";
 
 import { SettingUtils } from "./libs/setting-utils";
 import { escapeHtml } from "./libs/sanitize";
-import { mount, unmount } from "svelte";
+import { mount, unmount, type Component } from "svelte";
 import manifest from "../plugin.json";
-
 import PracticeTab from "@/ui/practice/PracticeTab.svelte";
 import MockTab from "@/ui/mock/MockTab.svelte";
 import ReportTab from "@/ui/report/ReportTab.svelte";
@@ -13,7 +12,8 @@ import { createExamApp } from "./app-runtime";
 import type { ExamApp } from "./app";
 import { streak } from "./core/replayer";
 import { emitExamEvent } from "./core/bus";
-import { createExamTabDescriptor } from "./core/pluginTab";
+import { createExamTabDescriptor, focusExamTab, openPracticeView } from "./core/pluginTab";
+import { combineBlockSources } from "./core/blockSource";
 import { registerExamDailySummary } from "./ecosystem/speedSwitch";
 
 const TAB_PRACTICE = "exam-practice";
@@ -43,6 +43,8 @@ export default class LvExamPlugin extends Plugin {
   private tabApps: { [tabType: string]: object } = {};
   /** 应用组装层（与基类 Plugin.app: App 无关，刻意改名避免遮蔽） */
   private examApp: ExamApp | null = null;
+  private appInitializing = true;
+  private queuedTab: { type: string; icon: string; title: string } | null = null;
   private boundBlockIcon = this.onBlockIconClick.bind(this);
   /** 47-05 lite：设置默认值快照（注册完成时；恢复默认用） */
   private settingDefaults: Map<string, unknown> = new Map();
@@ -69,6 +71,9 @@ export default class LvExamPlugin extends Plugin {
       callback: () => {
         showMessage(this.i18n["settingSaved"], 2600, "info");
       },
+      onSaveError: (error) => {
+        showMessage((this.i18n["setting.saveFailed"] ?? "设置保存失败；输入已保留，重新打开插件设置后可再次保存。") + " " + String(error instanceof Error ? error.message : error), 6000, "error");
+      },
     });
     this.settingUtils.addItem({
       title: this.i18n["setting.examDate.title"],
@@ -76,6 +81,7 @@ export default class LvExamPlugin extends Plugin {
       type: "textinput",
       key: "examDate",
       value: "",
+      placeholder: "YYYY-MM-DD",
       direction: "row",
     });
     this.settingUtils.addItem({
@@ -216,12 +222,25 @@ export default class LvExamPlugin extends Plugin {
   }
 
   async onLayoutReady() {
-    await this.settingUtils.load();
+    try {
+      await this.settingUtils.load();
+    } catch (e) {
+      // A corrupt/blocked settings file must not prevent the exam app from
+      // starting with shipped defaults. SettingUtils keeps invalid fields at
+      // their defaults; this catch covers host I/O failures.
+      console.error("[lv-exam] settings load failed; using defaults", e);
+      showMessage(this.i18n["setting.loadFailed"] ?? "设置读取失败，已使用默认值；请检查存储权限后重试。", 5200, "error");
+    }
     try {
       this.examApp = await createExamApp(this);
     } catch (e) {
       console.error("[lv-exam] app init failed", e);
+      showMessage(String(e instanceof Error ? e.message : e), 5200, "error");
     }
+    this.appInitializing = false;
+    const queued = this.queuedTab;
+    this.queuedTab = null;
+    if (queued) this.openTabByType(queued.type, queued.icon, queued.title);
     this.refreshDock();
     this.refreshStatusBar();
     this.restoreLastTabs();
@@ -238,12 +257,16 @@ export default class LvExamPlugin extends Plugin {
     this.exposePublicApi();
     // 版本更新引导 lite（TODO 23）：版本变化时提示查看 CHANGELOG
     const K = "lv-exam-last-version";
-    const last = localStorage.getItem(K);
-    const ver = manifest.version;
-    if (last && last !== ver) {
-      showMessage(`${this.i18n["update.title"]} v${ver} · ${this.i18n["update.seeChangelog"]}`, 6000, "info");
+    try {
+      const last = localStorage.getItem(K);
+      const ver = manifest.version;
+      if (last && last !== ver) {
+        showMessage(`${this.i18n["update.title"]} v${ver} · ${this.i18n["update.seeChangelog"]}`, 6000, "info");
+      }
+      localStorage.setItem(K, ver);
+    } catch {
+      // 本地记忆不可用时仍完成插件就绪与统计广播。
     }
-    localStorage.setItem(K, ver);
     this.dispatchPublicStats();
   }
 
@@ -338,10 +361,18 @@ export default class LvExamPlugin extends Plugin {
         const el = document.createElement("div");
         el.classList.add("lv-statusbar", "fn__flex-center");
         el.style.cursor = "pointer";
+        el.tabIndex = 0;
+        el.setAttribute("role", "button");
+        el.setAttribute("aria-label", this.i18n["tab.practice"]);
         // 25-P1：应用就绪前也保持可见占位（此前初始为空文本，元素不可见）
         el.textContent = "📝 …";
         el.title = this.i18n["tab.practice"];
         el.addEventListener("click", () => this.openPractice());
+        el.addEventListener("keydown", (e) => {
+          if (e.key !== "Enter" && e.key !== " ") return;
+          e.preventDefault();
+          this.openPractice();
+        });
         return el;
       })(),
     });
@@ -353,6 +384,7 @@ export default class LvExamPlugin extends Plugin {
     if (!el) return;
     if (!this.examApp) {
       el.textContent = "📝 …"; // 初始化失败：保持占位不空白（25-P1）
+      el.setAttribute("title", this.i18n["state.appNotReady"]);
       return;
     }
     const d = this.examApp.derived();
@@ -363,13 +395,19 @@ export default class LvExamPlugin extends Plugin {
     const today = d.days.get(todayKey)?.attempts ?? 0;
     const wrong = this.examApp.wrongItems().length;
     el.textContent = `📝 ${today} · ❌ ${wrong} · 🔥 ${streak(d)}`;
+    const summary = (this.i18n["statusbar.summary"] ?? "今日作答 {today} 题 · 在册错题 {wrong} 题 · 连续学习 {streak} 天；点击打开练习台")
+      .replace("{today}", String(today)).replace("{wrong}", String(wrong)).replace("{streak}", String(streak(d)));
+    el.setAttribute("title", summary);
+    el.setAttribute("aria-label", summary);
   }
 
   private registerTabs() {
     // 页签工厂闭包持有运行时实例；custom.data 会被思源保存布局并 JSON 序列化，
     // 因此不能把 Plugin / ExamApp 放进其中（Plugin.app.plugins 会形成循环引用）。
     const getPlugin = () => this;
-    const tabs: Array<[string, any]> = [
+    type ExamTabProps = { plugin: LvExamPlugin; examApp: ExamApp | null };
+    type ExamTabComponent = Component<ExamTabProps>;
+    const tabs: Array<[string, ExamTabComponent]> = [
       [TAB_PRACTICE, PracticeTab],
       [TAB_MOCK, MockTab],
       [TAB_REPORT, ReportTab],
@@ -381,12 +419,12 @@ export default class LvExamPlugin extends Plugin {
           const el = document.createElement("div");
           el.classList.add("fn__flex-1", "lv-exam-tab");
           const plugin = getPlugin();
+          this.element.appendChild(el);
           const instance = mount(component, {
             target: el,
             props: { plugin, examApp: plugin.examApp },
           });
           plugin.tabApps[type] = instance;
-          this.element.appendChild(el);
         },
         destroy() {
           const plugin = getPlugin();
@@ -440,12 +478,11 @@ export default class LvExamPlugin extends Plugin {
       .slice(0, 30)
       .map(
         (w) =>
-          `<div class="lv-dock-row" data-qid="${escapeHtml(w.qid)}">
-                <span class="num">${escapeHtml(w.qid)}</span>
-                <span>${this.i18n["dock.wrongTag"]} ${w.wrongCount}</span>
-                <button class="lv-dock-act" data-act="mastered" data-qid="${escapeHtml(w.qid)}" title="${escapeHtml(this.i18n["dock.actMastered"])}">✓</button>
-                <button class="lv-dock-act" data-act="removed" data-qid="${escapeHtml(w.qid)}" title="${escapeHtml(this.i18n["dock.actRemoved"])}">✕</button>
-                <button class="lv-dock-act" data-act="snooze" data-qid="${escapeHtml(w.qid)}" title="${escapeHtml(this.i18n["dock.actSnooze"])}">⏸</button>
+          `<div class="lv-dock-row" role="group" aria-label="${escapeHtml(w.qid)}">
+                <button type="button" class="lv-dock-open num" data-qid="${escapeHtml(w.qid)}" title="${escapeHtml(w.qid)}" aria-label="${escapeHtml(this.i18n["blockMenu.addToPractice"])}：${escapeHtml(w.qid)}"><span>${escapeHtml(w.qid)}</span><span class="lv-dock-wrong-count">${this.i18n["dock.wrongTag"]} ${w.wrongCount}</span></button>
+                <button class="lv-dock-act" data-act="mastered" data-qid="${escapeHtml(w.qid)}" title="${escapeHtml(this.i18n["dock.actMastered"])}" aria-label="${escapeHtml(this.i18n["dock.actMastered"])}">✓</button>
+                <button class="lv-dock-act" data-act="removed" data-qid="${escapeHtml(w.qid)}" title="${escapeHtml(this.i18n["dock.actRemoved"])}" aria-label="${escapeHtml(this.i18n["dock.actRemoved"])}">✕</button>
+                <button class="lv-dock-act" data-act="snooze" data-qid="${escapeHtml(w.qid)}" title="${escapeHtml(this.i18n["dock.actSnooze"])}" aria-label="${escapeHtml(this.i18n["dock.actSnooze"])}">⏸</button>
             </div>`,
       )
       .join("");
@@ -465,16 +502,36 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
       btn.addEventListener("click", async (ev) => {
         ev.stopPropagation();
         const qid = btn.dataset.qid!;
-        if (btn.dataset.act === "snooze") await this.examApp?.snoozeWrong(qid, 7);
-        else await this.examApp?.setWrongStatus(qid, btn.dataset.act as "mastered" | "removed");
-        this.refreshDock();
-        this.refreshStatusBar();
+        const rowButtons = [...(btn.closest(".lv-dock-row")?.querySelectorAll<HTMLButtonElement>("button") ?? [])];
+        const row = btn.closest<HTMLElement>(".lv-dock-row");
+        row?.querySelector(".lv-dock-error")?.remove();
+        rowButtons.forEach((b) => { b.disabled = true; });
+        btn.setAttribute("aria-busy", "true");
+        try {
+          if (btn.dataset.act === "snooze") await this.examApp?.snoozeWrong(qid, 7);
+          else await this.examApp?.setWrongStatus(qid, btn.dataset.act as "mastered" | "removed");
+          this.refreshDock();
+          this.refreshStatusBar();
+        } catch (e) {
+          const message = String(e instanceof Error ? e.message : e);
+          const error = document.createElement("div");
+          error.className = "lv-dock-error";
+          error.setAttribute("role", "alert");
+          error.textContent = (this.i18n["dock.actionFailed"] ?? "处置失败：{message}。再次点击原操作按钮可重试。")
+            .replace("{message}", message);
+          row?.append(error);
+          showMessage(message, 4800, "error");
+        } finally {
+          rowButtons.forEach((b) => { b.disabled = false; });
+          btn.removeAttribute("aria-busy");
+        }
       });
     });
-    // 行点击 → 直达该题练习（经 pendingPractice 通道移交练习台）
-    dockEl.querySelectorAll<HTMLDivElement>(".lv-dock-row").forEach((row) => {
-      row.addEventListener("click", () => {
-        const qid = row.dataset.qid!;
+    // 明确的主按钮可用鼠标、触摸和键盘打开本题；处置按钮是同组内的独立操作。
+    dockEl.querySelectorAll<HTMLButtonElement>(".lv-dock-open").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const qid = btn.dataset.qid;
+        if (!qid) return;
         (this as any).pendingQuestionId = qid;
         (this as any).pendingPracticeSignal = true;
         emitExamEvent("open-question", { qid });
@@ -513,8 +570,12 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
           if (key === "aiKey") continue; // AI Key 兜底副本不在恢复范围（防误清密钥；密钥库主副本本就不在此）
           this.settingUtils.set(key, def);
         }
-        await this.settingUtils.save();
-        showMessage(this.i18n["setting.resetDone"], 4000, "info");
+        try {
+          await this.settingUtils.save();
+          showMessage(this.i18n["setting.resetDone"], 4000, "info");
+        } catch (e) {
+          showMessage((this.i18n["setting.saveFailed"] ?? "设置保存失败；输入已保留，重新打开插件设置后可再次保存。") + " " + String(e instanceof Error ? e.message : e), 6000, "error");
+        }
       },
     });
     this.addCommand({
@@ -544,15 +605,18 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
     }
   }
 
-  private openTabByType(type: string, icon: string, title: string) {
+  private openTabByType(type: string, icon: string, title: string): boolean {
+    // 早于应用就绪的点击延后执行，避免把 null app 固定传入永久报错的页签。
+    if (this.appInitializing) {
+      this.queuedTab = { type, icon, title };
+      showMessage(this.i18n["state.initializing"] ?? "正在初始化小驴考试，完成后自动打开…", 2400, "info");
+      return false;
+    }
     // 单例聚焦（26.2）：同类型 Tab 已开则切换过去，避免 tabApps 覆盖引用
     const existing = (this.getOpenedTab()[type] ?? [])[0] as any;
-    if (existing) {
-      const tab = existing.parent;
-      if (tab?.switchTab) tab.switchTab(existing.headElement);
-      else existing.headElement?.click?.();
+    if (existing && focusExamTab(existing)) {
       rememberOpenTab(type);
-      return;
+      return true;
     }
     rememberOpenTab(type);
     openTab({
@@ -560,6 +624,7 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
       // 宿主以 plugin.name + type 为键查找页签工厂；descriptor 只含可持久化字段。
       custom: createExamTabDescriptor(this.name, type, icon, title),
     });
+    return false;
   }
 
   private onBlockIconClick({ detail }: any) {
@@ -612,6 +677,46 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
     const blockId = el?.getAttribute?.("data-node-id") || el?.dataset?.nodeId || "";
     if (blockId && this.examApp) {
       const exam = this.examApp;
+      const blockTitle = (el?.getAttribute?.("aria-label") || el?.getAttribute?.("data-type") || "当前块").trim();
+      // RecallGen-inspired entry: use the selected ordinary block as AI material.
+      // Only keep the stable ID in this callback; DOM/plugin objects must never
+      // cross the tab request or be persisted by the host.
+      detail.menu.addItem({
+        iconHTML: "<svg><use xlink:href='#iconExam'></use></svg>",
+        label: this.i18n["blockMenu.generateFromBlock"],
+        click: async () => {
+          if (!exam.kernelOnline) {
+            showMessage(this.i18n["state.offlineHint"], 3600, "error");
+            return;
+          }
+          const bank = exam.listBanks()[0];
+          if (!bank) {
+            showMessage(this.i18n["guard.needBankFirst"], 3600, "error");
+            return;
+          }
+          try {
+            const kramdown = await exam.deps.client.getBlockKramdown(blockId);
+            const source = combineBlockSources([kramdown]);
+            if (!source.text) {
+              showMessage(this.i18n["blockMenu.blockSourceEmpty"], 3600, "info");
+              return;
+            }
+            openPracticeView(this, "ai", {
+              bankId: bank.id,
+              sourceText: source.text,
+              sourceTitle: blockTitle,
+              sourceKind: "block",
+              sourceTruncated: source.truncated,
+            });
+            if (source.truncated) {
+              showMessage(this.i18n["blockMenu.blockSourceTruncated"].replace("{n}", String(source.text.length)), 4200, "info");
+            }
+          } catch (e) {
+            const message = String(e instanceof Error ? e.message : e);
+            showMessage(this.i18n["blockMenu.blockSourceFailed"].replace("{message}", message), 4800, "error");
+          }
+        },
+      });
       detail.menu.addItem({
         iconHTML: "<svg><use xlink:href='#iconExam'></use></svg>",
         label: this.i18n["blockMenu.addToPractice"],
@@ -747,14 +852,11 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
     });
   }
 
-  openPractice() {
-    this.openTabByType(TAB_PRACTICE, "iconExam", this.i18n["tab.practice"]);
+  openPractice(): boolean {
+    return this.openTabByType(TAB_PRACTICE, "iconExam", this.i18n["tab.practice"]);
   }
   private openWrongbook() {
-    // 总线处理已打开的练习台；待处理视图补足首次打开时尚无订阅者的情况。
-    (this as any).pendingInitialView = "wrongbook";
-    emitExamEvent("open-view", { view: "wrongbook" });
-    this.openPractice();
+    openPracticeView(this, "wrongbook");
   }
   openMock() {
     this.openTabByType(TAB_MOCK, "iconMock", this.i18n["tab.mock"]);

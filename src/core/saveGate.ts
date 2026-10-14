@@ -27,6 +27,18 @@ export interface SaveSummary {
 export class SaveGate {
   private states = new Map<string, SaveRecord>();
   private inflight = new Map<string, Promise<unknown>>();
+  /**
+   * 最新快照队列：`run` 为兼容旧调用保留“同 key 复用当前 Promise”的语义，
+   * 需要保存可变对象快照时使用 `runLatest`。在前一个写入完成前到达的调用
+   * 会只保留最后一个 fn，并在当前写入结束后执行一次，避免旧快照覆盖新快照。
+   */
+  private latest = new Map<
+    string,
+    {
+      fn: () => Promise<unknown>;
+      waiters: { resolve: (value: unknown) => void; reject: (reason: unknown) => void }[];
+    }
+  >();
 
   constructor(
     private readonly now: () => number = Date.now,
@@ -61,9 +73,70 @@ export class SaveGate {
     const going = this.inflight.get(key);
     if (going) return going as Promise<T>;
     this.mark(key, "pending");
-    const p = this.doRun(key, fn).finally(() => this.inflight.delete(key));
+    const p = this.doRun(key, fn).finally(() => {
+      // A runLatest caller may be waiting for this legacy operation to finish;
+      // keep the identity visible until its drain callback starts the latest
+      // snapshot. With no queued snapshot, release the key as before.
+      if (!this.latest.has(key)) this.inflight.delete(key);
+    });
     this.inflight.set(key, p);
     return p;
+  }
+
+  /**
+   * 保存可变对象的最新快照。
+   *
+   * 与 `run` 的兼容语义不同：在途期间不会丢掉后续调用，而是合并为一次
+   * “当前写入完成后保存最后一个快照”的操作。多个被合并调用的 Promise
+   * 都会收到最终写入的结果（或最终写入的异常）。底层写入仍然不可取消，
+   * 因而超时仍按 `unknown` 处理；后续快照会在其完成后继续写入。
+   */
+  runLatest<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const going = this.inflight.get(key);
+    if (!going) return this.startLatest(key, fn);
+
+    return new Promise<T>((resolve, reject) => {
+      const queued = this.latest.get(key);
+      const waiter = { resolve: resolve as (value: unknown) => void, reject };
+      if (queued) {
+        queued.fn = fn;
+        queued.waiters.push(waiter);
+      } else {
+        this.latest.set(key, { fn, waiters: [waiter] });
+        // The in-flight operation may have been started through the legacy
+        // `run` API, so it does not have `startLatest`'s drain callback.
+        void going.then(() => this.finishLatest(key, going), () => this.finishLatest(key, going));
+      }
+    });
+  }
+
+  private startLatest<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    this.mark(key, "pending");
+    const p = this.doRun(key, fn);
+    this.inflight.set(key, p);
+    // Drain the latest queued snapshot after this attempt settles. Do not await
+    // here: callers of the current attempt must observe its own result first.
+    void p.then(() => this.finishLatest(key, p), () => this.finishLatest(key, p));
+    return p;
+  }
+
+  private finishLatest(key: string, attempt: Promise<unknown>) {
+    // A legacy-run drain callback can run after a latest-run callback already
+    // advanced the queue; it must never drain/delete the newer attempt.
+    if (this.inflight.get(key) !== attempt) return;
+    // The current attempt remains registered until this callback drains the
+    // optional latest snapshot. This keeps an unexpected callback harmless.
+    const queued = this.latest.get(key);
+    if (!queued) {
+      this.inflight.delete(key);
+      return;
+    }
+    this.latest.delete(key);
+    const next = this.startLatest(key, queued.fn);
+    void next.then(
+      (nextValue) => queued.waiters.forEach(({ resolve }) => resolve(nextValue)),
+      (nextError) => queued.waiters.forEach(({ reject }) => reject(nextError)),
+    );
   }
 
   private async doRun<T>(key: string, fn: () => Promise<T>): Promise<T> {
@@ -102,7 +175,6 @@ export class SaveGate {
   }
 
   private mark(key: string, state: SaveState, error?: string) {
-    const prev = this.states.get(key);
-    this.states.set(key, { key, state, at: this.now(), error: error ?? prev?.error });
+    this.states.set(key, { key, state, at: this.now(), error: state === "failed" ? error : undefined });
   }
 }

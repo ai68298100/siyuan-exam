@@ -2,6 +2,8 @@
 
 # 🐴 Lv Exam (Beta) (小驴考试（内测版）)
 
+> **Beta notice:** Features and UI are still evolving. Try the sample bank or a small bank first. Join QQ group **871707735** to report bugs and suggest improvements.
+
 **An AI-assisted, local-first exam preparation workspace for SiYuan** — import · practice · mock exams · wrongbook · FSRS flashcards · AI
 
 > **Your materials → independent answers → next actions → retesting and personal notes**
@@ -9,7 +11,7 @@
 
 [![Release](https://img.shields.io/github/v/release/ai68298100/siyuan-exam?logo=github)](https://github.com/ai68298100/siyuan-exam/releases)
 [![CI](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml/badge.svg)](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml)
-[![Tests](https://img.shields.io/badge/tests-586%20passed-brightgreen)](#-development)
+[![Tests](https://img.shields.io/badge/tests-655%20passed-brightgreen)](#-development)
 [![SiYuan](https://img.shields.io/badge/SiYuan-%3E%3D%203.8.0-blue)](https://github.com/siyuan-note/siyuan)
 [![License](https://img.shields.io/badge/license-MIT-green)](#-license)
 
@@ -44,6 +46,31 @@
 
 ---
 
+## Latest release: v0.9.7 (2026-10-14)
+
+This release consolidates the R54 visual language into shared UI tokens and adds a safe ordinary-block entry for AI question generation, while keeping the full create → import → practice → mock → review path observable.
+
+- **Added:** “Generate questions from this content” in the ordinary block menu; it reads complete kramdown and opens the existing AI review flow. The 12-question original sample bank remains available for demonstrations.
+- **Improved:** Color, spacing, type, radius, shadow, motion and common control variants now consume shared `lv-*` tokens; import, AI, notes, mock exams and settings retain explicit busy/success/error/empty feedback.
+- **Fixed:** Empty, offline, failed and oversized block material now has readable guidance and retry paths; runtime plugin objects never enter serializable tab data.
+
+Style snapshot (`pnpm metrics:style`): raw `px` literals fell from about 1,318 to 1,028; shared `lv-*` token kinds grew from about 88 to 124.
+
+## 小驴 series and feedback
+
+QQ group **871707735** is open for bug reports and feature requests.
+
+| Plugin | One-line description | Repository |
+|---|---|---|
+| 小驴雷切 | Navigation and work-context hub for SiYuan. | [GitHub](https://github.com/ai68298100/siyuan-speed-switch) |
+| 小驴打卡 | Local-first habits and goals tracker. | [GitHub](https://github.com/ai68298100/siyuan-checkin) |
+| 小驴人脉 | Contacts, relationships and important dates. | [GitHub](https://github.com/ai68298100/siyuan-contacts) |
+| 小驴拾遗 | Clip, sort and revisit saved material. | [GitHub](https://github.com/ai68298100/siyuan-glean) |
+| 小驴考试（内测版） | Local-first question-bank practice workspace. | [GitHub](https://github.com/ai68298100/siyuan-exam) |
+| 小驴管家（内测版） | Home and life records with reminders. | [GitHub](https://github.com/ai68298100/siyuan-home) |
+| 小驴闪卡（内测版） | FSRS-based flashcard learning. | [GitHub](https://github.com/ai68298100/siyuan-lv-cards) |
+| 小驴常用（内测版） | Save, search and reuse common snippets. | [GitHub](https://github.com/ai68298100/xiaolv-common) |
+
 ## ✨ Why Lv Exam (Beta)
 
 | Pain point | Lv Exam (Beta)'s answer |
@@ -53,7 +80,7 @@
 | AI explanations behind a paywall | **Bring your own AI**: generation, per-option explanations, Socratic follow-ups — via SiYuan's built-in AI or your own OpenAI-compatible endpoint, with explicit data-flow consent |
 | Half-baked mock exams | **CBT engine**: blueprint assembly, section timing, answer-sheet flags, indefinite-question partial credit, answer lockout, post-exam scoring |
 
-## 🆕 What's new in v0.9.6
+## 🆕 What's new in v0.9.7
 
 This release improves the first-run path and closes the handoff loop between Practice, Mock Exam, and Reports.
 
@@ -61,7 +88,7 @@ This release improves the first-run path and closes the handoff loop between Pra
 - **Cross-module handoff:** weak-topic drills, action redo, and mock wrong-answer review carry the target bank and can hand an active session to an already open Practice tab.
 - **Feedback and navigation:** reports refresh after new results, mock saving and recovery expose errors and busy states, and the command palette respects the visible tab.
 
-## 📦 Feature overview (v0.9.6; journey checks ongoing)
+## 📦 Feature overview (v0.9.7; journey checks ongoing)
 
 The capabilities below have source implementations and automated coverage where stated. "Journey checks ongoing" means per-screen manual walkthroughs are still in progress — see the [release checklist](docs/23-发版检查清单.md) for known unverified items.
 
@@ -103,6 +130,10 @@ The capabilities below have source implementations and automated coverage where 
 
 **30-second tour**: create a bank (= a notebook) → download the official Excel template and fill a few questions → import → hit "Quick drill". Wrong answers flow into the wrongbook automatically; "convert to cards" hands them to FSRS. Before using important data, run the host smoke checklist against your target SiYuan version; offline CI does not verify real file pickers, saves, reload recovery or Android WebView behavior.
 
+**No questions yet?** Click **Create sample bank (12 questions)** in Practice, or **Sample bank** under Content & tools if you already have a bank. Original samples cover single choice, multiple choice, true/false, text/numeric/multi-blank fill-ins and short answers, with explanations. No AI setup is needed. Try a quick drill, deliberately miss a question, then check Wrong Answers and Reports; use the default mock blueprint for a demo exam. Short answers need comparison with the reference answer or self-rating in recitation mode.
+
+Samples are written to a separate SiYuan notebook. Repeated clicks open the existing bank and do not restore edited or deleted questions. Deleting samples keeps attempt records; demo attempts are included in reports.
+
 ## 🔒 Data & privacy
 
 - **Tools and content are separate**: the plugin provides import, practice and review tools, not Fenbi, Offcn or Zhonghe question banks. Users upload their own content. Material they are permitted to retain locally may live in SiYuan; restricted online sources should retain only links, personal notes and learning evidence. Free access or purchase does not imply permission to copy or redistribute. Access and rights governance remain research candidates; see [research/15](research/15-考试软件竞品与用户题源接入调研.md).
@@ -124,7 +155,7 @@ The capabilities below have source implementations and automated coverage where 
 | [docs/19 Consolidated plan](docs/19-待办融合与分阶段执行规划.md) · [docs/20 Full mapping](docs/20-全量待办归并索引.md) | Merge decisions, dependency corrections, S0–S4 stages, 8 proposed slices and unique ownership for all 620 IDs |
 | [docs/01 PRD](docs/01-功能全景PRD.md) · [docs/02 data model](docs/02-数据模型设计.md) · [docs/03 architecture](docs/03-技术架构.md) | Product / data / architecture (03 includes the live-verified kernel API table) — in Chinese |
 | [docs/04 roadmap](docs/04-版本路线图.md) · [CHANGELOG](CHANGELOG.md) | Version plan and changelog |
-| [docs/11 UI spec](docs/11-UI原型与交互规范.md) · [design/prototype](design/prototype/index.html) · [DESIGN-SPEC v6](design/DESIGN-SPEC.md) | 17-scene v6 prototype — today dashboard, wrong book, ⌘K palette (open in a browser) |
+| [docs/11 UI spec](docs/11-UI原型与交互规范.md) · [R54 prototype](design/prototype-r54/index.html) · [delivery](docs/DELIVERY.md) · [component list](docs/UI-COMPONENTS.md) | Current UI source of truth, state contract, responsive behavior and component parameters (the older `design/prototype` is historical) |
 | [docs/17 smoke checklist](docs/17-真机冒烟清单.md) | 40-step acceptance list (A–E for v0.5.x, +F for v0.6-dev); automatable steps covered by `pnpm smoke` |
 | [docs/18 AI agent and prompt specification](docs/18-AI智能体与提示词模板规范.md) | 13 task template bodies, 19 task entries, exam/subject/media overlays and permission/evidence contracts; runtime prompts and agent capabilities have not been updated |
 | [docs/adr](docs/adr) | 11 architecture decision records |

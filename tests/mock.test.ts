@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { assemble, blueprintTotals, MockSession, type Blueprint } from "../src/core/mock";
+import { assemble, blueprintTotals, defaultMockSections, validateBlueprint, MockSession, type Blueprint } from "../src/core/mock";
 import { makeQuestion } from "../src/core/blockTemplate";
 import type { Question } from "../src/core/types";
 
@@ -39,6 +39,35 @@ const bp: Blueprint = {
 };
 
 describe("组卷", () => {
+  it("默认模块名称与考点配额一致，不会把别的考点题抽入本段", () => {
+    const questions = [...bank, q("short", "short", "mock", "言语"), q("material", "material", "mock", "数量")];
+    const sections = defaultMockSections(questions);
+    const result = assemble({ ...bp, sections }, questions, () => 0.99);
+    expect(result.paper).toHaveLength(bank.length);
+    expect(result.paper.every((question) => !["short", "material"].includes(question.type))).toBe(true);
+    for (const question of result.paper) expect(result.sectionOf.get(question.id)).toBe(question.kp!.split("/")[0]);
+    expect(result.shortages).toEqual([]);
+  });
+
+  it("混有未分类题时默认按全量抽题，不把全部当成考点限制", () => {
+    const questions = [q("classified", "single", "mock", "言语"), q("unclassified", "judge", "mock", "")];
+    const sections = defaultMockSections(questions);
+    expect(sections).toHaveLength(1);
+    expect(assemble({ ...bp, sections }, questions).paper).toHaveLength(2);
+    expect(defaultMockSections([q("only-short", "short", "mock", "简答")])).toEqual([]);
+  });
+
+  it("空白/非数值配置不能让模考带着无效时长或分数开始", () => {
+    const invalid: Blueprint = { ...bp, durationS: NaN, passLine: NaN, sections: [
+      { name: "小卷", count: -1, scoreEach: NaN, source: "mixed", types: [] },
+    ] };
+    const issues = validateBlueprint(invalid).join("；");
+    expect(issues).toContain("题数必须为非负整数");
+    expect(issues).toContain("每题分值必须为有效数字");
+    expect(issues).toContain("总时长");
+    expect(issues).toContain("及格线");
+  });
+
   it("按蓝图拼卷：各段题数/分值/来源；判断段短缺显式报告", () => {
     const r = assemble(bp, bank, () => 0);
     expect(r.paper).toHaveLength(6);
@@ -139,6 +168,48 @@ describe("模考会话", () => {
     expect(yan.short).toBe(false);
     expect(yan.required).toBe(3);
     expect(score.full).toBeCloseTo(5.4);
+    expect(score.percent).toBe(100);
+    expect(score.pass).toBe(true);
+  });
+
+  it.each([
+    { count: 11, correct: 11, passLine: 60, percent: 100, pass: true },
+    { count: 5, correct: 3, passLine: 60, percent: 60, pass: true },
+    { count: 5, correct: 2, passLine: 60, percent: 40, pass: false },
+    { count: 5, correct: 5, passLine: 100, percent: 100, pass: true },
+    { count: 5, correct: 4, passLine: 100, percent: 80, pass: false },
+    { count: 5, correct: 0, passLine: 0, percent: 0, pass: true },
+  ])("小试卷及格线按百分制判断：$correct/$count，及格线 $passLine", ({ count, correct, passLine, percent, pass }) => {
+    const paper = Array.from({ length: count }, (_, i) => q(`small-${i}`, "single", "mock", "示例"));
+    const smallBp: Blueprint = {
+      ...bp,
+      passLine,
+      sections: [{ name: "示例", count, scoreEach: 1, source: "mixed", types: ["single"] }],
+    };
+    const assembled = assemble(smallBp, paper, () => 0);
+    const s = new MockSession(smallBp, assembled.paper, assembled, 1_000_000);
+    for (const question of assembled.paper.slice(0, correct)) s.setAnswer(question.id, question.answer, 1_001_000);
+    s.submit(1_002_000);
+    expect(s.score()).toMatchObject({ full: count, total: correct, percent, pass });
+  });
+
+  it("显示为 60% 但实际未达 60% 时不能因四舍五入判通过", () => {
+    const paper = [q("weighted-1", "single", "mock", "示例"), q("weighted-2", "single", "mock", "示例")];
+    const weightedBp: Blueprint = { ...bp, sections: [{ name: "示例", count: 2, scoreEach: 1, source: "mixed", types: ["single"] }] };
+    const s = new MockSession(weightedBp, paper, {
+      sectionOf: new Map(paper.map((question) => [question.id, "示例"])),
+      scoreOf: new Map([[paper[0].id, 1499], [paper[1].id, 1001]]),
+    }, 1_000_000);
+    s.setAnswer(paper[0].id, paper[0].answer, 1_001_000);
+    s.submit(1_002_000);
+    expect(s.score()).toMatchObject({ full: 2500, total: 1499, percent: 60, pass: false });
+  });
+
+  it("实际满分为 0 的试卷不产生及格结果", () => {
+    const zeroBp: Blueprint = { ...bp, passLine: 0, sections: [] };
+    const s = new MockSession(zeroBp, [], { sectionOf: new Map(), scoreOf: new Map() }, 1_000_000);
+    s.submit(1_001_000);
+    expect(s.score()).toMatchObject({ full: 0, total: 0, percent: 0, pass: false });
   });
 
   it("自动交卷边界", () => {

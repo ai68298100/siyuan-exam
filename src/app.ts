@@ -2,11 +2,12 @@
 // ExamApp：应用组装层（控制器）—— UI 与测试共用的唯一入口
 // 依赖全部注入（KernelApiClient / StorageAdapter），headless 可驱动
 // ============================================================
-import { KernelApiClient } from "./kernel/client";
+import { KernelApiClient, KernelError } from "./kernel/client";
 import type { StorageAdapter } from "./core/attemptLog";
 import { AttemptLog } from "./core/attemptLog";
 import type { AttemptEvent, Question, ReplayResult, WrongItem, SessionState } from "./core/types";
 import { replay, activeWrongItems } from "./core/replayer";
+import { reportDateKey, reportWindowStart } from "./core/reportWindow";
 import { PracticeSession, pickRandom, groupAdjacent } from "./core/session";
 import { randomSeedId, seededPickN } from "./core/random";
 import { inferAnswerSpec } from "./core/structuredAnswer";
@@ -16,6 +17,7 @@ import { deckNameForBank, selfRatingToRiffRating, pickSameKp, cramQueue, dailySe
 import { SaveGate } from "./core/saveGate";
 import { normalizeAnswer, questionHash } from "./core/answer";
 import { questionToMarkdown } from "./core/blockTemplate";
+import { SAMPLE_BANK_NAME, SAMPLE_BANK_INTRO, sampleQuestions } from "./core/sampleBank";
 import { BATCH_FIELD_ATTR, type BatchField } from "./core/batchEdit";
 import { auditAttemptEvents, type DataAuditReport } from "./core/dataAudit";
 import { emitExamEvent } from "./core/bus";
@@ -105,6 +107,12 @@ export interface BankInfo {
   id: string;
   name: string;
   createdAt: number;
+  /** 显式创建的演示库；pending 允许写入失败后继续，ready 时只打开已有题库。 */
+  sampleState?: "pending" | "ready";
+  /** 写入前持久化目标文档和题目身份，重试不依赖异步 SQL 索引。 */
+  sampleHomeDocId?: string;
+  sampleDocId?: string;
+  sampleQuestionIds?: Record<string, string>;
 }
 
 export interface MockRecord {
@@ -180,8 +188,10 @@ export interface ImportCommitResult {
   written: number;
   docs: string[];
   readback: { confirmed: string[]; missing: string[]; verified: boolean };
-  /** 46-03：用户取消 → 已写文档保留，未写部分不计入 missing（如实区分"未处理"与"写失败"） */
+  /** 用户取消时保留已写文档；missing 含所有尚未确认的题，便于安全重试。 */
   cancelled?: boolean;
+  /** 尚未进入写入步骤的题目；与已提交但未读回的题目区分。 */
+  unprocessed?: string[];
 }
 
 export class ExamApp {
@@ -190,6 +200,7 @@ export class ExamApp {
   readonly saves = new SaveGate();
   private replayCache: ReplayResult | null = null;
   private banks: BankInfo[] = [];
+  private sampleBankCreation: Promise<BankInfo> | null = null;
   private materialsRegistry: MaterialRegistry = EMPTY_REGISTRY;
   private materialsVersionTooNew = false;
   private materialNoteStore: MaterialNoteStore = EMPTY_NOTE_STORE;
@@ -199,14 +210,83 @@ export class ExamApp {
   private syllabusTooNew = false;
   private activeSession: PracticeSession | null = null;
   private mockRunSaveTail: Promise<void> = Promise.resolve();
+  /** 本地存储按键串行化：读改写操作不能互相覆盖（双击/多窗口同步时保留最后一次完整快照）。 */
+  private readonly storageWriteTails = new Map<string, Promise<void>>();
+  /** 读取失败与“键不存在”必须区分；出现读取错误时阻止后续写入覆盖未知的磁盘数据。 */
+  readonly storageReadErrors = new Map<string, string>();
   kernelOnline = false;
   probeMessage = "";
+  /** 最近一次内核故障；保留分类让 UI 能区分离线、授权、权限和校验错误。 */
+  lastKernelError: KernelError | null = null;
+
+  get storageReadonly(): boolean {
+    return this.storageReadErrors.size > 0;
+  }
+
+  /** UI-only auxiliary data still goes through the same read/write gate as
+   * core stores. This keeps drafts, queues and preferences from racing or
+   * overwriting an unreadable snapshot. */
+  async loadAux<T>(key: string): Promise<T | undefined> {
+    try {
+      const value = (await this.deps.storage.load(key)) as T | undefined;
+      this.storageReadErrors.delete(key);
+      return value;
+    } catch (error) {
+      this.noteStorageReadError(key, error);
+      throw error;
+    }
+  }
+
+  async saveAux<T>(key: string, value: T | null): Promise<void> {
+    this.assertStorageWritable();
+    await this.queueStorageWrite(key, () => this.saves.runLatest(key, () => this.deps.storage.save(key, value)));
+  }
+
+  private noteStorageReadError(key: string, error: unknown) {
+    this.storageReadErrors.set(key, error instanceof Error ? error.message : String(error));
+  }
+
+  private assertStorageWritable() {
+    if (this.storageReadonly) throw new Error("插件数据读取失败，已暂停写入以避免覆盖原有数据；请重载思源后重试。");
+  }
+
+  /** 将同一键的读改写操作排队；失败不会阻塞后续重试，也不会让旧快照覆盖新快照。 */
+  private queueStorageWrite(key: string, fn: () => Promise<void>): Promise<void> {
+    const prev = this.storageWriteTails.get(key) ?? Promise.resolve();
+    const next = prev.catch(() => undefined).then(fn);
+    this.storageWriteTails.set(key, next);
+    void next.finally(() => {
+      if (this.storageWriteTails.get(key) === next) this.storageWriteTails.delete(key);
+    });
+    return next;
+  }
 
   /** 运行时连接标记（传输层 retryable 失败/恢复时回调；启动初值由探针设定） */
   setKernelOnline(ok: boolean) {
     if (this.kernelOnline === ok) return;
     this.kernelOnline = ok;
+    if (ok) this.lastKernelError = null;
     emitExamEvent("kernel-connection", { online: ok });
+  }
+
+  setKernelError(error: KernelError) {
+    this.lastKernelError = error;
+    // Fatal endpoint responses (auth/permission/validation/not-found) prove
+    // the host is reachable; only retryable transport failures are offline.
+    if (error.kind !== "fatal") this.kernelOnline = false;
+    emitExamEvent("kernel-connection", { online: this.kernelOnline, category: error.category, code: error.code, message: error.message });
+  }
+
+  /** 面向用户的宿主恢复指引；插件不拥有思源 token，因此不伪造登录跳转。 */
+  kernelRecoveryHint(): string {
+    switch (this.lastKernelError?.category) {
+      case "auth": return "思源当前会话未授权，请先在思源中完成登录/解锁后重试。";
+      case "permission": return "当前思源会话没有执行此操作的权限，请切换到有权限的工作区或检查只读状态。";
+      case "not-found": return "思源未找到目标接口或数据，可能是版本不兼容；请重载插件后重试。";
+      case "validation": return "提交的数据不符合思源接口要求，请检查输入后重试。";
+      case "network": return "思源内核暂时不可达，请确认思源仍在运行后重试。";
+      default: return "思源内核暂时不可用，请重试；若持续失败请重载插件。";
+    }
   }
 
   constructor(readonly deps: ExamAppDeps) {
@@ -218,6 +298,7 @@ export class ExamApp {
     try {
       const probe = await this.deps.client.probe();
       this.kernelOnline = probe.kernelOk;
+      this.lastKernelError = probe.kernelOk ? null : new KernelError("retryable", "probe", "内核不可达");
       this.probeMessage = probe.kernelOk
         ? `内核 ${probe.version} · md2html ${probe.md2html ? "✓" : "✗"} · SQL ${probe.query ? "✓" : "✗"} · riff ${probe.riff ? "✓" : "✗"}`
         : "内核不可达：将显示离线降级界面";
@@ -227,67 +308,67 @@ export class ExamApp {
     }
     try {
       await this.attempts.load(deviceId);
-    } catch {
-      /* 流水损坏已在 load 内部兜底 */
+    } catch (e) {
+      this.noteStorageReadError("attempts/log", e);
     }
     try {
       await this.loadWrongOverlay();
-    } catch {
-      this.wrongOverlay = new Map();
+    } catch (e) {
+      this.noteStorageReadError("wrongbook/overlays", e);
     }
     try {
       await this.loadWrongReasons();
-    } catch {
-      this.wrongReasons = new Map();
+    } catch (e) {
+      this.noteStorageReadError(WRONG_REASON_KEY, e);
     }
     try {
       await this.loadWrongReflections();
-    } catch {
-      this.wrongReflections = {};
+    } catch (e) {
+      this.noteStorageReadError("wrongbook/reflections", e);
     }
     this.invalidate();
     try {
       const banks = await this.deps.storage.load(BANK_REGISTRY_KEY);
       if (Array.isArray(banks)) this.banks = banks as BankInfo[];
-    } catch {
-      this.banks = [];
+    } catch (e) {
+      this.noteStorageReadError(BANK_REGISTRY_KEY, e);
     }
     // 学习资料注册表（120-01）：损坏/过版本时以空表继续（versionTooNew 标记如实显示，不回写覆盖）
     try {
       const parsed = parseRegistry(await this.deps.storage.load(MATERIALS_KEY));
       this.materialsRegistry = parsed.registry;
       this.materialsVersionTooNew = parsed.versionTooNew;
-    } catch {
-      this.materialsRegistry = EMPTY_REGISTRY;
+    } catch (e) {
+      this.noteStorageReadError(MATERIALS_KEY, e);
     }
     // 资料笔记（121-03/122-03）：同口径容错
     try {
       const parsedNotes = parseNoteStore(await this.deps.storage.load(MATERIAL_NOTES_KEY));
       this.materialNoteStore = parsedNotes.store;
-    } catch {
-      this.materialNoteStore = EMPTY_NOTE_STORE;
+    } catch (e) {
+      this.noteStorageReadError(MATERIAL_NOTES_KEY, e);
     }
     // 题目↔资料关联（120-05 lite）
     try {
       const parsedLinks = parseLinkStore(await this.deps.storage.load(MATERIAL_QREFS_KEY));
       this.materialLinkStore = parsedLinks.store;
-    } catch {
-      this.materialLinkStore = EMPTY_LINK_STORE;
+    } catch (e) {
+      this.noteStorageReadError(MATERIAL_QREFS_KEY, e);
     }
     // AI 错因假设（116-01/U14：与用户复盘分层独立保存）
     try {
       const parsedMis = parseMisdiagnosis(await this.deps.storage.load(MISDIAGNOSIS_KEY));
       this.misdiagnosisStore = parsedMis.store;
-    } catch {
-      this.misdiagnosisStore = EMPTY_MISDIAGNOSIS;
+    } catch (e) {
+      this.noteStorageReadError(MISDIAGNOSIS_KEY, e);
     }
     // 考纲对照（51-01/03 lite）
     try {
       const parsedSyl = parseSyllabusDoc(await this.deps.storage.load(SYLLABUS_KEY));
       this.syllabus = parsedSyl.doc;
       this.syllabusTooNew = parsedSyl.versionTooNew;
-    } catch {
-      this.syllabus = EMPTY_SYLLABUS;
+    } catch (e) {
+      this.noteStorageReadError(SYLLABUS_KEY, e);
     }
   }
 
@@ -296,9 +377,21 @@ export class ExamApp {
     return [...this.banks];
   }
 
+  /** 题库注册表保存：同 key 的后续快照排队，避免旧 banks 覆盖新增/删除结果。 */
+  private saveBankRegistry(): Promise<void> {
+    this.assertStorageWritable();
+    return this.saves.runLatest(BANK_REGISTRY_KEY, () =>
+      this.deps.storage.save(
+        BANK_REGISTRY_KEY,
+        this.banks.map((b) => ({ ...b, sampleQuestionIds: b.sampleQuestionIds ? { ...b.sampleQuestionIds } : undefined })),
+      ),
+    );
+  }
+
   /** 新建题库一键流程（2.2 P0）：笔记本 + 首页 + 章节骨架 + 示例题文档（真实入库，建完即可练）。
    *  骨架失败不阻断建库：逐段 try，返回 info 时尽力而为（部分骨架缺失可后续手动补/重导）。 */
   async createBank(name: string): Promise<BankInfo> {
+    this.assertStorageWritable();
     const clean = name.trim();
     if (!clean) throw new Error("题库名不能为空");
     const notebookId = await this.deps.client.createNotebook(`题库/${clean}`);
@@ -325,23 +418,92 @@ export class ExamApp {
       ];
       if (docId) await this.deps.client.appendQuestions(docId, samples);
     } catch { /* 示例题失败不阻断建库 */ }
-    this.banks.push(info);
-    await this.deps.storage.save(BANK_REGISTRY_KEY, this.banks);
+    const previous = this.banks;
+    this.banks = [...previous, info];
+    try {
+      await this.saveBankRegistry();
+    } catch (e) {
+      this.banks = previous;
+      throw e;
+    }
     return info;
   }
 
-  removeBank(id: string): boolean {
+  /** 用户主动创建示例题库；同一应用的并发点击共享任务，重复打开不补回已删除的示例。 */
+  createSampleBank(): Promise<BankInfo> {
+    if (this.sampleBankCreation) return this.sampleBankCreation;
+    this.sampleBankCreation = this.writeSampleBank().finally(() => { this.sampleBankCreation = null; });
+    return this.sampleBankCreation;
+  }
+
+  private async writeSampleBank(): Promise<BankInfo> {
+    this.assertStorageWritable();
+    if (!this.kernelOnline) throw new Error("思源内核未连接，请恢复连接后再创建示例题库。");
+    let info = this.banks.find((bank) => bank.name === SAMPLE_BANK_NAME && bank.sampleState);
+    if (info?.sampleState === "ready") return info;
+    if (!info) {
+      const notebookId = await this.deps.client.createNotebook(`题库/${SAMPLE_BANK_NAME}`);
+      info = { id: notebookId, name: SAMPLE_BANK_NAME, createdAt: Date.now(), sampleState: "pending" };
+      // 先注册真实笔记本，后续失败可在同一库继续，不会再次新建笔记本。
+      this.banks.push(info);
+    }
+    await this.saveBankRegistry();
+    try {
+      if (!info.sampleHomeDocId) {
+        info.sampleHomeDocId = await this.ensureDoc(info.id, "/首页", SAMPLE_BANK_INTRO);
+        await this.saveBankRegistry();
+      }
+      if (!info.sampleDocId) {
+        info.sampleDocId = await this.ensureDoc(info.id, "/示例题", SAMPLE_BANK_INTRO.replace(/^# .*\n/, "# 示例题\n"));
+        await this.saveBankRegistry();
+      }
+      const docId = info.sampleDocId;
+      if (!docId) throw new Error("未取得示例题文档 ID");
+      const plannedIds = info.sampleQuestionIds ??= {};
+      const planned = sampleQuestions().map((q) => ({ ...q, id: plannedIds[q.hash] ??= q.id }));
+      // 必须在插题前落盘：请求写入成功但回执丢失、或插件重启时仍可沿用同一身份。
+      await this.saveBankRegistry();
+      const kramdown = await this.deps.client.getBlockKramdown(docId);
+      if (!kramdown) throw new Error("未读取到示例题文档原文，请恢复连接后重试");
+      const existingIds = new Set(Array.from(kramdown.matchAll(/\bcustom-exam-id="([^"]+)"/g), ([, id]) => id));
+      const missing = planned.filter((q) => !existingIds.has(q.id));
+      if (missing.length) {
+        const written = await this.deps.client.appendQuestions(docId, missing);
+        const confirmed = new Set(written.filter((item) => item.blockId).map((item) => item.qid));
+        if (missing.some((q) => !confirmed.has(q.id))) throw new Error("未收到全部示例题的写入回执");
+      }
+      info.sampleState = "ready";
+      try {
+        await this.saveBankRegistry();
+      } catch (e) {
+        info.sampleState = "pending";
+        throw e;
+      }
+      return info;
+    } catch (e) {
+      throw Object.assign(new Error(`示例题库已保留，题目写入尚未完成。请点击「示例题库」重试：${e instanceof Error ? e.message : String(e)}`), { cause: e });
+    }
+  }
+
+  async removeBank(id: string): Promise<boolean> {
+    this.assertStorageWritable();
     const before = this.banks.length;
+    const previous = this.banks;
     this.banks = this.banks.filter((b) => b.id !== id);
     if (this.banks.length !== before) {
-      void this.deps.storage.save(BANK_REGISTRY_KEY, this.banks);
+      try {
+        await this.saveBankRegistry();
+      } catch (e) {
+        this.banks = previous;
+        throw e;
+      }
       return true;
     }
     return false;
   }
 
   /** 导入提交：按考点落章节文档（无考点 → "导入/<批次>"），返回写入数与真实读回清单（U08）。
-   *  46-03：onProgress 逐文档回传 (已写, 总数)；isCancelled 在文档间检查，取消时如实返回 partial。
+   *  onProgress 逐文档回传 (已处理, 总数)；isCancelled 在文档间检查，取消时如实返回 partial。
    *  取消不回滚已写文档（batch 可在题库健康面板整批撤销），written 只计真实写出的题。 */
   async commitImport(
     bankId: string,
@@ -349,78 +511,120 @@ export class ExamApp {
     opts?: { onProgress?: (done: number, total: number) => void; isCancelled?: () => boolean },
   ): Promise<ImportCommitResult> {
     if (!report.ok.length) return { written: 0, docs: [], readback: { confirmed: [], missing: [], verified: false } };
-    const expected = report.ok.map((q) => q.id);
-    const baseline = this.kernelOnline
-      ? await this.listQuestions(bankId)
-          .then((qs) => qs.length)
-          .catch(() => 0)
-      : 0;
+    const uniqueQuestions = [...new Map(report.ok.map((q) => [q.id, q])).values()];
+    const expected = uniqueQuestions.map((q) => q.id);
+    const knownIds = new Set<string>();
+    let indexedReadSucceeded = false;
+    if (this.kernelOnline) {
+      try {
+        for (const q of await this.listQuestions(bankId)) knownIds.add(q.id);
+        indexedReadSucceeded = true;
+      } catch { /* 索引读取失败时仍可核对目标题文档原文；不能把失败当作空题库。 */ }
+    }
+    const readDocumentIds = async (docId: string): Promise<string[] | null> => {
+      // 旧客户端兼容；当前思源客户端始终提供原文接口。
+      if (typeof this.deps.client.getBlockKramdown !== "function") return null;
+      const raw = await this.deps.client.getBlockKramdown(docId);
+      if (!raw) throw new Error("未读取到导入文档原文，请恢复连接后重试。");
+      return Array.from(raw.matchAll(/\bcustom-exam-id="([^"]+)"/g), ([, id]) => id);
+    };
     const byDoc = new Map<string, typeof report.ok>();
-    for (const q of report.ok) {
+    for (const q of uniqueQuestions) {
       const doc = q.kp ? `/${q.kp.split("/")[0]}` : `/导入/${report.batch}`;
       if (!byDoc.has(doc)) byDoc.set(doc, []);
       byDoc.get(doc)!.push(q);
     }
-    const total = report.ok.length;
-    let written = 0;
+    const total = expected.length;
+    let processed = 0;
     let cancelled = false;
-    const writtenIds: string[] = [];
+    const processedIds = new Set<string>();
+    const submittedIds = new Set<string>();
+    const writtenIds = new Set<string>();
     const docs: string[] = [];
+    const docIds: string[] = [];
     for (const [doc, qs] of byDoc) {
       if (opts?.isCancelled?.()) {
         cancelled = true;
         break;
       }
       const docId = await this.ensureDoc(bankId, doc);
-      const writtenBlocks = await this.deps.client.appendQuestions(docId, qs);
+      if (!docId) throw new Error("未取得导入文档 ID，请稍后重试。");
+      const existing = await readDocumentIds(docId);
+      if (existing) {
+        for (const id of existing) knownIds.add(id);
+      } else if (!indexedReadSucceeded) {
+        throw new Error("无法核对已导入题目，请恢复连接后重试。");
+      }
+      const pending = qs.filter((q) => !knownIds.has(q.id));
+      for (const q of pending) submittedIds.add(q.id);
+      const writtenBlocks = pending.length ? await this.deps.client.appendQuestions(docId, pending) : [];
       // 54-01 lite：结构化作答规则随导入写入块属性（custom-exam-answer-spec）——往返不丢；失败不影响题目入库
       for (const { qid, blockId } of writtenBlocks) {
-        const spec = qs.find((q) => q.id === qid)?.answerSpec;
+        if (!blockId || !pending.some((q) => q.id === qid)) continue;
+        writtenIds.add(qid);
+        knownIds.add(qid);
+        const spec = pending.find((q) => q.id === qid)?.answerSpec;
         if (!spec) continue;
         try {
           await this.deps.client.setExamAttrs(blockId, { "exam-answer-spec": JSON.stringify(spec) });
         } catch { /* spec 写失败不影响题目入库；读回时该题按旧口径判分（如实降级） */ }
       }
-      written += qs.length;
-      for (const q of qs) writtenIds.push(q.id);
+      processed += qs.length;
+      for (const q of qs) processedIds.add(q.id);
       docs.push(doc);
-      opts?.onProgress?.(written, total);
+      docIds.push(docId);
+      opts?.onProgress?.(processed, total);
     }
     this.invalidate();
     // 3.8.5 实测：IAL 属性入 attributes 表有 1-3s 异步索引滞后，
     // 立即 listQuestions 会查不到刚导入的题 → 轮询到账后再返回
     if (this.kernelOnline) {
       for (let i = 0; i < 6; i++) {
-        await new Promise((r) => setTimeout(r, 700));
+        if (i) await new Promise((r) => setTimeout(r, 700));
         try {
-          const n = await this.listQuestions(bankId);
-          if (n.length >= baseline + written) break;
+          const indexed = new Set((await this.listQuestions(bankId)).map((q) => q.id));
+          indexedReadSucceeded = true;
+          for (const id of indexed) {
+            knownIds.add(id);
+            if (submittedIds.has(id)) writtenIds.add(id);
+          }
+          if ([...processedIds].every((id) => indexed.has(id))) break;
         } catch {
           /* 索引未就绪，继续等 */
         }
       }
     }
     // 读回确认（U08）：完成页只认真实读回的 qid；读回失败如实报告"未核实"，不冒充成功。
-    // 取消时只对已写文档的题做读回（未处理 ≠ 写失败，missing 不掺入未处理部分）
-    const readbackScope = cancelled ? writtenIds : expected;
-    let readback: ImportCommitResult["readback"] = { confirmed: [], missing: [], verified: false };
+    // 写入回执不能代替读回：原文可补足 attributes 的索引延迟。
+    const confirmedIds = new Set<string>();
+    let readback: ImportCommitResult["readback"] = { confirmed: [], missing: expected, verified: false };
     if (this.kernelOnline) {
+      let verified = false;
       try {
-        const qs = await this.listQuestions(bankId);
-        const have = new Set(qs.map((q) => q.id));
-        readback = {
-          confirmed: readbackScope.filter((id) => have.has(id)),
-          missing: readbackScope.filter((id) => !have.has(id)),
-          verified: true,
-        };
-      } catch {
-        readback = { confirmed: [], missing: [], verified: false };
+        for (const q of await this.listQuestions(bankId)) confirmedIds.add(q.id);
+        verified = true;
+      } catch { /* 继续核对目标文档原文。 */ }
+      let documentsVerified = docIds.length > 0;
+      for (const docId of docIds) {
+        try {
+          const ids = await readDocumentIds(docId);
+          if (!ids) documentsVerified = false;
+          else for (const id of ids) confirmedIds.add(id);
+        } catch { documentsVerified = false; }
       }
+      for (const id of confirmedIds) if (submittedIds.has(id)) writtenIds.add(id);
+      readback = {
+        confirmed: expected.filter((id) => confirmedIds.has(id)),
+        missing: expected.filter((id) => !confirmedIds.has(id)),
+        verified: verified || documentsVerified,
+      };
     }
-    return cancelled ? { written, docs, readback, cancelled } : { written, docs, readback };
+    const written = writtenIds.size;
+    const unprocessed = expected.filter((id) => !processedIds.has(id) && !confirmedIds.has(id));
+    return cancelled ? { written, docs, readback, cancelled, unprocessed } : { written, docs, readback };
   }
 
-  private async ensureDoc(bankId: string, hpath: string): Promise<string> {
+  private async ensureDoc(bankId: string, hpath: string, markdown?: string): Promise<string> {
     // createDocWithMd 幂等：已存在返回 ""（思源行为）——先查再建；
     // 建后重查一次：与思源日记自动建档存在竞态时 createDocWithMd 可能返回 ""
     // 而真实文档由宿主创建（真机走查实测出现同 hpath 双文档块，写入静默落空）
@@ -428,7 +632,7 @@ export class ExamApp {
       `SELECT id FROM blocks WHERE box='${bankId.replace(/'/g, "''")}' AND hpath='${hpath.replace(/'/g, "''")}' AND type='d' ORDER BY updated DESC LIMIT 1`,
     );
     if (existing[0]?.id) return String(existing[0].id);
-    const created = await this.deps.client.createDocWithMd(bankId, hpath, `# ${hpath.split("/").pop()}\n\n`);
+    const created = await this.deps.client.createDocWithMd(bankId, hpath, markdown ?? `# ${hpath.split("/").pop()}\n\n`);
     if (created) return created;
     const again = await this.deps.client.sql(
       `SELECT id FROM blocks WHERE box='${bankId.replace(/'/g, "''")}' AND hpath='${hpath.replace(/'/g, "''")}' AND type='d' ORDER BY updated DESC LIMIT 1`,
@@ -497,24 +701,43 @@ export class ExamApp {
       difficulty: draft.difficulty,
       hash: questionHash(draft.stem, draft.options),
     };
-    await this.saves.run(`edit-q/${q.blockId}`, () =>
-      this.deps.client.updateBlock(q.blockId, questionToMarkdown(next)),
-    );
-    const kd = await this.deps.client.getBlockKramdown(q.blockId);
-    if (!kd.includes(`exam-id="${q.id}"`) && !kd.includes(`exam-id='${q.id}'`)) {
-      throw new Error("编辑读回异常：题目身份（exam-id）丢失，请勿关闭窗口并反馈诊断");
+    const oldMarkdown = questionToMarkdown(q);
+    try {
+      await this.saves.run(`edit-q/${q.blockId}`, () =>
+        this.deps.client.updateBlock(q.blockId, questionToMarkdown(next)),
+      );
+      const kd = await this.deps.client.getBlockKramdown(q.blockId);
+      if (!kd.includes(`exam-id="${q.id}"`) && !kd.includes(`exam-id='${q.id}'`)) {
+        throw new Error("编辑读回异常：题目身份（exam-id）丢失");
+      }
+    } catch (error) {
+      // The block update is a real write. If its read-back fails, restore the
+      // previous markdown before surfacing the error so the UI and host cannot
+      // silently diverge.
+      try {
+        await this.saves.run(`edit-q-rollback/${q.blockId}`, () => this.deps.client.updateBlock(q.blockId, oldMarkdown));
+      } catch (rollbackError) {
+        throw Object.assign(new Error(`题目编辑失败且回滚失败，请保留当前页面并重载思源后核对：${String(rollbackError)}`), { cause: error });
+      }
+      throw Object.assign(new Error(`题目编辑失败，已恢复编辑前内容：${error instanceof Error ? error.message : String(error)}`), { cause: error });
     }
     // 54/63-03：规格同步。优先级：作者显式规格 > 答案变更重推断 > 不触碰。
     // （陈旧 spec 会让新答案全判错；填空答案改为不可识别文本 → 清空属性回旧字符串口径）
     let specWasChanged = false;
-    if (q.type === "fill" && draft.answerSpec) {
+    if (q.type === "fill" && draft.answerSpec !== undefined) {
       next.answerSpec = draft.answerSpec;
       specWasChanged = specChanged(q.answerSpec, draft.answerSpec);
       try {
         await this.deps.client.setExamAttrs(q.blockId, {
-          "exam-answer-spec": JSON.stringify(draft.answerSpec),
+          "exam-answer-spec": draft.answerSpec ? JSON.stringify(draft.answerSpec) : "",
         });
-      } catch { /* 属性同步失败不影响题面编辑本身；读回时按块内旧属性如实判分 */ }
+      } catch (error) {
+        // The answer specification changes grading semantics. A successful
+        // block write with a failed attribute write is not a valid commit.
+        try { await this.saves.run(`edit-q-rollback/${q.blockId}`, () => this.deps.client.updateBlock(q.blockId, oldMarkdown)); }
+        catch (rollbackError) { throw Object.assign(new Error(`答案规格写入失败且回滚失败：${String(rollbackError)}`), { cause: error }); }
+        throw Object.assign(new Error(`答案规格写入失败，已恢复编辑前内容：${error instanceof Error ? error.message : String(error)}`), { cause: error });
+      }
     } else if (q.type === "fill" && answer !== q.answer) {
       const spec = inferAnswerSpec("fill", answer);
       specWasChanged = specChanged(q.answerSpec, spec);
@@ -523,16 +746,36 @@ export class ExamApp {
         await this.deps.client.setExamAttrs(q.blockId, {
           "exam-answer-spec": spec ? JSON.stringify(spec) : "",
         });
-      } catch { /* 属性同步失败不影响题面编辑本身；读回时按块内旧属性如实判分 */ }
+      } catch (error) {
+        try { await this.saves.run(`edit-q-rollback/${q.blockId}`, () => this.deps.client.updateBlock(q.blockId, oldMarkdown)); }
+        catch (rollbackError) { throw Object.assign(new Error(`答案规格写入失败且回滚失败：${String(rollbackError)}`), { cause: error }); }
+        throw Object.assign(new Error(`答案规格写入失败，已恢复编辑前内容：${error instanceof Error ? error.message : String(error)}`), { cause: error });
+      }
     }
     // 43-01 lite：修订时间线快照（答案/考点变更才记；每题 FIFO 10 条）
     if (answer !== q.answer || (draft.kp.trim() || undefined) !== q.kp || specWasChanged) {
-      await this.appendRevision(q.id, {
-        ts: this.deps.now?.() ?? Date.now(),
-        answer,
-        kp: draft.kp.trim() || undefined,
-        specChanged: specWasChanged || undefined,
-      });
+      try {
+        await this.appendRevision(q.id, {
+          ts: this.deps.now?.() ?? Date.now(),
+          answer,
+          kp: draft.kp.trim() || undefined,
+          specChanged: specWasChanged || undefined,
+        });
+      } catch (error) {
+        // Revision history is part of the edit receipt. Roll back the block
+        // (and answer spec when applicable) if its durable snapshot fails.
+        try {
+          await this.saves.run(`edit-q-rollback/${q.blockId}`, () => this.deps.client.updateBlock(q.blockId, oldMarkdown));
+          if (q.type === "fill") {
+            await this.deps.client.setExamAttrs(q.blockId, {
+              "exam-answer-spec": q.answerSpec ? JSON.stringify(q.answerSpec) : "",
+            });
+          }
+        } catch (rollbackError) {
+          throw Object.assign(new Error(`修订记录保存失败且题目回滚失败：${String(rollbackError)}`), { cause: error });
+        }
+        throw Object.assign(new Error(`修订记录保存失败，已恢复编辑前内容：${error instanceof Error ? error.message : String(error)}`), { cause: error });
+      }
     }
     return next;
   }
@@ -542,17 +785,25 @@ export class ExamApp {
   /** 修订时间线（43-01 lite）：读缓存 + 惰性加载 */
   async questionRevisions(qid: string): Promise<QuestionRevision[]> {
     if (!this.revisionCache) {
-      this.revisionCache = ((await this.deps.storage.load(REVISIONS_KEY)) as RevisionStore | undefined) ?? {};
+      this.revisionCache = (await this.loadAux<RevisionStore>(REVISIONS_KEY)) ?? {};
     }
     return this.revisionCache[qid] ?? [];
   }
 
   private async appendRevision(qid: string, entry: QuestionRevision): Promise<void> {
-    if (!this.revisionCache) {
-      this.revisionCache = ((await this.deps.storage.load(REVISIONS_KEY)) as RevisionStore | undefined) ?? {};
-    }
-    this.revisionCache = appendRevision(this.revisionCache, qid, entry);
-    await this.deps.storage.save(REVISIONS_KEY, this.revisionCache);
+    await this.queueStorageWrite(REVISIONS_KEY, async () => {
+      if (!this.revisionCache) {
+        this.revisionCache = (await this.loadAux<RevisionStore>(REVISIONS_KEY)) ?? {};
+      }
+      const previous = this.revisionCache;
+      this.revisionCache = appendRevision(this.revisionCache, qid, entry);
+      try {
+        await this.saves.runLatest(REVISIONS_KEY, () => this.deps.storage.save(REVISIONS_KEY, this.revisionCache));
+      } catch (e) {
+        this.revisionCache = previous;
+        throw e;
+      }
+    });
   }
 
   // ---------- 流水与派生 ----------
@@ -585,45 +836,71 @@ export class ExamApp {
 
   /** 手动处置（docs/02 附录 A）：mastered=已掌握 / removed=永久移除；此后更新的错误自动清覆盖 */
   async setWrongStatus(qid: string, status: "mastered" | "removed" | "active"): Promise<void> {
-    const current = this.derived().wrongbook.get(qid);
+    this.assertStorageWritable();
     const key = "wrongbook/overlays";
-    const v = (await this.deps.storage.load(key)) as
-      Record<string, { status: string; at: number; wrongCount: number; until?: number }> | undefined;
-    const map: Record<string, { status: string; at: number; wrongCount: number; until?: number }> = v ?? {};
-    if (status === "active") delete map[qid];
-    else map[qid] = { status, at: Date.now(), wrongCount: current?.wrongCount ?? 0 };
-    await this.deps.storage.save(key, map);
-    this.wrongOverlay = new Map(Object.entries(map));
-    this.invalidate();
+    await this.queueStorageWrite(key, async () => {
+      const current = this.derived().wrongbook.get(qid);
+      const v = await this.loadAux<Record<string, { status: string; at: number; wrongCount: number; until?: number }>>(key);
+      const previous = this.wrongOverlay;
+      const map = { ...(v ?? {}) };
+      if (status === "active") delete map[qid];
+      else map[qid] = { status, at: this.deps.now?.() ?? Date.now(), wrongCount: current?.wrongCount ?? 0 };
+      try {
+        await this.saves.runLatest(key, () => this.deps.storage.save(key, map));
+        this.wrongOverlay = new Map(Object.entries(map));
+        this.invalidate();
+      } catch (e) {
+        this.wrongOverlay = previous;
+        throw e;
+      }
+    });
     emitExamEvent("wrongbook-changed", { qid, status }); // 48-02 lite：生态消费者按需重读
   }
 
   /** 顽固题暂缓（52-06 lite）：days 天内不进错题重练/每日计划，到期自动回册；期间再错立即回册 */
   async snoozeWrong(qid: string, days = 7): Promise<void> {
-    const current = this.derived().wrongbook.get(qid);
+    if (!Number.isFinite(days) || days < 1 || days > 3650) throw new Error("暂缓天数应为 1–3650 的有限数字");
+    this.assertStorageWritable();
     const key = "wrongbook/overlays";
-    const v = (await this.deps.storage.load(key)) as
-      Record<string, { status: string; at: number; wrongCount: number; until?: number }> | undefined;
-    const map: Record<string, { status: string; at: number; wrongCount: number; until?: number }> = v ?? {};
-    const at = this.deps.now?.() ?? Date.now();
-    map[qid] = { status: "snoozed", at, wrongCount: current?.wrongCount ?? 0, until: at + days * 86_400_000 };
-    await this.deps.storage.save(key, map);
-    this.wrongOverlay = new Map(Object.entries(map));
-    this.invalidate();
+    await this.queueStorageWrite(key, async () => {
+      const current = this.derived().wrongbook.get(qid);
+      const v = await this.loadAux<Record<string, { status: string; at: number; wrongCount: number; until?: number }>>(key);
+      const previous = this.wrongOverlay;
+      const map = { ...(v ?? {}) };
+      const at = this.deps.now?.() ?? Date.now();
+      map[qid] = { status: "snoozed", at, wrongCount: current?.wrongCount ?? 0, until: at + days * 86_400_000 };
+      try {
+        await this.saves.runLatest(key, () => this.deps.storage.save(key, map));
+        this.wrongOverlay = new Map(Object.entries(map));
+        this.invalidate();
+      } catch (e) {
+        this.wrongOverlay = previous;
+        throw e;
+      }
+    });
     emitExamEvent("wrongbook-changed", { qid, status: "snoozed" });
   }
 
   // ---------- 错题自诊断（52-04 lite）：个人复盘短模板，与官方解析分离存储 ----------
   /** 保存自诊断复盘（覆盖式：一次一份当前检查点；官方解析与作答流水不受影响） */
   async saveWrongReflection(qid: string, text: string): Promise<void> {
+    this.assertStorageWritable();
     const key = "wrongbook/reflections";
-    const v = (await this.deps.storage.load(key)) as Record<string, { text: string; at: number }> | undefined;
-    const map = v ?? {};
-    const trimmed = text.trim();
-    if (!trimmed) delete map[qid];
-    else map[qid] = { text: trimmed, at: this.deps.now?.() ?? Date.now() };
-    await this.deps.storage.save(key, map);
-    this.wrongReflections = map;
+    await this.queueStorageWrite(key, async () => {
+      const v = await this.loadAux<Record<string, { text: string; at: number }>>(key);
+      const previous = this.wrongReflections;
+      const map = { ...(v ?? {}) };
+      const trimmed = text.trim();
+      if (!trimmed) delete map[qid];
+      else map[qid] = { text: trimmed, at: this.deps.now?.() ?? Date.now() };
+      try {
+        await this.saves.runLatest(key, () => this.deps.storage.save(key, map));
+        this.wrongReflections = map;
+      } catch (e) {
+        this.wrongReflections = previous;
+        throw e;
+      }
+    });
   }
 
   /** 读取自诊断复盘（52-04 验收：复习能回看上次检查点） */
@@ -635,16 +912,14 @@ export class ExamApp {
   private wrongReflections: Record<string, { text: string; at: number }> = {};
 
   private async loadWrongReflections(): Promise<void> {
-    const v = (await this.deps.storage.load("wrongbook/reflections")) as
-      Record<string, { text: string; at: number }> | undefined;
+    const v = await this.loadAux<Record<string, { text: string; at: number }>>("wrongbook/reflections");
     this.wrongReflections = v ?? {};
   }
 
   private wrongOverlay = new Map<string, { status: string; at: number; wrongCount: number; until?: number }>();
 
   private async loadWrongOverlay(): Promise<void> {
-    const v = (await this.deps.storage.load("wrongbook/overlays")) as
-      Record<string, { status: string; at: number; wrongCount: number; until?: number }> | undefined;
+    const v = await this.loadAux<Record<string, { status: string; at: number; wrongCount: number; until?: number }>>("wrongbook/overlays");
     this.wrongOverlay = new Map(Object.entries(v ?? {}));
   }
 
@@ -652,22 +927,29 @@ export class ExamApp {
   private wrongReasons = new Map<string, "careless" | "unknown" | "trap">();
 
   async saveWrongReason(qid: string, reason: "careless" | "unknown" | "trap"): Promise<void> {
-    const map =
-      ((await this.deps.storage.load(WRONG_REASON_KEY)) as
-        Record<string, { reason: string; at: number }> | undefined) ?? {};
-    map[qid] = { reason, at: Date.now() };
-    await this.deps.storage.save(WRONG_REASON_KEY, map);
-    this.wrongReasons.set(qid, reason);
-    this.invalidate();
+    this.assertStorageWritable();
+    await this.queueStorageWrite(WRONG_REASON_KEY, async () => {
+      const map = { ...((await this.loadAux<Record<string, { reason: string; at: number }>>(WRONG_REASON_KEY)) ?? {}) };
+      const previous = this.wrongReasons;
+      map[qid] = { reason, at: this.deps.now?.() ?? Date.now() };
+      try {
+        await this.saves.runLatest(WRONG_REASON_KEY, () => this.deps.storage.save(WRONG_REASON_KEY, map));
+        this.wrongReasons = new Map(Object.entries(map).map(([k, v]) => [k, v.reason as "careless" | "unknown" | "trap"]));
+        this.invalidate();
+      } catch (e) {
+        this.wrongReasons = previous;
+        throw e;
+      }
+    });
   }
 
   async loadWrongReason(qid: string): Promise<string | undefined> {
-    const map = (await this.deps.storage.load(WRONG_REASON_KEY)) as Record<string, { reason?: string }> | undefined;
+    const map = await this.loadAux<Record<string, { reason?: string }>>(WRONG_REASON_KEY);
     return map?.[qid]?.reason;
   }
 
   private async loadWrongReasons(): Promise<void> {
-    const map = (await this.deps.storage.load(WRONG_REASON_KEY)) as Record<string, { reason?: string }> | undefined;
+    const map = await this.loadAux<Record<string, { reason?: string }>>(WRONG_REASON_KEY);
     this.wrongReasons = new Map(
       Object.entries(map ?? {})
         .filter((e): e is [string, { reason: "careless" | "unknown" | "trap" }] => !!e[1]?.reason)
@@ -691,25 +973,31 @@ export class ExamApp {
   // ---------- 下一行动（U15 lite：持久化 + 去重 + 状态可回看） ----------
   private async loadActions(): Promise<ActionItem[]> {
     try {
-      const v = await this.deps.storage.load(ACTIONS_KEY);
+      const v = await this.loadAux<ActionItem[]>(ACTIONS_KEY);
       return Array.isArray(v) ? (v as ActionItem[]) : [];
-    } catch {
-      return [];
+    } catch (error) {
+      this.noteStorageReadError(ACTIONS_KEY, error);
+      throw error;
     }
   }
 
   private async saveActions(list: ActionItem[]): Promise<void> {
-    await this.saves.run(ACTIONS_KEY, () => this.deps.storage.save(ACTIONS_KEY, list));
+    this.assertStorageWritable();
+    await this.saves.runLatest(ACTIONS_KEY, () => this.deps.storage.save(ACTIONS_KEY, list));
   }
 
   /** 加入行动（同 kind+qid 去重）；返回实际新增与跳过数 */
   async addActions(
     drafts: { kind: ActionKind; qid?: string; sessionId?: string; detail: string }[],
   ): Promise<{ added: number; skipped: number }> {
-    const list = await this.loadActions();
-    const r = appendActions(list, drafts, this.deps.now?.() ?? Date.now());
-    if (r.added) await this.saveActions(r.list);
-    return { added: r.added, skipped: r.skipped };
+    let result = { added: 0, skipped: 0 };
+    await this.queueStorageWrite(ACTIONS_KEY, async () => {
+      const list = await this.loadActions();
+      const r = appendActions(list, drafts, this.deps.now?.() ?? Date.now());
+      result = { added: r.added, skipped: r.skipped };
+      if (r.added) await this.saveActions(r.list);
+    });
+    return result;
   }
 
   async listOpenActions(): Promise<ActionItem[]> {
@@ -718,14 +1006,18 @@ export class ExamApp {
 
   /** 完成（用户确认为最小证据）；幂等 */
   async completeAction(id: string, evidence = "user-confirmed"): Promise<void> {
-    const list = await this.loadActions();
-    await this.saveActions(completeAction(list, id, evidence, this.deps.now?.() ?? Date.now()));
+    await this.queueStorageWrite(ACTIONS_KEY, async () => {
+      const list = await this.loadActions();
+      await this.saveActions(completeAction(list, id, evidence, this.deps.now?.() ?? Date.now()));
+    });
   }
 
   /** 取消/暂缓（保留记录）；幂等 */
   async cancelAction(id: string): Promise<void> {
-    const list = await this.loadActions();
-    await this.saveActions(cancelAction(list, id, this.deps.now?.() ?? Date.now()));
+    await this.queueStorageWrite(ACTIONS_KEY, async () => {
+      const list = await this.loadActions();
+      await this.saveActions(cancelAction(list, id, this.deps.now?.() ?? Date.now()));
+    });
   }
 
   // ---------- 会话（单活动） ----------
@@ -764,27 +1056,47 @@ export class ExamApp {
     questionLoader: (qids: string[]) => Promise<Question[]>,
     expectedBankId?: string,
   ): Promise<PracticeSession | null> {
-    if (this.activeSession?.phase === "running") return this.activeSession;
     this.lastResumeMissing = [];
+    if (this.activeSession?.phase === "running") {
+      const bankId = this.activeSession.state.bankId;
+      return bankId && expectedBankId && bankId !== expectedBankId ? null : this.activeSession;
+    }
     try {
-      const saved = (await this.deps.storage.load(SESSION_KEY)) as SessionState | undefined;
+      const saved = await this.loadAux<SessionState>(SESSION_KEY);
       if (!saved?.qids?.length || saved.finishedAt) return null;
       if (saved.bankId && expectedBankId && saved.bankId !== expectedBankId) return null; // 跨库不串
       const now = this.deps.now ?? Date.now;
       const age = now() - (saved.updatedAt || saved.startedAt);
       if (age > DRAFT_DROP_MS) {
-        await this.deps.storage.save(SESSION_KEY, null);
+        await this.saves.runLatest(SESSION_KEY, () => this.deps.storage.save(SESSION_KEY, null));
         return null;
       }
       if (age > DRAFT_HIDE_MS) return null;
       const found = await questionLoader(saved.qids);
-      if (!found.length) return null;
       // 缺题如实剔除（删题/读不到），不用其他题顶替
       const foundIds = new Set(found.map((q) => q.id));
       this.lastResumeMissing = saved.qids.filter((id) => !foundIds.has(id));
-      const sanitized: SessionState = this.lastResumeMissing.length
-        ? { ...saved, qids: saved.qids.filter((id) => foundIds.has(id)) }
-        : saved;
+      // 每个卷面位置独立映射，不能按 qid 去重：答错排到队尾会让同一道题出现两次。
+      const positions = new Map<number, number>();
+      const qids: string[] = [];
+      saved.qids.forEach((id, pos) => {
+        if (!foundIds.has(id)) return;
+        positions.set(pos, qids.length);
+        qids.push(id);
+      });
+      if (!qids.length) return null;
+      const sanitized: SessionState = this.lastResumeMissing.length ? {
+        ...saved,
+        qids,
+        // 当前题删除时落到下一道保留题；前方删除题目时保持原当前题，末尾可保持完成位置。
+        cursor: [...positions.keys()].filter((pos) => pos < saved.cursor).length,
+        answered: saved.answered?.flatMap((a) => {
+          const pos = positions.get(a.pos);
+          return pos == null || saved.qids[a.pos] !== a.qid ? [] : [{ ...a, pos }];
+        }),
+        drafts: Object.fromEntries(Object.entries(saved.drafts).filter(([id]) => foundIds.has(id))),
+        requeued: saved.requeued?.filter((id) => foundIds.has(id)),
+      } : saved;
       this.activeSession = new PracticeSession(found, saved.mode, sanitized, now);
       return this.activeSession;
     } catch {
@@ -793,15 +1105,33 @@ export class ExamApp {
   }
 
   async saveSession(): Promise<void> {
+    this.assertStorageWritable();
     const s = this.activeSession;
     if (!s) return;
-    if (s.phase === "finished") await this.saves.run(SESSION_KEY, () => this.deps.storage.save(SESSION_KEY, null));
-    else await this.saves.run(SESSION_KEY, () => this.deps.storage.save(SESSION_KEY, s.state));
+    if (s.phase === "finished") await this.saves.runLatest(SESSION_KEY, () => this.deps.storage.save(SESSION_KEY, null));
+    else {
+      // 不直接把可变 state 引用交给存储；下一次答题会改动同一对象。
+      const snapshot: SessionState = {
+        ...s.state,
+        qids: [...s.state.qids],
+        drafts: { ...s.state.drafts },
+        answered: s.state.answered?.map((a) => ({ ...a })),
+        requeued: s.state.requeued ? [...s.state.requeued] : undefined,
+      };
+      await this.saves.runLatest(SESSION_KEY, () => this.deps.storage.save(SESSION_KEY, snapshot));
+    }
   }
 
   async discardSession(): Promise<void> {
+    this.assertStorageWritable();
+    const previous = this.activeSession;
     this.activeSession = null;
-    await this.deps.storage.save(SESSION_KEY, null);
+    try {
+      await this.queueStorageWrite(SESSION_KEY, () => this.saves.runLatest(SESSION_KEY, () => this.deps.storage.save(SESSION_KEY, null)));
+    } catch (e) {
+      this.activeSession = previous;
+      throw e;
+    }
   }
 
   /** 手工录题：按考点落文档（无考点 → /手工录入），写块入库 */
@@ -843,8 +1173,9 @@ export class ExamApp {
 
   /** 收藏切换（写块属性；本地缓存同步更新避免整表刷新） */
   async toggleFav(q: Question & { blockId?: string }): Promise<boolean> {
+    if (!this.kernelOnline) throw new Error("离线：收藏题目需要内核可写");
     const next = !q.fav;
-    if (q.blockId && this.kernelOnline) {
+    if (q.blockId) {
       await this.deps.client.setExamFav(q.blockId, next);
     }
     q.fav = next;
@@ -913,14 +1244,17 @@ export class ExamApp {
 
   // ---------- 存储占用 / 数据体检 / 数据出库（69-01 / 69-06 / 58-01 lite，三十批） ----------
   /** 插件存储占用盘点（69-01 lite）：枚举已知键逐个量大小；额度本体不可知 → 只报占用与缺失，不猜额度 */
-  async storageUsage(): Promise<{ key: string; bytes: number; present: boolean }[]> {
-    const rows: { key: string; bytes: number; present: boolean }[] = [];
+  async storageUsage(): Promise<{ key: string; bytes: number; present: boolean; error?: string }[]> {
+    const rows: { key: string; bytes: number; present: boolean; error?: string }[] = [];
     for (const key of KNOWN_STORAGE_KEYS) {
       try {
         const v = await this.deps.storage.load(key);
         rows.push({ key, bytes: v === undefined ? 0 : JSON.stringify(v).length, present: v !== undefined });
-      } catch {
-        rows.push({ key, bytes: 0, present: false });
+      } catch (error) {
+        // A read error is different from an absent key. Keep it visible so a
+        // diagnostics export or UI cannot imply the data was safely empty.
+        this.noteStorageReadError(key, error);
+        rows.push({ key, bytes: 0, present: false, error: error instanceof Error ? error.message : String(error) });
       }
     }
     return rows;
@@ -935,9 +1269,9 @@ export class ExamApp {
    *  红线：不含 AI Key（存宿主 getSecret，不在插件 storage）；题干不入包（流水只含 qid）。 */
   async exportAllData(): Promise<string> {
     const [overlays, reasons, actions] = await Promise.all([
-      this.deps.storage.load("wrongbook/overlays"),
-      this.deps.storage.load("wrongbook/reasons"),
-      this.deps.storage.load(ACTIONS_KEY),
+      this.loadAux("wrongbook/overlays"),
+      this.loadAux("wrongbook/reasons"),
+      this.loadAux(ACTIONS_KEY),
     ]);
     return JSON.stringify(
       {
@@ -976,7 +1310,8 @@ export class ExamApp {
   }
 
   private async saveMaterialsRegistry(): Promise<void> {
-    await this.saves.run(MATERIALS_KEY, () =>
+    this.assertStorageWritable();
+    await this.saves.runLatest(MATERIALS_KEY, () =>
       this.deps.storage.save(MATERIALS_KEY, serializeRegistry(this.materialsRegistry)),
     );
   }
@@ -987,6 +1322,8 @@ export class ExamApp {
     file: File,
     meta: { subject?: string; chapter?: string; title?: string } = {},
   ): Promise<{ material: MaterialDoc; deduped: boolean }> {
+    this.assertStorageWritable();
+    this.assertStorageWritable();
     if (this.materialsReadonly) throw new Error("注册表版本较新：只读（降级回滚场景），登记已拒绝");
     if (!this.kernelOnline) throw new Error("离线：登记资料需要内核可写（拷入 assets）");
     const guard = canCopyIntoAssets(file.size);
@@ -1001,8 +1338,14 @@ export class ExamApp {
       { title, kind, subject: meta.subject, chapter: meta.chapter, location: { kind: "assets", path } },
       this.deps.now?.() ?? Date.now(),
     );
-    this.materialsRegistry = result.registry;
-    await this.saveMaterialsRegistry();
+    const previous = this.materialsRegistry;
+    try {
+      this.materialsRegistry = result.registry;
+      await this.saveMaterialsRegistry();
+    } catch (e) {
+      this.materialsRegistry = previous;
+      throw e;
+    }
     return { material: result.material, deduped: result.deduped };
   }
 
@@ -1029,8 +1372,14 @@ export class ExamApp {
       },
       this.deps.now?.() ?? Date.now(),
     );
-    this.materialsRegistry = result.registry;
-    await this.saveMaterialsRegistry();
+    const previous = this.materialsRegistry;
+    try {
+      this.materialsRegistry = result.registry;
+      await this.saveMaterialsRegistry();
+    } catch (e) {
+      this.materialsRegistry = previous;
+      throw e;
+    }
     return { material: result.material, deduped: result.deduped };
   }
 
@@ -1039,18 +1388,33 @@ export class ExamApp {
     if (this.materialsReadonly) throw new Error("注册表版本较新：只读（降级回滚场景），变更已拒绝");
     const r = attachLocation(this.materialsRegistry, materialId, loc, this.deps.now?.() ?? Date.now());
     if (!r.material) throw new Error("资料不存在");
-    this.materialsRegistry = r.registry;
-    await this.saveMaterialsRegistry();
+    const previous = this.materialsRegistry;
+    try {
+      this.materialsRegistry = r.registry;
+      await this.saveMaterialsRegistry();
+    } catch (e) {
+      this.materialsRegistry = previous;
+      throw e;
+    }
     return { deduped: r.deduped };
   }
 
   /** 移除登记（purgeAssets=true 时尽力删除 assets 附件；失败不阻断——登记移除是主事实） */
   async removeMaterialById(materialId: string, purgeAssets = false): Promise<void> {
+    this.assertStorageWritable();
     if (this.materialsReadonly) throw new Error("注册表版本较新：只读（降级回滚场景），移除已拒绝");
     const material = this.materialsRegistry.materials.find((m) => m.id === materialId);
     if (!material) throw new Error("资料不存在");
+    const previousRegistry = this.materialsRegistry;
+    const previousNotes = this.materialNoteStore;
+    const previousLinks = this.materialLinkStore;
     this.materialsRegistry = removeMaterial(this.materialsRegistry, materialId);
-    await this.saveMaterialsRegistry();
+    try {
+      await this.saveMaterialsRegistry();
+    } catch (e) {
+      this.materialsRegistry = previousRegistry;
+      throw e;
+    }
     if (purgeAssets) {
       for (const loc of material.locations) {
         if (loc.kind !== "assets") continue;
@@ -1063,14 +1427,22 @@ export class ExamApp {
     const orphanCount = notesOfMaterial(this.materialNoteStore, materialId).length;
     if (orphanCount) {
       this.materialNoteStore = { v: 1, notes: this.materialNoteStore.notes.filter((n) => n.materialId !== materialId) };
-      await this.saveMaterialNotes();
+      try { await this.saveMaterialNotes(); } catch (e) {
+        this.materialNoteStore = previousNotes;
+        this.materialsRegistry = previousRegistry;
+        throw e;
+      }
     }
     // 题目↔资料关联同样随资料移除清理（120-05：不残留断链）
     if (questionsOfMaterial(this.materialLinkStore, materialId).length) {
       this.materialLinkStore = dropMaterialLinks(this.materialLinkStore, materialId);
-      await this.saves.run(MATERIAL_QREFS_KEY, () =>
-        this.deps.storage.save(MATERIAL_QREFS_KEY, serializeLinkStore(this.materialLinkStore)),
-      );
+      try {
+        await this.saves.runLatest(MATERIAL_QREFS_KEY, () => this.deps.storage.save(MATERIAL_QREFS_KEY, serializeLinkStore(this.materialLinkStore)));
+      } catch (e) {
+        this.materialLinkStore = previousLinks;
+        this.materialsRegistry = previousRegistry;
+        throw e;
+      }
     }
   }
 
@@ -1081,7 +1453,8 @@ export class ExamApp {
   }
 
   private async saveMaterialNotes(): Promise<void> {
-    await this.saves.run(MATERIAL_NOTES_KEY, () =>
+    this.assertStorageWritable();
+    await this.saves.runLatest(MATERIAL_NOTES_KEY, () =>
       this.deps.storage.save(MATERIAL_NOTES_KEY, serializeNoteStore(this.materialNoteStore)),
     );
   }
@@ -1090,8 +1463,9 @@ export class ExamApp {
   async addMaterialNote(input: NoteInput): Promise<MaterialNote> {
     if (this.materialsReadonly) throw new Error("存储版本较新：只读（降级回滚场景），写入已拒绝");
     const r = addNote(this.materialNoteStore, input, this.deps.now?.() ?? Date.now());
+    const previous = this.materialNoteStore;
     this.materialNoteStore = r.store;
-    await this.saveMaterialNotes();
+    try { await this.saveMaterialNotes(); } catch (e) { this.materialNoteStore = previous; throw e; }
     return r.note;
   }
 
@@ -1099,15 +1473,17 @@ export class ExamApp {
     if (this.materialsReadonly) throw new Error("存储版本较新：只读（降级回滚场景），写入已拒绝");
     const r = updateNote(this.materialNoteStore, noteId, patch, this.deps.now?.() ?? Date.now());
     if (!r.note) throw new Error("笔记不存在");
+    const previous = this.materialNoteStore;
     this.materialNoteStore = r.store;
-    await this.saveMaterialNotes();
+    try { await this.saveMaterialNotes(); } catch (e) { this.materialNoteStore = previous; throw e; }
     return r.note;
   }
 
   async deleteMaterialNote(noteId: string): Promise<void> {
     if (this.materialsReadonly) throw new Error("存储版本较新：只读（降级回滚场景），删除已拒绝");
+    const previous = this.materialNoteStore;
     this.materialNoteStore = deleteNote(this.materialNoteStore, noteId);
-    await this.saveMaterialNotes();
+    try { await this.saveMaterialNotes(); } catch (e) { this.materialNoteStore = previous; throw e; }
   }
 
   // ---------- 题目↔资料关联（120-05 lite：题目回 PDF 页/视频时间点；资料侧反查题目） ----------
@@ -1122,6 +1498,7 @@ export class ExamApp {
 
   /** 关联/改链（一题一主链，改链=替换）；资料须在册，绑定其当前版本 */
   async linkQuestionMaterial(qid: string, materialId: string, locator?: NoteLocator | null): Promise<{ replaced: boolean }> {
+    this.assertStorageWritable();
     if (this.materialsReadonly) throw new Error("存储版本较新：只读（降级回滚场景），写入已拒绝");
     const material = this.materialsRegistry.materials.find((m) => m.id === materialId);
     if (!material) throw new Error("资料不存在");
@@ -1130,21 +1507,30 @@ export class ExamApp {
       { qid, materialId, revision: material.revision, locator },
       this.deps.now?.() ?? Date.now(),
     );
+    const previous = this.materialLinkStore;
     this.materialLinkStore = r.store;
-    await this.saves.run(MATERIAL_QREFS_KEY, () =>
-      this.deps.storage.save(MATERIAL_QREFS_KEY, serializeLinkStore(this.materialLinkStore)),
-    );
+    try {
+      await this.saves.runLatest(MATERIAL_QREFS_KEY, () => this.deps.storage.save(MATERIAL_QREFS_KEY, serializeLinkStore(this.materialLinkStore)));
+    } catch (e) {
+      this.materialLinkStore = previous;
+      throw e;
+    }
     return { replaced: r.replaced };
   }
 
   async unlinkQuestionMaterial(qid: string): Promise<void> {
+    this.assertStorageWritable();
     if (this.materialsReadonly) throw new Error("存储版本较新：只读（降级回滚场景），删除已拒绝");
     const r = unlinkQuestion(this.materialLinkStore, qid);
     if (!r.removed) return;
+    const previous = this.materialLinkStore;
     this.materialLinkStore = r.store;
-    await this.saves.run(MATERIAL_QREFS_KEY, () =>
-      this.deps.storage.save(MATERIAL_QREFS_KEY, serializeLinkStore(this.materialLinkStore)),
-    );
+    try {
+      await this.saves.runLatest(MATERIAL_QREFS_KEY, () => this.deps.storage.save(MATERIAL_QREFS_KEY, serializeLinkStore(this.materialLinkStore)));
+    } catch (e) {
+      this.materialLinkStore = previous;
+      throw e;
+    }
   }
 
   // ---------- AI 错因假设（116-01/U14：独立持久化，与用户复盘分层） ----------
@@ -1155,20 +1541,30 @@ export class ExamApp {
 
   /** 生成成功后落库（同题保留最新）；纯本地存储，离线也可写 */
   async saveMisdiagnosis(rec: MisdiagnosisRecord): Promise<void> {
+    this.assertStorageWritable();
     if (this.materialsReadonly) throw new Error("存储版本较新：只读（降级回滚场景），写入已拒绝");
+    const previous = this.misdiagnosisStore;
     this.misdiagnosisStore = addMisdiagnosis(this.misdiagnosisStore, rec);
-    await this.saves.run(MISDIAGNOSIS_KEY, () =>
-      this.deps.storage.save(MISDIAGNOSIS_KEY, serializeMisdiagnosis(this.misdiagnosisStore)),
-    );
+    try {
+      await this.saves.runLatest(MISDIAGNOSIS_KEY, () => this.deps.storage.save(MISDIAGNOSIS_KEY, serializeMisdiagnosis(this.misdiagnosisStore)));
+    } catch (e) {
+      this.misdiagnosisStore = previous;
+      throw e;
+    }
   }
 
   /** 采纳打点（用户并入复盘时调用；只记时间戳，不改假设原文） */
   async markMisdiagnosisAdopted(qid: string): Promise<void> {
+    this.assertStorageWritable();
     if (this.materialsReadonly) throw new Error("存储版本较新：只读（降级回滚场景），写入已拒绝");
+    const previous = this.misdiagnosisStore;
     this.misdiagnosisStore = markAdopted(this.misdiagnosisStore, qid, this.deps.now?.() ?? Date.now());
-    await this.saves.run(MISDIAGNOSIS_KEY, () =>
-      this.deps.storage.save(MISDIAGNOSIS_KEY, serializeMisdiagnosis(this.misdiagnosisStore)),
-    );
+    try {
+      await this.saves.runLatest(MISDIAGNOSIS_KEY, () => this.deps.storage.save(MISDIAGNOSIS_KEY, serializeMisdiagnosis(this.misdiagnosisStore)));
+    } catch (e) {
+      this.misdiagnosisStore = previous;
+      throw e;
+    }
   }
 
   // ---------- 考纲对照（51-01/03 lite：粘贴大纲 → 树 → kp 前缀覆盖对照） ----------
@@ -1188,27 +1584,45 @@ export class ExamApp {
 
   /** 导入/更新考纲（meta=发行方/年份/来源 51-01 字段） */
   async setSyllabusDoc(meta: SyllabusMeta, roots: SyllabusNode[]): Promise<void> {
+    this.assertStorageWritable();
     if (this.syllabusTooNew) throw new Error("考纲存储版本较新：只读（降级回滚场景），写入已拒绝");
     if (!roots.length) throw new Error("考纲为空（解析后无节点）");
+    const previous = this.syllabus;
     this.syllabus = { v: 1, meta, roots, importedAt: this.deps.now?.() ?? Date.now() };
-    await this.saves.run(SYLLABUS_KEY, () =>
-      this.deps.storage.save(SYLLABUS_KEY, serializeSyllabus(this.syllabus)),
-    );
+    try {
+      await this.saves.runLatest(SYLLABUS_KEY, () => this.deps.storage.save(SYLLABUS_KEY, serializeSyllabus(this.syllabus)));
+    } catch (e) {
+      this.syllabus = previous;
+      throw e;
+    }
   }
 
   /** 清除插件数据（58-03 lite）：逐键置空并返回逐对象回执（不冒充全部删除）。
    *  边界：思源笔记本/题块本体不动；内存态重载后归零；已外发 AI 数据无法撤回（UI 说明）。 */
   async purgeAllData(): Promise<{ key: string; ok: boolean }[]> {
+    this.assertStorageWritable();
     const receipts: { key: string; ok: boolean }[] = [];
+    const cleared = new Set<string>();
     for (const key of KNOWN_STORAGE_KEYS) {
       try {
-        await this.deps.storage.save(key, null);
+        await this.queueStorageWrite(key, () => this.saves.runLatest(key, () => this.deps.storage.save(key, null)));
         receipts.push({ key, ok: true });
+        cleared.add(key);
       } catch {
         receipts.push({ key, ok: false });
       }
     }
-    this.banks = [];
+    if (cleared.has(BANK_REGISTRY_KEY)) this.banks = [];
+    if (cleared.has(MATERIALS_KEY)) this.materialsRegistry = EMPTY_REGISTRY;
+    if (cleared.has(MATERIAL_NOTES_KEY)) this.materialNoteStore = EMPTY_NOTE_STORE;
+    if (cleared.has(MATERIAL_QREFS_KEY)) this.materialLinkStore = EMPTY_LINK_STORE;
+    if (cleared.has(MISDIAGNOSIS_KEY)) this.misdiagnosisStore = EMPTY_MISDIAGNOSIS;
+    if (cleared.has(SYLLABUS_KEY)) this.syllabus = EMPTY_SYLLABUS;
+    if (cleared.has("wrongbook/overlays")) this.wrongOverlay = new Map();
+    if (cleared.has(WRONG_REASON_KEY)) this.wrongReasons = new Map();
+    if (cleared.has("wrongbook/reflections")) this.wrongReflections = {};
+    if (cleared.has(REVISIONS_KEY)) this.revisionCache = {};
+    if (cleared.has(SESSION_KEY)) this.activeSession = null;
     this.invalidate();
     return receipts;
   }
@@ -1219,16 +1633,20 @@ export class ExamApp {
   async applyAnswerUpdates(
     updates: { row: number; q: Question }[],
     existing: (Question & { blockId: string })[],
-  ): Promise<{ ok: number; failed: number; missing: number }> {
+    opts?: { isCancelled?: () => boolean; onProgress?: (done: number, total: number) => void },
+  ): Promise<{ ok: number; failed: number; missing: number; unprocessed?: number }> {
     if (!this.kernelOnline) throw new Error("离线：更新已有题需要内核可写");
     const byHash = new Map(existing.map((q) => [q.hash, q]));
     let ok = 0,
       failed = 0,
       missing = 0;
-    for (const u of updates) {
+    for (let i = 0; i < updates.length; i++) {
+      if (opts?.isCancelled?.()) return { ok, failed, missing, unprocessed: updates.length - i };
+      const u = updates[i];
       const target = byHash.get(u.q.hash);
       if (!target?.blockId) {
         missing++;
+        opts?.onProgress?.(i + 1, updates.length);
         continue;
       }
       try {
@@ -1243,40 +1661,51 @@ export class ExamApp {
       } catch {
         failed++;
       }
+      opts?.onProgress?.(i + 1, updates.length);
     }
     return { ok, failed, missing };
   }
 
   // ---------- 打卡桥待重试（48-03：失败保留原 externalRef，不换新引用） ----------
   async getCheckinPending(): Promise<CheckinEventInput | null> {
-    const v = (await this.deps.storage.load("checkin/bridge/pending")) as CheckinEventInput | null;
+    const v = await this.loadAux<CheckinEventInput | null>("checkin/bridge/pending");
     return v ?? null;
   }
 
   async setCheckinPending(p: CheckinEventInput | null): Promise<void> {
-    await this.deps.storage.save("checkin/bridge/pending", p);
+    this.assertStorageWritable();
+    await this.queueStorageWrite("checkin/bridge/pending", () =>
+      this.saves.runLatest("checkin/bridge/pending", () => this.deps.storage.save("checkin/bridge/pending", p)),
+    );
   }
 
   // ---------- 每日战报（联动小驴复盘预留） ----------
   /** 把当日战报写入思源日记（首个开启"每日笔记"的笔记本），返回日记文档 id */
   async writeDailyReport(bankId: string, bankName: string): Promise<string> {
     const { dailyDocPath } = await import("./core/weekly");
-    const d = this.derived();
+    const now = this.deps.now?.() ?? Date.now();
+    const today = new Date(now);
+    const cutoff = reportWindowStart(1, now);
+    const ids = new Set((await this.listQuestions(bankId)).map((q) => q.id));
+    const bankEvents = this.attempts.all().filter((e) => ids.has(e.qid));
+    const d = replay(bankEvents.filter((e) => e.ts >= cutoff && e.ts <= now));
     let attempts = 0,
       correct = 0;
     for (const s of d.byQuestion.values()) {
       attempts += s.attempts;
       correct += s.correct;
     }
-    const eliminated = [...d.wrongbook.values()].filter((w) => w.status === "eliminated").length;
-    const today = new Date();
-    const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const before = replay(bankEvents.filter((e) => e.ts < cutoff));
+    const bankState = replay(bankEvents.filter((e) => e.ts <= now));
+    const eliminated = [...bankState.wrongbook.values()].filter((w) => w.status === "eliminated" && before.wrongbook.get(w.qid)?.status !== "eliminated").length;
+    const ymd = reportDateKey(now);
     const md = [
       `# 📝 小驴考试（内测版）战报 · ${ymd}`,
       ``,
       `- 刷题：**${attempts}** 题 · 正确率 **${attempts ? Math.round((correct / attempts) * 100) : 0}%**`,
-      `- 消灭错题：**${eliminated}**`,
+      `- 今日新消灭错题：**${eliminated}**`,
       `- 题库：${bankName}`,
+      `- 统计范围：本题库 ${ymd} 的作答记录（含重复作答）`,
       ``,
     ].join("\n");
     // 找第一个启用每日笔记的笔记本
@@ -1293,24 +1722,26 @@ export class ExamApp {
         return docId;
       }
     }
-    void bankId;
     throw new Error("未找到开启「每日笔记」的笔记本：请先在思源中为某笔记本开启每日笔记");
   }
 
   /** AI 用量累计（成本记录 28 组 P2）：tokens/调用次数 累计 + 最近一次 */
   async recordAiUsage(channelId: string, tokens: number, calls: number): Promise<void> {
-    const v = (await this.deps.storage.load("ai/usage")) as
-      { totalTokens?: number; totalCalls?: number; last?: unknown } | undefined;
-    const log = {
-      totalTokens: (v?.totalTokens ?? 0) + tokens,
-      totalCalls: (v?.totalCalls ?? 0) + calls,
-      last: { channelId, tokens, calls, at: Date.now() },
-    };
-    await this.deps.storage.save("ai/usage", log);
+    if (!Number.isFinite(tokens) || tokens < 0 || !Number.isFinite(calls) || calls < 0) throw new Error("AI 用量必须是非负有限数字");
+    this.assertStorageWritable();
+    await this.queueStorageWrite("ai/usage", async () => {
+      const v = await this.loadAux<{ totalTokens?: number; totalCalls?: number; last?: unknown }>("ai/usage");
+      const log = {
+        totalTokens: (v?.totalTokens ?? 0) + tokens,
+        totalCalls: (v?.totalCalls ?? 0) + calls,
+        last: { channelId, tokens, calls, at: this.deps.now?.() ?? Date.now() },
+      };
+      await this.saves.runLatest("ai/usage", () => this.deps.storage.save("ai/usage", log));
+    });
   }
 
   async aiUsage(): Promise<{ totalTokens: number; totalCalls: number }> {
-    const v = (await this.deps.storage.load("ai/usage")) as { totalTokens?: number; totalCalls?: number } | undefined;
+    const v = await this.loadAux<{ totalTokens?: number; totalCalls?: number }>("ai/usage");
     return { totalTokens: v?.totalTokens ?? 0, totalCalls: v?.totalCalls ?? 0 };
   }
 
@@ -1338,43 +1769,65 @@ export class ExamApp {
       });
       registered.push(nb.name);
     }
-    if (registered.length) await this.deps.storage.save(BANK_REGISTRY_KEY, this.banks);
+    if (registered.length) await this.saveBankRegistry();
     return { registered };
   }
 
   /** 估分历史（FIFO 20 条） */
   async saveEstimate(rec: { key: string; mine: string; percent: number; score: number; total: number }): Promise<void> {
-    const list = (await this.deps.storage.load("estimate/history")) as (typeof rec)[] | undefined;
-    const next = [...(list ?? []), { ...rec, at: Date.now() }].slice(-20);
-    await this.deps.storage.save("estimate/history", next);
+    if (![rec.percent, rec.score, rec.total].every((v) => Number.isFinite(v)) || rec.percent < 0 || rec.percent > 100 || rec.score < 0 || rec.total < 0 || rec.score > rec.total) {
+      throw new Error("估分结果必须是有效数字，得分不能超过总分");
+    }
+    this.assertStorageWritable();
+    await this.queueStorageWrite("estimate/history", async () => {
+      const list = await this.loadAux<(typeof rec)[]>("estimate/history");
+      const next = [...(list ?? []), { ...rec, at: this.deps.now?.() ?? Date.now() }].slice(-20);
+      await this.saves.runLatest("estimate/history", () => this.deps.storage.save("estimate/history", next));
+    });
   }
 
   async listEstimates(): Promise<(Record<string, unknown> & { percent: number })[]> {
-    const v = await this.deps.storage.load("estimate/history");
+    const v = await this.loadAux("estimate/history");
     return Array.isArray(v) ? (v as any[]) : [];
   }
 
   // ---------- 导出与模考历史（v0.5） ----------
   /** 模考运行快照（U19 最小）：同一 run 恢复答案/标旗/游标/真实剩余时间；交卷后清除 */
   async saveMockRun(snap: MockRunSnapshot): Promise<void> {
-    const write = this.mockRunSaveTail.then(() => this.saves.run(MOCK_RUN_KEY, () => this.deps.storage.save(MOCK_RUN_KEY, snap)));
+    this.assertStorageWritable();
+    const snapshot = {
+      ...snap,
+      qids: [...snap.qids],
+      sectionOf: { ...snap.sectionOf },
+      scoreOf: { ...snap.scoreOf },
+      indefinite: [...snap.indefinite],
+      answers: snap.answers.map((a) => ({ ...a })),
+      flags: [...snap.flags],
+      sectionStart: { ...snap.sectionStart },
+      dwell: snap.dwell ? { ...snap.dwell } : snap.dwell,
+      currentEnter: snap.currentEnter ? { ...snap.currentEnter } : snap.currentEnter,
+      qVersions: snap.qVersions ? { ...snap.qVersions } : snap.qVersions,
+    };
+    const write = this.mockRunSaveTail.then(() => this.saves.runLatest(MOCK_RUN_KEY, () => this.deps.storage.save(MOCK_RUN_KEY, snapshot)));
     this.mockRunSaveTail = write.catch(() => undefined);
     await write;
   }
 
   async loadMockRun(): Promise<MockRunSnapshot | null> {
     try {
-      const v = (await this.deps.storage.load(MOCK_RUN_KEY)) as MockRunSnapshot | null | undefined;
+      const v = await this.loadAux<MockRunSnapshot | null>(MOCK_RUN_KEY);
       return v && Array.isArray(v.qids) && typeof v.startedAt === "number" ? v : null;
-    } catch {
+    } catch (error) {
+      this.noteStorageReadError(MOCK_RUN_KEY, error);
       return null;
     }
   }
 
   async clearMockRun(): Promise<void> {
+    this.assertStorageWritable();
     const clear = this.mockRunSaveTail.then(async () => {
       this.saves.clear(MOCK_RUN_KEY);
-      await this.deps.storage.save(MOCK_RUN_KEY, null);
+      await this.saves.runLatest(MOCK_RUN_KEY, () => this.deps.storage.save(MOCK_RUN_KEY, null));
     });
     this.mockRunSaveTail = clear.catch(() => undefined);
     await clear;
@@ -1423,16 +1876,22 @@ export class ExamApp {
 
   /** 模考成绩持久化（上限 200 条，FIFO） */
   async saveMockResult(rec: MockRecord): Promise<void> {
-    const list = await this.listMockResults();
-    const existing = rec.runId ? list.findIndex((item) => item.runId === rec.runId) : -1;
-    if (existing >= 0) list[existing] = rec;
-    else list.push(rec);
-    while (list.length > 200) list.shift();
-    await this.deps.storage.save(MOCK_RESULTS_KEY, list);
+    if (![rec.total, rec.full, rec.percent].every((v) => Number.isFinite(v)) || rec.total < 0 || rec.full < 0 || rec.total > rec.full || rec.percent < 0 || rec.percent > 100) {
+      throw new Error("模考成绩包含无效数字，得分不能超过总分");
+    }
+    this.assertStorageWritable();
+    await this.queueStorageWrite(MOCK_RESULTS_KEY, async () => {
+      const list = await this.listMockResults();
+      const existing = rec.runId ? list.findIndex((item) => item.runId === rec.runId) : -1;
+      if (existing >= 0) list[existing] = rec;
+      else list.push(rec);
+      while (list.length > 200) list.shift();
+      await this.saves.runLatest(MOCK_RESULTS_KEY, () => this.deps.storage.save(MOCK_RESULTS_KEY, list));
+    });
   }
 
   async listMockResults(): Promise<MockRecord[]> {
-    const v = await this.deps.storage.load(MOCK_RESULTS_KEY);
+    const v = await this.loadAux(MOCK_RESULTS_KEY);
     return Array.isArray(v) ? (v as MockRecord[]) : [];
   }
 

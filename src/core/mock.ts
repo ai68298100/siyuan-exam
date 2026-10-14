@@ -41,15 +41,36 @@ export function validateBlueprint(bp: Blueprint): string[] {
     const name = s.name.trim();
     if (!name) issues.push(`存在未命名段（段名不能为空）`);
     else seen.set(name, (seen.get(name) ?? 0) + 1);
-    if (s.count === 0) issues.push(`段「${name || "未命名"}」题数为 0（将不参与组卷）`);
-    if (s.scoreEach <= 0) issues.push(`段「${name || "未命名"}」每题分值 ≤ 0`);
+    if (!Number.isInteger(s.count) || s.count < 0) issues.push(`段「${name || "未命名"}」题数必须为非负整数`);
+    else if (s.count === 0) issues.push(`段「${name || "未命名"}」题数为 0（将不参与组卷）`);
+    if (!Number.isFinite(s.scoreEach)) issues.push(`段「${name || "未命名"}」每题分值必须为有效数字`);
+    else if (s.scoreEach <= 0) issues.push(`段「${name || "未命名"}」每题分值 ≤ 0`);
   }
   for (const [name, n] of seen) {
     if (n > 1) issues.push(`段名「${name}」重复 ${n} 次（统计将按段名合并）`);
   }
-  if (bp.durationS <= 0) issues.push("总时长 ≤ 0");
-  if (bp.passLine < 0 || bp.passLine > 100) issues.push(`及格线 ${bp.passLine} 超出 0-100`);
+  if (!Number.isFinite(bp.durationS) || bp.durationS <= 0) issues.push("总时长必须大于 0");
+  if (!Number.isFinite(bp.passLine) || bp.passLine < 0 || bp.passLine > 100) issues.push(`及格线 ${bp.passLine} 超出 0-100`);
   return issues;
+}
+
+/** 首次模考默认按考点抽可自动判分题，模块名称与真实抽题条件一致。 */
+export function defaultMockSections(questions: Question[]): BlueprintSection[] {
+  const types: Question["type"][] = ["single", "multiple", "judge", "fill"];
+  const eligible = questions.filter((q) => types.includes(q.type));
+  if (!eligible.length) return [];
+  // 混有未分类题时统一抽题，避免把“全部”误当考点前缀或抢走其他模块的配额。
+  if (eligible.some((q) => !q.kp?.trim())) {
+    return [{ name: "全部", count: Math.min(eligible.length, 20), scoreEach: 1, source: "mixed", types }];
+  }
+  const byRoot = new Map<string, number>();
+  for (const q of eligible) {
+    const root = q.kp!.split("/")[0];
+    byRoot.set(root, (byRoot.get(root) ?? 0) + 1);
+  }
+  return [...byRoot].slice(0, 5).map(([name, count]) => ({
+    name, kp: name, count: Math.min(count, 20), scoreEach: 1, source: "mixed", types: [...types],
+  }));
 }
 
 /** 重名段自动改名（40-02 lite）：加 -2/-3 后缀去重；返回新蓝图（不改原对象） */
@@ -381,7 +402,8 @@ export class MockSession {
     return {
       total,
       full,
-      pass: total >= this.bp.passLine,
+      // 及格线按百分制比较原始比例；显示值的四舍五入不能把未达线成绩判为通过。
+      pass: full > 0 && (total / full) * 100 >= this.bp.passLine,
       percent: full ? Math.round((total / full) * 1000) / 10 : 0,
       sections: [...sections.values()],
       flagsUsed: this.flags.size,

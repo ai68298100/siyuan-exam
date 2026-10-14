@@ -7,10 +7,108 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  --lv-tasknav-height: calc(57px + max(4px, env(safe-area-inset-bottom, 0px)));
+  container-name: lv-exam;
+  container-type: inline-size;
+  /* R54 owns its work surface so unrelated host theme accents do not change the UI. */
+  --lv-canvas: var(--lv-r54-canvas);
+  --lv-surface: var(--lv-r54-surface);
+  --lv-surface-2: var(--lv-r54-soft);
+  --lv-text: var(--lv-r54-ink);
+  --lv-text-2: var(--lv-r54-ink-2);
+  --lv-text-3: var(--lv-r54-muted);
+  --lv-border: var(--lv-r54-line);
+  --lv-ctl-border: var(--lv-r54-control);
+  --lv-accent: var(--lv-r54-accent);
+  --lv-accent-hi: var(--lv-r54-accent-hi);
+  --lv-accent-soft: var(--lv-r54-lavender);
+  --lv-accent-grad: var(--lv-accent);
+  --lv-accent-deep: var(--lv-r54-accent-deep);
+  --lv-on-accent: var(--lv-r54-on-accent);
+  --lv-on-green: var(--lv-r54-on-green);
+  --lv-on-red: var(--lv-r54-on-red);
+  --lv-btn-primary-bg: var(--lv-accent);
+  --lv-btn-primary-shadow: none;
+  --lv-btn-primary-shadow-hover: none;
+  --lv-green: var(--lv-r54-green);
+  --lv-green-soft: var(--lv-r54-green-soft);
+  --lv-red: var(--lv-r54-red);
+  --lv-red-soft: var(--lv-r54-red-soft);
+  --lv-amber: var(--lv-r54-amber);
+  --lv-amber-soft: var(--lv-r54-amber-soft);
+  --lv-overlay: var(--lv-r54-overlay);
+  background: var(--lv-canvas);
+  color: var(--lv-text);
+}
+
+/* A plugin tab can be narrow inside a wide SiYuan window (split panes,
+   floating panels, or settings overlays). Adapt from its own width. */
+@container lv-exam (max-width: 759px) {
+  .lv-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lv-shell > .lv-rail:not(.open) {
+    display: none;
+  }
+
+  .lv-shell > .lv-rail.open {
+    display: flex;
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: min(280px, calc(100% - 36px));
+    z-index: 90;
+    box-shadow: var(--lv-sh-pop);
+  }
+
+  .lv-exam-tab .lv-menu-btn {
+    display: inline-flex;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .lv-shell .lv-rail .lv-drawer-close {
+    display: grid;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .lv-mobile-tasknav {
+    display: grid;
+    grid-column: 1 / -1;
+  }
+
+  .lv-main {
+    padding-bottom: var(--lv-tasknav-height);
+  }
+
+  .lv-shell.lv-shell-focus .lv-main,
+  .lv-shell.lv-shell-tasknav-hidden .lv-main {
+    padding-bottom: 0;
+  }
+
+  .lv-exam-tab > .block__icons {
+    row-gap: 6px;
+  }
+
+  .lv-exam-tab > .block__icons .lv-crumbs {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+}
+
+@container lv-exam (min-width: 760px) and (max-width: 1119px) {
+  .lv-shell {
+    grid-template-columns: 74px minmax(0, 1fr);
+  }
 }
 
 .lv-exam-wrongbook {
-  padding: 8px;
+  padding: var(--lv-space-2);
   overflow: auto;
 }
 
@@ -18,22 +116,61 @@
 .lv-dock-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 8px;
+  gap: var(--lv-space-1);
+  padding: var(--lv-space-2);
 }
 .lv-dock-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 8px;
+  gap: var(--lv-space-2);
+  padding: 5px var(--lv-space-2);
   border: 1px solid var(--lv-border);
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 12px;
+  border-radius: var(--lv-r-1);
+  font-size: var(--lv-font-size-sm);
   &:hover {
     border-color: var(--lv-accent);
     background: var(--lv-accent-soft);
   }
+}
+.lv-dock-open {
+  display: flex;
+  align-items: center;
+  gap: var(--lv-space-2);
+  flex: 1;
+  min-width: 0;
+  padding: var(--lv-space-1) 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  &:focus-visible {
+    outline: 2px solid var(--lv-accent);
+    outline-offset: 2px;
+    border-radius: var(--lv-r-1);
+  }
+}
+.lv-dock-open > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lv-dock-wrong-count {
+  flex: 0 0 auto;
+  color: var(--lv-text-2);
+  white-space: nowrap;
+}
+.lv-dock-error {
+  flex: 1 0 100%;
+  padding: var(--lv-space-tight) 0;
+  color: var(--lv-red, var(--lv-danger));
+  font-size: var(--lv-font-size-label);
+  line-height: var(--lv-line-height-snug);
+  overflow-wrap: anywhere;
+}
+.lv-dock-row:has(.lv-dock-error) {
+  flex-wrap: wrap;
 }
 .lv-dock-act {
   margin-left: auto;
@@ -41,25 +178,29 @@
   background: transparent;
   cursor: pointer;
   color: var(--lv-text-2);
-  border-radius: 6px;
-  padding: 2px 6px;
+  border-radius: var(--lv-r-1);
+  padding: 2px var(--lv-space-compact);
   &:hover {
     background: var(--lv-surface-2);
     color: var(--lv-accent);
+  }
+  &:focus-visible {
+    outline: 2px solid var(--lv-accent);
+    outline-offset: 2px;
   }
   & + & {
     margin-left: 0;
   }
 }
 .lv-dock-empty {
-  padding: 16px;
+  padding: var(--lv-space-4);
   text-align: center;
   color: var(--lv-text-2);
-  font-size: 12px;
+  font-size: var(--lv-font-size-sm);
 }
 .lv-dock-hint {
-  padding: 8px;
+  padding: var(--lv-space-2);
   text-align: center;
   color: var(--lv-text-2);
-  font-size: 11px;
+  font-size: var(--lv-font-size-label);
 }

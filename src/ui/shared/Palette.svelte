@@ -60,6 +60,25 @@
     }
   });
 
+  $effect(() => {
+    if (!open || !panelEl) return;
+    const root = ownerEl?.closest<HTMLElement>(".lv-exam-tab");
+    if (!root) return;
+    const background = [...root.children].filter((el): el is HTMLElement => el instanceof HTMLElement && !el.contains(panelEl));
+    const previous = background.map((el) => ({ el, inert: el.hasAttribute("inert"), ariaHidden: el.getAttribute("aria-hidden") }));
+    for (const { el } of previous) {
+      el.setAttribute("inert", "");
+      el.setAttribute("aria-hidden", "true");
+    }
+    return () => {
+      for (const { el, inert, ariaHidden } of previous) {
+        if (!inert) el.removeAttribute("inert");
+        if (ariaHidden === null) el.removeAttribute("aria-hidden");
+        else el.setAttribute("aria-hidden", ariaHidden);
+      }
+    };
+  });
+
   function run(c: PaletteCommand | undefined) {
     if (!c) return;
     open = false;
@@ -73,6 +92,8 @@
   }
 
   function onKeydown(e: KeyboardEvent) {
+    // 输入法的 Enter/方向键用于确认和选择候选词，不执行面板命令。
+    if (e.isComposing || e.keyCode === 229) return;
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
       // Each open SiYuan tab mounts its own Palette. Only respond to the
       // shortcut from this tab so hidden or side-by-side tabs stay closed.
@@ -95,13 +116,15 @@
       open = !open;
       return;
     }
+    // 其他页签或宿主弹窗获得焦点时，不劫持它们的 Esc / Enter / Tab。
+    if (open && (!panelEl?.getClientRects().length || !(e.target instanceof Node) || !panelEl.contains(e.target))) return;
     if (open && e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
       open = false;
       return;
     }
-    if (!open) return;
+    if (!open || !panelEl?.getClientRects().length) return;
     if (e.key === "Tab" && panelEl) {
       const focusables = [...panelEl.querySelectorAll<HTMLElement>("input:not([disabled]), button:not([disabled])")];
       const first = focusables[0];
@@ -120,14 +143,22 @@
     }
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      sel = Math.min(sel + 1, shown.length - 1);
+      moveSelection(1);
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      sel = Math.max(sel - 1, 0);
+      moveSelection(-1);
     } else if (e.key === "Enter") {
       e.preventDefault();
       run(shown[sel]);
     }
+  }
+
+  function moveSelection(delta: number) {
+    sel = Math.max(0, Math.min(sel + delta, shown.length - 1));
+    const button = panelEl?.querySelector<HTMLButtonElement>(`#lv-palette-opt-${uid}-${sel}`);
+    button?.scrollIntoView({ block: "nearest" });
+    // 输入框维持 combobox 的虚拟焦点；Tab 进入列表后，方向键同步真实焦点。
+    if (document.activeElement !== inputEl) button?.focus();
   }
 </script>
 
@@ -166,7 +197,7 @@
             {/if}
             <button class="lv-palette-item" class:sel={i === sel} role="option" aria-selected={i === sel}
               id={`lv-palette-opt-${uid}-${i}`}
-              onclick={() => run(c)} onpointerenter={() => (sel = i)}>
+              onclick={() => run(c)} onpointerenter={() => (sel = i)} onfocus={() => (sel = i)}>
               <Icon name={c.icon} size={15} />
               <span>{c.label}</span>
               {#if c.kbd}<span class="lv-kbd">{c.kbd}</span>{/if}

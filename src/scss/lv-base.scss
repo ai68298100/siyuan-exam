@@ -11,6 +11,7 @@
   background: var(--lv-surface);
   border: 1px solid var(--lv-border);
   border-radius: var(--lv-r-3);
+  padding: var(--lv-card-pad);
   box-shadow: var(--lv-sh-1);
   transition:
     box-shadow var(--lv-dur-view) var(--lv-ease-out),
@@ -31,12 +32,12 @@
 .lv-chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 9px;
-  border-radius: 7px;
-  font-size: 12px;
-  font-weight: 550;
-  line-height: 1.6;
+  gap: var(--lv-space-1);
+  padding: 3px var(--lv-space-3);
+  border-radius: var(--lv-r-1);
+  font-size: var(--lv-font-size-sm);
+  font-weight: var(--lv-font-weight-medium);
+  line-height: var(--lv-line-height-body);
   color: var(--lv-text-2);
   background: var(--lv-surface-2);
   border: 1px solid transparent;
@@ -93,13 +94,13 @@ button.lv-chip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: var(--lv-space-2);
   /* 按钮标签不随容器挤压折行（真机走查：报告工具栏 "Refresh" 折成 "Refre sh"） */
   white-space: nowrap;
-  padding: 9px 16px;
-  border-radius: 11px;
-  font-size: 14px;
-  font-weight: 550;
+  padding: var(--lv-component-pad-md);
+  border-radius: var(--lv-r-2);
+  font-size: var(--lv-font-size-md);
+  font-weight: var(--lv-font-weight-medium);
   border: 1px solid var(--lv-ctl-border);
   background: var(--lv-surface);
   color: var(--lv-text);
@@ -127,7 +128,7 @@ button.lv-chip {
 .lv-btn--primary {
   background: var(--lv-btn-primary-bg);
   border-color: transparent;
-  color: var(--b3-theme-on-primary, #fff);
+  color: var(--lv-on-accent, var(--b3-theme-on-primary, #fff));
   box-shadow: var(--lv-btn-primary-shadow);
 
   /* 对齐原型 .primary:hover：渐变收拢为 deep 纯色（暗色为亮档），再抬升 */
@@ -147,23 +148,23 @@ button.lv-chip {
   color: var(--lv-text-2);
 }
 .lv-btn.sm {
-  min-height: 34px;
-  padding: 5px 12px;
-  font-size: 12.5px;
-  border-radius: 9px;
+  min-height: var(--lv-control-height-sm);
+  padding: 5px var(--lv-space-3);
+  font-size: var(--lv-font-size-meta);
+  border-radius: var(--lv-r-1);
 }
 
 /* —— 下拉框外观（对齐原型 input/select：ctl-border + 11px 圆角；
    原 Practice/Memory 用 UA 默认样式，观感掉档） —— */
 .lv-select {
-  min-height: 44px;
-  padding: 9px 12px;
-  border-radius: 11px;
+  min-height: var(--lv-control-height-md);
+  padding: var(--lv-component-pad-md);
+  border-radius: var(--lv-r-2);
   border: 1px solid var(--lv-ctl-border);
   background: var(--lv-surface);
   color: var(--lv-text);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--lv-font-size-body);
 
   &:focus {
     border-color: var(--lv-accent);
@@ -178,11 +179,11 @@ button.lv-chip {
   place-items: center;
   width: 44px;
   height: 44px;
-  border-radius: 13px;
+  border-radius: var(--lv-radius-icon);
   background: var(--lv-accent-soft);
   color: var(--lv-accent);
   flex-shrink: 0;
-  font-size: 19px;
+  font-size: var(--lv-font-size-stat);
 }
 
 /* —— 线性图标（V03：与文字基线对齐，currentColor 取色） —— */
@@ -204,15 +205,15 @@ button.lv-chip {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  margin: 20px 0 12px;
-  font-size: 15px;
-  font-weight: 650;
+  gap: var(--lv-space-3);
+  margin: var(--lv-space-5) 0 var(--lv-space-3);
+  font-size: var(--lv-font-size-h3);
+  font-weight: var(--lv-font-weight-semibold);
   letter-spacing: -0.2px;
 
   > .lv-muted {
     font-weight: 400;
-    font-size: 12px;
+    font-size: var(--lv-font-size-sm);
   }
 }
 
@@ -220,8 +221,8 @@ button.lv-chip {
 .lv-crumbs {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 12px;
+  gap: var(--lv-space-2);
+  font-size: var(--lv-font-size-sm);
   color: var(--lv-text-3);
   flex-wrap: wrap;
   min-width: 0;
@@ -234,41 +235,41 @@ button.lv-chip {
 }
 .lv-crumb-sep {
   color: var(--lv-ctl-border);
-  font-size: 15px;
+  font-size: var(--lv-font-size-h3);
 }
 .lv-crumb-current {
   color: var(--lv-text);
-  font-weight: 550;
+  font-weight: var(--lv-font-weight-medium);
 }
 
 /* —— 屏头（原型 .screen-head：eyebrow + 大标题 + muted 副标） —— */
 .lv-screen-head {
-  margin: 4px 0 22px;
+  margin: var(--lv-space-1) 0 var(--lv-space-6);
 
   .lv-eyebrow,
   .eyebrow {
     display: block;
-    font-size: 10px;
+    font-size: var(--lv-font-size-xs);
     letter-spacing: 2px;
-    font-weight: 650;
+    font-weight: var(--lv-font-weight-semibold);
     color: var(--lv-accent);
-    margin-bottom: 10px;
+    margin-bottom: var(--lv-space-3);
     text-transform: uppercase;
   }
 
   h1,
   .lv-h1 {
     margin: 0;
-    font-size: 28px;
-    line-height: 1.35;
-    font-weight: 700;
+    font-size: var(--lv-font-size-h1);
+    line-height: var(--lv-line-height-tight);
+    font-weight: var(--lv-font-weight-bold);
     letter-spacing: -0.56px;
   }
   p {
-    margin: 8px 0 0;
+    margin: var(--lv-space-2) 0 0;
     max-width: 650px;
     color: var(--lv-text-3);
-    font-size: 13px;
+    font-size: var(--lv-font-size-body);
   }
 }
 
@@ -277,7 +278,7 @@ button.lv-chip {
   width: 100%;
   max-width: 1120px;
   margin: 0 auto;
-  padding: 16px 22px 48px;
+  padding: var(--lv-space-4) 22px var(--lv-space-9);
   animation: lv-appear 0.18s ease-out;
 }
 .lv-pad--narrow {
@@ -291,12 +292,12 @@ button.lv-chip {
 .lv-feedback {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--lv-space-relaxed);
   margin: 18px 0 14px;
-  padding: 12px 16px;
+  padding: var(--lv-space-3) var(--lv-space-4);
   border-radius: var(--lv-r-2);
-  font-weight: 650;
-  font-size: 14.5px;
+  font-weight: var(--lv-font-weight-semibold);
+  font-size: var(--lv-font-size-body-emphasis);
   background: var(--lv-red-soft);
   color: var(--lv-red);
   animation: lv-pop-in var(--lv-dur-view) var(--lv-ease-out) both;
@@ -321,7 +322,7 @@ button.lv-chip {
 /* —— 进度条（含 sheen 扫光；轨道用 border 色保证在页底上可见） —— */
 .lv-progress {
   height: 7px;
-  border-radius: 999px;
+  border-radius: var(--lv-radius-pill);
   background: var(--lv-border);
   overflow: hidden;
   position: relative;
@@ -329,7 +330,7 @@ button.lv-chip {
   i {
     display: block;
     height: 100%;
-    border-radius: 999px;
+    border-radius: var(--lv-radius-pill);
     background: var(--lv-accent-grad);
     transition: width var(--lv-dur-slow) var(--lv-ease-out);
   }
@@ -360,9 +361,9 @@ button.lv-chip {
 /* —— 键帽 —— */
 .lv-kbd {
   font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
-  font-size: 11px;
+  font-size: var(--lv-font-size-label);
   line-height: 1;
-  padding: 3px 6px;
+  padding: var(--lv-space-tight) var(--lv-space-compact);
   border-radius: 6px;
   color: var(--lv-text-2);
   background: var(--lv-surface-2);
@@ -384,7 +385,7 @@ button.lv-chip {
 .lv-input,
 .lv-select,
 .lv-seg button {
-  min-height: 44px;
+  min-height: var(--lv-control-height-md);
 }
 
 /* —— 原生控件强调色（原型：checkbox/radio/range accent-color） —— */
@@ -404,7 +405,7 @@ input[type="range"] {
 .lv-dtable {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: var(--lv-font-size-body-compact);
 
   table {
     width: 100%;
@@ -413,14 +414,14 @@ input[type="range"] {
 
   th,
   td {
-    padding: 10px 12px;
+    padding: var(--lv-space-relaxed) var(--lv-space-3);
     border-bottom: 1px solid var(--lv-border);
     text-align: left;
     vertical-align: top;
   }
   th {
-    font-size: 12px;
-    font-weight: 550;
+    font-size: var(--lv-font-size-sm);
+    font-weight: var(--lv-font-weight-medium);
     color: var(--lv-text-3);
     background: var(--lv-surface-2);
   }
@@ -443,7 +444,7 @@ input[type="range"] {
   font-family: Georgia, "Songti SC", SimSun, serif;
 
   .lv-stem {
-    font-size: 16.5px;
+    font-size: var(--lv-font-size-paper);
     line-height: 2.05;
     letter-spacing: 0.2px;
   }
@@ -451,27 +452,39 @@ input[type="range"] {
 .lv-focus-label {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 11px;
+  gap: var(--lv-space-2);
+  font-size: var(--lv-font-size-label);
   color: var(--lv-accent);
-  font-weight: 550;
+  font-weight: var(--lv-font-weight-medium);
   letter-spacing: 0.6px;
 
   &::before {
     content: "";
     width: 6px;
     height: 6px;
-    border-radius: 50%;
+    border-radius: var(--lv-radius-round);
     background: var(--lv-accent);
   }
 }
 
 /* —— Tab shell（原型 .shell：rail + main；三 Tab 共用，rail 组件见 ui/shared/Rail） —— */
 .lv-shell {
+  position: relative;
   flex: 1;
   display: grid;
-  grid-template-columns: 212px minmax(0, 1fr);
+  grid-template-columns: 184px minmax(0, 1fr);
   min-height: 0;
+}
+
+/* R54 专注态：进入连续作答或回看成绩时移除工作台导航，让题面成为唯一主任务。
+   窄屏仍由菜单按钮唤出抽屉，因此这里仅改变桌面壳层。 */
+@container lv-exam (min-width: 760px) {
+  .lv-shell.lv-shell-focus {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lv-shell.lv-shell-focus > .lv-rail {
+    display: none;
+  }
 }
 .lv-main {
   min-width: 0;
@@ -485,12 +498,12 @@ input[type="range"] {
   flex-shrink: 0;
 }
 /* 桌面端 rail 承担导航：返回按钮隐藏；窄屏隐藏 rail、显示返回（V04 lite） */
-@media (min-width: 1024px) {
+@container lv-exam (min-width: 760px) {
   .lv-mobile-back {
     display: none !important;
   }
 }
-@media (max-width: 1023px) {
+@container lv-exam (max-width: 759px) {
   .lv-shell {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -499,12 +512,12 @@ input[type="range"] {
   }
 }
 /* V04 抽屉态：窄屏 rail 以 fixed 抽屉唤出（Rail.svelte open 类） */
-@media (max-width: 1023px) {
+@container lv-exam (max-width: 759px) {
   .lv-shell .lv-rail.open {
     display: flex;
-    position: fixed;
+    position: absolute;
     inset: 0 auto 0 0;
-    width: min(280px, calc(100vw - 36px));
+    width: min(280px, calc(100% - 36px));
     z-index: 90;
     box-shadow: var(--lv-sh-pop);
   }
@@ -512,7 +525,7 @@ input[type="range"] {
 
 /* 窄屏触控目标：紧凑桌面控件在触摸环境中仍需留出 44px 命中区。
    仅扩大交互盒，不改变桌面密度；Rail/关闭钮的内部图标仍按原尺寸绘制。 */
-@media (max-width: 1023px) {
+@container lv-exam (max-width: 759px) {
   .lv-shell .lv-rail .lv-rail-btn {
     min-height: 44px;
   }
@@ -546,13 +559,13 @@ input[type="range"] {
   justify-content: center;
   width: 36px;
   height: 36px;
-  border-radius: 9px;
+  border-radius: var(--lv-radius-control-sm);
   border: 1px solid var(--lv-ctl-border);
   background: var(--lv-surface);
   color: var(--lv-text-2);
   cursor: pointer;
 }
-@media (max-width: 1023px) {
+@container lv-exam (max-width: 759px) {
   .lv-menu-btn {
     display: inline-flex;
     width: 44px;
@@ -567,11 +580,11 @@ input[type="range"] {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  row-gap: 6px;
-  gap: 10px;
+  row-gap: var(--lv-space-compact);
+  gap: var(--lv-space-relaxed);
   border-bottom: 1px solid var(--lv-border);
   background: var(--lv-surface);
-  padding: 10px 16px;
+  padding: var(--lv-space-relaxed) var(--lv-space-4);
   min-height: 48px;
 }
 /* 桌面工具行拥挤时也允许换行：报告中心控件多（筛选/刷新/AI 双按钮/库切换/提示），
@@ -585,17 +598,33 @@ input[type="range"] {
   text-overflow: ellipsis;
   max-width: 180px;
 }
-@media (max-width: 1023px) {
+/* R54 focus toolbar: task context stays in the content, while the top bar
+   keeps only save/offline/search affordances during continuous answering. */
+.lv-focus-toolbar .lv-focus-context {
+  display: none !important;
+}
+.lv-focus-toolbar .lv-crumbs,
+.lv-focus-toolbar .lv-palette-btn {
+  display: none !important;
+}
+.lv-focus-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lv-space-2);
+  color: var(--lv-text);
+  font-size: var(--lv-font-size-body-compact);
+}
+@container lv-exam (max-width: 1023px) {
   /* 窄屏：chips 允许换行，面包屑占满首行可收缩（修复 390px 溢出撑宽整页） */
   .lv-exam-tab > .block__icons {
-    row-gap: 6px;
+    row-gap: var(--lv-space-compact);
   }
   .lv-exam-tab > .block__icons .lv-crumbs {
     flex: 1 1 100%;
     min-width: 0;
   }
 }
-@media (max-width: 600px) {
+@container lv-exam (max-width: 600px) {
   .lv-exam-tab > .block__icons .lv-palette-label {
     display: none; /* 搜索按钮收敛为图标 + ⌘K */
   }
@@ -604,39 +633,39 @@ input[type="range"] {
 /* —— 共用原语（上收自三 Tab 的逐字重复定义；改一处三处生效） —— */
 .lv-muted {
   color: var(--lv-text-3);
-  font-size: 12.5px;
+  font-size: var(--lv-font-size-meta);
 }
 .lv-row {
   display: flex;
-  gap: 10px;
+  gap: var(--lv-space-3);
   align-items: center;
   flex-wrap: wrap;
-  margin: 8px 0;
+  margin: var(--lv-space-2) 0;
 }
 .lv-error {
-  margin: 8px 0;
-  padding: 10px 14px;
+  margin: var(--lv-space-2) 0;
+  padding: 10px var(--lv-space-3);
   border-radius: var(--lv-r-2);
   background: var(--lv-red-soft);
   color: var(--lv-red);
-  font-size: 13px;
+  font-size: var(--lv-font-size-body);
 }
 .lv-kpis {
   /* auto-fit：窄容器（宿主设置浮层挤压主区等）优雅降级，不挤碎文字 */
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 14px;
-  margin-bottom: 14px;
+  gap: var(--lv-space-3);
+  margin-bottom: var(--lv-space-3);
 }
 .lv-kpi {
-  padding: 18px 20px;
+  padding: var(--lv-space-5) var(--lv-space-6);
 }
 .lv-kpi .l {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  font-size: 12px;
+  gap: var(--lv-space-2);
+  font-size: var(--lv-font-size-sm);
   color: var(--lv-text-3);
   margin-bottom: 4px;
 }
@@ -647,18 +676,18 @@ input[type="range"] {
   padding: 3px;
 }
 .lv-kpi .v {
-  font-size: 30px;
-  font-weight: 700;
+  font-size: var(--lv-font-size-kpi);
+  font-weight: var(--lv-font-weight-bold);
   letter-spacing: -0.02em;
   line-height: 1.4;
   font-variant-numeric: tabular-nums;
 }
-@media (max-width: 960px) {
+@container lv-exam (max-width: 960px) {
   .lv-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-@media (max-width: 480px) {
+@container lv-exam (max-width: 480px) {
   /* 极窄屏系统性适配（真机走查发现的竖排文字根因修复）——
      多组件在 <480px 的 flex/grid 上下文中文字被挤压成逐字竖排，
      根因：容器无 min-width 保护 + 文字元素缺 nowrap + grid 不收列 */
@@ -677,7 +706,7 @@ input[type="range"] {
     min-width: 0;
   }
   .lv-kpi .v {
-    font-size: 24px; /* 30px 在 <480px 过大，收一档 */
+    font-size: var(--lv-font-size-kpi-mobile); /* 30px 在 <480px 过大，收一档 */
   }
 
   /* 入口 widget 三卡（目标环/连胜/待消灭）窄屏单列 */
@@ -690,7 +719,7 @@ input[type="range"] {
   .lv-widget {
     flex-direction: column;
     align-items: flex-start;
-    gap: 8px;
+    gap: var(--lv-space-2);
   }
   .lv-widget-title {
     white-space: nowrap;
@@ -777,8 +806,8 @@ input[type="range"] {
 .lv-palette-input {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 13px 18px;
+  gap: var(--lv-space-2);
+  padding: var(--lv-space-3) 18px;
   border-bottom: 1px solid var(--lv-border);
   color: var(--lv-text-3);
 }
@@ -788,7 +817,7 @@ input[type="range"] {
   box-shadow: none;
   min-height: 30px;
   padding: 0;
-  font-size: 15px;
+  font-size: var(--lv-font-size-h3);
   flex: 1;
   color: var(--lv-text);
 }
@@ -802,12 +831,12 @@ input[type="range"] {
   padding: 8px;
 }
 .lv-palette-group {
-  font-size: 10.5px;
+  font-size: var(--lv-font-size-compact);
   letter-spacing: 1.4px;
   text-transform: uppercase;
   color: var(--lv-text-3);
-  font-weight: 650;
-  padding: 10px 12px 5px;
+  font-weight: var(--lv-font-weight-semibold);
+  padding: var(--lv-space-relaxed) var(--lv-space-3) 5px;
 }
 .lv-palette-item {
   display: flex;
@@ -817,11 +846,11 @@ input[type="range"] {
   text-align: left;
   background: transparent;
   border: 0;
-  border-radius: 9px;
+  border-radius: var(--lv-radius-control-sm);
   padding: 9px 12px;
   min-height: 38px;
   color: var(--lv-text);
-  font-size: 13.5px;
+  font-size: var(--lv-font-size-body);
   cursor: pointer;
 
   .lv-icon {
@@ -840,11 +869,11 @@ input[type="range"] {
 }
 .lv-palette-foot {
   display: flex;
-  gap: 14px;
+  gap: var(--lv-space-loose);
   align-items: center;
-  padding: 9px 16px;
+  padding: var(--lv-component-pad-md);
   border-top: 1px solid var(--lv-border);
-  font-size: 11px;
+  font-size: var(--lv-font-size-label);
   color: var(--lv-text-3);
   background: var(--lv-surface-2);
 }
@@ -868,18 +897,18 @@ input[type="range"] {
   /* auto-fit：容器受挤压（宿主浮层/分栏）时逐级换行而非竖排文字 */
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(216px, 1fr));
-  gap: 14px;
+  gap: var(--lv-space-loose);
   margin-bottom: 20px;
 
-  @media (max-width: 960px) {
+  @container lv-exam (max-width: 960px) {
     grid-template-columns: minmax(0, 1fr);
   }
 }
 .lv-widget {
   display: flex;
-  gap: 16px;
+  gap: var(--lv-space-4);
   align-items: center;
-  padding: 16px 18px;
+  padding: var(--lv-space-4) var(--lv-space-panel);
 }
 .lv-widget--click {
   cursor: pointer;
@@ -891,10 +920,10 @@ input[type="range"] {
   }
 }
 .lv-widget-title {
-  font-size: 11px;
+  font-size: var(--lv-font-size-label);
   letter-spacing: 1.2px;
   color: var(--lv-text-3);
-  font-weight: 650;
+  font-weight: var(--lv-font-weight-semibold);
   text-transform: uppercase;
   margin-bottom: 5px;
 }
@@ -903,14 +932,14 @@ input[type="range"] {
 
   strong {
     display: block;
-    font-size: 19px;
-    font-weight: 650;
+    font-size: var(--lv-font-size-stat);
+    font-weight: var(--lv-font-weight-semibold);
     letter-spacing: -0.01em;
     font-variant-numeric: tabular-nums;
   }
   .lv-muted {
     display: block;
-    font-size: 12px;
+    font-size: var(--lv-font-size-sm);
     margin-top: 2px;
   }
 }
@@ -926,7 +955,7 @@ input[type="range"] {
   --pct: 0;
   width: 100%;
   height: 100%;
-  border-radius: 50%;
+  border-radius: var(--lv-radius-round);
   background: conic-gradient(var(--lv-accent) calc(var(--pct) * 1%), var(--lv-border) 0);
   mask: var(--lv-goal-mask);
   -webkit-mask: var(--lv-goal-mask);
@@ -936,8 +965,8 @@ input[type="range"] {
 }
 .lv-goal-center {
   position: absolute;
-  font-size: 14px;
-  font-weight: 650;
+  font-size: var(--lv-font-size-md);
+  font-weight: var(--lv-font-weight-semibold);
   font-variant-numeric: tabular-nums;
 }
 .lv-streak-flame {
@@ -959,15 +988,15 @@ input[type="range"] {
 .lv-chart-row {
   display: grid;
   grid-template-columns: 96px minmax(0, 1fr) 48px;
-  gap: 12px;
+  gap: var(--lv-space-3);
   align-items: center;
-  font-size: 12px;
-  padding: 10px 0;
+  font-size: var(--lv-font-size-sm);
+  padding: var(--lv-space-relaxed) 0;
   font-variant-numeric: tabular-nums;
 
   strong {
     text-align: right;
-    font-weight: 650;
+    font-weight: var(--lv-font-weight-semibold);
   }
 }
 .lv-wrong-row {
@@ -975,7 +1004,7 @@ input[type="range"] {
   gap: 13px;
   align-items: flex-start;
   flex-wrap: wrap;
-  padding: 13px 0;
+  padding: var(--lv-space-3) 0;
   border-bottom: 1px solid var(--lv-border);
 
   &:last-of-type {
@@ -986,19 +1015,19 @@ input[type="range"] {
     min-width: 0;
   }
   .lv-wrong-stem {
-    font-size: 13.5px;
-    font-weight: 550;
+    font-size: var(--lv-font-size-body);
+    font-weight: var(--lv-font-weight-medium);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .lv-wrong-meta {
     display: flex;
-    gap: 6px;
+    gap: var(--lv-space-compact);
     align-items: center;
     flex-wrap: wrap;
     margin-top: 4px;
-    font-size: 11.5px;
+    font-size: var(--lv-font-size-caption);
     color: var(--lv-text-3);
     font-variant-numeric: tabular-nums;
   }

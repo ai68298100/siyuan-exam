@@ -5,16 +5,19 @@
 // 仅供开发/验收，不进发行包（eslint/tsconfig/vite 主构建均已排除）。
 // ============================================================
 import { mount, unmount } from "svelte";
-import PracticeTab from "@/ui/practice/PracticeTab.svelte";
-import MockTab from "@/ui/mock/MockTab.svelte";
-import ReportTab from "@/ui/report/ReportTab.svelte";
 import "@/index.scss";
 import { ExamApp } from "@/app";
 import { KernelApiClient } from "@/kernel/client";
 import i18n from "../../public/i18n/zh-CN.json";
+import { parseIal } from "@/core/blockTemplate";
+import { emitExamEvent } from "@/core/bus";
 
 // ---------- 种子数据 ----------
 const BANK_ID = "20260101000000-hhseedbk";
+const DEMO_BANK_ID = "20261011000000-demobank";
+const emptyScenario = new URLSearchParams(location.search).get("scenario") === "empty";
+const demoQuestions = [];
+const demoDocs = new Map();
 const now = Date.now();
 const DAY = 86_400_000;
 
@@ -95,6 +98,12 @@ const SEED_QUESTIONS = [
 ];
 
 function sqlRowsFor(box) {
+  if (box === DEMO_BANK_ID) {
+    return demoQuestions.flatMap((question) => Object.entries(question.attrs).map(([attrName, attrValue]) => ({
+      blockId: question.blockId, rootId: question.rootId, hpath: "/示例题", markdown: question.markdown,
+      content: "压平摘要", attrName, attrValue,
+    })));
+  }
   if (box !== BANK_ID) return [];
   const rows = [];
   SEED_QUESTIONS.forEach((question, i) => {
@@ -136,10 +145,34 @@ const transport = {
         const box = stmt.match(/box='([^']+)'/)?.[1] ?? "";
         return { code: 0, msg: "", data: sqlRowsFor(box) };
       }
+      const path = stmt.match(/hpath='([^']+)'/)?.[1];
+      if (path && demoDocs.has(path)) return { code: 0, msg: "", data: [{ id: demoDocs.get(path) }] };
       return { code: 0, msg: "", data: [] };
     }
-    if (endpoint === "/api/filetree/createDocWithMd") return { code: 0, msg: "", data: "20260101000000-docseed" };
-    if (endpoint === "/api/notebook/createNotebook") return { code: 0, msg: "", data: { notebook: { id: BANK_ID } } };
+    if (endpoint === "/api/filetree/createDocWithMd") {
+      const id = `20261011000000-doc${demoDocs.size}`;
+      demoDocs.set(payload.path, id);
+      return { code: 0, msg: "", data: id };
+    }
+    if (endpoint === "/api/block/getBlockKramdown") {
+      const found = demoQuestions.find((question) => question.blockId === payload.id);
+      const markdown = found?.markdown ?? (Array.from(demoDocs.values()).includes(payload.id)
+        ? "# 示例题\n\n" + demoQuestions.filter((question) => question.rootId === payload.id).map((question) => question.markdown).join("\n\n")
+        : "");
+      return { code: 0, msg: "", data: { kramdown: markdown } };
+    }
+    if (endpoint === "/api/notebook/createNotebook") return { code: 0, msg: "", data: { notebook: { id: DEMO_BANK_ID } } };
+    if (endpoint === "/api/block/insertBlock") {
+      const operations = [];
+      for (const match of String(payload.data ?? "").matchAll(/\{\{\{row[\s\S]*?\n\}\}\}\n\{: [^\n]+\}/g)) {
+        const markdown = match[0];
+        const attrs = parseIal(markdown.slice(markdown.lastIndexOf("{: ")));
+        const blockId = `20261011000000-demo${demoQuestions.length}`;
+        demoQuestions.push({ blockId, rootId: payload.parentID, markdown, attrs });
+        operations.push({ id: blockId });
+      }
+      return { code: 0, msg: "", data: [{ doOperations: operations }] };
+    }
     return { code: 0, msg: "", data: {} };
   },
 };
@@ -238,6 +271,12 @@ const memStorage = new Map([
     },
   ],
 ]);
+if (emptyScenario) {
+  memStorage.set("banks", []);
+  memStorage.set("attempts/log", { v: 2, events: [] });
+  memStorage.set("wrongbook/reasons", {});
+  memStorage.delete("ai/review-queue");
+}
 // save 同步镜像到 localStorage——支撑「刷新后恢复」等跨刷新流程测试（smoke-ui）
 const LS = "lv-harness-storage";
 const persisted: Record<string, unknown> = (() => {
@@ -313,12 +352,31 @@ const realSettings = new SettingUtils({ plugin: plugin as any });
 );
 
 let instance = null;
-window.__show = (name) => {
+let navigation = 0;
+const lazyTabs = new URLSearchParams(location.search).get("lazy") === "1";
+const tabLoaders = {
+  practice: () => import("@/ui/practice/PracticeTab.svelte"),
+  mock: () => import("@/ui/mock/MockTab.svelte"),
+  report: () => import("@/ui/report/ReportTab.svelte"),
+};
+const eagerModules = new Map();
+window.__show = async (name) => {
+  const current = ++navigation;
   if (instance) unmount(instance);
   const target = document.getElementById("app");
   target.innerHTML = "";
-  const comp = { practice: PracticeTab, mock: MockTab, report: ReportTab }[name];
-  instance = mount(comp, { target, props: { plugin, examApp: app } });
+  let module = eagerModules.get(name);
+  if (!module) {
+    const status = document.createElement("div");
+    status.className = "lv-tab-loading";
+    status.setAttribute("role", "status");
+    status.textContent = "正在加载…";
+    target.appendChild(status);
+    module = await tabLoaders[name]();
+    if (current !== navigation) return;
+    target.innerHTML = "";
+  }
+  instance = mount(module.default, { target, props: { plugin, examApp: app } });
   document.querySelectorAll("#bar [data-tab]").forEach((b) => b.classList.toggle("on", b.dataset.tab === name));
 };
 // 命令面板跨 Tab 跳转（与宿主 open* 同语义）
@@ -334,6 +392,8 @@ window.__theme = (dark) => {
   document.getElementById("theme").textContent = dark ? "☀️ 亮" : "🌙 暗";
 };
 window.__app = app;
+window.__plugin = plugin;
+window.__changeBank = (bank) => emitExamEvent("bank-changed", { bank });
 window.__settings = () => (plugin as any).setting.open("settings");
 
 document
@@ -344,4 +404,7 @@ document
   .addEventListener("click", () => window.__theme(!document.body.classList.contains("dark")));
 // 宿主全局桩：libs/dialog 的确认框读取 window.siyuan.languages（渲染确认/取消按钮文案）
 (window as any).siyuan = { languages: { confirm: "确认", cancel: "取消" } };
-window.__show("practice");
+if (!lazyTabs) {
+  await Promise.all(Object.entries(tabLoaders).map(async ([name, loader]) => eagerModules.set(name, await loader())));
+}
+void window.__show("practice");
