@@ -16,7 +16,7 @@
 
 [English](README.en-US.md) · [当前状态](docs/STATUS.md) · [交付说明](docs/DELIVERY.md) · [组件清单](docs/UI-COMPONENTS.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md) · [下载发行包](https://github.com/ai68298100/siyuan-exam/releases) · [查看 R54 UI 原型](design/prototype-r54/index.html) · [反馈问题](https://github.com/ai68298100/siyuan-exam/issues) · [参与讨论](https://github.com/ai68298100/siyuan-exam/discussions)
 
-## 最新版本：v0.9.9（2026-10-15）
+## 最新版本：v0.10.0（2026-10-15）
 
 本轮全面重塑设计系统与现代高级质感，注入复合弥散阴影、微内高光与次表面层级；根治核心视图卡片覆盖全局样式的缺陷，升级作答阅读沉浸感、选项键帽悬浮手感、模考 CBT 答题卡与动态保存指示灯。
 

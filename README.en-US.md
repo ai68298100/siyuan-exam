@@ -46,7 +46,7 @@
 
 ---
 
-## Latest release: v0.9.9 (2026-10-15)
+## Latest release: v0.10.0 (2026-10-15)
 
 This release overhauls the design system and tactile micro-depth: introducing composite ambient shadows, 1px top inset highlights, subtle tinted borders, paper-focus reading typography, tactile keycaps, compact CBT mock answer sheet, and live pulse indicators for background saves.
 
