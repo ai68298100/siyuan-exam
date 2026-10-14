@@ -1141,6 +1141,8 @@
     "setting.saveFailed": "Settings could not be saved. Your inputs are kept; reopen plugin settings to retry.",
     "setting.loadFailed": "Settings could not be read; defaults are in use. Check storage permissions and retry.",
     "state.initializing": "Initializing Lv Exam; this page will open when ready…",
+    "state.openTabOpening": "The practice tab is opening, please wait…",
+    "state.openTabFailed": "The practice tab could not be opened. Please try again.",
     "state.loadFailed": "Page failed to load. Please retry.",
     "statusbar.summary": "{today} answers today · {wrong} active wrong questions · {streak}-day streak. Click to open practice.",
     "save.targetPractice": "Practice progress",

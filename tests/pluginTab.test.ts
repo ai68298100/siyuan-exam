@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { consumePendingPracticeView, createExamTabDescriptor, focusExamTab, isCurrentPracticeViewRequest, openPracticeView } from "../src/core/pluginTab";
+import { consumePendingPracticeView, createExamTabDescriptor, focusExamTab, isCurrentPracticeViewRequest, observeTabOpen, openPracticeView } from "../src/core/pluginTab";
 import { onExamEvent } from "../src/core/bus";
 
 describe("自定义页签持久化数据", () => {
@@ -71,5 +71,17 @@ describe("自定义页签持久化数据", () => {
       off();
       vi.unstubAllGlobals();
     }
+  });
+
+  it("观察页签打开的同步抛错和异步拒绝，不留下未处理 Promise", async () => {
+    const success: string[] = [];
+    const failure: string[] = [];
+    observeTabOpen(() => Promise.resolve("opened"), (value) => success.push(value), (error) => failure.push(String(error)));
+    observeTabOpen(() => Promise.reject(new Error("host rejected")), () => success.push("unexpected"), (error) => failure.push(String(error)));
+    observeTabOpen(() => { throw new Error("host threw"); }, () => success.push("unexpected"), (error) => failure.push(String(error)));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(success).toEqual(["opened"]);
+    expect(failure).toEqual(["Error: host threw", "Error: host rejected"]);
   });
 });

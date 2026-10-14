@@ -12,7 +12,7 @@ import { createExamApp } from "./app-runtime";
 import type { ExamApp } from "./app";
 import { streak } from "./core/replayer";
 import { emitExamEvent } from "./core/bus";
-import { createExamTabDescriptor, focusExamTab, openPracticeView } from "./core/pluginTab";
+import { createExamTabDescriptor, focusExamTab, observeTabOpen, openPracticeView } from "./core/pluginTab";
 import { combineBlockSources } from "./core/blockSource";
 import { registerExamDailySummary } from "./ecosystem/speedSwitch";
 
@@ -45,6 +45,7 @@ export default class LvExamPlugin extends Plugin {
   private examApp: ExamApp | null = null;
   private appInitializing = true;
   private queuedTab: { type: string; icon: string; title: string } | null = null;
+  private openingTabs = new Set<string>();
   private boundBlockIcon = this.onBlockIconClick.bind(this);
   /** 47-05 lite：设置默认值快照（注册完成时；恢复默认用） */
   private settingDefaults: Map<string, unknown> = new Map();
@@ -618,12 +619,32 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
       rememberOpenTab(type);
       return true;
     }
-    rememberOpenTab(type);
-    openTab({
-      app: this.app as any,
-      // 宿主以 plugin.name + type 为键查找页签工厂；descriptor 只含可持久化字段。
-      custom: createExamTabDescriptor(this.name, type, icon, title),
-    });
+    if (this.openingTabs.has(type)) {
+      showMessage(this.i18n["state.openTabOpening"] ?? "练习台正在打开，请稍候…", 1800, "info");
+      return false;
+    }
+    this.openingTabs.add(type);
+    observeTabOpen(
+      () => openTab({
+        app: this.app as any,
+        // 宿主以 plugin.name + type 为键查找页签工厂；descriptor 只含可持久化字段。
+        custom: createExamTabDescriptor(this.name, type, icon, title),
+      }),
+      () => {
+        this.openingTabs.delete(type);
+        rememberOpenTab(type);
+      },
+      (error) => {
+        console.error(`[lv-exam] failed to open tab: ${type}`, error);
+        this.openingTabs.delete(type);
+        const reason = String(error instanceof Error ? error.message : error);
+        showMessage(
+          (this.i18n["state.openTabFailed"] ?? "无法打开插件页签，请重试。") + ` ${reason}`,
+          6000,
+          "error",
+        );
+      },
+    );
     return false;
   }
 

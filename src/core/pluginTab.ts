@@ -21,6 +21,15 @@ type PracticeViewPlugin = {
 
 let practiceViewSeq = 0;
 
+/** Observe both synchronous host throws and async openTab rejections. */
+export function observeTabOpen<T>(open: () => T | PromiseLike<T>, onSuccess: (value: T) => void, onFailure: (error: unknown) => void): void {
+  try {
+    void Promise.resolve(open()).then(onSuccess, onFailure);
+  } catch (error) {
+    onFailure(error);
+  }
+}
+
 /** Existing tabs receive a bus event; new tabs consume the pending route on mount. */
 export function openPracticeView(
   plugin: PracticeViewPlugin | null | undefined,

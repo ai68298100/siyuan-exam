@@ -1141,6 +1141,8 @@
     "setting.saveFailed": "设置保存失败；输入已保留，重新打开插件设置后可再次保存。",
     "setting.loadFailed": "设置读取失败，已使用默认值；请检查存储权限后重试。",
     "state.initializing": "正在初始化小驴考试，完成后自动打开…",
+    "state.openTabOpening": "练习台正在打开，请稍候…",
+    "state.openTabFailed": "练习台打开失败，请稍后重试。",
     "state.loadFailed": "页面加载失败，请重试。",
     "statusbar.summary": "今日作答 {today} 题 · 在册错题 {wrong} 题 · 连续学习 {streak} 天；点击打开练习台。",
     "save.targetPractice": "练习进度",
