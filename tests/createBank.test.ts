@@ -195,6 +195,19 @@ describe("显式示例题库", () => {
     expect(restored.listBanks()[0].sampleState).toBe("ready");
   });
 
+  it("insertBlock 回执不完整但文档已落盘时按回读确认成功", async () => {
+    const { client, questions, appendQuestions, writeQuestions } = sampleClient({ indexLag: true });
+    appendQuestions.mockImplementationOnce(async (id, qs) => {
+      writeQuestions(id, qs);
+      return [];
+    });
+    const app = mkApp(client);
+    const bank = await app.createSampleBank();
+    expect(bank.sampleState).toBe("ready");
+    expect(questions).toHaveLength(SAMPLE_QUESTION_COUNT);
+    expect(appendQuestions).toHaveBeenCalledTimes(1);
+  });
+
   it("ready 保存失败后重试只重存状态；直接文档读失败时禁止猜测缺失题目", async () => {
     const { client, questions, appendQuestions, getBlockKramdown } = sampleClient({ indexLag: true });
     const storage = new SnapshotStorage();

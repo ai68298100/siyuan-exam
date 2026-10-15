@@ -10,13 +10,21 @@
 
 [![Release](https://img.shields.io/github/v/release/ai68298100/siyuan-exam?logo=github)](https://github.com/ai68298100/siyuan-exam/releases)
 [![CI](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml/badge.svg)](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml)
-[![Tests](https://img.shields.io/badge/tests-655%20passed-brightgreen)](#开发)
+[![Tests](https://img.shields.io/badge/tests-661%20passed-brightgreen)](#开发)
 [![SiYuan](https://img.shields.io/badge/SiYuan-%3E%3D%203.8.0-blue)](https://github.com/siyuan-note/siyuan)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 [English](README.en-US.md) · [当前状态](docs/STATUS.md) · [交付说明](docs/DELIVERY.md) · [组件清单](docs/UI-COMPONENTS.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md) · [下载发行包](https://github.com/ai68298100/siyuan-exam/releases) · [查看 R54 UI 原型](design/prototype-r54/index.html) · [反馈问题](https://github.com/ai68298100/siyuan-exam/issues) · [参与讨论](https://github.com/ai68298100/siyuan-exam/discussions)
 
-## 最新版本：v0.10.0（2026-10-15）
+## 最新版本：v0.10.1（2026-10-16）
+
+修复首次创建示例题库时，题目已落盘但宿主写入回执不完整导致的失败提示；同时校准真实宿主数据审计与当前验收记录。
+
+- **示例题库：** 回执缺项时读取题库原文确认，已写入的 12 道原创题可正常完成创建，重试沿用原有题目身份。
+- **审计可靠性：** 修正插件存储、行动、AI 历史与打卡桥接的读取路径；区分合法的已清空会话与损坏 JSON，并补充 CLI 回归测试。
+- **验证范围：** 已在隔离 SiYuan 3.8.7 中核对示例写入、练习反馈和作答持久化；完整模考恢复、Android WebView 与真实 AI 旅程仍待验收。详见[当前状态](docs/STATUS.md)。
+
+## 上一版本：v0.10.0（2026-10-15）
 
 本轮全面重塑设计系统与现代高级质感，注入复合弥散阴影、微内高光与次表面层级；根治核心视图卡片覆盖全局样式的缺陷，升级作答阅读沉浸感、选项键帽悬浮手感、模考 CBT 答题卡与动态保存指示灯。
 
@@ -26,7 +34,7 @@
 - **模考与数据：** 模考答题卡改用紧凑 CBT 方形微质感矩阵，当前题增加双层发光雷达外环定位；四象限微卡片改用温润浅底与 26px 加粗大字，53 周热力图新增悬停平滑放大 1.4 倍并提亮交互。
 - **反馈与沉淀：** 保存状态指示器（SaveStatus）升级为带保存中呼吸脉冲灯动画的胶囊；全局沉淀 `.lv-empty`（60px 柔和微图 + 次表面虚线内微光卡片）与 `.lv-detail`，解决报告中心空态无样式裸奔问题；全量输入框落地 3px 现代软光环聚焦。
 
-## 上个版本：v0.9.7 → v0.9.8（2026-10-14）
+## 近期更新：v0.9.7–v0.9.8（2026-10-14）
 
 本轮修复练习台页签打开失败时点击无响应的问题，并把宿主异常转成可读提示与可重试路径；R54 原型 token、普通块出题入口和完整状态反馈继续保留。
 
@@ -140,7 +148,7 @@ AI 只产生候选与解释，不应直接改原答案、正式成绩、题源�
 
 思阅、思播、思盘以及本地软件按具体版本和公开接口研究；无法定位或回传时，提供手工页码/时间点与返回学习上下文。小驴打卡、雷切、拾遗、人脉等系列桥也按需探测、单独开启，未安装不阻断学习。名称出现在设计中，不表示已兼容或已实现双向同步。详见 [资料与工具融合研究](research/17-付费资料与本地网盘媒体联动调研.md)。
 
-## 功能概览（v0.9.7）
+## 功能概览（v0.10.1）
 
 以下为当前源码中的主要能力。自动化测试覆盖核心逻辑；真实思源内核、移动 WebView、大题库和完整界面旅程仍有待验证项，见[发版检查清单](docs/23-发版检查清单.md)。
 

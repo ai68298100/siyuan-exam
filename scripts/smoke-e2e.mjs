@@ -20,7 +20,9 @@ if (!WORKSPACE) {
   console.error("✗ 缺少思源工作区：请设置 SIYUAN_WORKSPACE 或传入工作区路径；不会使用固定路径");
   process.exit(1);
 }
-const PETAL = join(WORKSPACE, "storage/petal/siyuan-exam");
+// Plugin.loadData/saveData writes under the workspace data directory. Keep the
+// read-only audit aligned with SiYuan's actual private petal storage layout.
+const PETAL = join(WORKSPACE, "data/storage/petal/siyuan-exam");
 
 const results = [];
 const record = (name, status, note = "") => {
@@ -30,13 +32,14 @@ const record = (name, status, note = "") => {
   console.log(`${icon}  ${name}${note ? "  — " + note : ""}`);
 };
 
+const INVALID_JSON = Symbol("invalid JSON");
 const readJson = (rel) => {
   const p = join(PETAL, ...rel.split("/"));
   if (!existsSync(p)) return undefined;
   try {
     return JSON.parse(readFileSync(p, "utf8"));
   } catch {
-    return null; // 存在但解析失败
+    return INVALID_JSON; // 与正常清空快照时写入的 JSON null 区分
   }
 };
 
@@ -52,10 +55,10 @@ console.log(`安装态：${deployed ? "已部署 v" + version : "未找到"} · 
 // ---------- 1. 37-01 路径语义 + 存储存在性 ----------
 const EXPECTED = [
   { key: "attempts/log", file: "attempts/log.json", label: "27/28 作答流水（信封 v2）", critical: true },
-  { key: "mock/run", file: "mock/run.json", label: "27 模考运行快照", critical: false },
+  { key: "mock/run", file: "mock/run.json", label: "27 模考运行快照", critical: false, nullable: true },
   { key: "mock/blueprint", file: "mock/blueprint.json", label: "模考蓝图", critical: false },
   { key: "mock/results", file: "mock/results.json", label: "模考成绩历史", critical: false },
-  { key: "session/active", file: "session/active.json", label: "练习续做快照", critical: false },
+  { key: "session/active", file: "session/active.json", label: "练习续做快照", critical: false, nullable: true },
   { key: "actions/items", file: "actions/items.json", label: "37 下一步行动", critical: false },
   { key: "ai/explain-history", file: "ai/explain-history.json", label: "38 AI 讲解记录", critical: false },
   { key: "ai/usage", file: "ai/usage.json", label: "AI 用量记账", critical: false },
@@ -66,15 +69,19 @@ const EXPECTED = [
 ];
 
 let anyData = false;
-for (const { key, file, label } of EXPECTED) {
+for (const { key, file, label, nullable } of EXPECTED) {
   const data = readJson(file);
   if (data === undefined) {
     record(`${label}（${key}）`, "wait", "尚无数据");
     continue;
   }
   anyData = true;
-  if (data === null) {
+  if (data === INVALID_JSON) {
     record(`${label}（${key}）`, "fail", "文件存在但非合法 JSON");
+    continue;
+  }
+  if (data === null && nullable) {
+    record(`${label}（${key}）`, "wait", "无活动快照（已正常清空）");
     continue;
   }
   // 37-01 路径语义：key 含 "/" → 文件确实落在子目录（join 路径已隐式验证 existsSync）
@@ -105,25 +112,27 @@ if (log) {
       mockEvents.length ? `${mockEvents.length} 事件${badExamId.length ? `，${badExamId.length} 个非 r- 前缀` : ""}` : "尚无模考作答");
   }
 } else if (log === null) {
-  record("作答流水信封 {v,events}", "fail", "文件存在但非合法 JSON");
+  record("作答流水信封 {v,events}", "fail", "既非 {v,events} 也非数组");
 }
 
 // ---------- 3. 27 mock/run 快照字段 ----------
 const run = readJson("mock/run.json");
-if (run && typeof run === "object") {
+if (run && typeof run === "object" && !Array.isArray(run)) {
   const required = ["runId", "bp", "qids", "startedAt", "savedAt"];
   const missing = required.filter((k) => run[k] == null);
   const hasQVersions = run.qVersions != null; // 55-07 冻结题版
   record("27 模考运行快照 schema", missing.length ? "fail" : "pass",
     `runId=${String(run.runId).slice(0, 12)}…${missing.length ? `，缺 ${missing.join("/")}` : ""}${hasQVersions ? "，含冻结题版" : ""}`);
-} else if (run === null) {
+} else if (run === INVALID_JSON) {
   record("27 模考运行快照 schema", "fail", "文件存在但非合法 JSON");
+} else if (run !== undefined && run !== null) {
+  record("27 模考运行快照 schema", "fail", "快照非对象");
 } else {
   record("27 模考运行快照 schema", "wait", "尚无进行中/已保存的模考");
 }
 
 // ---------- 4. 37 actions/items ----------
-const actions = readJson("actions/items");
+const actions = readJson("actions/items.json");
 if (actions !== undefined) {
   const ok = Array.isArray(actions);
   record("37 下一步行动 schema", ok ? "pass" : "fail", ok ? `${actions.length} 条` : "非数组");
@@ -132,16 +141,16 @@ if (actions !== undefined) {
 }
 
 // ---------- 5. 38 AI 记录 ----------
-const explain = readJson("ai/explain-history");
+const explain = readJson("ai/explain-history.json");
 if (explain !== undefined) {
   const n = Object.keys(explain ?? {}).length;
-  record("38 AI 讲解记录", typeof explain === "object" && explain !== null ? "pass" : "fail", `${n} 题有记录`);
+  record("38 AI 讲解记录", typeof explain === "object" && explain !== null && !Array.isArray(explain) ? "pass" : "fail", `${n} 题有记录`);
 } else {
   record("38 AI 讲解记录", "wait", "尚无数据");
 }
 
 // ---------- 6. 48-03 打卡桥痕迹（exam: 前缀是否已出现在打卡侧，只读窥探） ----------
-const checkinBridge = join(WORKSPACE, "storage/petal/siyuan-checkin/bridge/events.ndjson");
+const checkinBridge = join(WORKSPACE, "data/storage/petal/siyuan-checkin/bridge/events.ndjson");
 if (existsSync(checkinBridge)) {
   const text = readFileSync(checkinBridge, "utf8");
   const examEvents = (text.match(/exam:/g) || []).length;
@@ -155,7 +164,7 @@ const matReg = readJson("materials/registry.json");
 if (matReg !== undefined) {
   anyData = true;
   const mats = Array.isArray(matReg?.materials) ? matReg.materials : null;
-  if (matReg === null) record("120 资料注册表 schema", "fail", "文件存在但非合法 JSON");
+  if (matReg === INVALID_JSON) record("120 资料注册表 schema", "fail", "文件存在但非合法 JSON");
   else if (!mats) record("120 资料注册表 schema", "fail", "缺 materials 数组（{v,materials} 信封）");
   else {
     const bad = mats.filter((m) => !m || typeof m.id !== "string" || !/^m-/.test(m.id) || !Array.isArray(m.locations) || m.locations.some((l) => !l || !["assets", "link"].includes(l.kind) || typeof l.path !== "string"));

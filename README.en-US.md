@@ -11,7 +11,7 @@
 
 [![Release](https://img.shields.io/github/v/release/ai68298100/siyuan-exam?logo=github)](https://github.com/ai68298100/siyuan-exam/releases)
 [![CI](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml/badge.svg)](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml)
-[![Tests](https://img.shields.io/badge/tests-655%20passed-brightgreen)](#-development)
+[![Tests](https://img.shields.io/badge/tests-661%20passed-brightgreen)](#-development)
 [![SiYuan](https://img.shields.io/badge/SiYuan-%3E%3D%203.8.0-blue)](https://github.com/siyuan-note/siyuan)
 [![License](https://img.shields.io/badge/license-MIT-green)](#-license)
 
@@ -46,7 +46,15 @@
 
 ---
 
-## Latest release: v0.10.0 (2026-10-15)
+## Latest release: v0.10.1 (2026-10-16)
+
+This patch fixes sample-bank creation reporting a failure after SiYuan has already saved the questions, and makes host-data audits more reliable.
+
+- **Sample bank:** When the write receipt is incomplete, creation reads back the source document to confirm the 12 original questions. Retries keep their existing identities.
+- **Audit reliability:** Corrected plugin-storage, action, AI-history and check-in bridge paths; cleared sessions are distinguished from damaged JSON, with CLI regression coverage.
+- **Validation scope:** Sample writes, practice feedback and persisted answers were checked in an isolated SiYuan 3.8.7 workspace. Complete mock recovery, Android WebView and real AI journeys still await validation. See [current status](docs/STATUS.md).
+
+## Previous release: v0.10.0 (2026-10-15)
 
 This release overhauls the design system and tactile micro-depth: introducing composite ambient shadows, 1px top inset highlights, subtle tinted borders, paper-focus reading typography, tactile keycaps, compact CBT mock answer sheet, and live pulse indicators for background saves.
 
@@ -56,7 +64,7 @@ This release overhauls the design system and tactile micro-depth: introducing co
 - **Mock CBT & Analytics:** Restructured mock answer grid into compact square tiles with dual-ring active question radar glow; quadrant cards adopt soft subtle backgrounds with 26px bold figures; 53-week heatmap squares now smoothly scale 1.4x on hover.
 - **Feedback & Primitives:** SaveStatus pill enhanced with live pulse animation while persisting; consolidated global `.lv-empty` and `.lv-detail` primitives, fixing bare unstyled empty states in the Report center; unified 3px soft focus rings across all inputs.
 
-## Previous release: v0.9.8 (2026-10-14)
+## Recent patch series: v0.9.7-v0.9.8 (2026-10-14)
 
 This patch makes Practice tab opening observable: host errors are surfaced with a retry path and repeated clicks are locked while opening. The R54 token system, ordinary-block AI entry and complete state feedback remain included.
 
@@ -98,7 +106,7 @@ This release improves the first-run path and closes the handoff loop between Pra
 - **Cross-module handoff:** weak-topic drills, action redo, and mock wrong-answer review carry the target bank and can hand an active session to an already open Practice tab.
 - **Feedback and navigation:** reports refresh after new results, mock saving and recovery expose errors and busy states, and the command palette respects the visible tab.
 
-## 📦 Feature overview (v0.9.8; journey checks ongoing)
+## 📦 Feature overview (v0.10.1; journey checks ongoing)
 
 The capabilities below have source implementations and automated coverage where stated. "Journey checks ongoing" means per-screen manual walkthroughs are still in progress — see the [release checklist](docs/23-发版检查清单.md) for known unverified items.
 

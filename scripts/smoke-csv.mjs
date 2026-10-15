@@ -150,7 +150,7 @@ try {
   const zipBuf = Buffer.from(await fileRes.arrayBuffer());
   const isZip = zipBuf.slice(0, 2).toString() === "PK";
   recordOpt("exportNotebookSY 返回路径", !!zipRel, zipRel);
-  recordOpt("导出文件落盘可拉取", isZip, isZip ? `${zipBuf.length} bytes` : `getFile 404——3.8.6 headless 下导出文件未写盘（契约发现，UI 导出流程待核对）`);
+  recordOpt("导出文件落盘可拉取", isZip, isZip ? `${zipBuf.length} bytes` : "getFile 404——当前 headless 内核未返回可拉取 zip（导出文件落盘与 UI 下载流程待核对）");
   if (isZip) {
     // importSY 契约：multipart/form-data 文件上传（JSON path 形态返回 -1，2026-10-04 实测）
     const fd = new FormData();
@@ -158,7 +158,7 @@ try {
     const imp = await fetch(BASE + "/api/import/importSY", { method: "POST", headers: { Authorization: `Token ${TOKEN}` }, body: fd }).then((r) => r.json());
     recordOpt("importSY 导入包（multipart）", imp.code === 0, `code ${imp.code} ${imp.msg ?? ""}`);
   } else {
-    recordOpt("importSY 导入包（multipart）", false, "跳过：无有效 zip（JSON path 形态已实测返回 -1，需 multipart 上传）");
+    recordOpt("importSY 导入包（multipart）", false, "本轮跳过：没有从导出端取到有效 zip，未执行上传；JSON path 形态在此前实测返回 -1");
   }
 } catch (e) {
   record("执行异常", false, String(e instanceof Error ? e.message : e));

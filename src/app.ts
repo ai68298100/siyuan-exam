@@ -470,7 +470,14 @@ export class ExamApp {
       if (missing.length) {
         const written = await this.deps.client.appendQuestions(docId, missing);
         const confirmed = new Set(written.filter((item) => item.blockId).map((item) => item.qid));
-        if (missing.some((q) => !confirmed.has(q.id))) throw new Error("未收到全部示例题的写入回执");
+        if (missing.some((q) => !confirmed.has(q.id))) {
+          // SiYuan may commit every nested row while returning only a partial
+          // doOperations list for one insertBlock request. Confirm the source
+          // document before reporting an unknown write result or retrying.
+          const afterWrite = await this.deps.client.getBlockKramdown(docId);
+          const persisted = new Set(Array.from((afterWrite ?? "").matchAll(/\bcustom-exam-id="([^"]+)"/g), ([, id]) => id));
+          if (missing.some((q) => !persisted.has(q.id))) throw new Error("未收到全部示例题的写入回执");
+        }
       }
       info.sampleState = "ready";
       try {

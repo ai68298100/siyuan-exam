@@ -1,6 +1,6 @@
 # 小驴考试交付说明
 
-> 文档基线：2026-10-14 · 当前源码版本：`0.9.8`（版本号以 `package.json` 与 `plugin.json` 为准）。
+> 文档基线：2026-10-16 · 版本：`0.10.1`（版本号以 `package.json` 与 `plugin.json` 为准；远端记录见 [GitHub Release](https://github.com/ai68298100/siyuan-exam/releases/tag/v0.10.1)）。
 >
 > `design/prototype-r54/` 是布局、视觉和已演示 UI 状态的设计基线；它使用合成数据，不是生产功能行为的证据。只有第 3 节明确列出的入口和状态映射经过核对，才可称为对应；未覆盖的生产能力与差异必须显式记录。实际功能以 `src/ui/`、`src/core/`、自动化测试和真实思源宿主验证为准，不得把原型演示数据当作真实题库或成绩。
 
@@ -250,11 +250,19 @@ R54 原型的页面导航是“今日、题库、出题、模考、复盘、设�
 
 ## 8. 验收记录与未完成事项
 
-可复现的自动验收入口包括 `pnpm check`、`pnpm guard`、`pnpm build`、`pnpm verify:package`、`pnpm release:check`、`pnpm metrics:style`、`pnpm perf:ui`、生产 UI harness 的 `pnpm smoke:ui` 和 `pnpm smoke:report-actions`，以及 `node scripts/visual-harness/smoke-prototype-states.mjs`、`node scripts/visual-harness/smoke-sample-ui.mjs`、`node scripts/visual-harness/smoke-shared-ux.mjs`、`node scripts/visual-harness/smoke-workflows-ux.mjs` 和 `node design/prototype-r54/smoke-structured-answers.mjs`。2026-10-14 本轮以 Chrome 重跑：`pnpm guard` 通过（114 个测试文件/655 项）；最新主流程在模考快照失败重试路径下 12/12；`pnpm smoke:ui` 12/12、`pnpm smoke:report-actions`、包白名单校验（9 个文件）和 `pnpm release:check`（8 项）通过。此前示例题库与 16 个生产断点边缘、共享导航/键盘、导入/录题/资料/AI 工作流、原型状态演练（18 个视口边缘）也有通过记录。浏览器无未捕获错误。当前生产构建 `dist/index.js` 为 1,200,898 bytes（Vite 报告 1,200.89 kB，gzip 376.69 kB），`dist/index.css` 为 74,561 bytes（gzip 12.00 kB），`package.zip` 为 666,774 bytes；发行包白名单 9 个文件校验通过。这些自动检查不提供逐像素比较、生产全控件逐一点击、完整断点逐档视觉对照或真实宿主证据。运行结果必须以本次命令输出为准，旧截图不能证明当前宿主行为。
+2026-10-16 v0.10.1 发布核验：`pnpm guard` 已通过，包含 115 个测试文件 / 661 项测试、类型检查、Svelte（0 错误 / 0 警告）、1200 个 i18n 键、42 项架构检查、样式与 lint。本版修复示例题库写入回执缺项时的文档回读确认，修正只读 e2e 实际存储路径与合法空快照审计，并新增 CLI 回归。生产构建、9 文件包白名单、8/8 发版检查和生产依赖审计通过。产物为 `dist/index.js` 1,201,594 bytes、`dist/index.css` 87,373 bytes、仓库根目录 `package.zip` 669,931 bytes；远端 tag、CI 与资产以本版 Release 记录为准。
+
+本轮临时隔离 SiYuan 3.8.7 宿主的安装态为 v0.10.0，不代表 v0.10.1 已完成安装/升级验收。将隔离 workspace 的 `bazaar.trust` 设为 `true` 后，Chrome `browser-desktop` 实际加载顶栏、状态栏、错题本停靠入口和练习台；原创示例 12 题已由文档回读和 SQL 属性计数确认。已走通单选、填空与正确反馈/解析，重载后确认 2 条 v2 作答事件（1 错、1 对）和 `session/active.json`。修正审计脚本后，同一 workspace 的只读 e2e 为 3 通过、19 待数据、0 失败。隔离写型 smoke 通过 preflight 16/16、数据 6/6、CSV 5/5 和 500 题性能；headless 原生导出路径取回 404、无有效 ZIP 时跳过 multipart 导入仍为 WARN。临时实例已停止，桌面主实例未用于写型检查。
+
+本轮此前 Chrome `pnpm smoke:ui` 两次最终均 12/12，`pnpm smoke:report-actions` 通过。首次 smoke 的一次键盘断言在自动重跑和后续独立复跑中均通过，未稳定复现。UI harness 构建通过，Vite 单块超过 500 kB 提示仍存在。基础宿主练习不替代错题复练、模考暂停/恢复/交卷与报告核对、UI 导入及完整恢复、Android 和真实 AI 验收。下一批先完成这些宿主旅程，再做 `PracticeTab` 拆分；Android 有设备时单独验收，条件扩展继续延后。
+
+**历史包体（2026-10-15 · v0.10.0）**：JS 1,201,435 bytes / gzip 376.86 kB、CSS 87,373 bytes / gzip 13.27 kB、根目录 `package.zip` 669,268 bytes。v0.10.0 Release 已含 `package.zip` 和 `SHA256SUMS`。这些数值不代表 v0.10.1 最终产物。
+
+可复现的自动验收入口包括 `pnpm check`、`pnpm guard`、`pnpm build`、`pnpm verify:package`、`pnpm release:check`、`pnpm metrics:style`、`pnpm perf:ui`、生产 UI harness 的 `pnpm smoke:ui` 和 `pnpm smoke:report-actions`，以及 `node scripts/visual-harness/smoke-prototype-states.mjs`、`node scripts/visual-harness/smoke-sample-ui.mjs`、`node scripts/visual-harness/smoke-shared-ux.mjs`、`node scripts/visual-harness/smoke-workflows-ux.mjs` 和 `node design/prototype-r54/smoke-structured-answers.mjs`。以下是 2026-10-14 的历史验收记录，不代表当前构建或测试数字：当日以 Chrome 重跑 `pnpm guard`（114 个测试文件/655 项）；主流程在模考快照失败重试路径下 12/12；`pnpm smoke:ui` 12/12、`pnpm smoke:report-actions`、包白名单校验（9 个文件）和 `pnpm release:check`（8 项）通过。此前示例题库与 16 个生产断点边缘、共享导航/键盘、导入/录题/资料/AI 工作流、原型状态演练（18 个视口边缘）也有通过记录。浏览器无未捕获错误。当日生产构建 `dist/index.js` 为 1,200,898 bytes（Vite 报告 1,200.89 kB，gzip 376.69 kB），`dist/index.css` 为 74,561 bytes（gzip 12.00 kB），`package.zip` 为 666,774 bytes；发行包白名单 9 个文件校验通过。这些自动检查不提供逐像素比较、生产全控件逐一点击、完整断点逐档视觉对照或真实宿主证据。运行结果必须以本次命令输出为准，旧截图不能证明当前宿主行为。
 
 当前仍需真实宿主或后续版本确认的范围：
 
-- 思源真实导入、题块读回、保存失败、重载恢复和跨窗口同步的完整旅程；
+- 错题复练、模考暂停/恢复/交卷和报告核对；宿主 UI 导入、题块读回、保存失败、完整重载恢复与跨窗口同步；
 - Android WebView 的软键盘、触摸、下载、打印、剪贴板、`window.open` 和安全区；
 - 真实 AI 端点的取消、迟到响应隔离、费用、发送范围和权限；
 - 超过 5000 道题的宿主性能、完整读屏、200% 缩放、forced-colors、第三方主题和卸载资源释放；
@@ -270,7 +278,7 @@ R54 原型的页面导航是“今日、题库、出题、模考、复盘、设�
 
 性能实验命令：在 PowerShell 中先运行 `pnpm build:harness`，再分别执行 `$env:PERF_RUNS = "20"; pnpm perf:ui:measure` 和 `$env:PERF_LAZY_TABS = "1"; pnpm perf:ui:measure`；实验后可运行 `Remove-Item Env:PERF_LAZY_TABS` 清除变量。第二次运行只在 harness 里延迟初始化 Tab，不会生成发行分块，也不代表生产启用了懒加载。
 
-### 前序验收要求复核
+### 历史验收要求复核（2026-10-14）
 
 | 验收面             | 当前证据与结论                                                                                                                                                                                                     | 尚欠的验证或实现                                                                                                                                                                  |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -280,7 +288,7 @@ R54 原型的页面导航是“今日、题库、出题、模考、复盘、设�
 | 表单校验与破坏操作 | 本次 smoke 实测估分答案长度错误关联到输入字段、保存失败可重试；模考蓝图恢复/分区删除和放弃模考有确认；另有录题字段聚焦、错题处置失败恢复、导入映射回滚与收藏失败恢复的既有回归。 | 不是所有页面字段都逐项自动化点测。思源 Dialog 的键盘/焦点契约、所有破坏性操作和所有焦点返回仍需宿主逐项核验。 |
 | 并发、写入和恢复   | 有局部重复提交锁、模考快照恢复、部分保存回滚和对应测试。                                                                                                                                                           | 无全请求竞态保护/全写操作幂等 key/统一缓存层；权限恢复闭环未实现或未验证。                                                                                                        |
 | 响应式与可访问性   | 原型 18 个视口边缘、7 类空/错误状态无横向溢出；生产练习、模考配置、报告概览/证据在 16 个断点边缘无溢出；本轮另有 390px 截图、760/759px 导航断点和窄面板几何 smoke；Rail/Palette 有键盘、焦点恢复 smoke。 | 溢出检查不等于布局形态一致；生产各断点与原型仍无逐档截图/交互对照。完整读屏、200% 缩放、forced-colors 与第三方主题审计待做。                                                        |
-| 加载与包体性能     | 2026-10-14 Chrome 1280×900 本地单文件 harness，静态 Tab 20 次隔离页采样：主界面 shell 可见 p50/p95 171/206 ms；首次模考 57/76 ms、报告 62/70 ms、返回练习 42/49 ms；CLS 为 0，DOM 403 节点，最长任务 p50/p95 114/124 ms。当前生产仍同步挂载：JS 1,196,450 bytes / Vite gzip 375.96 kB，CSS 66,943 bytes / Vite gzip 11.15 kB，zip 663,984 bytes。 | 同一 harness 的延迟初始化对照 20 次：shell 可见 172/205 ms；首次模考 62/81 ms、报告 65/68 ms、返回练习 45/48 ms；CLS 与 DOM 节点数不变，最长任务 116/129 ms。静态与延迟初始化 harness 资源分别均为 JS 1,263,264 / gzip 401,861 bytes、CSS 66,931 / gzip 10,994 bytes。首屏容器 p50 仅差 1 ms，首模考的 p50/p95 较慢 5 ms，长任务也略高；这组同机测量没有显示稳定收益，因此生产行为保持不变。数据基于 12 道示例题和本地内核桩，不代表思源各宿主。源码没有 <img>、视频/音频或自定义字体资源，不存在图片现代格式/尺寸或字体子集化对象；浏览列表按 200 条分批显示，但没有 1000/5000+ 真实题量宿主数据，也未测出长列表滚动瓶颈，故不引入虚拟滚动。可用本节所列 PowerShell 命令以 `PERF_RUNS=20` 复测；harness 延迟初始化不是生产路由分块。
+| 加载与包体性能     | 2026-10-14 Chrome 1280×900 本地单文件 harness，静态 Tab 20 次隔离页采样：主界面 shell 可见 p50/p95 171/206 ms；首次模考 57/76 ms、报告 62/70 ms、返回练习 42/49 ms；CLS 为 0，DOM 403 节点，最长任务 p50/p95 114/124 ms。该次构建产物快照：JS 1,196,450 bytes / Vite gzip 375.96 kB，CSS 66,943 bytes / gzip 11.15 kB，zip 663,984 bytes（2026-10-15 历史构建体积见本节开头）。 | 同一 harness 的延迟初始化对照 20 次：shell 可见 172/205 ms；首次模考 62/81 ms、报告 65/68 ms、返回练习 45/48 ms；CLS 与 DOM 节点数不变，最长任务 116/129 ms。静态与延迟初始化 harness 资源分别均为 JS 1,263,264 / gzip 401,861 bytes、CSS 66,931 / gzip 10,994 bytes。首屏容器 p50 仅差 1 ms，首模考的 p50/p95 较慢 5 ms，长任务也略高；这组同机测量没有显示稳定收益，因此生产行为保持不变。数据基于 12 道示例题和本地内核桩，不代表思源各宿主。源码没有 <img>、视频/音频或自定义字体资源，不存在图片现代格式/尺寸或字体子集化对象；浏览列表按 200 条分批显示，但没有 1000/5000+ 真实题量宿主数据，也未测出长列表滚动瓶颈，故不引入虚拟滚动。可用本节所列 PowerShell 命令以 `PERF_RUNS=20` 复测；harness 延迟初始化不是生产路由分块。
 | 新人交付路径       | 本文给出 clone、Node/pnpm 版本、安装、可选软链、开发、测试、环境变量和部署命令。                                                                                                                                   | `make-link`、真实插件加载和平台部署仍需要目标用户本地思源实例；纯 clone 步骤可用命令验证，宿主路径不能在无实例环境验证。                                                          |
 
 这些限制是有意保留的验收边界，不应在发布说明中写成“已完成”。新功能交付时，应同步更新 `docs/UI-COMPONENTS.md`、本文件的对应状态表、CHANGELOG 和真机证据。
