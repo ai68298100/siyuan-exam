@@ -1229,7 +1229,7 @@
         <span class="lv-chip lv-chip--amb num" title={t("mock.revisedTip")}><Icon name="pencil" size={12} /> {t("mock.revisedNote").replace("{n}", String(revisionDrift.length))}</span>
       {/if}
     </div>
-    <div class="lv-card" style="margin-bottom:14px">
+    <div class="lv-card lv-score-card" style="margin-bottom:14px">
       <div class="lv-row" style="align-items:center;padding:6px 4px">
         <span class="num" style="font-size:40px;font-weight:800;color:var(--lv-accent)">{score.total}</span>
         <span class="lv-muted">/ {score.full}</span>
@@ -1428,9 +1428,18 @@
   .lv-legend .dot { display: inline-block; width: 12px; height: 12px; border-radius: 4px; flex: none; box-shadow: var(--lv-sh-1); }
   .lv-cell { min-width: 44px; min-height: 44px; border-radius: 10px; border: 1px solid var(--lv-ctl-border); background: var(--lv-surface); font-size: var(--lv-font-size-body-compact); font-weight: var(--lv-font-weight-semibold); font-variant-numeric: tabular-nums; font-family: ui-monospace, monospace; color: var(--lv-text-2); cursor: pointer; box-shadow: var(--lv-sh-1), var(--lv-inset-subtle, inset 0 1px 0 transparent); transition: background-color var(--lv-dur-micro) var(--lv-ease-out), border-color var(--lv-dur-micro) var(--lv-ease-out), color var(--lv-dur-micro) var(--lv-ease-out), transform var(--lv-dur-micro) var(--lv-ease-out), box-shadow var(--lv-dur-micro) var(--lv-ease-out); }
   .lv-cell:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--lv-sh-2); border-color: var(--lv-border-hover, var(--lv-accent)); }
-  .lv-cell.done { background: var(--lv-accent-soft); color: var(--lv-accent); border-color: color-mix(in srgb, var(--lv-accent) 30%, transparent); }
-  .lv-cell.flag { outline: 2px solid var(--lv-amber); outline-offset: -2px; }
-  .lv-cell.cur { background: var(--lv-accent); color: var(--lv-on-accent, var(--b3-theme-on-primary, #fff)); border-color: transparent; box-shadow: 0 0 0 2px var(--lv-surface), 0 0 0 4px var(--lv-accent); }
+  .lv-cell:active:not(:disabled) { transform: scale(0.96); }
+  .lv-cell.done { background: var(--lv-accent-soft); color: var(--lv-accent); border-color: color-mix(in srgb, var(--lv-accent) 36%, transparent); font-weight: var(--lv-font-weight-bold); }
+  .lv-cell.flag { outline: 2px solid var(--lv-amber); outline-offset: -2px; box-shadow: 0 0 8px color-mix(in srgb, var(--lv-amber) 35%, transparent); }
+  .lv-cell.cur { background: var(--lv-accent); color: var(--lv-on-accent, var(--b3-theme-on-primary, #fff)); border-color: transparent; box-shadow: 0 0 0 2px var(--lv-surface), 0 0 0 4.5px var(--lv-accent), 0 2px 10px color-mix(in srgb, var(--lv-accent) 35%, transparent); animation: lv-radar-pulse 2.2s infinite ease-in-out; transform: scale(1.04); z-index: 2; }
+  @keyframes lv-radar-pulse {
+    0%, 100% { box-shadow: 0 0 0 2px var(--lv-surface), 0 0 0 4px var(--lv-accent), 0 2px 10px color-mix(in srgb, var(--lv-accent) 30%, transparent); }
+    50% { box-shadow: 0 0 0 2px var(--lv-surface), 0 0 0 5.5px color-mix(in srgb, var(--lv-accent) 75%, transparent), 0 4px 16px color-mix(in srgb, var(--lv-accent) 45%, transparent); }
+  }
+  .lv-card.lv-question { box-shadow: var(--lv-sh-card), var(--lv-inset-highlight, inset 0 1px 0 transparent); border-radius: var(--lv-r-3); border: 1px solid var(--lv-border-subtle, var(--lv-border)); }
+  .lv-score-card { box-shadow: var(--lv-sh-card), var(--lv-inset-highlight, inset 0 1px 0 transparent); border-radius: var(--lv-r-3); border: 1px solid var(--lv-border-subtle, var(--lv-border)); }
+  .lv-score-card .lv-chip.grn { background: var(--lv-green-soft); color: var(--lv-green); font-weight: var(--lv-font-weight-semibold); box-shadow: 0 0 10px color-mix(in srgb, var(--lv-green) 35%, transparent); }
+  .lv-score-card .lv-chip.red { background: var(--lv-red-soft); color: var(--lv-red); font-weight: var(--lv-font-weight-semibold); box-shadow: 0 0 8px color-mix(in srgb, var(--lv-red) 25%, transparent); }
   .lv-empty { border: 1.5px dashed var(--lv-border); border-radius: var(--lv-r-3); padding: var(--lv-space-7); text-align: center; color: var(--lv-text-3); background: color-mix(in srgb, var(--lv-surface-2) 40%, var(--lv-surface)); }
   .lv-skeleton { height: 160px; border-radius: var(--lv-r-3); background: linear-gradient(100deg, var(--lv-surface-2) 40%, var(--lv-surface) 50%, var(--lv-surface-2) 60%); background-size: 200% 100%; animation: lv-shim 1.4s infinite; }
   @keyframes lv-shim { to { background-position: -200% 0; } }

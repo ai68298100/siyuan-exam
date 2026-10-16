@@ -221,9 +221,9 @@ async function runSuite() {
       const expectedKey = optionCount >= 2 ? "B" : "A";
       await page.keyboard.press(expectedKey.toLowerCase()); // A-J 选择：使用当前题存在的选项
       await page.waitForTimeout(400);
-      const selKey = await page.locator("#app .lv-question .lv-opt.sel .key").first().textContent();
-      keyboardSelectionOk = String(selKey).trim() === expectedKey;
-      keyboardNote = `选项题键盘选中=${String(selKey).trim()}`;
+      const selKeys = (await page.locator("#app .lv-question .lv-opt.sel .key").allTextContents()).map((s) => s.trim());
+      keyboardSelectionOk = selKeys.includes(expectedKey);
+      keyboardNote = `选项题键盘选中=${selKeys.join(",") || "无"}`;
     } else {
       const answerCount = await page.locator("#app .lv-question .lv-answer-num, #app .lv-question .lv-answer-blank, #app .lv-question textarea.lv-textarea").count();
       if (!answerCount) throw new Error(`恢复后的当前题没有可作答控件（options=${optionCount}）`);

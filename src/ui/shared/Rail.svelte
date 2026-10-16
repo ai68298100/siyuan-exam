@@ -280,10 +280,12 @@
     inset: auto 0 0;
     z-index: 80;
     grid-template-columns: repeat(5, minmax(0, 1fr));
-    padding: 4px 8px max(4px, env(safe-area-inset-bottom));
-    border-top: 1px solid var(--lv-border);
-    background: var(--lv-surface);
-    box-shadow: 0 -4px 16px color-mix(in srgb, var(--lv-text) 8%, transparent);
+    padding: 6px 8px max(6px, env(safe-area-inset-bottom));
+    border-top: 1px solid var(--lv-border-subtle, var(--lv-border));
+    background: color-mix(in srgb, var(--lv-surface) 92%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 -4px 20px color-mix(in srgb, var(--lv-text) 6%, transparent), var(--lv-inset-subtle, inset 0 1px 0 transparent);
   }
   .lv-mobile-task {
     display: grid;
@@ -294,7 +296,7 @@
     gap: 3px;
     padding: 5px 2px;
     border: 0;
-    border-radius: 6px;
+    border-radius: 10px;
     background: transparent;
     color: var(--lv-text-2);
     font: inherit;
@@ -302,11 +304,20 @@
     line-height: 1.2;
     cursor: pointer;
     touch-action: manipulation;
+    transition:
+      transform var(--lv-dur-micro) var(--lv-ease-out),
+      background-color var(--lv-dur-micro) var(--lv-ease-out),
+      color var(--lv-dur-micro) var(--lv-ease-out);
+
+    &:active {
+      transform: scale(0.92);
+    }
   }
   .lv-mobile-task.on {
     background: var(--lv-accent-soft);
     color: var(--lv-accent);
-    font-weight: 600;
+    font-weight: var(--lv-font-weight-semibold, 600);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--lv-accent) 22%, transparent);
   }
   .lv-mobile-task:focus-visible {
     outline: 2px solid var(--lv-accent);

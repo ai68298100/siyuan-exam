@@ -974,7 +974,7 @@
           </defs>
           <line x1="0" y1="88.5" x2="600" y2="88.5" stroke="var(--lv-border)" stroke-width="1" />
           {#if trendArea}<polygon points={trendArea} fill="url(#lv-trend-fill)" />{/if}
-          <polyline points={trend30.map((p, i) => `${(i / trendSpan) * 600},${86 - Math.round((p.attempts / maxTrend) * 78)}`).join(" ")} fill="none" stroke="var(--lv-accent)" stroke-width="2" />
+          <polyline points={trend30.map((p, i) => `${(i / trendSpan) * 600},${86 - Math.round((p.attempts / maxTrend) * 78)}`).join(" ")} fill="none" stroke="var(--lv-accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
           {#if trendLastDot}<circle cx={trendLastDot.x} cy={trendLastDot.y} r="3" fill="var(--lv-accent)" stroke="var(--lv-surface)" stroke-width="1.5" />{/if}
           <!-- 55-04 lite：正确率曲线（有作答日连成段，0 题日断点；比例尺 0-100% 对满高） -->
           {#each trendAccLines as points (points)}<polyline {points} fill="none" stroke="var(--lv-green)" stroke-width="1.6" stroke-dasharray="3 2" />{/each}
@@ -1198,7 +1198,7 @@
     <div class="lv-card lv-section" class:lv-report-section--hidden={reportSection !== "evidence"}>
       <b>{t("report.hourly")}</b>
       <svg viewBox="0 0 300 46" style="width:100%;max-width:420px;display:block" role="img" aria-label={t("report.hourly")}>
-        <polyline points={hoursSvg} fill="none" stroke="var(--lv-accent)" stroke-width="2" />
+        <polyline points={hoursSvg} fill="none" stroke="var(--lv-accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
       </svg>
       <div class="lv-row" style="margin:4px 0 0">
         <button class="lv-btn sm lv-btn--ghost" aria-expanded={tableOpen === "hourly"} onclick={() => tableOpen = tableOpen === "hourly" ? "" : "hourly"}><Icon name="table" size={13} /> {t("data.table")}</button>
@@ -1318,7 +1318,7 @@
   .lv-report-overview-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--lv-space-3); align-items: stretch; margin-bottom: 12px; }
   .lv-report-overview-grid.has-both { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .lv-report-overview-grid > .lv-card { margin-bottom: 0; }
-  .lv-report-next { display: flex; align-items: center; justify-content: space-between; gap: var(--lv-space-4); padding: 14px 16px; border-color: color-mix(in srgb, var(--lv-accent) 24%, var(--lv-border)); background: color-mix(in srgb, var(--lv-accent-soft) 52%, var(--lv-surface)); }
+  .lv-report-next { display: flex; align-items: center; justify-content: space-between; gap: var(--lv-space-4); padding: 16px 20px; border-left: 3.5px solid var(--lv-accent); border-color: color-mix(in srgb, var(--lv-accent) 26%, var(--lv-border)); background: color-mix(in srgb, var(--lv-accent-soft) 55%, var(--lv-surface)); box-shadow: var(--lv-sh-1), var(--lv-inset-highlight, inset 0 1px 0 transparent); }
   .lv-report-next b { display: block; margin-top: 3px; font-size: var(--lv-font-size-h3); }
   .lv-report-next p { margin: 4px 0 0; }
   .lv-daily-report-scope { max-width: 480px; margin: 4px 0 10px; }
@@ -1329,6 +1329,10 @@
   .lv-card-title { display: inline-flex; align-items: center; gap: var(--lv-space-compact); }
   .lv-inline-icon { display: inline-flex; margin-right: 5px; }
   .lv-card { background: var(--lv-surface); border: 1px solid var(--lv-border-subtle, var(--lv-border)); border-radius: var(--lv-r-3); padding: var(--lv-space-5) 22px; box-shadow: var(--lv-sh-card, var(--lv-sh-1)), var(--lv-inset-highlight, inset 0 1px 0 transparent); transition: box-shadow var(--lv-dur-view) var(--lv-ease-out), transform var(--lv-dur-micro) var(--lv-ease-out), border-color var(--lv-dur-micro) var(--lv-ease-out); margin-bottom: var(--lv-space-3); }
+  .lv-kpi { display: flex; flex-direction: column; justify-content: space-between; gap: var(--lv-space-2); transition: transform var(--lv-dur-micro) var(--lv-ease-out), box-shadow var(--lv-dur-micro) var(--lv-ease-out), border-color var(--lv-dur-micro) var(--lv-ease-out); }
+  .lv-kpi:hover { transform: translateY(-2px); border-color: var(--lv-border-hover, var(--lv-accent)); box-shadow: var(--lv-sh-2); }
+  .lv-kpi .v { font-size: 28px; font-weight: var(--lv-font-weight-bold); letter-spacing: -0.025em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .lv-kpi .l { display: flex; align-items: center; justify-content: space-between; color: var(--lv-text-3); font-size: var(--lv-font-size-caption); font-weight: var(--lv-font-weight-medium); }
   .lv-row.low-sample { opacity: .55; }
   .lv-section b { display: block; font-size: var(--lv-font-size-h3); font-weight: var(--lv-font-weight-semibold); letter-spacing: -.2px; margin-bottom: 12px; }
   .lv-chip { display: inline-flex; align-items: center; gap: var(--lv-space-1); padding: 3px var(--lv-space-3); border-radius: var(--lv-r-1); font-size: var(--lv-font-size-sm); font-weight: var(--lv-font-weight-medium); color: var(--lv-text-2); background: var(--lv-surface-2); border: 1px solid transparent; }
@@ -1336,8 +1340,8 @@
   .lv-chip.lv-chip--red { color: var(--lv-red); background: var(--lv-red-soft); }
   /* —— 63-01 四象限（现代微质感指标卡） —— */
   .lv-quad-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--lv-space-3); }
-  .lv-quad { border: 1px solid var(--lv-border-subtle, var(--lv-border)); border-radius: var(--lv-r-2); padding: 14px 16px; background: var(--lv-surface); box-shadow: var(--lv-sh-1), var(--lv-inset-subtle, inset 0 1px 0 transparent); display: flex; flex-direction: column; gap: var(--lv-space-1); transition: transform var(--lv-dur-micro) var(--lv-ease-out), box-shadow var(--lv-dur-micro) var(--lv-ease-out); }
-  .lv-quad:hover { transform: translateY(-1px); box-shadow: var(--lv-sh-2); }
+  .lv-quad { border: 1px solid var(--lv-border-subtle, var(--lv-border)); border-radius: var(--lv-r-2); padding: 16px 18px; background: var(--lv-surface); box-shadow: var(--lv-sh-1), var(--lv-inset-subtle, inset 0 1px 0 transparent); display: flex; flex-direction: column; gap: var(--lv-space-2); transition: transform var(--lv-dur-micro) var(--lv-ease-out), box-shadow var(--lv-dur-micro) var(--lv-ease-out); }
+  .lv-quad:hover { transform: translateY(-2px); box-shadow: var(--lv-sh-2); }
   .lv-quad .v { font-size: 26px; font-weight: var(--lv-font-weight-bold); letter-spacing: -0.02em; line-height: 1.1; font-variant-numeric: tabular-nums; }
   .lv-quad .l { font-size: var(--lv-font-size-caption); color: var(--lv-text-3); font-weight: var(--lv-font-weight-medium); }
   .lv-quad--grn { background: color-mix(in srgb, var(--lv-green-soft) 55%, var(--lv-surface)); border-color: color-mix(in srgb, var(--lv-green) 24%, var(--lv-border)); } .lv-quad--grn .v { color: var(--lv-green); }
@@ -1346,8 +1350,8 @@
   @container lv-exam (max-width: 960px) { .lv-quad-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   .lv-heat { display: grid; grid-template-columns: repeat(53, 1fr); gap: 2.5px; }
   /* 空格子 = 卡片上的轻微抬升（border 混合），暗色不再呈黑洞；有值格子在抬升底上叠主色 */
-  .lv-heat i { aspect-ratio: 1; border-radius: 3px; background: color-mix(in srgb, var(--lv-border) 45%, var(--lv-surface)); transition: transform var(--lv-dur-micro) var(--lv-ease-out), filter var(--lv-dur-micro) var(--lv-ease-out); position: relative; }
-  .lv-heat i:hover { transform: scale(1.4); filter: brightness(1.15); z-index: 2; cursor: pointer; }
+  .lv-heat i { aspect-ratio: 1; border-radius: 3px; background: color-mix(in srgb, var(--lv-border) 45%, var(--lv-surface)); transition: transform var(--lv-dur-micro) var(--lv-ease-out), filter var(--lv-dur-micro) var(--lv-ease-out), box-shadow var(--lv-dur-micro) var(--lv-ease-out); position: relative; }
+  .lv-heat i:hover { transform: scale(1.45); filter: brightness(1.2); z-index: 3; box-shadow: 0 0 6px color-mix(in srgb, var(--lv-accent) 45%, transparent); cursor: pointer; }
   .lv-heat i.l1 { background: color-mix(in srgb, var(--lv-accent) 26%, color-mix(in srgb, var(--lv-border) 45%, var(--lv-surface))); }
   .lv-heat i.l2 { background: color-mix(in srgb, var(--lv-accent) 48%, color-mix(in srgb, var(--lv-border) 45%, var(--lv-surface))); }
   .lv-heat i.l3 { background: color-mix(in srgb, var(--lv-accent) 72%, color-mix(in srgb, var(--lv-border) 45%, var(--lv-surface))); }

@@ -2761,6 +2761,14 @@ import { ttsSpeak } from "@/core/tts";
       } finally { mSaving = false; }
     }
 
+    function blankManualDraft() {
+      mStem = ""; mOptions = ["", ""]; mAnswer = ""; mAnalysis = "";
+      mSpecOpen = false; mSpecUnit = ""; mSpecAbsTol = ""; mSpecRelPct = ""; mSpecAltUnits = "";
+      draftRestored = false;
+      clearManualValidation();
+      void app.saveAux(MANUAL_DRAFT_KEY, null).catch(() => undefined);
+    }
+
     // ---------- AI 出题（v0.4：双通道 + 待审核队列，Inbox 式永不直接入库） ----------
     let aiSource = $state("");
     let aiSourceOrigin = $state("");
@@ -3365,6 +3373,26 @@ import { ttsSpeak } from "@/core/tts";
       void gatedOpen(url, m);
     }
 
+    /** R54 原型高级交互：把资料/笔记一键带入手工出题 */
+    function bridgeMaterialToManual(m: import("../../core/materials").MaterialDoc, noteText = "") {
+      mSource = [m.subject, m.chapter, m.title].filter(Boolean).join(" / ");
+      if (noteText) {
+        mStem = noteText;
+      }
+      view = "manual";
+    }
+
+    /** R54 原型高级交互：把资料/笔记一键带入 AI 材料 */
+    function bridgeMaterialToAi(m: import("../../core/materials").MaterialDoc, noteText = "") {
+      const notes = app.listMaterialNotes(m.id).map((n) => n.text).join("\n\n");
+      const content = [
+        `【资料出处】${[m.subject, m.chapter, m.title].filter(Boolean).join(" / ")}`,
+        noteText ? `【重点笔记】\n${noteText}` : notes ? `【资料笔记】\n${notes}` : "",
+      ].filter(Boolean).join("\n\n");
+      aiSource = content;
+      view = "ai";
+    }
+
     async function removeMaterialEntry(m: import("../../core/materials").MaterialDoc) {
       const { confirmDialogSync } = await import("../../libs/dialog");
       const ok = await confirmDialogSync({
@@ -3690,11 +3718,41 @@ import { ttsSpeak } from "@/core/tts";
       } finally { smartViewBusy = false; }
     }
 
+    /** Dock/块菜单/浏览详情 → 单题会话（qid 定位；首次挂载 questions 未加载，先按库拉取） */
+    async function startSingleById(pid: string) {
+      if (!pid) return false;
+      const all = questions.length ? questions : await loadQuestions();
+      const q = all.find((x) => x.id === pid);
+      if (!q) { showMessage(t("query.empty"), 3200, "info"); return true; }
+      if (!(await negotiateStart([q], "wrong"))) return true;
+      feedback = null; selected = ""; confidenceSel = ""; sessionDone = null; view = "session";
+      return true;
+    }
+
     // ---------- 浏览详情：展开/文档跳转/反链 ----------
     let expandedId = $state("");
+    const activePeekQuestion = $derived(questions.find((x) => x.id === expandedId) ?? null);
     let backlinkCache = $state(new Map<string, { docId: string; title: string; content: string }[]>());
     let backlinkBusyFor = $state("");
     let backlinkError = $state<Record<string, string>>({});
+
+    function closePeekDrawer() {
+      const prevId = expandedId;
+      expandedId = "";
+      if (prevId) {
+        void tick().then(() => {
+          const btn = tabRoot?.querySelector<HTMLButtonElement>(`button[aria-describedby="lv-qrow-stem-${prevId}"]`);
+          btn?.focus({ preventScroll: true });
+        });
+      }
+    }
+
+    function onPeekDrawerKeydown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        closePeekDrawer();
+      }
+    }
 
     function toggleBrowseQuestion(qid: string) {
       if (batchMode) {
@@ -4030,6 +4088,22 @@ import { ttsSpeak } from "@/core/tts";
 <svelte:window onkeydown={onKeydown} onclick={(e) => { onRichTextClick(e); onWindowClick(e); }} onauxclick={onRichTextClick} ondragover={(e) => { if (tabRoot?.contains(e.target as Node)) e.preventDefault(); }} ondrop={onDrop} />
 
 <div class="fn__flex-1 lv-exam-tab" bind:this={tabRoot} role="region" aria-label={t("tab.practice")}>
+  {#snippet studioNav()}
+    <div class="lv-studio-nav" role="tablist" aria-label="出题工作台">
+      <button class="lv-studio-tab" class:active={view === "manual"} onclick={() => (view = "manual")} role="tab" aria-selected={view === "manual"}>
+        <Icon name="pencil" size={13} /> {t("tab.manual", "手工录题")}
+      </button>
+      <button class="lv-studio-tab" class:active={view === "materials"} onclick={() => (view = "materials")} role="tab" aria-selected={view === "materials"}>
+        <Icon name="book" size={13} /> {t("tab.materials", "学习资料")}
+      </button>
+      <button class="lv-studio-tab" class:active={view === "import"} onclick={() => (view = "import")} role="tab" aria-selected={view === "import"}>
+        <Icon name="import" size={13} /> {t("tab.import", "批量导入")}
+      </button>
+      <button class="lv-studio-tab" class:active={view === "ai"} onclick={() => (view = "ai")} role="tab" aria-selected={view === "ai"}>
+        <Icon name="sparkles" size={13} /> {t("tab.ai", "AI 出题")}
+      </button>
+    </div>
+  {/snippet}
   <div class="block__icons" class:lv-focus-toolbar={view === "session" && !sessionDone}>
     <button class="lv-menu-btn" aria-label={t("menu.open")} aria-expanded={railOpen} bind:this={menuBtn} onclick={() => railOpen = true}><Icon name="menu" size={16} /></button>
     <!-- 原型 .breadcrumbs：题库 / 当前页（muted/当前 双色导航语境） -->
@@ -4896,6 +4970,7 @@ import { ttsSpeak } from "@/core/tts";
     <!-- ===== S10 手工录题表单 ===== -->
     <div class="lv-pad">
       <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.manual.eyebrow")}</span><h1 class="lv-h1">{t("head.manual.title")}</h1><p>{t("head.manual.desc")}</p></div>
+      {@render studioNav()}
       <div class="lv-row">
         <button class="lv-btn lv-btn--ghost lv-mobile-back" onclick={() => view = "entry"}>← {t("mode.practice")}</button>
         <span class="lv-chip">{t("manual.title")}</span>
@@ -4979,6 +5054,9 @@ import { ttsSpeak } from "@/core/tts";
           <button class="lv-btn lv-btn--primary" onclick={saveManual} disabled={mSaving || !mStem.trim() || !mAnswer.trim()}>
             {mSaving ? "…" : t("manual.save")}
           </button>
+          <button class="lv-btn lv-btn--ghost" onclick={blankManualDraft} disabled={mSaving || (!mStem && !mAnswer && !mAnalysis)} title={t("manual.blankTitle", "清空并开始录入新题")}>
+            {t("manual.blank", "换一道新题")}
+          </button>
           {#if mSaved}<span class="lv-muted">{t("manual.savedHint")}</span>{/if}
         </div>
       </div>
@@ -5010,6 +5088,36 @@ import { ttsSpeak } from "@/core/tts";
                 </div>
               {/each}
             </div>
+          {:else if mType === "fill"}
+            {@const isMulti = mAnswer.includes(";;")}
+            {@const blanks = isMulti ? mAnswer.split(";;").map((b) => b.trim()).filter(Boolean) : [mAnswer.trim()]}
+            <div class="lv-preview-fill">
+              {#if isMulti}
+                <div class="lv-preview-blanks">
+                  {#each blanks as _blank, bi (bi)}
+                    <div class="lv-preview-blank-row">
+                      <span class="lv-preview-key">{bi + 1}</span>
+                      <input class="lv-input" placeholder={`空 ${bi + 1}`} disabled />
+                    </div>
+                  {/each}
+                </div>
+                <div class="lv-preview-spec-hint">逐空判分 · {blanks.length} 个空，按题目顺序分别核对</div>
+              {:else}
+                <div class="lv-preview-blank-row">
+                  <input class="lv-input" placeholder={mStem.includes("____") ? "填写划线处内容" : "填写答案"} disabled />
+                  {#if mSpecUnit}<span class="lv-chip num">{mSpecUnit}</span>{/if}
+                </div>
+                {#if mSpecOpen || mSpecUnit || mSpecAbsTol || mSpecRelPct}
+                  <div class="lv-preview-spec-hint">
+                    数值判分 · 单位：{mSpecUnit || "无"} · 绝对容差：±{mSpecAbsTol || "0"} · 相对容差：{mSpecRelPct ? `${mSpecRelPct}%` : "无"}
+                  </div>
+                {/if}
+              {/if}
+            </div>
+          {:else if mType === "short"}
+            <div class="lv-preview-short">
+              <textarea class="lv-input lv-textarea" rows="3" placeholder="考生作答文本框（解答题提交后进入自评）" disabled></textarea>
+            </div>
           {/if}
           <div class="lv-preview-answer">
             <strong>{mType === "short" ? "参考要点" : "参考答案"}</strong>
@@ -5026,6 +5134,7 @@ import { ttsSpeak } from "@/core/tts";
     <!-- ===== S11 AI 出题（Inbox 式：永不直接入库） ===== -->
     <div class="lv-pad">
       <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.ai.eyebrow")}</span><h1 class="lv-h1">{t("head.ai.title")}</h1><p>{t("head.ai.desc")}</p></div>
+      {@render studioNav()}
       {#if aiError}<div class="lv-error" role="alert">{aiError}</div>{/if}
       <div class="lv-row">
         <button class="lv-btn lv-btn--ghost lv-mobile-back" onclick={() => view = "entry"}>← {t("mode.practice")}</button>
@@ -5215,6 +5324,7 @@ import { ttsSpeak } from "@/core/tts";
     <!-- ===== 学习资料（120-01/02/06 lite）：登记 / 列表 / 最低查看 ===== -->
     <div class="lv-pad">
       <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.materials.eyebrow")}</span><h1 class="lv-h1">{t("head.materials.title")}</h1><p>{t("head.materials.desc")}</p></div>
+      {@render studioNav()}
       <div class="lv-row">
         <button class="lv-btn lv-btn--ghost lv-mobile-back" onclick={() => view = "entry"}>← {t("import.back")}</button>
         <b><Icon name="book" size={15} /> {t("materials.title")}</b>
@@ -5284,6 +5394,8 @@ import { ttsSpeak } from "@/core/tts";
               <div class="lv-row lv-material-actions">
                 <button class="lv-btn lv-btn--primary sm" onclick={() => openMaterial(m)}><Icon name="external-link" size={13} /> {t("materials.open")}</button>
                 <button class="lv-btn sm" aria-expanded={notesOpenId === m.id} onclick={() => toggleNotes(m)} disabled={materialsBusy}><Icon name="pencil" size={13} /> {t("materials.notes")}（<span class="num">{app.listMaterialNotes(m.id).length}</span>）</button>
+                <button class="lv-btn sm lv-btn--ghost" onclick={() => bridgeMaterialToManual(m)} title="把当前资料来源带入手工录题"><Icon name="edit" size={13} /> {t("materials.toManual", "带入录题")}</button>
+                <button class="lv-btn sm lv-btn--ghost" onclick={() => bridgeMaterialToAi(m)} title="把当前资料与笔记带入 AI 出题"><Icon name="sparkles" size={13} /> {t("materials.toAi", "带入 AI")}</button>
                 <button class="lv-btn sm lv-btn--ghost" onclick={() => void removeMaterialEntry(m)} disabled={materialsBusy || app.materialsReadonly} title={app.materialsReadonly ? t("materials.readonly") : t("materials.removeTitle")}><Icon name="trash" size={13} /></button>
               </div>
               {#if notesOpenId === m.id}
@@ -5298,7 +5410,11 @@ import { ttsSpeak } from "@/core/tts";
                       </div>
                       {#if n.locator}<button class="lv-btn sm lv-btn--ghost" onclick={() => openMaterialAt(m, n)}><Icon name="external-link" size={12} /> {t("materials.openAt")}</button>{/if}
                       <div class="lv-material-note-text">{n.text}</div>
-                      <div class="lv-row"><button class="lv-btn sm lv-btn--ghost" onclick={() => void startEditNote(n)} disabled={materialsBusy || app.materialsReadonly}><Icon name="pencil" size={12} /> {t("materials.noteEdit")}</button><button class="lv-btn sm lv-btn--ghost" onclick={() => void removeNoteEntry(m, n)} disabled={materialsBusy || app.materialsReadonly}><Icon name="trash" size={13} /> {t("materials.removeTitle")}</button></div>
+                      <div class="lv-row">
+                        <button class="lv-btn sm lv-btn--ghost" onclick={() => bridgeMaterialToManual(m, n.text)} title="用本条笔记作为题干草稿"><Icon name="edit" size={12} /> {t("materials.noteToQuestion", "用此笔记出题")}</button>
+                        <button class="lv-btn sm lv-btn--ghost" onclick={() => void startEditNote(n)} disabled={materialsBusy || app.materialsReadonly}><Icon name="pencil" size={12} /> {t("materials.noteEdit")}</button>
+                        <button class="lv-btn sm lv-btn--ghost" onclick={() => void removeNoteEntry(m, n)} disabled={materialsBusy || app.materialsReadonly}><Icon name="trash" size={13} /> {t("materials.removeTitle")}</button>
+                      </div>
                     </div>
                   {/each}
                   {#if !notesCache.length}<div class="lv-muted lv-material-note-empty">{t("materials.noteEmpty")}</div>{/if}
@@ -5722,7 +5838,7 @@ import { ttsSpeak } from "@/core/tts";
         </div>
       {:else}
         {#each shownQuestions as q (q.id)}
-          <div class="lv-card lv-qrow" class:sel={batchMode && !!selectedIds[q.id]}>
+          <div class="lv-card lv-qrow" class:sel={batchMode && !!selectedIds[q.id]} class:active-peek={!batchMode && expandedId === q.id}>
             <button type="button" class="lv-qrow-head"
               aria-pressed={batchMode ? !!selectedIds[q.id] : undefined}
               aria-expanded={!batchMode ? expandedId === q.id : undefined}
@@ -5734,10 +5850,36 @@ import { ttsSpeak } from "@/core/tts";
               <span class="lv-chip lv-chip--acc">{t("qtype." + q.type)}</span>
               {#if q.kp}<span class="lv-chip">{q.kp}</span>{/if}
               {#if q.source}<span class="lv-muted lv-qrow-src">{q.source}</span>{/if}
+              {#if !batchMode && expandedId === q.id}
+                <span class="lv-chip lv-chip--acc num" style="margin-left:auto">{t("browse.viewing", "查看中 ▾")}</span>
+              {/if}
             </button>
             <div class="lv-qrow-stem" id={`lv-qrow-stem-${q.id}`}>{q.stem}</div>
-            {#if expandedId === q.id}
-              {@const links = app.kernelOnline ? backlinkCache.get(q.blockId) : undefined}
+          </div>
+        {/each}
+        {#if activePeekQuestion}
+          {@const q = activePeekQuestion}
+          {@const links = app.kernelOnline ? backlinkCache.get(q.blockId) : undefined}
+          <div class="lv-peek-backdrop" onclick={closePeekDrawer} role="presentation"></div>
+          <div class="lv-card lv-peek-drawer" aria-label={t("browse.detailTitle", "题目详情与操作")} role="dialog" aria-modal="true" tabindex="-1" onkeydown={onPeekDrawerKeydown}>
+            <div class="lv-peek-sheet-handle" aria-hidden="true"></div>
+            <header class="lv-peek-head">
+              <div class="lv-row" style="margin:0;gap:var(--lv-space-1);flex-wrap:wrap">
+                <span class="lv-chip lv-chip--acc">{t("qtype." + q.type)}</span>
+                {#if q.kp}<span class="lv-chip">{q.kp}</span>{/if}
+                {#if q.source}<span class="lv-muted lv-peek-src">{q.source}</span>{/if}
+              </div>
+              <div class="lv-row" style="margin:0;gap:var(--lv-space-1)">
+                <button class="lv-btn sm lv-btn--ghost" title={t("browse.openDoc")} aria-label={t("browse.openDoc")} onclick={() => openInSiYuan((q as any).rootId)} disabled={!(q as any).rootId}>
+                  <Icon name="pin" size={13} />
+                </button>
+                <button class="lv-btn sm lv-btn--ghost lv-peek-close" title={t("dialog.close", "关闭")} aria-label={t("dialog.close", "关闭")} onclick={closePeekDrawer}>
+                  ✕
+                </button>
+              </div>
+            </header>
+            <div class="lv-peek-body">
+              <div class="lv-peek-stem">{q.stem}</div>
               <div class="lv-detail">
                 {#if editingId === q.id && editDraft}
                   <!-- 43-01 lite：题干/选项/答案/解析/考点/难度 内联编辑（updateBlock 整块重写 + exam-id 读回核验） -->
@@ -5943,9 +6085,22 @@ import { ttsSpeak } from "@/core/tts";
                   {/if}
                 {/if}
               </div>
-            {/if}
+            </div>
+            <footer class="lv-peek-footer">
+              <button class="lv-btn lv-btn--primary sm" onclick={() => void startSingleById(q.id)}>
+                ▶ {t("browse.practiceOne", "只练这道题")}
+              </button>
+              {#if editingId !== q.id}
+                <button class="lv-btn sm" onclick={() => openEditForm(q)}>
+                  ✎ {t("edit.open", "编辑题目")}
+                </button>
+              {/if}
+              <button class="lv-btn sm lv-btn--ghost" onclick={closePeekDrawer}>
+                {t("dialog.close", "关闭")}
+              </button>
+            </footer>
           </div>
-        {/each}
+        {/if}
         {#if hasMore}
           <button class="lv-btn" style="width:100%" onclick={() => (browseLimit += 200)}>
             {t("browse.loadMore")}（{shownQuestions.length}/{questions.length}）
@@ -5957,6 +6112,7 @@ import { ttsSpeak } from "@/core/tts";
     <!-- ===== S9 导入 ===== -->
     <div class="lv-pad">
       <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.import.eyebrow")}</span><h1 class="lv-h1">{t("head.import.title")}</h1><p>{t("head.import.desc")}</p></div>
+      {@render studioNav()}
       <div class="lv-row">
         <button class="lv-btn lv-btn--ghost lv-mobile-back" onclick={() => view = hasBank ? "entry" : "entry"}>← {t("import.back")}</button>
         <span class="lv-chip">{t("import.title")}</span>
@@ -6195,16 +6351,23 @@ import { ttsSpeak } from "@/core/tts";
   .lv-preview-answer strong { color: var(--lv-text); font-size: var(--lv-font-size-sm); }
   .lv-preview-answer p { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; }
   .lv-preview-answer small { display: block; margin-top: 8px; color: var(--lv-text-3); white-space: pre-wrap; line-height: 1.55; }
+  .lv-preview-fill, .lv-preview-short { margin: 12px 0; display: grid; gap: 8px; }
+  .lv-preview-blanks { display: grid; gap: 8px; }
+  .lv-preview-blank-row { display: flex; align-items: center; gap: 8px; }
+  .lv-preview-blank-row .lv-input { flex: 1; cursor: default; }
+  .lv-preview-spec-hint { font-size: var(--lv-font-size-caption, 12px); color: var(--lv-accent); background: var(--lv-accent-soft); padding: 4px 10px; border-radius: 6px; display: inline-block; }
   .lv-preview-meta { display: flex; flex-wrap: wrap; gap: var(--lv-space-compact); margin-top: 15px; color: var(--lv-text-3); font-size: var(--lv-font-size-caption); }
   .lv-preview-meta span { padding: 3px 8px; border-radius: 6px; background: var(--lv-surface); border: 1px solid var(--lv-border); }
   .lv-preview-note { margin: 12px 2px 0; line-height: 1.55; }
   .lv-studio-grid--ai { grid-template-columns: minmax(0, .86fr) minmax(0, 1.14fr); }
-  .lv-ai-source-card { margin: 8px 0; }
+  .lv-ai-source-card { margin: 8px 0; box-shadow: var(--lv-sh-card), var(--lv-inset-highlight, inset 0 1px 0 transparent); border-radius: var(--lv-r-3); border: 1px solid var(--lv-border-subtle, var(--lv-border)); }
   .lv-ai-review { min-width: 0; }
   .lv-ai-review > .lv-card { margin: 8px 0; }
-  .lv-ai-empty { min-height: 190px; display: grid; place-items: center; align-content: center; text-align: center; padding: 28px; }
-  .lv-ai-empty b { margin-top: 12px; font-size: var(--lv-font-size-h3); }
-  .lv-ai-empty p { max-width: 380px; margin: 8px auto 0; line-height: 1.6; }
+  .lv-ai-review .lv-qrow { margin-bottom: 12px; border: 1px solid var(--lv-border-subtle, var(--lv-border)); box-shadow: var(--lv-sh-1), var(--lv-inset-subtle, inset 0 1px 0 transparent); transition: transform var(--lv-dur-micro) var(--lv-ease-out), box-shadow var(--lv-dur-micro) var(--lv-ease-out), border-color var(--lv-dur-micro) var(--lv-ease-out); }
+  .lv-ai-review .lv-qrow:hover { transform: translateY(-2px); border-color: var(--lv-border-hover, var(--lv-accent)); box-shadow: var(--lv-sh-2); }
+  .lv-ai-empty { min-height: 220px; display: grid; place-items: center; align-content: center; text-align: center; padding: 36px 24px; border-radius: var(--lv-r-3); border: 1.5px dashed var(--lv-border); background: color-mix(in srgb, var(--lv-surface-2) 40%, var(--lv-surface)); }
+  .lv-ai-empty b { margin-top: 14px; font-size: var(--lv-font-size-h3); font-weight: var(--lv-font-weight-bold); color: var(--lv-text); }
+  .lv-ai-empty p { max-width: 400px; margin: 8px auto 0; line-height: 1.65; color: var(--lv-text-3); }
   .lv-materials-workspace { display: grid; grid-template-columns: minmax(220px, .36fr) minmax(0, .64fr); gap: var(--lv-space-panel); align-items: start; margin-top: 14px; }
   .lv-material-list, .lv-material-detail { min-width: 0; }
   .lv-material-list { padding: 16px 12px; }
@@ -6241,7 +6404,7 @@ import { ttsSpeak } from "@/core/tts";
   .lv-session-grid { display: grid; grid-template-columns: minmax(0, 1fr) 248px; gap: var(--lv-space-5); align-items: start; max-width: 1040px; }
   .lv-session-grid .lv-session-head { grid-column: 1 / -1; }
   .lv-session-main { min-width: 0; }
-  .lv-session-main .lv-card { max-width: 660px; }
+  .lv-session-main .lv-card { max-width: 660px; box-shadow: var(--lv-sh-card), var(--lv-inset-highlight, inset 0 1px 0 transparent); border-radius: var(--lv-r-3); border: 1px solid var(--lv-border-subtle, var(--lv-border)); }
   .lv-side-card { padding: var(--lv-space-4) var(--lv-space-panel); margin-bottom: 14px; }
   .lv-side-title { display: block; font-size: var(--lv-font-size-md); font-weight: var(--lv-font-weight-semibold); margin-bottom: 10px; }
   .lv-side-rows { display: flex; flex-wrap: wrap; gap: var(--lv-space-compact); }
@@ -6315,16 +6478,19 @@ import { ttsSpeak } from "@/core/tts";
   @container lv-exam (max-width: 760px) { .lv-guard-steps { grid-template-columns: minmax(0, 1fr); } }
   .lv-mat-chip { display: inline-flex; align-items: center; gap: 5px; }
   .lv-modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--lv-space-loose); }
-  .lv-mode { color: var(--lv-text); font: inherit; padding: 16px 17px; border-radius: var(--lv-r-3); text-align: left; background: var(--lv-surface); border: 1px solid var(--lv-border); cursor: pointer; transition: background-color var(--lv-dur-micro) var(--lv-ease-out), border-color var(--lv-dur-micro) var(--lv-ease-out), box-shadow var(--lv-dur-micro) var(--lv-ease-out), transform var(--lv-dur-micro) var(--lv-ease-out); display: flex; align-items: flex-start; gap: var(--lv-space-3); }
-  .lv-mode:hover:not(:disabled) { box-shadow: var(--lv-sh-2); border-color: var(--lv-accent); transform: translateY(-1px); }
-  .lv-mode .lv-mode-icon { color: var(--lv-accent); display: grid; place-items: center; width: 44px; height: 44px; border-radius: var(--lv-radius-icon); background: var(--lv-accent-soft); flex-shrink: 0; font-size: var(--lv-font-size-stat); }
-  .lv-mode .lv-mode-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-  .lv-mode b { font-size: var(--lv-font-size-md); font-weight: var(--lv-font-weight-semibold); }
+  .lv-mode { color: var(--lv-text); font: inherit; padding: 18px 20px; border-radius: var(--lv-r-3); text-align: left; background: var(--lv-surface); border: 1px solid var(--lv-border-subtle, var(--lv-border)); cursor: pointer; box-shadow: var(--lv-sh-card, var(--lv-sh-1)), var(--lv-inset-highlight, inset 0 1px 0 transparent); transition: background-color var(--lv-dur-micro) var(--lv-ease-out), border-color var(--lv-dur-micro) var(--lv-ease-out), box-shadow var(--lv-dur-view) var(--lv-ease-out), transform var(--lv-dur-micro) var(--lv-ease-out); display: flex; align-items: flex-start; gap: var(--lv-space-3); }
+  .lv-mode:hover:not(:disabled) { box-shadow: var(--lv-sh-2); border-color: var(--lv-border-hover, var(--lv-accent)); background: color-mix(in srgb, var(--lv-accent-soft) 28%, var(--lv-surface)); transform: translateY(-2.5px); }
+  .lv-mode:active:not(:disabled) { transform: translateY(-0.5px) scale(0.985); }
+  .lv-mode .lv-mode-icon { color: var(--lv-accent); display: grid; place-items: center; width: 44px; height: 44px; border-radius: var(--lv-radius-icon); background: var(--lv-accent-soft); flex-shrink: 0; font-size: var(--lv-font-size-stat); box-shadow: 0 2px 8px color-mix(in srgb, var(--lv-accent) 18%, transparent); transition: transform var(--lv-dur-micro) var(--lv-ease-out), background-color var(--lv-dur-micro) var(--lv-ease-out); }
+  .lv-mode:hover:not(:disabled) .lv-mode-icon { transform: scale(1.06); background: color-mix(in srgb, var(--lv-accent) 16%, var(--lv-surface)); }
+  .lv-mode .lv-mode-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .lv-mode b { font-size: var(--lv-font-size-md); font-weight: var(--lv-font-weight-semibold); letter-spacing: -0.01em; }
   .lv-mode:disabled { opacity: .62; cursor: not-allowed; }
   /* 低频模式降噪：中性键帽 + 收紧字号，与一级队列模式拉开层级 */
-  .lv-mode--minor .lv-mode-icon { background: var(--lv-surface-2); color: var(--lv-text-2); }
+  .lv-mode--minor .lv-mode-icon { background: var(--lv-surface-2); color: var(--lv-text-2); box-shadow: var(--lv-sh-1); }
+  .lv-mode--minor:hover:not(:disabled) .lv-mode-icon { background: color-mix(in srgb, var(--lv-text) 8%, var(--lv-surface-2)); }
   .lv-mode--minor b { font-size: var(--lv-font-size-body-compact); font-weight: 600; }
-  .lv-resume { display: flex; gap: var(--lv-space-loose); align-items: center; }
+  .lv-resume { display: flex; gap: var(--lv-space-loose); align-items: center; padding: 18px 22px; border-radius: var(--lv-r-3); border-left: 4px solid var(--lv-accent); background: color-mix(in srgb, var(--lv-accent-soft) 40%, var(--lv-surface)); box-shadow: var(--lv-sh-1), var(--lv-inset-highlight, inset 0 1px 0 transparent); }
   .lv-resume > div:first-child { flex: 1; }
   .lv-session-head { justify-content: flex-start; }
   @container lv-exam (max-width: 600px) {
@@ -6342,9 +6508,9 @@ import { ttsSpeak } from "@/core/tts";
   .lv-question { margin-top: 10px; }
   .lv-stem { font-size: 20px; line-height: 1.75; font-weight: var(--lv-font-weight-medium); letter-spacing: -0.015em; margin-bottom: 18px; white-space: pre-wrap; }
   .lv-opt { display: flex; gap: 14px; align-items: center; width: 100%; text-align: left; padding: 15px 18px; border-radius: var(--lv-r-2); border: 1.5px solid var(--lv-ctl-border); margin-bottom: 11px; cursor: pointer; background: var(--lv-surface); font: inherit; color: inherit; box-shadow: var(--lv-sh-1), var(--lv-inset-subtle, inset 0 1px 0 transparent); transition: background-color var(--lv-dur-micro) ease, border-color var(--lv-dur-micro) ease, box-shadow var(--lv-dur-micro) ease, transform var(--lv-dur-micro) ease; }
-  .lv-opt:hover:not([disabled]) { border-color: var(--lv-border-hover, var(--lv-accent)); background: color-mix(in srgb, var(--lv-accent) 4%, var(--lv-surface)); transform: translateX(2px); }
-  .lv-opt:active:not([disabled]) { transform: scale(0.99); }
-  .lv-opt .key { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; flex: none; font-size: 13px; font-weight: var(--lv-font-weight-semibold); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; background: var(--lv-surface-2); color: var(--lv-text-2); border: 1px solid var(--lv-border); box-shadow: var(--lv-keycap-shadow); transition: background-color var(--lv-dur-micro) ease, border-color var(--lv-dur-micro) ease, color var(--lv-dur-micro) ease; }
+  .lv-opt:hover:not([disabled]) { border-color: var(--lv-border-hover, var(--lv-accent)); background: color-mix(in srgb, var(--lv-accent) 4.5%, var(--lv-surface)); transform: translateY(-1px) translateX(2px); box-shadow: var(--lv-sh-2); }
+  .lv-opt:active:not([disabled]) { transform: scale(0.985); }
+  .lv-opt .key { width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; flex: none; font-size: 13px; font-weight: var(--lv-font-weight-bold, 700); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; background: var(--lv-surface-2); color: var(--lv-text-2); border: 1px solid var(--lv-border); box-shadow: var(--lv-keycap-shadow); transition: background-color var(--lv-dur-micro) ease, border-color var(--lv-dur-micro) ease, color var(--lv-dur-micro) ease, transform var(--lv-dur-micro) ease; }
   /* —— 选项圆点指示（规范 v6 .option：radio 圆 / checkbox 方；随四态着色） —— */
   .lv-opt-check { width: 18px; height: 18px; border-radius: var(--lv-radius-round); border: 1.5px solid var(--lv-ctl-border); background: var(--lv-surface); flex: none; display: grid; place-items: center; transition: background-color var(--lv-dur-micro) ease, border-color var(--lv-dur-micro) ease; }
   .lv-opt-check.box { border-radius: 5px; }
@@ -6355,18 +6521,18 @@ import { ttsSpeak } from "@/core/tts";
   .lv-opt.right .lv-opt-check { background: var(--lv-green); }
   .lv-opt.wrong .lv-opt-check { background: var(--lv-red); }
   .lv-opt.sel .lv-opt-check::after, .lv-opt.right .lv-opt-check::after, .lv-opt.wrong .lv-opt-check::after { transform: scale(1); }
-  .lv-opt.sel { border-color: var(--lv-accent); background: var(--lv-accent-soft); box-shadow: 0 2px 8px color-mix(in srgb, var(--lv-accent) 18%, transparent); }
-  .lv-opt.sel .key { background: var(--lv-accent); border-color: var(--lv-accent); color: var(--lv-on-accent, var(--b3-theme-on-primary, #fff)); box-shadow: 0 2px 6px color-mix(in srgb, var(--lv-accent) 28%, transparent); }
-  .lv-opt.right { border-color: var(--lv-green); background: var(--lv-green-soft); }
+  .lv-opt.sel { border-color: var(--lv-accent); background: color-mix(in srgb, var(--lv-accent-soft) 85%, var(--lv-surface)); box-shadow: 0 0 0 1px var(--lv-accent), 0 4px 14px color-mix(in srgb, var(--lv-accent) 18%, transparent); }
+  .lv-opt.sel .key { background: var(--lv-accent); border-color: var(--lv-accent); color: var(--lv-on-accent, var(--b3-theme-on-primary, #fff)); box-shadow: 0 2px 8px color-mix(in srgb, var(--lv-accent) 28%, transparent); transform: scale(1.04); }
+  .lv-opt.right { border-color: var(--lv-green); background: var(--lv-green-soft); box-shadow: 0 0 0 1px var(--lv-green), 0 4px 14px color-mix(in srgb, var(--lv-green) 18%, transparent); }
   .lv-opt.right .key { background: var(--lv-green); border-color: var(--lv-green); color: var(--lv-on-green, var(--b3-theme-on-primary, #fff)); }
-  .lv-opt.wrong { border-color: var(--lv-red); background: var(--lv-red-soft); }
+  .lv-opt.wrong { border-color: var(--lv-red); background: var(--lv-red-soft); box-shadow: 0 0 0 1px var(--lv-red), 0 4px 14px color-mix(in srgb, var(--lv-red) 18%, transparent); }
   .lv-opt.wrong .key { background: var(--lv-red); border-color: var(--lv-red); color: var(--lv-on-red, var(--b3-theme-on-primary, #fff)); }
   .lv-feedback { margin: 16px 0 12px; padding: 15px 18px; border: 1px solid color-mix(in srgb, var(--lv-red) 26%, var(--lv-border)); border-left: 4px solid var(--lv-red); border-radius: var(--lv-r-2); font-weight: var(--lv-font-weight-semibold); font-size: var(--lv-font-size-md); background: color-mix(in srgb, var(--lv-red-soft) 85%, var(--lv-surface)); color: var(--lv-red); box-shadow: 0 2px 10px color-mix(in srgb, var(--lv-red) 12%, transparent); animation: lv-appear var(--lv-dur-view) var(--lv-ease-out); }
   .lv-feedback.good { border-color: color-mix(in srgb, var(--lv-green) 26%, var(--lv-border)); border-left-color: var(--lv-green); background: color-mix(in srgb, var(--lv-green-soft) 85%, var(--lv-surface)); color: var(--lv-green); box-shadow: 0 2px 10px color-mix(in srgb, var(--lv-green) 12%, transparent); }
   /* —— 作答动作区（原型 .answer-actions：上分隔线 + 层次） —— */
   .lv-answer-actions { margin-top: 14px; padding-top: 18px; border-top: 1px solid var(--lv-border); }
   /* —— 改答原因弹层（63-03：轻量内联，不阻断作答） —— */
-  .lv-reason { margin: 8px 0 0; padding: 8px 12px; border-radius: var(--lv-r-2); background: var(--lv-surface-2); }
+  .lv-reason { margin: 8px 0 0; padding: 10px 14px; border-radius: var(--lv-r-2); border: 1px solid var(--lv-border-subtle, var(--lv-border)); border-left: 3.5px solid var(--lv-amber); background: color-mix(in srgb, var(--lv-amber-soft) 35%, var(--lv-surface)); box-shadow: var(--lv-sh-1), var(--lv-inset-subtle, inset 0 1px 0 transparent); }
   /* —— 结构化作答框（54 第三刀：数值单行 / 多空逐空） —— */
   .lv-answer-num { min-height: 48px; font-size: 16px; font-variant-numeric: tabular-nums; }
   .lv-answer-blank { min-height: 44px; margin-bottom: 10px; }
@@ -6400,10 +6566,10 @@ import { ttsSpeak } from "@/core/tts";
   /* —— 工具行「更多」菜单（浮层走卡片语言：surface + pop 阴影 + 38px 行） —— */
   .lv-more { position: relative; display: inline-flex; }
   .lv-more-dot { display: inline-block; width: 6px; height: 6px; margin-left: 5px; border-radius: var(--lv-radius-round); background: var(--lv-accent); }
-  .lv-more-pop { position: absolute; top: calc(100% + 6px); right: 0; z-index: 40; min-width: 208px; padding: 6px; background: var(--lv-surface); border: 1px solid var(--lv-border); border-radius: var(--lv-r-2); box-shadow: var(--lv-sh-pop); display: grid; gap: 2px; animation: lv-pop-in var(--lv-dur-view) var(--lv-ease-out) both; }
-  .lv-more-pop button { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 36px; padding: 7px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--lv-text); font: inherit; font-size: var(--lv-font-size-body-compact); text-align: left; cursor: pointer; }
-  .lv-more-pop button:hover { background: var(--lv-accent-soft); }
-  .lv-more-pop button[aria-checked="true"] { color: var(--lv-accent); font-weight: 600; }
+  .lv-more-pop { position: absolute; top: calc(100% + 6px); right: 0; z-index: 40; min-width: 216px; padding: 6px; background: color-mix(in srgb, var(--lv-surface) 94%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--lv-border-subtle, var(--lv-border)); border-radius: var(--lv-r-2); box-shadow: var(--lv-sh-pop), var(--lv-inset-highlight, inset 0 1px 0 transparent); display: grid; gap: 3px; animation: lv-pop-in var(--lv-dur-view) var(--lv-ease-out) both; }
+  .lv-more-pop button { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 36px; padding: 7px 12px; border: 0; border-radius: 8px; background: transparent; color: var(--lv-text); font: inherit; font-size: var(--lv-font-size-body-compact); text-align: left; cursor: pointer; transition: background-color var(--lv-dur-micro) var(--lv-ease-out), color var(--lv-dur-micro) var(--lv-ease-out), transform var(--lv-dur-micro) var(--lv-ease-out); }
+  .lv-more-pop button:hover { background: var(--lv-accent-soft); color: var(--lv-accent); transform: translateX(2px); }
+  .lv-more-pop button[aria-checked="true"] { color: var(--lv-accent); font-weight: 600; background: color-mix(in srgb, var(--lv-accent-soft) 80%, transparent); }
   .lv-more-sep { height: 1px; margin: 4px 6px; background: var(--lv-border); }
   .lv-rate { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 14px; }
   .lv-rate .lv-btn { justify-content: center; min-height: 48px; padding: 10px 14px; font-weight: var(--lv-font-weight-semibold); box-shadow: var(--lv-sh-1), var(--lv-inset-subtle, inset 0 1px 0 transparent); transition: background-color var(--lv-dur-micro) ease, border-color var(--lv-dur-micro) ease, color var(--lv-dur-micro) ease, transform var(--lv-dur-micro) ease, box-shadow var(--lv-dur-micro) ease; }
@@ -6420,5 +6586,29 @@ import { ttsSpeak } from "@/core/tts";
   .lv-rate .r4:hover { border-color: var(--lv-accent); color: var(--lv-accent); background: color-mix(in srgb, var(--lv-accent-soft) 60%, var(--lv-surface)); box-shadow: 0 4px 12px color-mix(in srgb, var(--lv-accent) 18%, transparent); }
   @container lv-exam (max-width: 960px) { .lv-modes { grid-template-columns: repeat(2, 1fr); } }
   @container lv-exam (max-width: 480px) { .lv-modes { grid-template-columns: 1fr; } }
-  @media (prefers-reduced-motion: reduce) { .lv-skeleton { animation: none; } .lv-mode, .lv-btn, .lv-opt { transition: none; } }
+  /* —— R54 原型高级交互：题目浏览 Peek 抽屉 (Desktop 右侧抽屉 / Mobile 底部 Sheet) —— */
+  .lv-studio-nav { display: inline-flex; align-items: center; gap: 4px; padding: 4px; margin: 6px 0 14px; background: var(--lv-surface-2); border: 1px solid var(--lv-border); border-radius: var(--lv-r-card, 12px); max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; box-shadow: var(--lv-inset-subtle, inset 0 1px 0 transparent); }
+  .lv-studio-nav::-webkit-scrollbar { display: none; }
+  .lv-studio-tab { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: var(--lv-text-2); font: inherit; font-size: var(--lv-font-size-body-compact, 13px); font-weight: var(--lv-font-weight-medium, 500); cursor: pointer; white-space: nowrap; transition: background-color var(--lv-dur-micro) var(--lv-ease-out), color var(--lv-dur-micro) var(--lv-ease-out), border-color var(--lv-dur-micro) var(--lv-ease-out), box-shadow var(--lv-dur-micro) var(--lv-ease-out); }
+  .lv-studio-tab:hover { color: var(--lv-text); background: color-mix(in srgb, var(--lv-surface) 60%, transparent); }
+  .lv-studio-tab.active { background: var(--lv-surface); color: var(--lv-accent); border-color: var(--lv-border); box-shadow: var(--lv-sh-1), var(--lv-inset-highlight, inset 0 1px 0 transparent); font-weight: var(--lv-font-weight-semibold, 600); }
+  .lv-qrow.active-peek { border-color: var(--lv-accent); border-left: 3.5px solid var(--lv-accent); background: color-mix(in srgb, var(--lv-accent-soft) 35%, var(--lv-surface)); box-shadow: 0 4px 16px color-mix(in srgb, var(--lv-accent) 18%, transparent); }
+  .lv-peek-backdrop { position: fixed; inset: 0; background: var(--lv-overlay); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); z-index: 120; animation: lv-fade-in var(--lv-dur-fast, 0.18s) ease-out; }
+  .lv-peek-sheet-handle { display: none; width: 36px; height: 4px; border-radius: 2px; background: var(--lv-border); margin: 8px auto 2px; }
+  .lv-peek-drawer { position: fixed; top: 12px; right: 14px; bottom: 14px; width: min(520px, calc(100vw - 28px)); max-width: 560px; z-index: 121; background: var(--lv-surface); border: 1px solid var(--lv-border); border-radius: var(--lv-r-card, 16px); box-shadow: var(--lv-sh-pop), var(--lv-inset-highlight, inset 0 1px 0 transparent); display: flex; flex-direction: column; overflow: hidden; animation: lv-slide-left var(--lv-dur-view, 0.22s) var(--lv-ease-out); }
+  .lv-peek-head { display: flex; align-items: center; justify-content: space-between; gap: var(--lv-space-2); padding: 14px 18px; border-bottom: 1px solid var(--lv-border); background: var(--lv-surface-2); flex-shrink: 0; }
+  .lv-peek-src { font-size: var(--lv-font-size-caption); color: var(--lv-text-3); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lv-peek-close { width: 28px; height: 28px; padding: 0; display: grid; place-items: center; border-radius: 6px; font-size: 14px; }
+  .lv-peek-body { flex: 1; min-height: 0; padding: 18px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+  .lv-peek-stem { font-size: 17px; font-weight: var(--lv-font-weight-semibold, 600); line-height: 1.6; color: var(--lv-text); overflow-wrap: anywhere; }
+  .lv-peek-footer { display: flex; align-items: center; gap: 8px; justify-content: flex-end; padding: 12px 18px; border-top: 1px solid var(--lv-border); background: var(--lv-surface-2); flex-shrink: 0; }
+  @keyframes lv-slide-left { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  @keyframes lv-slide-up { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  @keyframes lv-fade-in { from { opacity: 0; } to { opacity: 1; } }
+  @container lv-exam (max-width: 759px) {
+    .lv-peek-sheet-handle { display: block; }
+    .lv-peek-drawer { top: auto; left: 0; right: 0; bottom: 0; width: 100%; max-height: 88vh; border-radius: var(--lv-r-card, 18px) var(--lv-r-card, 18px) 0 0; border-bottom: 0; padding-bottom: max(6px, env(safe-area-inset-bottom)); animation: lv-slide-up var(--lv-dur-view, 0.22s) var(--lv-ease-out); }
+    .lv-peek-footer { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  }
+  @media (prefers-reduced-motion: reduce) { .lv-skeleton { animation: none; } .lv-mode, .lv-btn, .lv-opt, .lv-peek-drawer, .lv-peek-backdrop { transition: none; animation: none; } }
 </style>

@@ -46,23 +46,23 @@
 
 ---
 
-## Latest release: v0.10.1 (2026-10-16)
+## Latest release: v0.10.2 (2026-10-16)
+
+This release delivers the R54 prototype advanced interaction architecture (Question Peek Drawer, Split-View manual authoring with live question face preview, Studio task sub-navigation, and material-to-question conversion loop), alongside deep tactile micro-depth overhauls across practice cards, CBT radar pulses, and the ⌘K command palette.
+
+- **Question Peek Drawer:** Browsing questions now opens a modern slide-in Peek Drawer (desktop) and Bottom Sheet (mobile <=759px), keeping the question list scroll position and filter state 100% intact with `.active-peek` highlight, Escape key dismiss, and focus restoration.
+- **Manual Studio Split-View:** Two-column authoring workflow with live book-like question face preview (20px / 1.75 line-height), instant single/multiple/judge keycaps, structured numeric tolerance hints, multi-blank (;;) simulation, and a blank draft reset action.
+- **Studio Sub-Navigation:** Unified task navigation across Manual, Materials, Import, and AI question creation views with smooth touch scrolling on mobile.
+- **Material-to-Question Loop:** One-click bridges to import material contexts directly into manual creation or AI material drafts, with per-note question authoring.
+- **Tactile & Motion Overhaul:** Dual-ring radar breathing pulse for active CBT mock questions, micro-depth cards with inset highlights, subtle tactile keycaps with micro-elastic active feedback (`active: scale(0.985)`), and blurred glass ⌘K command palette.
+
+## Previous release: v0.10.1 (2026-10-16)
 
 This patch fixes sample-bank creation reporting a failure after SiYuan has already saved the questions, and makes host-data audits more reliable.
 
 - **Sample bank:** When the write receipt is incomplete, creation reads back the source document to confirm the 12 original questions. Retries keep their existing identities.
 - **Audit reliability:** Corrected plugin-storage, action, AI-history and check-in bridge paths; cleared sessions are distinguished from damaged JSON, with CLI regression coverage.
 - **Validation scope:** Sample writes, practice feedback and persisted answers were checked in an isolated SiYuan 3.8.7 workspace. Complete mock recovery, Android WebView and real AI journeys still await validation. See [current status](docs/STATUS.md).
-
-## Previous release: v0.10.0 (2026-10-15)
-
-This release overhauls the design system and tactile micro-depth: introducing composite ambient shadows, 1px top inset highlights, subtle tinted borders, paper-focus reading typography, tactile keycaps, compact CBT mock answer sheet, and live pulse indicators for background saves.
-
-- **Improved:** Added composite ambient shadows (`--lv-sh-card`), 1px top inset highlights (`--lv-inset-highlight`), subtle tinted borders and tactile keycap shadows. Cards and buttons now feature physical micro-elastic feedback (`active: scale`).
-- **Fixed:** Resolved the critical scoped `.lv-card` override in Practice, Mock, and Report views, restoring deep surface hierarchy across all tabs.
-- **Practice experience:** Elevated question stem typography to 20px / 1.75 line-height for book-like immersive reading; option rows now feature hover slide-in with subtle lavender tint, and monospace A/B/C/D keycaps.
-- **Mock CBT & Analytics:** Restructured mock answer grid into compact square tiles with dual-ring active question radar glow; quadrant cards adopt soft subtle backgrounds with 26px bold figures; 53-week heatmap squares now smoothly scale 1.4x on hover.
-- **Feedback & Primitives:** SaveStatus pill enhanced with live pulse animation while persisting; consolidated global `.lv-empty` and `.lv-detail` primitives, fixing bare unstyled empty states in the Report center; unified 3px soft focus rings across all inputs.
 
 ## Recent patch series: v0.9.7-v0.9.8 (2026-10-14)
 

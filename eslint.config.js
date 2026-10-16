@@ -14,6 +14,7 @@ export default tseslint.config(
       "node_modules/",
       "output/",
       "coverage/",
+      "tmp/",
       "*.d.ts",
       "design/prototype/prototype.js",
       "scripts/visual-harness/",
