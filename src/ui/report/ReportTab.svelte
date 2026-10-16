@@ -227,7 +227,7 @@
           sessionId: "",
         };
         const env = await new AiTaskRunner(ch).run(reqCtx, messages);
-        if (env.status === "ok" && env.data.text) void app.recordAiUsage(ch.id, env.tokens, 1);
+        if (env.status === "ok" && env.data.text) void app.recordAiUsage(ch.id, env.tokens, 1).catch(() => undefined);
         if (requestedVersion !== reportContextVersion) {
           showMessage(t("report.aiScopeChanged", "统计范围已变化，本次 AI 结果未应用，请基于当前范围重新生成。"), 3400, "info");
           return;
@@ -312,7 +312,7 @@
           sessionId: "",
         };
         const env = await new AiTaskRunner(ch).run(reqCtx, messages);
-        if (env.status === "ok" && env.data.text) void app.recordAiUsage(ch.id, env.tokens, 1);
+        if (env.status === "ok" && env.data.text) void app.recordAiUsage(ch.id, env.tokens, 1).catch(() => undefined);
         if (requestedVersion !== reportContextVersion) {
           showMessage(t("report.aiScopeChanged", "统计范围已变化，本次 AI 结果未应用，请基于当前范围重新生成。"), 3400, "info");
           return;

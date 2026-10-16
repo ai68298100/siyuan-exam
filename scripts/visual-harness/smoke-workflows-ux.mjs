@@ -77,6 +77,51 @@ try {
     await task("题库").click();
     await page.locator("#app .lv-qrow-head").first().waitFor();
     assert.equal(await task("题库").getAttribute("aria-current"), "page");
+    // Peek detail is a modal surface: focus enters it, the page background is
+    // hidden from assistive technology, Tab stays inside, and close restores
+    // the row that opened it.
+    const firstQuestion = page.locator("#app .lv-qrow-head").first();
+    await firstQuestion.click();
+    const peek = page.locator("#app .lv-peek-drawer[role=dialog]");
+    await peek.waitFor({ state: "visible" });
+    await page.waitForFunction(() => {
+      const drawer = document.querySelector("#app .lv-peek-drawer[role=dialog]");
+      return drawer instanceof HTMLElement && drawer.contains(document.activeElement);
+    });
+    const peekA11y = await page.evaluate(() => {
+      const drawer = document.querySelector("#app .lv-peek-drawer[role=dialog]");
+      const background = [...document.querySelectorAll("#app [inert][aria-hidden='true']")]
+        .filter((node) => node !== drawer && !(node instanceof HTMLElement && node.contains(drawer)));
+      return {
+        focusInDrawer: drawer instanceof HTMLElement && drawer.contains(document.activeElement),
+        backgroundCount: background.length,
+      };
+    });
+    assert.equal(peekA11y.focusInDrawer, true, "Peek drawer should receive focus when opened");
+    assert.ok(peekA11y.backgroundCount > 0, "Peek drawer should inert and hide its background from the accessibility tree");
+    for (let i = 0; i < 6; i += 1) {
+      await page.keyboard.press("Tab");
+      assert.equal(
+        await peek.evaluate((drawer) => drawer.contains(document.activeElement)),
+        true,
+        `Peek Tab cycle escaped the dialog on step ${i + 1}`,
+      );
+    }
+    await page.keyboard.press("Escape");
+    await peek.waitFor({ state: "detached" });
+    await page.waitForFunction(() => document.activeElement?.classList.contains("lv-qrow-head"));
+    assert.equal(await firstQuestion.evaluate((button) => button === document.activeElement), true, "Closing Peek should restore focus to its trigger");
+    const closeSize = await page.locator("#app .lv-peek-close").count();
+    assert.equal(closeSize, 0, "Peek close control should be removed with the drawer");
+    await firstQuestion.click();
+    await peek.waitFor({ state: "visible" });
+    const closeBox = await page.locator("#app .lv-peek-close").evaluate((button) => {
+      const rect = button.getBoundingClientRect();
+      return { width: rect.width, height: rect.height };
+    });
+    assert.ok(closeBox.width >= 44 && closeBox.height >= 44, `Peek close target is too small at 390px: ${JSON.stringify(closeBox)}`);
+    await page.keyboard.press("Escape");
+    await peek.waitFor({ state: "detached" });
     await task("出题").click();
     await page.locator("#app [data-manual-form]").waitFor();
     assert.equal(await task("出题").getAttribute("aria-current"), "page");
@@ -353,11 +398,16 @@ try {
         runId: "ux-discard-run",
         bp: { name: "回归模考", durationS: 3600 },
         qids: ["seed-q01"],
+        sectionOf: { "seed-q01": "默认" },
+        scoreOf: { "seed-q01": 1 },
+        indefinite: [],
         startedAt: Date.now(),
         savedAt: Date.now(),
         answers: [],
         flags: [],
         cursor: 0,
+        sectionStart: { 默认: 0 },
+        screenSwitches: 0,
       });
       window.__show("mock");
     });

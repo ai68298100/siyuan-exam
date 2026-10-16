@@ -17,6 +17,18 @@ class SlowStorage implements StorageAdapter {
   }
 }
 
+class FailOnceStorage extends SlowStorage {
+  private failNext = true;
+
+  override async save(key: string, value: unknown): Promise<void> {
+    if (this.failNext) {
+      this.failNext = false;
+      throw new Error("simulated storage failure");
+    }
+    await super.save(key, value);
+  }
+}
+
 function appWith(storage = new SlowStorage()) {
   return { app: new ExamApp({ client: {} as any, storage }), storage };
 }
@@ -78,5 +90,40 @@ describe("ExamApp 持久化并发保护", () => {
     const latest = { externalRef: "new", date: "2026-10-14", kind: "study" } as any;
     await Promise.all([app.setCheckinPending(first), app.setCheckinPending(latest)]);
     expect((await app.getCheckinPending())?.externalRef).toBe("new");
+  });
+
+  it("存储失败被调用方捕获后不会产生未处理拒绝，后续写入仍可重试", async () => {
+    const storage = new FailOnceStorage();
+    const { app } = appWith(storage);
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      await expect(app.saveAux("ux/failing-write", { attempt: 1 })).rejects.toThrow("simulated storage failure");
+      // Let the host's unhandled-rejection turn run before checking the retry.
+      await pause(0);
+      await app.saveAux("ux/failing-write", { attempt: 2 });
+      expect(storage.map.get("ux/failing-write")).toEqual({ attempt: 2 });
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
+  it("AI 用量写入失败由界面 fire-and-forget catch 消化", async () => {
+    const storage = new FailOnceStorage();
+    const { app } = appWith(storage);
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      void app.recordAiUsage("practice.explain", 12, 1).catch(() => undefined);
+      await pause(0);
+      expect(unhandled).toEqual([]);
+      await app.recordAiUsage("practice.explain", 8, 1);
+      expect(storage.map.get("ai/usage")).toMatchObject({ totalTokens: 8, totalCalls: 1 });
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
   });
 });

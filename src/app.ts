@@ -255,9 +255,14 @@ export class ExamApp {
     const prev = this.storageWriteTails.get(key) ?? Promise.resolve();
     const next = prev.catch(() => undefined).then(fn);
     this.storageWriteTails.set(key, next);
-    void next.finally(() => {
+    const cleanup = () => {
       if (this.storageWriteTails.get(key) === next) this.storageWriteTails.delete(key);
-    });
+    };
+    // Handle both fulfillment and rejection on the cleanup branch. Using
+    // `void next.finally(...)` alone creates a second rejected promise when a
+    // write fails, surfacing as an unhandled page error even when the caller
+    // catches the original write promise to show a recoverable UI message.
+    void next.then(cleanup, cleanup);
     return next;
   }
 

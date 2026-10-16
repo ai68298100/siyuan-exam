@@ -1119,7 +1119,7 @@ import { ttsSpeak } from "@/core/tts";
         void logAiTask({ templateId: env.templateId, qid: e.qid, status: env.status, tokens: env.tokens, messages });
         if (env.status === "ok" && env.data.text) {
           receiptMisdiagnosis = { ...receiptMisdiagnosis, [key]: env.data.text };
-          void app.recordAiUsage(ch.id, env.tokens, 1);
+          void app.recordAiUsage(ch.id, env.tokens, 1).catch(() => undefined);
           // U14：按该次回执的证据独立落库
           void app.saveMisdiagnosis({
             qid: e.qid,
@@ -1173,7 +1173,7 @@ import { ttsSpeak } from "@/core/tts";
         const env = await new AiTaskRunner(ch).run(reqCtx, messages);
         void logAiTask({ templateId: env.templateId, qid: q.id, status: env.status, tokens: env.tokens, messages });
         if (env.status === "ok" && env.data.text) {
-          void app.recordAiUsage(ch.id, env.tokens, 1);
+          void app.recordAiUsage(ch.id, env.tokens, 1).catch(() => undefined);
           const parsed = parseFlashCandidates(env.data.text);
           const leaks = findCardLeaks(parsed.cards);
           if (leaks.length) {
@@ -1988,7 +1988,7 @@ import { ttsSpeak } from "@/core/tts";
           explainText = env.data.text;
           explainHistory[q.id] = [...messages, { role: "assistant", content: env.data.text }];
           void persistExplainHistory().catch((e: unknown) => { explainSaveError = String(e instanceof Error ? e.message : e); });
-          void app.recordAiUsage(ch.id, env.tokens, 1);
+          void app.recordAiUsage(ch.id, env.tokens, 1).catch(() => undefined);
           helpShown.set(q.id, mode); // 114-01：受助标记——同题再答（重排队）时随 attempt 落 help 字段
         } else {
           // 有类型失败（G6 闸门/预算/通道错误）：显示信封摘要，不裸抛异常栈
@@ -2080,7 +2080,7 @@ import { ttsSpeak } from "@/core/tts";
             .map((s, i) => `${t("explain.hintLayer").replace("{n}", String(i + 1))}：${s}`)
             .join("\n");
           helpShown.set(q.id, "hint"); // 受助标记：本题后续作答（含本次提交）随 attempt 落 help
-          void app.recordAiUsage(ch.id, env.tokens, 1);
+          void app.recordAiUsage(ch.id, env.tokens, 1).catch(() => undefined);
         } else {
           explainText = envStatusLine(env);
         }
@@ -2140,7 +2140,7 @@ import { ttsSpeak } from "@/core/tts";
           void persistExplainHistory().catch((e: unknown) => { explainSaveError = String(e instanceof Error ? e.message : e); });
           explainText = (explainText.endsWith(reply) ? explainText : explainText + "\n\n") + t("ai.followupTag") + explainFollowUp.trim() + "\n" + reply;
           explainFollowUp = "";
-          void app.recordAiUsage(ch.id, env.tokens, 1);
+          void app.recordAiUsage(ch.id, env.tokens, 1).catch(() => undefined);
         } else {
           explainText = (explainText ? explainText + "\n\n" : "") + envStatusLine(env);
         }
@@ -2400,7 +2400,7 @@ import { ttsSpeak } from "@/core/tts";
         void logAiTask({ templateId: env.templateId, qid: reqCtx.qid, status: env.status, tokens: env.tokens, messages });
         if (env.status === "ok" && env.data.text) {
           misdiagnosisText = { ...misdiagnosisText, [a.qid]: env.data.text };
-          void app.recordAiUsage(ch.id, env.tokens, 1);
+          void app.recordAiUsage(ch.id, env.tokens, 1).catch(() => undefined);
           // U14：假设独立持久化（与用户复盘分层；离线落内存态，重载后可回看）
           void app.saveMisdiagnosis({
             qid: a.qid,
@@ -2501,7 +2501,7 @@ import { ttsSpeak } from "@/core/tts";
         })(),
       });
       plugin.refreshDock?.();
-      void app.saveSession();   // 37-05 checkpoint：作答即存（SaveGate 同键合并，重载不重复作答）
+      void app.saveSession().catch(() => undefined);   // 37-05 checkpoint：作答即存（SaveGate 同键合并，重载不重复作答）
       if (feedbackMode === "end") {
         // 44-01：会话末复盘——作答事件完全一致，仅对错不在逐题显示，结算页统一回看
         showMessage(t("session.recordedSilent"), 1500, "info");
@@ -2519,7 +2519,7 @@ import { ttsSpeak } from "@/core/tts";
       if (!session.next()) { void finishSession(); return; }
       restoreQuestionControls();
       sessionRev++; // 类实例非响应式：切题后刷新题面
-      void app.saveSession();   // 游标推进随答随存
+      void app.saveSession().catch(() => undefined);   // 游标推进随答随存
       if (reciteToggle) scheduleReciteSubmit(); // 背题模式：切题后自动揭示答案
     }
 
@@ -3732,19 +3732,67 @@ import { ttsSpeak } from "@/core/tts";
     // ---------- 浏览详情：展开/文档跳转/反链 ----------
     let expandedId = $state("");
     const activePeekQuestion = $derived(questions.find((x) => x.id === expandedId) ?? null);
+    let peekDrawerEl = $state<HTMLDivElement | null>(null);
+    let peekReturnFocus: HTMLElement | null = null;
+    let peekWasOpen = false;
     let backlinkCache = $state(new Map<string, { docId: string; title: string; content: string }[]>());
     let backlinkBusyFor = $state("");
     let backlinkError = $state<Record<string, string>>({});
 
-    function closePeekDrawer() {
-      const prevId = expandedId;
-      expandedId = "";
-      if (prevId) {
-        void tick().then(() => {
-          const btn = tabRoot?.querySelector<HTMLButtonElement>(`button[aria-describedby="lv-qrow-stem-${prevId}"]`);
-          btn?.focus({ preventScroll: true });
-        });
+    // Peek is a modal drawer: move focus into it, keep background controls out
+    // of the accessibility tree, and return focus to the row that opened it.
+    $effect(() => {
+      const open = !!activePeekQuestion;
+      const drawer = peekDrawerEl;
+      if (!open || !drawer) {
+        if (!open && peekWasOpen) {
+          peekWasOpen = false;
+          const target = peekReturnFocus;
+          peekReturnFocus = null;
+          void tick().then(() => {
+            if (target?.isConnected && target.getClientRects().length) target.focus();
+          });
+        }
+        return;
       }
+      if (!peekWasOpen && document.activeElement instanceof HTMLElement) peekReturnFocus = document.activeElement;
+      peekWasOpen = true;
+      void tick().then(() => { if (activePeekQuestion && peekDrawerEl) peekDrawerEl.focus(); });
+    });
+
+    // Mark every sibling along the drawer's ancestor chain inert. This keeps
+    // the fixed sheet modal even though it is rendered inside the page panel.
+    $effect(() => {
+      const drawer = peekDrawerEl;
+      if (!activePeekQuestion || !drawer || !tabRoot) return;
+      const marked: { node: HTMLElement; hadInert: boolean; ariaHidden: string | null }[] = [];
+      const mark = (node: HTMLElement) => {
+        if (node === drawer || node.classList.contains("lv-peek-backdrop") || marked.some((x) => x.node === node)) return;
+        marked.push({ node, hadInert: node.hasAttribute("inert"), ariaHidden: node.getAttribute("aria-hidden") });
+        node.setAttribute("inert", "");
+        node.setAttribute("aria-hidden", "true");
+      };
+      let current: HTMLElement | null = drawer;
+      while (current && current !== tabRoot) {
+        const parent = current.parentElement;
+        if (!parent) break;
+        for (const child of [...parent.children]) {
+          if (child instanceof HTMLElement && child !== current && !child.contains(drawer)) mark(child);
+        }
+        current = parent;
+      }
+      return () => {
+        for (const { node, hadInert, ariaHidden } of marked) {
+          if (hadInert) node.setAttribute("inert", "");
+          else node.removeAttribute("inert");
+          if (ariaHidden === null) node.removeAttribute("aria-hidden");
+          else node.setAttribute("aria-hidden", ariaHidden);
+        }
+      };
+    });
+
+    function closePeekDrawer() {
+      expandedId = "";
     }
 
     function onPeekDrawerKeydown(e: KeyboardEvent) {
@@ -3817,6 +3865,33 @@ import { ttsSpeak } from "@/core/tts";
 
     /** 键盘流（docs/11 映射表）：会话 A-F/⏎/J；背诵 空格翻开、1-4 自评；composition（中文输入法）期间不响应 */
     function onKeydown(e: KeyboardEvent) {
+      const peekOpen = !!activePeekQuestion && !!peekDrawerEl;
+      if (peekOpen) {
+        // A host confirmation/input dialog takes precedence over the page peek.
+        const externalDialog = [...document.querySelectorAll<HTMLElement>('[role="dialog"]')].some((el) => el !== peekDrawerEl);
+        if (externalDialog) return;
+        if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          closePeekDrawer();
+          return;
+        }
+        if (e.key === "Tab" && peekDrawerEl) {
+          const focusables = [...peekDrawerEl.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+            .filter((el) => el.getClientRects().length);
+          const first = focusables[0] ?? peekDrawerEl;
+          const last = focusables[focusables.length - 1] ?? peekDrawerEl;
+          const idx = focusables.indexOf(document.activeElement as HTMLElement);
+          if ((e.shiftKey && (idx <= 0 || document.activeElement === peekDrawerEl)) || (!e.shiftKey && (idx === focusables.length - 1 || document.activeElement === peekDrawerEl))) {
+            e.preventDefault();
+            (e.shiftKey ? last : first).focus();
+          }
+          return;
+        }
+        // Do not let page-level shortcuts act while focus is in the drawer.
+        if (!(e.target instanceof Node) || !peekDrawerEl.contains(e.target)) return;
+        return;
+      }
       if (!tabRoot?.getClientRects().length || e.defaultPrevented || paletteOpen || railOpen || document.querySelector('[role="dialog"]')) return;
       if (e.isComposing || e.keyCode === 229 || e.metaKey || e.ctrlKey || e.altKey) return;
       const target = e.target as HTMLElement;
@@ -3834,7 +3909,7 @@ import { ttsSpeak } from "@/core/tts";
           else if (feedback.verdict === "wrong" && /^[1-3]$/.test(e.key)) {
             // 错因快捷键（docs/11：1-4 错因；1-3 对应三分类）
             const reasons = ["careless", "unknown", "trap"] as const;
-            void app.saveWrongReason(q.id, reasons[Number(e.key) - 1]);
+            void app.saveWrongReason(q.id, reasons[Number(e.key) - 1]).catch(() => undefined);
             savedReason = reasons[Number(e.key) - 1];
             e.preventDefault();
           }
@@ -5861,7 +5936,7 @@ import { ttsSpeak } from "@/core/tts";
           {@const q = activePeekQuestion}
           {@const links = app.kernelOnline ? backlinkCache.get(q.blockId) : undefined}
           <div class="lv-peek-backdrop" onclick={closePeekDrawer} role="presentation"></div>
-          <div class="lv-card lv-peek-drawer" aria-label={t("browse.detailTitle", "题目详情与操作")} role="dialog" aria-modal="true" tabindex="-1" onkeydown={onPeekDrawerKeydown}>
+          <div bind:this={peekDrawerEl} class="lv-card lv-peek-drawer" aria-label={t("browse.detailTitle", "题目详情与操作")} role="dialog" aria-modal="true" tabindex="-1" onkeydown={onPeekDrawerKeydown}>
             <div class="lv-peek-sheet-handle" aria-hidden="true"></div>
             <header class="lv-peek-head">
               <div class="lv-row" style="margin:0;gap:var(--lv-space-1);flex-wrap:wrap">
@@ -6598,7 +6673,8 @@ import { ttsSpeak } from "@/core/tts";
   .lv-peek-drawer { position: fixed; top: 12px; right: 14px; bottom: 14px; width: min(520px, calc(100vw - 28px)); max-width: 560px; z-index: 121; background: var(--lv-surface); border: 1px solid var(--lv-border); border-radius: var(--lv-r-card, 16px); box-shadow: var(--lv-sh-pop), var(--lv-inset-highlight, inset 0 1px 0 transparent); display: flex; flex-direction: column; overflow: hidden; animation: lv-slide-left var(--lv-dur-view, 0.22s) var(--lv-ease-out); }
   .lv-peek-head { display: flex; align-items: center; justify-content: space-between; gap: var(--lv-space-2); padding: 14px 18px; border-bottom: 1px solid var(--lv-border); background: var(--lv-surface-2); flex-shrink: 0; }
   .lv-peek-src { font-size: var(--lv-font-size-caption); color: var(--lv-text-3); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .lv-peek-close { width: 28px; height: 28px; padding: 0; display: grid; place-items: center; border-radius: 6px; font-size: 14px; }
+  .lv-peek-head .lv-btn { min-width: 44px; min-height: 44px; }
+  .lv-peek-close { width: 44px; height: 44px; padding: 0; display: grid; place-items: center; border-radius: 8px; font-size: 14px; }
   .lv-peek-body { flex: 1; min-height: 0; padding: 18px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
   .lv-peek-stem { font-size: 17px; font-weight: var(--lv-font-weight-semibold, 600); line-height: 1.6; color: var(--lv-text); overflow-wrap: anywhere; }
   .lv-peek-footer { display: flex; align-items: center; gap: 8px; justify-content: flex-end; padding: 12px 18px; border-top: 1px solid var(--lv-border); background: var(--lv-surface-2); flex-shrink: 0; }
@@ -6608,6 +6684,7 @@ import { ttsSpeak } from "@/core/tts";
   @container lv-exam (max-width: 759px) {
     .lv-peek-sheet-handle { display: block; }
     .lv-peek-drawer { top: auto; left: 0; right: 0; bottom: 0; width: 100%; max-height: 88vh; border-radius: var(--lv-r-card, 18px) var(--lv-r-card, 18px) 0 0; border-bottom: 0; padding-bottom: max(6px, env(safe-area-inset-bottom)); animation: lv-slide-up var(--lv-dur-view, 0.22s) var(--lv-ease-out); }
+    .lv-peek-close { width: 44px; height: 44px; min-width: 44px; min-height: 44px; }
     .lv-peek-footer { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
   }
   @media (prefers-reduced-motion: reduce) { .lv-skeleton { animation: none; } .lv-mode, .lv-btn, .lv-opt, .lv-peek-drawer, .lv-peek-backdrop { transition: none; animation: none; } }
