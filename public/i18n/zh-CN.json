@@ -1228,5 +1228,16 @@
     "sync.docsBtn": "归档到思源文档",
     "sync.docsTip": "在思源笔记中镜像生成/更新错题复盘本与闪卡册，卸载插件亦可永久使用",
     "sync.docsDone": "🎉 已同步当前题库的错题复盘本与学习闪卡册到思源笔记本！",
-    "report.loadingStats": "正在计算学习数据…"
+    "report.loadingStats": "正在计算学习数据…",
+    "mock.filterAll": "全部",
+    "mock.filterUnanswered": "未答",
+    "mock.filterFlagged": "标旗待查",
+    "mock.jumpNextUnanswered": "跳转下一未答",
+    "session.multiSelected": "当前已选 {items}（共 {n} 项）",
+    "session.multiEmpty": "多选题：请选择所有正确选项（至少一项）",
+    "session.submitSelected": "确认提交 (已选 {n} 项) (Enter)",
+    "wrongbook.filterAll": "全部错题",
+    "wrongbook.filterCareless": "粗心失误",
+    "wrongbook.filterUnknown": "知识盲区",
+    "wrongbook.filterTrap": "审题陷阱"
 }

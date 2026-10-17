@@ -1228,5 +1228,16 @@
     "sync.docsBtn": "Archive to Local Notes",
     "sync.docsTip": "Generate/update wrongbook & flashcards as native SiYuan docs; survives plugin uninstall",
     "sync.docsDone": "🎉 Synchronized wrongbook & flashcard documents to your notebook!",
-    "report.loadingStats": "Calculating study data..."
+    "report.loadingStats": "Calculating study data...",
+    "mock.filterAll": "All",
+    "mock.filterUnanswered": "Unanswered",
+    "mock.filterFlagged": "Flagged",
+    "mock.jumpNextUnanswered": "Next Unanswered",
+    "session.multiSelected": "Selected {items} ({n} items)",
+    "session.multiEmpty": "Multiple choice: select all correct options",
+    "session.submitSelected": "Submit (Selected {n}) (Enter)",
+    "wrongbook.filterAll": "All Wrongs",
+    "wrongbook.filterCareless": "Careless",
+    "wrongbook.filterUnknown": "Knowledge Gap",
+    "wrongbook.filterTrap": "Trap"
 }

@@ -41,7 +41,7 @@ import { ttsSpeak } from "@/core/tts";
     import type { PaletteCommand } from "../shared/Palette.svelte";
     import { SvelteMap, SvelteSet } from "svelte/reactivity";
     import Rail from "../shared/Rail.svelte";
-    import { escapeHtml } from "../../libs/sanitize";
+    import { escapeHtml, renderInlineText } from "../../libs/sanitize";
     import { questionFingerprint } from "@/ai/task";
     import { summarizeLoad } from "@/ai/flashCandidates";
     import { resolveAiKey } from "@/ai/secrets";
@@ -1398,8 +1398,12 @@ import { ttsSpeak } from "@/core/tts";
       eliminatedCount + wrongList.length ? Math.round((eliminatedCount / (eliminatedCount + wrongList.length)) * 100) : 0,
     );
     /** 错题队列：错次降序 → 最近错误降序（紧迫度序） */
+    let wbReasonFilter = $state<"all" | "careless" | "unknown" | "trap">("all");
     const wrongQueue = $derived(
       [...wrongList].sort((a, b) => b.wrongCount - a.wrongCount || b.lastWrongAt - a.lastWrongAt),
+    );
+    const filteredWrongQueue = $derived(
+      wbReasonFilter === "all" ? wrongQueue : wrongQueue.filter((w) => reasonOf(w.qid) === wbReasonFilter),
     );
 
     function switchView(next: View) { errorMsg = ""; view = next; }
@@ -4801,10 +4805,18 @@ import { ttsSpeak } from "@/core/tts";
                     onclick={() => pickPracticeChoice(choice.value)}>
                     <span class="lv-opt-check" class:box={q.type === "multiple"} aria-hidden="true"></span>
                     <span class="key">{choice.letter}</span>
-                    <span>{choice.text}</span>
+                    <span class="lv-opt-text">{@html renderInlineText(choice.text)}</span>
                   </button>
                 {/each}
               </div>
+              {#if q.type === "multiple" && !feedback}
+                {@const selLetters = selected ? [...selected].sort().join(", ") : ""}
+                <div class="lv-row lv-multi-indicator" style="margin:8px 0 4px;align-items:center;gap:var(--lv-space-2)">
+                  <span class="lv-chip num" class:lv-chip--acc={selected.length > 0}>
+                    {selected.length > 0 ? t("session.multiSelected").replace("{items}", selLetters).replace("{n}", String(selected.length)) : t("session.multiEmpty")}
+                  </span>
+                </div>
+              {/if}
               {/if}
               {/if}
             {:else}
@@ -4886,7 +4898,9 @@ import { ttsSpeak } from "@/core/tts";
 
             <div class="lv-row lv-answer-actions">
               {#if !feedback}
-                <button class="lv-btn lv-btn--primary" onclick={submitAnswer} disabled={!canSubmitAnswer}>{t("session.submit")}</button>
+                <button class="lv-btn lv-btn--primary" onclick={submitAnswer} disabled={!canSubmitAnswer}>
+                  {q.type === "multiple" && selected.length > 0 ? t("session.submitSelected").replace("{n}", String(selected.length)) : t("session.submit")}
+                </button>
                 <button class="lv-btn lv-btn--ghost" onclick={requestHint} disabled={explainBusy}><Icon name="bulb" size={14} /> {hintButtonLabel(q)}</button>
                 {#if q.type === "fill" || q.type === "short"}
                   <button class="lv-btn lv-btn--ghost" onclick={() => { submitAnswer(); }}>{t("session.skip")}</button>
@@ -5016,7 +5030,7 @@ import { ttsSpeak } from "@/core/tts";
                 <div class="lv-analysis"><b>{t("recite.answer")}:</b> {q.answer}</div>
                 {#each q.options as opt, i (i)}
                   <div class="lv-opt" class:right={q.answer.includes(String.fromCharCode(65 + i))} style="cursor:default">
-                    <span class="key">{String.fromCharCode(65 + i)}</span><span>{opt}</span>
+                    <span class="key">{String.fromCharCode(65 + i)}</span><span class="lv-opt-text">{@html renderInlineText(opt)}</span>
                   </div>
                 {/each}
               {:else}
@@ -5084,7 +5098,21 @@ import { ttsSpeak } from "@/core/tts";
                 <b class="lv-block-title" style="margin:0">{t("wrongbook.queue")}</b>
                 <span class="lv-muted" style="font-size:var(--lv-font-size-caption)">{t("wrongbook.queue.note")}</span>
               </div>
-              {#each wrongQueue as w, wi (w.qid)}
+              <div class="lv-row" style="gap:var(--lv-space-compact);margin:8px 0 12px;flex-wrap:wrap">
+                <button class="lv-chip" class:acc={wbReasonFilter === "all"} onclick={() => wbReasonFilter = "all"}>
+                  {t("wrongbook.filterAll")} ({wrongQueue.length})
+                </button>
+                <button class="lv-chip" class:acc={wbReasonFilter === "careless"} onclick={() => wbReasonFilter = "careless"}>
+                  {t("wrongbook.filterCareless")} ({reasonCounts.careless})
+                </button>
+                <button class="lv-chip" class:acc={wbReasonFilter === "unknown"} class:lv-chip--red={reasonCounts.unknown > 0} onclick={() => wbReasonFilter = "unknown"}>
+                  {t("wrongbook.filterUnknown")} ({reasonCounts.unknown})
+                </button>
+                <button class="lv-chip" class:acc={wbReasonFilter === "trap"} onclick={() => wbReasonFilter = "trap"}>
+                  {t("wrongbook.filterTrap")} ({reasonCounts.trap})
+                </button>
+              </div>
+              {#each filteredWrongQueue as w, wi (w.qid)}
                 {@const q = qOf(w.qid)}
                 <div class="lv-wrong-row">
                   <span class="task-number num">{wi + 1}</span>

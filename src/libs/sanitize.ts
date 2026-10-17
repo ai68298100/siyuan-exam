@@ -86,3 +86,19 @@ export function sanitizeRichHtml(html: string): string {
   }
   return doc.body.innerHTML;
 }
+
+/**
+ * 轻量行内富文本安全呈现（用于选项、简短标签等单行文本）：
+ * 支持 **粗体**、*斜体*、`行内代码` 等轻量 Markdown 格式，
+ * 先 escapeHtml 防注入，再转标签，最后过 sanitizeRichHtml 白名单。
+ */
+export function renderInlineText(text: string): string {
+  if (!text) return "";
+  if (!/[*`~<>]/.test(text)) return escapeHtml(text);
+  let s = escapeHtml(text);
+  s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  s = s.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+  s = s.replace(/`([^`]+)`/g, '<code class="lv-inline-code">$1</code>');
+  s = s.replace(/~~([^~]+)~~/g, "<del>$1</del>");
+  return sanitizeRichHtml(s);
+}

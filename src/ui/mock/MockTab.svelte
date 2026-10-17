@@ -21,6 +21,7 @@
     import type { PaletteCommand } from "../shared/Palette.svelte";
     import SaveStatus from "../shared/SaveStatus.svelte";
     import { mockSectionsToCsv, mockHistoryToCsv } from "../../core/exportMd";
+    import { renderInlineText } from "../../libs/sanitize";
     
     let { plugin, examApp }: { plugin: any; examApp?: ExamApp | null } = $props();
     let appOverride = $state<ExamApp | null>(null);
@@ -292,6 +293,20 @@
       ];
       return () => offs.forEach((off) => off());
     });
+
+    let sheetFilter = $state<"all" | "unanswered" | "flagged">("all");
+    const unansweredIndices = $derived(
+      session ? session.state.qids.map((qid, idx) => ({ qid, idx })).filter(({ qid }) => !answeredMap[qid]?.trim()).map((x) => x.idx) : [],
+    );
+    const flaggedIndices = $derived(
+      session ? session.state.qids.map((qid, idx) => ({ qid, idx })).filter(({ qid }) => session.flags.has(qid)).map((x) => x.idx) : [],
+    );
+
+    function gotoNextUnanswered() {
+      if (!session || !unansweredIndices.length) return;
+      const after = unansweredIndices.find((idx) => idx > cursor);
+      goto(after !== undefined ? after : unansweredIndices[0]);
+    }
 
     const totals = $derived(blueprintTotals(bp));
     const current = $derived(session ? session.state.qids[cursor] : null);
@@ -1210,7 +1225,7 @@
               aria-checked={currentQ.type === "multiple" ? (answeredMap[current] ?? "").includes(choice.value) : selected === choice.value}
               onclick={() => pickOption(choice.value)}>
               <span class="lv-opt-check" class:box={currentQ.type === "multiple"} aria-hidden="true"></span>
-              <span class="key">{choice.letter}</span><span>{choice.text}</span>
+              <span class="key">{choice.letter}</span><span class="lv-opt-text">{@html renderInlineText(choice.text)}</span>
             </button>
           {/each}
         </div>
@@ -1236,12 +1251,31 @@
       {/if}
       {/key}
     </div>
-    <!-- 答题卡 -->
+    <!-- 答题卡与速查筛选 -->
+    <div class="lv-sheet-bar">
+      <div class="lv-sheet-tabs">
+        <button class="lv-chip" class:acc={sheetFilter === "all"} onclick={() => sheetFilter = "all"}>
+          {t("mock.filterAll")} ({session.state.qids.length})
+        </button>
+        <button class="lv-chip" class:acc={sheetFilter === "unanswered"} class:lv-chip--red={unansweredIndices.length > 0} onclick={() => sheetFilter = "unanswered"}>
+          {t("mock.filterUnanswered")} ({unansweredIndices.length})
+        </button>
+        <button class="lv-chip" class:acc={sheetFilter === "flagged"} class:lv-chip--amb={flaggedIndices.length > 0} onclick={() => sheetFilter = "flagged"}>
+          <Icon name="star" size={11} /> {t("mock.filterFlagged")} ({flaggedIndices.length})
+        </button>
+      </div>
+      {#if unansweredIndices.length > 0}
+        <button class="lv-btn sm lv-btn--ghost" onclick={gotoNextUnanswered} title={t("mock.jumpNextUnanswered")}>
+          {t("mock.jumpNextUnanswered")} →
+        </button>
+      {/if}
+    </div>
     <div class="lv-sheet">
       {#each session.state.qids as qid, i (i)}
         {@const answered = Boolean(answeredMap[qid]?.trim())}
         {@const flagged = session.flags.has(qid)}
-        <button class="lv-cell" class:done={answered} class:flag={flagged} disabled={examLocked}
+        {@const dimmed = sheetFilter === "unanswered" ? answered : sheetFilter === "flagged" ? !flagged : false}
+        <button class="lv-cell" class:done={answered} class:flag={flagged} class:dimmed={dimmed} disabled={examLocked}
           class:cur={i === cursor} aria-current={i === cursor ? "step" : undefined}
           aria-label={`${t("mock.questionN", "第 {n} 题").replace("{n}", String(i + 1))}，${answered ? t("mock.legend.done") : t("mock.unanswered", "未答")}，${flagged ? t("mock.legend.flag") : t("mock.unflagged", "未标记")}${i === cursor ? `，${t("mock.legend.cur")}` : ""}`}
           onclick={() => goto(i)}>{i + 1}</button>
@@ -1466,6 +1500,9 @@
   .lv-bp-row .lv-input, .lv-bp-row .lv-select { min-height: 34px; padding: 5px 10px; border-radius: var(--lv-radius-control-sm); font-size: var(--lv-font-size-body-compact); }
   .lv-bp-del:hover:not(:disabled) { border-color: var(--lv-red); color: var(--lv-red); background: var(--lv-red-soft); }
   /* 答题卡（规范 v6 §5.4）：现代微质感 CBT 格子矩阵 */
+  .lv-sheet-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--lv-space-2); margin-top: 14px; margin-bottom: 8px; flex-wrap: wrap; }
+  .lv-sheet-tabs { display: flex; gap: var(--lv-space-compact); flex-wrap: wrap; }
+  .lv-cell.dimmed { opacity: 0.22; }
   .lv-sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 9px; margin: 14px 0 10px; max-width: 660px; padding: 14px; background: var(--lv-surface-2); border-radius: var(--lv-r-2); border: 1px solid var(--lv-border-subtle, var(--lv-border)); }
   /* 三态图例小方块 */
   .lv-legend { display: inline-flex; align-items: center; gap: 6px; font-weight: var(--lv-font-weight-medium); }
