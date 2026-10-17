@@ -4586,9 +4586,10 @@ import { ttsSpeak } from "@/core/tts";
             <div class="lv-entry-week-head"><b>{t("entry.weekTitle")}</b><span class="lv-chip num">{t("entry.weekCount").replace("{n}", String(weekAttemptTotal))}</span></div>
             <div class="lv-week-strip" role="img" aria-label={t("entry.weekAria").replace("{days}", weekTrend.map((day) => `${weekDayLabel(day.date)} ${day.attempts} ${t("browse.count")}`).join("，"))}>
               {#each weekTrend as day (day.date)}
-                <div class="lv-week-day" title={`${day.date} · ${day.attempts} 题`}>
+                {@const isToday = day.date === localDate(Date.now())}
+                <div class="lv-week-day" class:is-today={isToday} title={`${day.date}${isToday ? "（今天）" : ""} · ${day.attempts} 题`}>
                   <span class="lv-week-count" class:has-attempts={day.attempts > 0} style="--lv-week-fill:{Math.round((day.attempts / weekAttemptMax) * 100)}%">{day.attempts || "·"}</span>
-                  <span>{weekDayLabel(day.date)}</span>
+                  <span class:today-text={isToday}>{isToday ? "今" : weekDayLabel(day.date)}</span>
                 </div>
               {/each}
             </div>
@@ -6746,6 +6747,8 @@ import { ttsSpeak } from "@/core/tts";
   .lv-week-day { min-width: 0; display: grid; justify-items: center; gap: 5px; color: var(--lv-text-3); font-size: 10px; }
   .lv-week-count { display: grid; place-items: center; width: 28px; height: 28px; border-radius: var(--lv-radius-round); background: var(--lv-surface-2); color: var(--lv-text-2); font-size: 10px; font-variant-numeric: tabular-nums; }
   .lv-week-count.has-attempts { background: color-mix(in srgb, var(--lv-accent) var(--lv-week-fill), var(--lv-accent-soft)); color: var(--lv-accent-deep); }
+  .lv-week-day.is-today .lv-week-count { box-shadow: 0 0 0 1.5px var(--lv-accent), 0 2px 6px color-mix(in srgb, var(--lv-accent) 24%, transparent); }
+  .lv-week-day .today-text { color: var(--lv-accent); font-weight: 700; }
   .lv-entry-week p { margin: 0; font-size: var(--lv-font-size-label); line-height: 1.5; }
   @container lv-exam (max-width: 960px) { .lv-entry-overview { grid-template-columns: minmax(0, 1fr); } }
   /* 原型 .hero-actions：主操作在 hero 卡内部 */

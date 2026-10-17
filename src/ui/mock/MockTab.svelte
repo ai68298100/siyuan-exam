@@ -949,6 +949,12 @@
       if (tgt && (tgt.tagName === "TEXTAREA" || tgt.tagName === "INPUT" || tgt.tagName === "SELECT" || tgt.isContentEditable)) return;
       if (e.isComposing || e.metaKey || e.ctrlKey || e.altKey) return;
       const key = e.key.toUpperCase();
+      if (key === "F" && current) {
+        e.preventDefault();
+        session.toggleFlag(current);
+        persistRun();
+        return;
+      }
       if (/^[A-J]$/.test(key)) {
         const idx = key.charCodeAt(0) - 65;
         const choice = isChoiceQuestion(currentQ) ? answerChoices(currentQ)[idx] : null;
@@ -1193,7 +1199,7 @@
       {/if}
       <span class="lv-chip num">{cursor + 1}/{session.state.qids.length}</span>
       <span class="fn__flex-1"></span>
-      <button class="lv-btn sm lv-flag-btn" class:lv-flag-btn--on={session.flags.has(current)} title={t("mock.flag")} aria-label={t("mock.flag")} aria-pressed={session.flags.has(current)} disabled={examLocked} onclick={() => { session?.toggleFlag(current); persistRun(); }}><Icon name="pin" size={14} /></button>
+      <button class="lv-btn sm lv-flag-btn" class:lv-flag-btn--on={session.flags.has(current)} title={`${t("mock.flag")} (F)`} aria-label={`${t("mock.flag")} (F)`} aria-pressed={session.flags.has(current)} disabled={examLocked} onclick={() => { session?.toggleFlag(current); persistRun(); }}><Icon name="pin" size={14} /> <span class="lv-kbd sm">F</span></button>
       <button class="lv-btn sm" title={t("mock.fullscreen")} aria-label={t("mock.fullscreen")} disabled={examLocked} onclick={(e) => void toggleExamFullscreen(e.currentTarget)}><Icon name="expand" size={14} /></button>
       <button class="lv-btn lv-btn--primary sm" disabled={examLocked || handInConfirming} aria-busy={submitting || handInConfirming} onclick={() => finishExam(false)}>{submitting ? t("mock.savingScore", "正在保存成绩…") : handInConfirming ? t("mock.confirmingHandIn", "等待交卷确认…") : t("mock.handIn")}</button>
     </div>
@@ -1237,6 +1243,15 @@
             </button>
           {/each}
         </div>
+        {#if currentQ.type === "multiple"}
+          {@const currentMultiAns = answeredMap[current] ?? ""}
+          {@const selLetters = currentMultiAns ? [...currentMultiAns].sort().join(", ") : ""}
+          <div class="lv-row lv-multi-indicator" style="margin:8px 0 4px;align-items:center;gap:var(--lv-space-2)">
+            <span class="lv-chip num" class:lv-chip--acc={currentMultiAns.length > 0}>
+              {currentMultiAns.length > 0 ? t("session.multiSelected").replace("{items}", selLetters).replace("{n}", String(currentMultiAns.length)) : t("session.multiEmpty")}
+            </span>
+          </div>
+        {/if}
       {:else}
         {@const spec = specOf(currentQ)}
         {#if spec?.kind === "numeric"}
