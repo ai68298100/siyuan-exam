@@ -558,8 +558,11 @@ input[type="range"] {
     background: var(--lv-surface-2);
     letter-spacing: 0.3px;
   }
+  tbody tr:nth-child(even) td {
+    background: color-mix(in srgb, var(--lv-text) 2.5%, transparent);
+  }
   tr:hover td {
-    background: color-mix(in srgb, var(--lv-accent) 4%, var(--lv-surface));
+    background: color-mix(in srgb, var(--lv-accent) 6.5%, var(--lv-surface));
   }
   tr:last-child td {
     border-bottom: 0;

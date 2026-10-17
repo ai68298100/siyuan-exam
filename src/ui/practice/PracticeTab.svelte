@@ -379,6 +379,31 @@ import { ttsSpeak } from "@/core/tts";
     let batchNote = $state("");
     const selectedCount = $derived(Object.keys(selectedIds).length);
 
+    function selectAllCurrentPage() {
+      const next: Record<string, boolean> = {};
+      for (const q of shownQuestions) next[q.id] = true;
+      selectedIds = next;
+    }
+    function clearSelection() {
+      selectedIds = {};
+    }
+    let batchCardBusy = $state(false);
+    async function batchConvertToCards() {
+      if (!selectedCount || batchCardBusy || !activeBankId) return;
+      const ids = new Set(Object.keys(selectedIds));
+      const targetQuestions = questions.filter((q) => ids.has(q.id));
+      if (!targetQuestions.length) return;
+      batchCardBusy = true;
+      try {
+        const n = await app?.convertToCards(activeBankId, bankName, targetQuestions);
+        showMessage(`${t("memory.toCardDone")} (${n})`, 3200, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
+      } finally {
+        batchCardBusy = false;
+      }
+    }
+
     function previewBatch() {
       batchNote = "";
       const picked = questions.filter((q) => selectedIds[q.id]);
@@ -5544,6 +5569,10 @@ import { ttsSpeak } from "@/core/tts";
               {#if q.options.length}
                 <div class="lv-muted" style="margin-top:4px">{q.options.map((o, i) => String.fromCharCode(65 + i) + ". " + o).join("　")}</div>
               {/if}
+              <div class="lv-row" style="margin:6px 0;align-items:center;gap:var(--lv-space-compact);flex-wrap:wrap">
+                <span class="lv-chip lv-chip--acc num"><b>{t("browse.answer")}:</b> {q.answer}</span>
+                {#if q.difficulty}<span class="lv-chip num">★ {q.difficulty}</span>{/if}
+              </div>
               <div class="lv-analysis" style="margin:8px 0 0">{q.analysis}</div>
               <div class="lv-row" style="margin:8px 0 0">
                 <button class="lv-btn sm lv-btn--primary" onclick={() => approveAi(q)} disabled={aiMutationBusy || !hasBank || (!!aiQueueBankId && aiQueueBankId !== activeBankId)}>✓ {t("ai.approve")}</button>
@@ -5973,9 +6002,16 @@ import { ttsSpeak } from "@/core/tts";
       {/if}
       {#if batchMode}
         <div class="lv-card lv-pad-card" style="padding: var(--lv-space-3) var(--lv-space-4)">
-          <div class="lv-row" style="margin:0">
+          <div class="lv-row" style="margin:0;gap:var(--lv-space-compact);align-items:center;flex-wrap:wrap">
             <b style="font-size:var(--lv-font-size-body-compact)">{t("batch.title")}</b>
             <span class="lv-chip num">{t("batch.selected").replace("{n}", String(Object.keys(selectedIds).length))}</span>
+            <button class="lv-btn sm lv-btn--ghost" onclick={selectAllCurrentPage}>{t("batch.selectAll")}</button>
+            {#if selectedCount > 0}
+              <button class="lv-btn sm lv-btn--ghost" onclick={clearSelection}>{t("batch.clearSel")}</button>
+              <button class="lv-btn sm lv-btn--ghost" onclick={() => void batchConvertToCards()} disabled={batchCardBusy || !app?.kernelOnline} title="将勾选的题目批量制成闪卡送入卡包">
+                <Icon name="layers" size={13} /> {batchCardBusy ? "…" : t("batch.toCards")}
+              </button>
+            {/if}
             {#if batchUndoHere && !appliedChanges.length}
               <span class="lv-chip num" title={t("batch.undoStoredHint")}>↩ {t("batch.undoStored").replace("{n}", String(batchUndo!.changes.length))}</span>
               <button class="lv-btn sm" disabled={batchBusy || !app.kernelOnline} onclick={() => applyBatch(true)}>{t("batch.undo")}</button>

@@ -1256,5 +1256,10 @@
     "wrongbook.drillFiltered": "开练当前筛选错题",
     "wrongbook.noFiltered": "当前错因分类下暂无错题",
     "hotkeys.title": "键盘极速刷题指南",
-    "hotkeys.tip": "快捷键速查"
+    "hotkeys.tip": "快捷键速查",
+    "batch.selectAll": "全选当前",
+    "batch.clearSel": "清空勾选",
+    "batch.toCards": "批量转闪卡",
+    "mock.toggleWrongDetail": "展开逐题复盘",
+    "mock.hideWrongDetail": "收起错题明细"
 }

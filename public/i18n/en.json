@@ -1256,5 +1256,10 @@
     "wrongbook.drillFiltered": "Practice Filtered Wrongs",
     "wrongbook.noFiltered": "No wrong questions under this category",
     "hotkeys.title": "Keyboard Shortcuts Guide",
-    "hotkeys.tip": "Shortcuts Guide"
+    "hotkeys.tip": "Shortcuts Guide",
+    "batch.selectAll": "Select Page",
+    "batch.clearSel": "Clear Selection",
+    "batch.toCards": "Batch Flashcards",
+    "mock.toggleWrongDetail": "Show Questions Detail",
+    "mock.hideWrongDetail": "Hide Questions Detail"
 }

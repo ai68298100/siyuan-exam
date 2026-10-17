@@ -880,6 +880,7 @@
 
     // 45-08 收口：成绩单分段/历史数据表 + CSV（与雷达/折线同一数据快照）
     let mockTableOpen = $state(false);
+    let showWrongDetail = $state(false);
     async function copyExamSummaryMarkdown() {
       if (!score) return;
       const passText = score.pass ? "🎉 及格" : "⚠️ 未及格";
@@ -1454,13 +1455,35 @@
     {/if}
     {#if wrongList.length}
       <div class="lv-card" style="margin:12px 0">
-        <b style="font-size:var(--lv-font-size-body-compact)">{t("mock.wrongList")}（{wrongList.length}）</b>
-        <div class="lv-row" style="margin:8px 0 0;gap:var(--lv-space-compact)">
-          {#each wrongList.slice(0, 12) as w, _i (_i)}
-            <span class="lv-chip num" title={w.stem}>{w.stem}</span>
-          {/each}
-          {#if wrongList.length > 12}<span class="lv-muted num">… +{wrongList.length - 12}</span>{/if}
+        <div class="lv-row" style="justify-content:space-between;margin:0 0 6px">
+          <b style="font-size:var(--lv-font-size-body-compact)">{t("mock.wrongList")}（{wrongList.length}）</b>
+          <button class="lv-btn sm lv-btn--ghost" onclick={() => showWrongDetail = !showWrongDetail}>
+            {showWrongDetail ? t("mock.hideWrongDetail") : t("mock.toggleWrongDetail")}
+          </button>
         </div>
+        {#if !showWrongDetail}
+          <div class="lv-row" style="margin:8px 0 0;gap:var(--lv-space-compact)">
+            {#each wrongList.slice(0, 12) as w, _i (_i)}
+              <span class="lv-chip num" title={w.stem}>{w.stem}</span>
+            {/each}
+            {#if wrongList.length > 12}<span class="lv-muted num">… +{wrongList.length - 12}</span>{/if}
+          </div>
+        {:else}
+          <div class="lv-detail" style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
+            {#each wrongList as w, wi (w.qid)}
+              {@const q = questions.find((x) => x.id === w.qid)}
+              <div class="lv-error-row" style="white-space:normal;padding:8px 12px;border-radius:var(--lv-r-1);background:var(--lv-surface-2)">
+                <div style="font-weight:600"><span class="num">#{wi + 1}</span> {q?.stem ?? w.stem}</div>
+                <div class="lv-row" style="margin:4px 0;gap:var(--lv-space-2)">
+                  <span class="lv-chip lv-chip--acc num">标准答案: {q?.answer ?? "—"}</span>
+                  {#if answeredMap[w.qid]}<span class="lv-chip lv-chip--red num">考生作答: {answeredMap[w.qid]}</span>{/if}
+                  {#if q?.kp}<span class="lv-chip num">{q.kp}</span>{/if}
+                </div>
+                {#if q?.analysis}<div class="lv-muted" style="font-size:var(--lv-font-size-caption);margin-top:4px">💡 {q.analysis}</div>{/if}
+              </div>
+            {/each}
+          </div>
+        {/if}
         <div class="lv-row" style="margin:8px 0 0">
           <button class="lv-btn sm" disabled={mockActionBusy} onclick={wrongsToActions}><Icon name="pin" size={13} /> {mockActionBusy ? "…" : t("action.addWrong")}</button>
           <span class="lv-muted">{t("session.reason")}:</span>
