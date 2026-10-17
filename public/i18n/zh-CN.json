@@ -1227,5 +1227,6 @@
     "mock.summaryCopyFailed": "复制失败，请重试或导出 CSV。",
     "sync.docsBtn": "归档到思源文档",
     "sync.docsTip": "在思源笔记中镜像生成/更新错题复盘本与闪卡册，卸载插件亦可永久使用",
-    "sync.docsDone": "🎉 已同步当前题库的错题复盘本与学习闪卡册到思源笔记本！"
+    "sync.docsDone": "🎉 已同步当前题库的错题复盘本与学习闪卡册到思源笔记本！",
+    "report.loadingStats": "正在计算学习数据…"
 }

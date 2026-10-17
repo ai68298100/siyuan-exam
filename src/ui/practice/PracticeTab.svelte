@@ -3994,6 +3994,7 @@ import { ttsSpeak } from "@/core/tts";
           e.preventDefault();
           void toggleFavCurrent();
         } else if (e.key === "Enter") {
+          if (!canSubmitAnswer) return;
           e.preventDefault();
           submitAnswer();
         } else if (e.key.toLowerCase() === "k" && session.progress.done > 0) {

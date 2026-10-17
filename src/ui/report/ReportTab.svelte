@@ -23,7 +23,9 @@
     import type { AttemptEvent } from "@/core/types";
     import { reportWindowStart, reportDateKey } from "@/core/reportWindow";
 
-    let { plugin, examApp: app }: { plugin: any; examApp: ExamApp | null } = $props();
+    let { plugin, examApp }: { plugin: any; examApp?: ExamApp | null } = $props();
+    let appOverride = $state<ExamApp | null>(null);
+    const app = $derived<ExamApp | null>(appOverride ?? examApp ?? plugin?.examApp ?? null);
     const i18n = $derived(plugin?.i18n ?? {});
     const t = (k: string, fb = "") => i18n[k] ?? fb;
     const writeLocal = (key: string, value: string | null) => {
@@ -383,9 +385,20 @@
     }
 
     onMount(() => {
-      if (!app) { loading = false; errorMsg = t("state.appNotReady"); return; }
       const refreshAfterChange = () => void refreshReport(false);
+      const initReport = () => {
+        if (!app) return;
+        errorMsg = "";
+        void refreshReport(false).finally(() => { loading = false; });
+      };
+      if (app) initReport();
+      else loading = true;
+
       const offs = [
+        onExamEvent("app-ready", () => {
+          appOverride = plugin?.examApp ?? null;
+          if (appOverride) initReport();
+        }),
         onExamEvent("session-ended", refreshAfterChange),
         onExamEvent("wrongbook-changed", refreshAfterChange),
         onExamEvent<{ bank: string }>("bank-changed", (event) => {
@@ -394,7 +407,6 @@
           refreshAfterChange();
         }),
       ];
-      void refreshReport(false).finally(() => { loading = false; });
       return () => offs.forEach((off) => off());
     });
 
@@ -771,8 +783,11 @@
     </div>
   {/if}
 
-  {#if loading}
-    <div class="lv-skeleton"></div>
+  {#if loading || !app}
+    <div class="lv-pad" role="status" aria-live="polite" aria-busy="true">
+      <p class="lv-muted">{!app ? (t("state.initializing") || "正在初始化小驴考试，请稍候…") : t("report.loadingStats", "正在计算学习数据…")}</p>
+      <div class="lv-skeleton" aria-hidden="true"></div>
+    </div>
   {:else if errorMsg}
     <div class="lv-error" role="alert">
       {errorMsg}

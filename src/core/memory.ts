@@ -98,7 +98,9 @@ export function dailySet(
 
 /** 将一道 Question 格式化为思源笔记标准的列表闪卡 Markdown（具有完美的正反面遮挡与复习体验） */
 export function questionToFlashCardMarkdown(q: Question): string {
-  const stem = q.stem.trim();
+  // 保持题干与选项中多行文本的列表缩进，防止多行内容被解析为列表外部段落
+  const indentLines = (text: string, indent = "  ") => text.trim().replace(/\r?\n/g, `\n${indent}`);
+  const stem = indentLines(q.stem, "  ");
   let front = "";
   let back = "";
 
@@ -106,7 +108,7 @@ export function questionToFlashCardMarkdown(q: Question): string {
     case "single": {
       front = `- **【单选题】** ${stem}`;
       if (q.options.length) {
-        front += "\n  " + q.options.map((opt, i) => `${OPTION_LETTERS[i]}. ${opt.trim()}`).join("\n  ");
+        front += "\n  " + q.options.map((opt, i) => `${OPTION_LETTERS[i]}. ${indentLines(opt, "    ")}`).join("\n  ");
       }
       const ansLetter = q.answer.trim().toUpperCase();
       const ansIdx = OPTION_LETTERS.indexOf(ansLetter);
@@ -117,7 +119,7 @@ export function questionToFlashCardMarkdown(q: Question): string {
     case "multiple": {
       front = `- **【多选题】** ${stem} *（多选/少选均不得分）*`;
       if (q.options.length) {
-        front += "\n  " + q.options.map((opt, i) => `${OPTION_LETTERS[i]}. ${opt.trim()}`).join("\n  ");
+        front += "\n  " + q.options.map((opt, i) => `${OPTION_LETTERS[i]}. ${indentLines(opt, "    ")}`).join("\n  ");
       }
       const letters = [...new Set(q.answer.replace(/[^A-Za-z]/g, "").toUpperCase().split(""))].sort();
       const ansDetail = letters.map((l) => {
@@ -152,11 +154,11 @@ export function questionToFlashCardMarkdown(q: Question): string {
     }
     case "short": {
       front = `- **【问答/解答题】** ${stem}`;
-      back = `  - **✔ 参考得分要点**：\n    ${q.answer.trim().replace(/\n/g, "\n    ")}`;
+      back = `  - **✔ 参考得分要点**：\n    ${indentLines(q.answer, "    ")}`;
       break;
     }
     case "material": {
-      front = `- **【材料综合题】**\n  > 📎 **背景材料**：${stem}`;
+      front = `- **【材料综合题】**\n  > 📎 **背景材料**：${indentLines(stem, "  > ")}`;
       back = `  - **✔ 参考要点**：**${q.answer.trim()}**`;
       break;
     }
@@ -169,7 +171,7 @@ export function questionToFlashCardMarkdown(q: Question): string {
 
   // 拼接解析与考点
   if (q.analysis?.trim()) {
-    back += `\n    > 💡 **核心解析**：${q.analysis.trim().replace(/\n/g, "\n    > ")}`;
+    back += `\n    > 💡 **核心解析**：${indentLines(q.analysis, "    > ")}`;
   }
   if (q.kp?.trim()) {
     back += `\n    > 🏷️ **考点归纳**：${q.kp.trim()}`;

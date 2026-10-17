@@ -1227,5 +1227,6 @@
     "mock.summaryCopyFailed": "Copy failed. Please retry or export CSV.",
     "sync.docsBtn": "Archive to Local Notes",
     "sync.docsTip": "Generate/update wrongbook & flashcards as native SiYuan docs; survives plugin uninstall",
-    "sync.docsDone": "🎉 Synchronized wrongbook & flashcard documents to your notebook!"
+    "sync.docsDone": "🎉 Synchronized wrongbook & flashcard documents to your notebook!",
+    "report.loadingStats": "Calculating study data..."
 }

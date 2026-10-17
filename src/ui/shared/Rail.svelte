@@ -560,6 +560,8 @@
     left: 0;
     width: 220px;
     max-width: calc(100vw - 32px);
+    max-height: calc(100vh - 160px);
+    overflow-y: auto;
     z-index: 100;
     background: var(--lv-surface);
     border: 1px solid var(--lv-border);
@@ -569,6 +571,7 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
+    animation: lv-appear var(--lv-dur-view, 0.22s) var(--lv-ease-out);
   }
   .lv-quick-menu-item {
     display: flex;
