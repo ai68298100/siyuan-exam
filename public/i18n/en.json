@@ -1061,7 +1061,7 @@
     "wrongbook.retry": "Retry",
     "wrongbook.mastered": "Mastered",
     "wrongbook.masteredTip": "Manual dismiss: hidden until a newer wrong clears the overlay",
-    "wrongbook.masteredDone": "Marked as mastered",
+    "wrongbook.masteredDone": "🎉 Mastered! Removed from active wrongbook",
     "wrongbook.masterOneTitle": "Mark this question as mastered?",
     "wrongbook.masterOneConfirm": "\"{question}\" will leave the active wrong-question queue and return if answered wrong again.",
     "wrongbook.masterFailed": "Could not mark this question as mastered. It remains in the queue and can be retried: {message}",
@@ -1249,5 +1249,6 @@
     "import.pasteClipboardTip": "Paste text directly from clipboard",
     "import.clipboardEmpty": "Clipboard is empty or contains no text",
     "import.clipboardPasted": "Text pasted from clipboard, click Parse & Preview to verify!",
-    "import.clipboardFailed": "Cannot access clipboard, please paste with Ctrl+V directly."
+    "import.clipboardFailed": "Cannot access clipboard, please paste with Ctrl+V directly.",
+    "widget.goal.achieved": "🎉 Daily Goal Achieved!"
 }

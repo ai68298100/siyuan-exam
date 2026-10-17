@@ -1137,20 +1137,28 @@
       {#if estimateLengthMismatch}<span id="estimate-length-error" class="lv-chip lv-chip--amb" role="alert">{t("estimate.lengthMismatch")}</span>{/if}
       {#if estimateSaveError}<div class="lv-error" role="alert" style="width:100%">{estimateSaveError} <button class="lv-btn sm" disabled={estimateBusy} onclick={() => void saveEstimateResult()}>{estimateBusy ? "…" : t("estimate.retrySave")}</button></div>{/if}
         {#if estResult && estResultFor === estimateInputSignature}
-          <span class="lv-chip num">{t("estimate.score")} <b>{estResult.score}</b>/{estResult.full}</span>
-          <span class="lv-chip lv-chip--grn num">✓ {estResult.correct}</span>
-          <span class="lv-chip lv-chip--red num">✕ {estResult.wrong}</span>
-          {#if estResult.blank}<span class="lv-chip lv-chip--amb num">– {estResult.blank}</span>{/if}
-          <span class="lv-chip num">{estResult.percent}%</span>
-          <span class="lv-marks num">{estResult.marks.join(" ")}</span>
-          {#if estFromBank}
-            <div class="lv-row" style="margin:4px 0 0">
-              {#each estimateBankPool as q, i (i)}
-                {@const mark = estResult.marks[i] ?? "–"}
-                <span class="lv-chip num" class:lv-chip--grn={mark === "✓"} class:lv-chip--red={mark === "✕"} class:lv-chip--amb={mark === "–"} title={q.stem.slice(0, 60)}>{i + 1}. {q.answer} {mark}</span>
-              {/each}
+          <div class="lv-card" style="margin-top:10px;padding:12px 16px;background:var(--lv-surface);width:100%">
+            <div class="lv-row" style="margin:0 0 6px;align-items:center;flex-wrap:wrap">
+              <span class="lv-chip lv-chip--acc num">
+                {t("estimate.score")}: <b style="font-size:16px">{estResult.score}</b> / {estResult.full}
+              </span>
+              <span class="lv-chip lv-chip--grn num">✓ {estResult.correct}</span>
+              <span class="lv-chip lv-chip--red num">✕ {estResult.wrong}</span>
+              {#if estResult.blank}<span class="lv-chip lv-chip--amb num">– {estResult.blank}</span>{/if}
+              <span class="lv-chip num" class:lv-chip--grn={estResult.percent >= bp.passLine} class:lv-chip--red={estResult.percent < bp.passLine}>
+                {estResult.percent}% {estResult.percent >= bp.passLine ? "合格 ✔️" : "未达标 ✕"}
+              </span>
             </div>
-          {/if}
+            <div class="lv-marks num" style="font-size:12px;margin:6px 0;letter-spacing:1px">{estResult.marks.join(" ")}</div>
+            {#if estFromBank}
+              <div class="lv-row" style="margin:6px 0 0;flex-wrap:wrap;gap:4px">
+                {#each estimateBankPool as q, i (i)}
+                  {@const mark = estResult.marks[i] ?? "–"}
+                  <span class="lv-chip num" class:lv-chip--grn={mark === "✓"} class:lv-chip--red={mark === "✕"} class:lv-chip--amb={mark === "–"} title={q.stem.slice(0, 60)}>{i + 1}. {q.answer} {mark}</span>
+                {/each}
+              </div>
+            {/if}
+          </div>
         {/if}
       </div>
       {#if estHistoryLoading}
@@ -1158,10 +1166,10 @@
       {:else if estHistoryError}
         <div class="lv-error" role="alert">{estHistoryError} <button class="lv-btn sm" disabled={estHistoryLoading} onclick={() => void loadEstimateHistory()}>{estHistoryLoading ? "…" : t("estimate.retryHistory")}</button></div>
       {:else if estHistory.length}
-        <div class="lv-row" style="margin:6px 0 0">
-          <span class="lv-muted">{t("estimate.history")}</span>
+        <div class="lv-row" style="margin:8px 0 0;align-items:center;flex-wrap:wrap">
+          <span class="lv-muted" style="font-size:var(--lv-font-size-label)">{t("estimate.history")}:</span>
           {#each estHistory.slice(0, 8) as h, _i (_i)}
-            <span class="lv-chip num" title={new Date(h.at).toLocaleString()}>{h.percent}%</span>
+            <span class="lv-chip num" class:lv-chip--grn={h.percent >= bp.passLine} title={new Date(h.at).toLocaleString()}>{h.percent}%</span>
           {/each}
         </div>
       {:else}

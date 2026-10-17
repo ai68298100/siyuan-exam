@@ -1061,7 +1061,7 @@
     "wrongbook.retry": "重练此题",
     "wrongbook.mastered": "已掌握",
     "wrongbook.masteredTip": "手动处置：在册隐藏；此后再错自动回册",
-    "wrongbook.masteredDone": "已标记掌握",
+    "wrongbook.masteredDone": "🎉 已彻底掌握！该题已从在册错题库中移出",
     "wrongbook.masterOneTitle": "将这道错题标记为已掌握？",
     "wrongbook.masterOneConfirm": "「{question}」会从当前错题队列移出；之后再次答错时会重新加入。",
     "wrongbook.masterFailed": "标记失败，错题仍保留在队列中，可重试：{message}",
@@ -1249,5 +1249,6 @@
     "import.pasteClipboardTip": "一键读取系统剪贴板内容并填入",
     "import.clipboardEmpty": "剪贴板为空或未包含文本内容",
     "import.clipboardPasted": "已从剪贴板粘贴文本，点击「解析预览」即可校验！",
-    "import.clipboardFailed": "无法读取剪贴板，请直接在下方文本框按 Ctrl+V 粘贴。"
+    "import.clipboardFailed": "无法读取剪贴板，请直接在下方文本框按 Ctrl+V 粘贴。",
+    "widget.goal.achieved": "🎉 今日目标已达成！"
 }

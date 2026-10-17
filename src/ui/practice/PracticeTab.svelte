@@ -4583,7 +4583,7 @@ import { ttsSpeak } from "@/core/tts";
               <span class="lv-goal-center num">{goalPct}%</span>
             </span>
             <div class="lv-widget-body">
-              <div class="lv-widget-title">{t("widget.goal")}</div>
+              <div class="lv-widget-title">{goalPct >= 100 ? t("widget.goal.achieved") : t("widget.goal")}</div>
               <strong class="num">{todayDone} / {dailyGoalN} {t("browse.count")}</strong>
               <span class="lv-muted">{goalPct >= 100 ? t("widget.goal.done") : t("widget.goal.left").replace("{n}", String(Math.max(0, dailyGoalN - todayDone)))}</span>
             </div>
@@ -6247,10 +6247,10 @@ import { ttsSpeak } from "@/core/tts";
                   {#if backlinkError[q.blockId]}<div class="lv-error" role="alert" style="display:flex;align-items:center;justify-content:space-between;gap:var(--lv-space-relaxed);overflow-wrap:anywhere"><span>{backlinkError[q.blockId]}</span><button class="lv-btn sm" disabled={!!backlinkBusyFor || !app.kernelOnline} onclick={() => void loadBacklinks(q.blockId)}>{t("rev.retry")}</button></div>{/if}
                   {#if qrefView[q.id]}
                     <!-- 120-05 lite：题目↔资料关联（回 PDF 页/视频时间点） -->
-                    <div class="lv-row" style="font-size:var(--lv-font-size-caption)">
+                    <div class="lv-row lv-qref-bar" style="font-size:var(--lv-font-size-caption);padding:6px 10px;background:var(--lv-surface-2);border-radius:var(--lv-r-1);margin:6px 0;align-items:center;border:1px solid var(--lv-border-subtle)">
                       <span class="lv-chip"><Icon name="file-text" size={11} /> {qrefView[q.id]!.title}{#if qrefView[q.id]!.label} · {qrefView[q.id]!.label}{/if}</span>
                       {#if qrefView[q.id]!.stale}<span class="lv-chip lv-chip--amb" title={t("materials.relocateTip")}>{t("materials.relocate")}</span>{/if}
-                      <button class="lv-btn sm" onclick={() => openQref(q.id)}>↗ {t("materials.openAt")}</button>
+                      <button class="lv-btn sm lv-btn--ghost" onclick={() => openQref(q.id)}>↗ {t("materials.openAt")}</button>
                       <button class="lv-btn sm lv-btn--ghost" onclick={() => startQrefForm(q.id)}><Icon name="link" size={13} /> {t("qref.relink")}</button>
                       <button class="lv-btn sm lv-btn--ghost" aria-label={t("qref.unlink")} title={t("qref.unlink")} disabled={qrefBusyFor === q.id} aria-busy={qrefBusyFor === q.id} onclick={() => void removeQref(q.id)}>{qrefBusyFor === q.id ? "…" : "✕"}</button>
                     </div>
