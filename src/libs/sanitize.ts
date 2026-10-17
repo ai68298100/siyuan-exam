@@ -89,16 +89,22 @@ export function sanitizeRichHtml(html: string): string {
 
 /**
  * 轻量行内富文本安全呈现（用于选项、简短标签等单行文本）：
- * 支持 **粗体**、*斜体*、`行内代码` 等轻量 Markdown 格式，
+ * 支持 **粗体**、*斜体*、`行内代码`、x^2 上标、H~2~O / a_1 下标等轻量数学与排版格式，
  * 先 escapeHtml 防注入，再转标签，最后过 sanitizeRichHtml 白名单。
  */
 export function renderInlineText(text: string): string {
   if (!text) return "";
-  if (!/[*`~<>]/.test(text)) return escapeHtml(text);
+  if (!/[*`~^<>]/.test(text) && !/_[0-9a-zA-Z]/.test(text)) return escapeHtml(text);
   let s = escapeHtml(text);
   s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   s = s.replace(/\*([^*]+)\*/g, "<em>$1</em>");
   s = s.replace(/`([^`]+)`/g, '<code class="lv-inline-code">$1</code>');
   s = s.replace(/~~([^~]+)~~/g, "<del>$1</del>");
+  // 上标支持：x^2^ 或 x^2 / m^3
+  s = s.replace(/\^([0-9a-zA-Z+-]+)\^/g, "<sup>$1</sup>");
+  s = s.replace(/(?<=[a-zA-Z0-9\u4e00-\u9fa5])\^([0-9a-zA-Z+-]+)(?!\^)/g, "<sup>$1</sup>");
+  // 下标支持：H~2~O 或 a_1 / x_i
+  s = s.replace(/~([0-9a-zA-Z+-]+)~/g, "<sub>$1</sub>");
+  s = s.replace(/(?<=[a-zA-Z0-9\u4e00-\u9fa5])_([0-9a-zA-Z+-]+)(?!_)/g, "<sub>$1</sub>");
   return sanitizeRichHtml(s);
 }

@@ -50,6 +50,7 @@ import { ttsSpeak } from "@/core/tts";
     import { answerChoices, isChoiceQuestion, removeChoiceOption, toggleChoice } from "@/core/answerChoices";
     import { consumePendingPracticeView, isCurrentPracticeViewRequest } from "@/core/pluginTab";
     import { dailyTrend } from "@/core/weekly";
+    import { playSuccessChime, playCelebrationChord } from "@/libs/sound";
 
     let { plugin, examApp }: { plugin: any; examApp?: ExamApp | null } = $props();
     let appOverride = $state<ExamApp | null>(null);
@@ -71,6 +72,8 @@ import { ttsSpeak } from "@/core/tts";
 
     type View = "entry" | "session" | "browse" | "import" | "recite" | "manual" | "ai" | "materials" | "wrongbook";
     let view: View = $state("entry");
+    let soundEnabled = $state(readLocal("lv-exam/sound") !== "0");
+    let hotkeysHelpOpen = $state(false);
     let loading = $state(true);
     let appliedPracticeViewRequestId = "";
     let tabRoot = $state<HTMLDivElement | null>(null);
@@ -1611,6 +1614,17 @@ import { ttsSpeak } from "@/core/tts";
       });
     }
 
+    async function startFilteredWrongDrill() {
+      if (!filteredWrongQueue.length) { showMessage(t("wrongbook.noFiltered"), 2600, "info"); return; }
+      const qids = filteredWrongQueue.map((w) => w.qid);
+      const all = await loadQuestions();
+      const qs = qids.map((id) => all.find((x) => x.id === id)).filter(Boolean) as Question[];
+      if (!qs.length) return;
+      await safeStart(qs, "wrong", () => {
+        feedback = null; selected = ""; confidenceSel = ""; sessionDone = null; view = "session";
+      });
+    }
+
     let wrongBusyId = $state("");
     /** 错题手动处置（已掌握）：确认后写入；失败时保留队列项并允许重试 */
     async function masterWrong(qid: string) {
@@ -1625,6 +1639,7 @@ import { ttsSpeak } from "@/core/tts";
         }))) return;
         await app.setWrongStatus(qid, "mastered");
         dataRev++;
+        if (soundEnabled) playCelebrationChord();
         showMessage(t("wrongbook.masteredDone"), 2400, "info");
       } catch (e) {
         showMessage(t("wrongbook.masterFailed").replace("{message}", offline ? t("state.offlineHint") : String(e instanceof Error ? e.message : e)), 4600, "error");
@@ -2589,6 +2604,7 @@ import { ttsSpeak } from "@/core/tts";
         return;
       }
       feedback = { verdict: g.verdict, myAnswer: g.myAnswer };
+      if (g.verdict === "correct" && soundEnabled) playSuccessChime();
       sessionRev++; // 类实例非响应式：提交后推进读数
     }
 
@@ -4002,6 +4018,11 @@ import { ttsSpeak } from "@/core/tts";
         return;
       }
       if (!tabRoot?.getClientRects().length || e.defaultPrevented || paletteOpen || railOpen || document.querySelector('[role="dialog"]')) return;
+      if (e.key === "?" && !peekOpen) {
+        e.preventDefault();
+        hotkeysHelpOpen = !hotkeysHelpOpen;
+        return;
+      }
       if (e.isComposing || e.keyCode === 229 || e.metaKey || e.ctrlKey || e.altKey) return;
       const target = e.target as HTMLElement;
       if (target && target !== document.body && !tabRoot.contains(target)) return;
@@ -4801,6 +4822,8 @@ import { ttsSpeak } from "@/core/tts";
             {/if}
             <button class="lv-chip" title={t("tts.read")} aria-label={t("tts.read")} onclick={() => ttsSpeak([q.stem, ...q.options].join(" "))}><Icon name="volume" size={13} /></button>
             <button class="lv-chip" class:acc={reciteToggle} title={t("session.reciteMode")} aria-pressed={reciteToggle} onclick={toggleRecite}><Icon name="eye" size={13} /> {t("session.reciteMode")}</button>
+            <button class="lv-chip" class:acc={soundEnabled} title={soundEnabled ? t("sound.disable") : t("sound.enable")} onclick={() => { soundEnabled = !soundEnabled; writeLocal("lv-exam/sound", soundEnabled ? "1" : "0"); }}><Icon name={soundEnabled ? "volume" : "volume-x"} size={13} /></button>
+            <button class="lv-chip" class:acc={hotkeysHelpOpen} title={t("hotkeys.tip")} onclick={() => hotkeysHelpOpen = !hotkeysHelpOpen}><Icon name="activity" size={13} /> ?</button>
             <button class="lv-chip" class:acc={pureListen} title={t("tts.pureListen")} aria-label={t("tts.pureListen")} aria-pressed={pureListen} onclick={togglePureListen}><Icon name="eyeoff" size={13} /></button>
               <button class="lv-chip" class:acc={!!q.fav} title="E" aria-label={t("session.kbdFav")} aria-pressed={!!q.fav} aria-busy={favBusy} disabled={favBusy} onclick={() => toggleFavCurrent()}><Icon name="star" size={13} /></button>
           </div>
@@ -5143,7 +5166,7 @@ import { ttsSpeak } from "@/core/tts";
                 <b class="lv-block-title" style="margin:0">{t("wrongbook.queue")}</b>
                 <span class="lv-muted" style="font-size:var(--lv-font-size-caption)">{t("wrongbook.queue.note")}</span>
               </div>
-              <div class="lv-row" style="gap:var(--lv-space-compact);margin:8px 0 12px;flex-wrap:wrap">
+              <div class="lv-row" style="gap:var(--lv-space-compact);margin:8px 0 12px;flex-wrap:wrap;align-items:center">
                 <button class="lv-chip" class:acc={wbReasonFilter === "all"} onclick={() => wbReasonFilter = "all"}>
                   {t("wrongbook.filterAll")} ({wrongQueue.length})
                 </button>
@@ -5156,6 +5179,11 @@ import { ttsSpeak } from "@/core/tts";
                 <button class="lv-chip" class:acc={wbReasonFilter === "trap"} onclick={() => wbReasonFilter = "trap"}>
                   {t("wrongbook.filterTrap")} ({reasonCounts.trap})
                 </button>
+                {#if filteredWrongQueue.length > 0}
+                  <button class="lv-btn sm lv-btn--primary" style="margin-left:auto" onclick={() => void startFilteredWrongDrill()} title={t("wrongbook.drillFiltered")}>
+                    <Icon name="play" size={13} /> {t("wrongbook.drillFiltered")} ({filteredWrongQueue.length})
+                  </button>
+                {/if}
               </div>
               {#each filteredWrongQueue as w, wi (w.qid)}
                 {@const q = qOf(w.qid)}
@@ -6589,11 +6617,41 @@ import { ttsSpeak } from "@/core/tts";
   {/if}
     </div>
     <Palette commands={paletteCommands} bind:open={paletteOpen} {t} />
+    {#if hotkeysHelpOpen}
+      <button type="button" class="lv-hotkeys-backdrop" aria-label={t("dialog.close", "关闭")} onclick={() => hotkeysHelpOpen = false}></button>
+      <div class="lv-hotkeys-wrap">
+        <div class="lv-card lv-hotkeys-card" role="dialog" aria-modal="true" tabindex="-1" aria-label={t("hotkeys.title")}>
+          <div class="lv-row" style="justify-content:space-between;margin:0 0 14px">
+            <b style="font-size:16px"><Icon name="activity" size={16} /> {t("hotkeys.title")}</b>
+            <button class="lv-btn sm lv-btn--ghost" onclick={() => hotkeysHelpOpen = false}>✕</button>
+          </div>
+          <div class="lv-hotkeys-grid">
+            <div class="lv-hotkeys-row"><span class="lv-kbd">A</span> - <span class="lv-kbd">D</span><span>快速选择答案选项</span></div>
+            <div class="lv-hotkeys-row"><span class="lv-kbd">Enter</span><span>确认作答 / 极速下一题</span></div>
+            <div class="lv-hotkeys-row"><span class="lv-kbd">1</span> - <span class="lv-kbd">3</span><span>作答前标记把握度 / 答错后一键标记错因</span></div>
+            <div class="lv-hotkeys-row"><span class="lv-kbd">E</span><span>收藏 / 取消收藏本题</span></div>
+            <div class="lv-hotkeys-row"><span class="lv-kbd">V</span><span>朗读本题题干（语音助记）</span></div>
+            <div class="lv-hotkeys-row"><span class="lv-kbd">Space</span><span>背诵模式翻开答案 / 练习先回忆揭示</span></div>
+            <div class="lv-hotkeys-row"><span class="lv-kbd">1</span> - <span class="lv-kbd">4</span><span>背诵模式四级自评（1重来 2困难 3良好 4熟练）</span></div>
+            <div class="lv-hotkeys-row"><span class="lv-kbd">↑ / ↓</span><span>题库抽屉上一题 / 下一题连续翻阅</span></div>
+            <div class="lv-hotkeys-row"><span class="lv-kbd">⌘K / Ctrl+K</span><span>随时呼出全局命令面板</span></div>
+            <div class="lv-hotkeys-row"><span class="lv-kbd">?</span><span>打开 / 关闭本快捷键速查指南</span></div>
+            <div class="lv-hotkeys-row"><span class="lv-kbd">Esc</span><span>退出当前会话 / 关闭详情抽屉与浮层</span></div>
+          </div>
+        </div>
+      </div>
+    {/if}
   </div>
 </div>
 
 <style>
   .lv-pad { padding: var(--lv-space-4) 22px var(--lv-space-9); overflow: auto; }
+  .lv-hotkeys-backdrop { position: fixed; inset: 0; z-index: 124; background: var(--lv-overlay); border: 0; padding: 0; cursor: pointer; backdrop-filter: blur(10px); animation: lv-appear var(--lv-dur-view, 0.22s) var(--lv-ease-out); }
+  .lv-hotkeys-wrap { position: fixed; inset: 0; z-index: 125; display: grid; place-items: center; padding: 16px; pointer-events: none; animation: lv-appear var(--lv-dur-view, 0.22s) var(--lv-ease-out); }
+  .lv-hotkeys-card { width: min(480px, 100%); pointer-events: auto; background: var(--lv-surface); border: 1px solid var(--lv-border); border-radius: var(--lv-r-card, 16px); box-shadow: var(--lv-sh-pop); padding: 22px; max-height: 85vh; overflow-y: auto; }
+  .lv-hotkeys-grid { display: flex; flex-direction: column; gap: 8px; font-size: var(--lv-font-size-body-compact); }
+  .lv-hotkeys-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px dashed var(--lv-border-subtle); }
+  .lv-hotkeys-row:last-child { border-bottom: 0; }
   /* —— 出题工作区（与 R54 原型保持编辑/预览并置；窄屏自然回落单列） —— */
   .lv-studio-grid { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(300px, .92fr); gap: var(--lv-space-panel); align-items: start; }
   .lv-studio-grid > * { min-width: 0; }

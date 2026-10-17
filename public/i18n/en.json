@@ -1250,5 +1250,11 @@
     "import.clipboardEmpty": "Clipboard is empty or contains no text",
     "import.clipboardPasted": "Text pasted from clipboard, click Parse & Preview to verify!",
     "import.clipboardFailed": "Cannot access clipboard, please paste with Ctrl+V directly.",
-    "widget.goal.achieved": "🎉 Daily Goal Achieved!"
+    "widget.goal.achieved": "🎉 Daily Goal Achieved!",
+    "sound.enable": "Sound muted (Click to enable)",
+    "sound.disable": "Sound enabled (Click to mute)",
+    "wrongbook.drillFiltered": "Practice Filtered Wrongs",
+    "wrongbook.noFiltered": "No wrong questions under this category",
+    "hotkeys.title": "Keyboard Shortcuts Guide",
+    "hotkeys.tip": "Shortcuts Guide"
 }
