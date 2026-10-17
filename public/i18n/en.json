@@ -1239,5 +1239,15 @@
     "wrongbook.filterAll": "All Wrongs",
     "wrongbook.filterCareless": "Careless",
     "wrongbook.filterUnknown": "Knowledge Gap",
-    "wrongbook.filterTrap": "Trap"
+    "wrongbook.filterTrap": "Trap",
+    "entry.copyReport": "Copy Today Summary",
+    "entry.copyReportTip": "Copy formatted Markdown study summary for your daily note",
+    "entry.reportCopied": "📋 Today study summary copied! Ready to paste into your notes.",
+    "browse.hideAnswer": "Hide Answer",
+    "browse.showAnswer": "Show Answer",
+    "import.pasteClipboard": "Paste Clipboard",
+    "import.pasteClipboardTip": "Paste text directly from clipboard",
+    "import.clipboardEmpty": "Clipboard is empty or contains no text",
+    "import.clipboardPasted": "Text pasted from clipboard, click Parse & Preview to verify!",
+    "import.clipboardFailed": "Cannot access clipboard, please paste with Ctrl+V directly."
 }

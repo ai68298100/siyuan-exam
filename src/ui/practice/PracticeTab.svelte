@@ -1432,6 +1432,7 @@ import { ttsSpeak } from "@/core/tts";
       { group: t("palette.actions"), icon: "flame", label: t("mode.cram"), keywords: "cram cram", run: () => void startDrill("cram") },
       { group: t("palette.actions"), icon: "star", label: t("mode.fav"), keywords: "fav starred", run: () => void startDrill("fav") },
       { group: t("palette.actions"), icon: "save", label: t("sync.docsBtn"), keywords: "sync archive local docs", run: () => void syncBankDocs() },
+      { group: t("palette.actions"), icon: "copy", label: t("entry.copyReport"), keywords: "copy today study report diary", run: () => void copyTodayReportMarkdown() },
       { group: t("palette.tabs"), icon: "clock", label: t("tab.mock"), keywords: "mock exam", run: () => plugin.openMock?.() },
       { group: t("palette.tabs"), icon: "chart", label: t("tab.report"), keywords: "report stats", run: () => plugin.openReport?.() },
     ];
@@ -1874,6 +1875,28 @@ import { ttsSpeak } from "@/core/tts";
     }
 
     let syncDocsBusy = $state(false);
+    async function copyTodayReportMarkdown() {
+      const todayStr = localDate(Date.now());
+      const lines = [
+        `### 📅 小驴考试 · 今日备考打卡`,
+        `- **学习日期**：${todayStr}`,
+        `- **当前题库**：${bankName || "默认题库"}`,
+        `- **今日作答**：**${todayDone} 题**（今日目标：${dailyGoalN} 题 · 达成率 ${goalPct}%）`,
+        `- **连续学习**：🔥 **${streakDays} 天连胜**`,
+        `- **错题动态**：当前在册错题 ${wrongList.length} 道 · 累计消灭 ${eliminatedCount} 道（消灭率 ${clearPct}%）`,
+      ];
+      if (plan) {
+        lines.push(`- **备考建议**：${planReasonText(plan)}`);
+      }
+      lines.push(`\n> 坚持就是胜利，每天进步一点点！💪`);
+      try {
+        await navigator.clipboard.writeText(lines.join("\n"));
+        showMessage(t("entry.reportCopied"), 3200, "info");
+      } catch {
+        showMessage(t("mock.summaryCopyFailed"), 3200, "error");
+      }
+    }
+
     async function syncBankDocs() {
       if (!activeBankId || syncDocsBusy) return;
       syncDocsBusy = true;
@@ -1885,6 +1908,21 @@ import { ttsSpeak } from "@/core/tts";
         showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
       } finally {
         syncDocsBusy = false;
+      }
+    }
+
+    async function pasteClipboardToImport() {
+      if (importBusy) return;
+      try {
+        const text = await navigator.clipboard.readText();
+        if (!text?.trim()) {
+          showMessage(t("import.clipboardEmpty"), 2800, "info");
+          return;
+        }
+        importText = text;
+        showMessage(t("import.clipboardPasted"), 2800, "info");
+      } catch (e) {
+        showMessage(t("import.clipboardFailed"), 3200, "info");
       }
     }
 
@@ -3773,6 +3811,7 @@ import { ttsSpeak } from "@/core/tts";
 
     // ---------- 浏览详情：展开/文档跳转/反链 ----------
     let expandedId = $state("");
+    let peekHideAnswer = $state(true);
     const activePeekQuestion = $derived(questions.find((x) => x.id === expandedId) ?? null);
     const currentPeekIndex = $derived(
       activePeekQuestion ? shownQuestions.findIndex((q) => q.id === activePeekQuestion.id) : -1,
@@ -4007,6 +4046,11 @@ import { ttsSpeak } from "@/core/tts";
         }
       } else if (view === "recite") {
         if (reciteDone || !reciteQueue.length) return;
+        if (e.key.toLowerCase() === "v" && reciteQueue[reciteCursor]) {
+          e.preventDefault();
+          ttsSpeak(reciteQueue[reciteCursor].stem);
+          return;
+        }
         if (!reciteRevealed && e.key === " ") { e.preventDefault(); reciteRevealed = true; return; }
         if (!reciteRevealed && reciteHint === 1 && e.key.toLowerCase() === "h" && reciteQueue[reciteCursor]?.analysis) { e.preventDefault(); reciteHint = 2; return; }
         if (reciteRevealed && /^[1-4]$/.test(e.key)) { e.preventDefault(); void rateSelf(Number(e.key) as 1 | 2 | 3 | 4); }
@@ -4505,6 +4549,7 @@ import { ttsSpeak } from "@/core/tts";
               <!-- 原型：主操作在 hero 卡内部，与上下文成组；空队列禁用防无效点击 -->
               <div class="lv-hero-actions">
                 <button class="lv-btn lv-btn--primary" onclick={startToday} disabled={!todayQueue.length} title={todayQueue.length ? "" : t("state.emptyBank")}><Icon name="play" size={16} /> {t("entry.startToday")}</button>
+                <button class="lv-btn lv-btn--ghost" onclick={copyTodayReportMarkdown} title={t("entry.copyReportTip")}><Icon name="copy" size={15} /> {t("entry.copyReport")}</button>
                 {#if !plan.queue.length && todayQueue.length}<span class="lv-muted" role="status">{t("entry.queueFallback")}</span>{/if}
               </div>
             </div>
@@ -6148,7 +6193,19 @@ import { ttsSpeak } from "@/core/tts";
                 {:else}
                   {@const st = app.derived().byQuestion.get(q.id)}
                   {@const wr = app.derived().wrongbook.get(q.id)}
-                  <div class="lv-muted"><b>{t("browse.answer")}:</b> {q.answer}{#if q.analysis} · {q.analysis}{/if}</div>
+                  <div class="lv-row" style="margin:8px 0 6px;align-items:center;justify-content:space-between">
+                    <button class="lv-chip" class:acc={!peekHideAnswer} onclick={() => peekHideAnswer = !peekHideAnswer}>
+                      <Icon name={peekHideAnswer ? "eyeoff" : "eye"} size={12} /> {peekHideAnswer ? t("browse.showAnswer") : t("browse.hideAnswer")}
+                    </button>
+                    {#if peekHideAnswer}
+                      <span class="lv-muted" style="font-size:var(--lv-font-size-caption)">已开启遮挡自测，点击上方按钮揭晓</span>
+                    {/if}
+                  </div>
+                  {#if !peekHideAnswer}
+                    <div class="lv-muted lv-peek-answer-box" style="animation: lv-appear var(--lv-dur-view, 0.22s) var(--lv-ease-out)">
+                      <b>{t("browse.answer")}:</b> <strong class="num" style="color:var(--lv-accent)">{q.answer}</strong>{#if q.analysis} · {q.analysis}{/if}
+                    </div>
+                  {/if}
                   {#if st && st.attempts}
                     <!-- 43-02 lite：题目使用分析（作答次数/正确率/最近作答/错次），数据不足如实不显示 -->
                     <div class="lv-muted num" role="status"><Icon name="chart" size={11} /> {t("browse.usage").replace("{a}", String(st.attempts)).replace("{c}", String(Math.round((st.correct / st.attempts) * 100)))}{#if wr} · {t("browse.wrongCount").replace("{n}", String(wr.wrongCount))}{/if} · {new Date(st.lastAt).toLocaleDateString()}</div>
@@ -6328,6 +6385,7 @@ import { ttsSpeak } from "@/core/tts";
           <div class="lv-row">
             <label class="lv-btn"><Icon name="folder" size={15} /> {t("import.pickExcel")}<input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange={onExcelFile} disabled={importBusy} /></label>
             <button class="lv-btn sm" onclick={downloadTemplate}><Icon name="import" size={15} /> {t("import.template")}</button>
+            <button class="lv-btn sm lv-btn--ghost" onclick={pasteClipboardToImport} disabled={importBusy} title={t("import.pasteClipboardTip")}><Icon name="copy" size={14} /> {t("import.pasteClipboard")}</button>
             <span class="lv-muted">{t("import.orPaste")}</span>
           </div>
           <textarea class="lv-input lv-textarea" rows="8" placeholder={t("import.placeholder")} bind:value={importText} disabled={importBusy}></textarea>

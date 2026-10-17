@@ -1239,5 +1239,15 @@
     "wrongbook.filterAll": "全部错题",
     "wrongbook.filterCareless": "粗心失误",
     "wrongbook.filterUnknown": "知识盲区",
-    "wrongbook.filterTrap": "审题陷阱"
+    "wrongbook.filterTrap": "审题陷阱",
+    "entry.copyReport": "复制今日打卡",
+    "entry.copyReportTip": "复制排版好的 Markdown 今日打卡总结，可直接贴入思源日记",
+    "entry.reportCopied": "📋 今日备考战报已复制，可直接粘贴到思源日记！",
+    "browse.hideAnswer": "遮挡自测",
+    "browse.showAnswer": "揭晓答案",
+    "import.pasteClipboard": "读取剪贴板",
+    "import.pasteClipboardTip": "一键读取系统剪贴板内容并填入",
+    "import.clipboardEmpty": "剪贴板为空或未包含文本内容",
+    "import.clipboardPasted": "已从剪贴板粘贴文本，点击「解析预览」即可校验！",
+    "import.clipboardFailed": "无法读取剪贴板，请直接在下方文本框按 Ctrl+V 粘贴。"
 }
