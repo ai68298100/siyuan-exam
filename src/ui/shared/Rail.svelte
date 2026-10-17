@@ -46,6 +46,49 @@
   let closeBtn: HTMLButtonElement | null = null;
   let returnFocus: HTMLElement | null = null;
   let wasDrawerOpen = false;
+  let launcherOpen = $state(false);
+  let launcherWrapEl = $state<HTMLElement | null>(null);
+
+  function toggleLauncher(e: MouseEvent) {
+    e.stopPropagation();
+    launcherOpen = !launcherOpen;
+  }
+
+  function closeLauncher() {
+    launcherOpen = false;
+  }
+
+  function runQuickAction(act: "drill" | "create" | "mock" | "wrong" | "import" | "ai") {
+    closeLauncher();
+    if (drawerOpen) onclose?.();
+    switch (act) {
+      case "drill":
+        openPracticeView(plugin, "entry");
+        break;
+      case "create":
+        if (onquickcreate) onquickcreate();
+        else openPracticeView(plugin, "manual");
+        break;
+      case "mock":
+        plugin?.openMock?.();
+        break;
+      case "wrong":
+        openPracticeView(plugin, "wrongbook");
+        break;
+      case "import":
+        openPracticeView(plugin, "import");
+        break;
+      case "ai":
+        openPracticeView(plugin, "ai");
+        break;
+    }
+  }
+
+  function onWindowClick(e: MouseEvent) {
+    if (launcherOpen && launcherWrapEl && !launcherWrapEl.contains(e.target as Node)) {
+      closeLauncher();
+    }
+  }
 
   // The rail is a desktop sidebar until the responsive breakpoint. Keep the
   // drawer contract scoped to the narrow layout so a resize while it is open
@@ -122,6 +165,12 @@
   });
 
   function onKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape" && launcherOpen) {
+      e.preventDefault();
+      e.stopPropagation();
+      closeLauncher();
+      return;
+    }
     if (!drawerOpen || !asideEl?.getClientRects().length) return;
     // 命令面板可能在导航抽屉上方打开；抽屉仅接管自己的焦点，避免互相锁死。
     if (!(e.target instanceof Node) || !asideEl.contains(e.target)) return;
@@ -172,7 +221,7 @@
   const activeTask = $derived(taskactive ?? (active === "practice" ? "today" : active));
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<svelte:window onkeydown={onKeydown} onclick={onWindowClick} />
 {#if drawerOpen}
   <button class="lv-nav-backdrop" aria-label={t("menu.closeNav", "关闭导航")} onclick={() => onclose?.()}></button>
 {/if}
@@ -194,11 +243,68 @@
       </span>
     </button>
   {/if}
-  {#if onquickcreate}
-    <button class="lv-quick-create" title={t("rail.quickCreate", "录入一道题")} onclick={() => nav({ onclick: () => onquickcreate?.() })}>
-      <Icon name="plus" size={15} /> {t("rail.quickCreate", "录入一道题")}
+  <div class="lv-quick-launcher-wrap" bind:this={launcherWrapEl}>
+    <button
+      class="lv-quick-create"
+      class:active={launcherOpen}
+      title={t("rail.quickActions", "快捷行动")}
+      aria-expanded={launcherOpen}
+      aria-haspopup="menu"
+      onclick={toggleLauncher}
+    >
+      <span class="lv-quick-create-lead">
+        <Icon name="zap" size={15} />
+        <span class="lv-quick-create-text">{t("rail.quickActions", "快捷行动")}</span>
+      </span>
+      <span class="lv-quick-create-chevron" class:expanded={launcherOpen} aria-hidden="true">▾</span>
     </button>
-  {/if}
+    {#if launcherOpen}
+      <div class="lv-quick-popover" role="menu" aria-label={t("rail.quickActions", "快捷行动")}>
+        <button class="lv-quick-menu-item" role="menuitem" onclick={() => runQuickAction("drill")}>
+          <span class="lv-quick-item-badge lv-quick-item-badge--zap"><Icon name="play" size={13} /></span>
+          <div class="lv-quick-item-meta">
+            <span class="lv-quick-item-title">{t("rail.quickDrill", "即刻刷题")}</span>
+            <span class="lv-quick-item-desc">{t("rail.quickDrillHint", "快速开练 15 道题")}</span>
+          </div>
+        </button>
+        <button class="lv-quick-menu-item" role="menuitem" onclick={() => runQuickAction("create")}>
+          <span class="lv-quick-item-badge lv-quick-item-badge--pen"><Icon name="pencil" size={13} /></span>
+          <div class="lv-quick-item-meta">
+            <span class="lv-quick-item-title">{t("rail.quickCreate", "快速录题")}</span>
+            <span class="lv-quick-item-desc">{t("rail.quickCreateHint", "录入一道新题目")}</span>
+          </div>
+        </button>
+        <button class="lv-quick-menu-item" role="menuitem" onclick={() => runQuickAction("mock")}>
+          <span class="lv-quick-item-badge lv-quick-item-badge--clock"><Icon name="clock" size={13} /></span>
+          <div class="lv-quick-item-meta">
+            <span class="lv-quick-item-title">{t("rail.quickMock", "全真模考")}</span>
+            <span class="lv-quick-item-desc">{t("rail.quickMockHint", "标准模拟考试")}</span>
+          </div>
+        </button>
+        <button class="lv-quick-menu-item" role="menuitem" onclick={() => runQuickAction("wrong")}>
+          <span class="lv-quick-item-badge lv-quick-item-badge--red"><Icon name="xcircle" size={13} /></span>
+          <div class="lv-quick-item-meta">
+            <span class="lv-quick-item-title">{t("rail.quickWrong", "错题特训")}</span>
+            <span class="lv-quick-item-desc">{t("rail.quickWrongHint", "消灭在册错题")}</span>
+          </div>
+        </button>
+        <button class="lv-quick-menu-item" role="menuitem" onclick={() => runQuickAction("import")}>
+          <span class="lv-quick-item-badge lv-quick-item-badge--lavender"><Icon name="import" size={13} /></span>
+          <div class="lv-quick-item-meta">
+            <span class="lv-quick-item-title">{t("rail.quickImport", "批量导入")}</span>
+            <span class="lv-quick-item-desc">{t("rail.quickImportHint", "Excel / CSV / 剪贴板")}</span>
+          </div>
+        </button>
+        <button class="lv-quick-menu-item" role="menuitem" onclick={() => runQuickAction("ai")}>
+          <span class="lv-quick-item-badge lv-quick-item-badge--accent"><Icon name="sparkles" size={13} /></span>
+          <div class="lv-quick-item-meta">
+            <span class="lv-quick-item-title">{t("rail.quickAi", "AI 出题")}</span>
+            <span class="lv-quick-item-desc">{t("rail.quickAiHint", "智能解析与出题")}</span>
+          </div>
+        </button>
+      </div>
+    {/if}
+  </div>
   <div>
     <p class="lv-nav-label">{t("rail.workbench", "")}</p>
     <nav class="lv-rail-nav">
@@ -343,6 +449,15 @@
       padding: 10px;
       font-size: 0;
     }
+    .lv-quick-create-text,
+    .lv-quick-create-chevron {
+      display: none;
+    }
+    .lv-quick-popover {
+      left: 100%;
+      top: 0;
+      margin-left: 8px;
+    }
     .lv-rail-btn {
       justify-content: center;
       min-height: 44px;
@@ -377,15 +492,19 @@
     border-color: var(--lv-border-hover, var(--lv-accent));
     box-shadow: var(--lv-sh-2), var(--lv-inset-subtle, inset 0 1px 0 transparent);
   }
+  .lv-quick-launcher-wrap {
+    position: relative;
+    width: 100%;
+  }
   .lv-quick-create {
     display: flex;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: space-between;
     gap: var(--lv-space-2);
     width: 100%;
     min-height: 40px;
     padding: 8px 12px;
-    border: 1px solid color-mix(in srgb, var(--lv-accent) 20%, transparent);
+    border: 1px solid color-mix(in srgb, var(--lv-accent) 24%, var(--lv-border));
     border-radius: var(--lv-radius-control-sm);
     background: var(--lv-accent-soft);
     color: var(--lv-accent);
@@ -394,6 +513,7 @@
     font-size: var(--lv-font-size-meta);
     font-weight: 600;
     cursor: pointer;
+    touch-action: manipulation;
     transition:
       transform var(--lv-dur-micro) ease,
       background-color var(--lv-dur-micro) ease,
@@ -408,6 +528,99 @@
   }
   .lv-quick-create:active {
     transform: scale(0.98);
+  }
+  .lv-quick-create.active {
+    border-color: var(--lv-accent);
+    background: var(--lv-surface);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--lv-accent) 20%, transparent);
+  }
+  .lv-quick-create-lead {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--lv-space-2);
+    min-width: 0;
+  }
+  .lv-quick-create-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .lv-quick-create-chevron {
+    font-size: 11px;
+    line-height: 1;
+    color: var(--lv-accent);
+    transition: transform var(--lv-dur-micro) ease;
+  }
+  .lv-quick-create-chevron.expanded {
+    transform: rotate(180deg);
+  }
+  .lv-quick-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    width: 220px;
+    max-width: calc(100vw - 32px);
+    z-index: 100;
+    background: var(--lv-surface);
+    border: 1px solid var(--lv-border);
+    border-radius: var(--lv-r-2);
+    box-shadow: var(--lv-sh-pop);
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .lv-quick-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    width: 100%;
+    border: 0;
+    border-radius: var(--lv-radius-control-sm);
+    background: transparent;
+    color: var(--lv-text);
+    text-align: left;
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: background-color var(--lv-dur-micro) ease, transform var(--lv-dur-micro) ease;
+  }
+  .lv-quick-menu-item:hover {
+    background: var(--lv-surface-2);
+    transform: translateX(2px);
+  }
+  .lv-quick-menu-item:active {
+    transform: scale(0.98);
+  }
+  .lv-quick-item-badge {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+    flex-shrink: 0;
+  }
+  .lv-quick-item-badge--zap { background: var(--lv-amber-soft); color: var(--lv-amber); }
+  .lv-quick-item-badge--pen { background: var(--lv-accent-soft); color: var(--lv-accent); }
+  .lv-quick-item-badge--clock { background: color-mix(in srgb, var(--lv-accent) 15%, transparent); color: var(--lv-accent); }
+  .lv-quick-item-badge--red { background: var(--lv-red-soft); color: var(--lv-red); }
+  .lv-quick-item-badge--lavender { background: color-mix(in srgb, var(--lv-accent) 12%, transparent); color: var(--lv-accent); }
+  .lv-quick-item-badge--accent { background: var(--lv-accent-soft); color: var(--lv-accent); }
+  .lv-quick-item-meta {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .lv-quick-item-title {
+    font-size: var(--lv-font-size-meta);
+    font-weight: 600;
+    color: var(--lv-text);
+    line-height: 1.3;
+  }
+  .lv-quick-item-desc {
+    font-size: 10px;
+    color: var(--lv-text-3);
+    line-height: 1.3;
   }
   .lv-project-kicker {
     display: block;

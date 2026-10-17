@@ -187,6 +187,7 @@
 }
 
 body.dark,
+html[data-theme="dark"],
 html[data-theme-mode="dark"] {
   --lv-r54-canvas: #181820;
   --lv-r54-surface: #22222d;

@@ -22,7 +22,9 @@
     import SaveStatus from "../shared/SaveStatus.svelte";
     import { mockSectionsToCsv, mockHistoryToCsv } from "../../core/exportMd";
     
-    let { plugin, examApp: app }: { plugin: any; examApp: ExamApp } = $props();
+    let { plugin, examApp }: { plugin: any; examApp?: ExamApp | null } = $props();
+    let appOverride = $state<ExamApp | null>(null);
+    const app = $derived<ExamApp | null>(appOverride ?? examApp ?? plugin?.examApp ?? null);
     const i18n = $derived(plugin?.i18n ?? {});
     const t = (k: string, fb = "") => i18n[k] ?? fb;
 
@@ -270,14 +272,25 @@
     }
 
     onMount(() => {
-      void loadMockData();
-      void loadEstimateHistory();
-      return onExamEvent<{ bank: string }>("bank-changed", (event) => {
-        bankDataDirty = true;
-        pendingBankId = event.payload.bank;
-        // 考试与成绩页都保留本次卷面、题库和蓝图，回到配置页后再读取。
-        refreshPendingBankData();
-      });
+      const initMock = () => {
+        if (!app) return;
+        void loadMockData();
+        void loadEstimateHistory();
+      };
+      if (app) initMock();
+      const offs = [
+        onExamEvent("app-ready", () => {
+          appOverride = plugin?.examApp ?? null;
+          if (appOverride) initMock();
+        }),
+        onExamEvent<{ bank: string }>("bank-changed", (event) => {
+          bankDataDirty = true;
+          pendingBankId = event.payload.bank;
+          // 考试与成绩页都保留本次卷面、题库和蓝图，回到配置页后再读取。
+          refreshPendingBankData();
+        }),
+      ];
+      return () => offs.forEach((off) => off());
     });
 
     const totals = $derived(blueprintTotals(bp));
@@ -852,6 +865,31 @@
 
     // 45-08 收口：成绩单分段/历史数据表 + CSV（与雷达/折线同一数据快照）
     let mockTableOpen = $state(false);
+    async function copyExamSummaryMarkdown() {
+      if (!score) return;
+      const passText = score.pass ? "🎉 及格" : "⚠️ 未及格";
+      const lines = [
+        `### 📝 小驴考试 · 全真模考战报`,
+        `- **考试科目**：${bp.name || "全真模拟卷"}`,
+        `- **交卷时间**：${new Date().toLocaleString()}`,
+        `- **最终成绩**：**${score.total} / ${score.full}**（得分率 ${score.percent}% · ${passText}）`,
+        `- **及格线**：${bp.passLine}%`,
+        `- **各模块得分明细**：`,
+        ...score.sections.map((s) => `  - **${s.name}**：${s.score}/${s.full} 分（正确率 ${s.total ? Math.round((s.correct / s.total) * 100) : 0}%）`),
+      ];
+      if (revisionDrift.length) {
+        lines.push(`- **改动说明**：包含 ${revisionDrift.length} 道在考后已修订题`);
+      }
+      lines.push(`\n> 来自小驴考试（内测版）`);
+      const text = lines.join("\n");
+      try {
+        await navigator.clipboard.writeText(text);
+        showMessage(t("mock.summaryCopied", "📋 模考战报已复制，可直接粘贴到思源笔记！"), 3200, "info");
+      } catch {
+        showMessage(t("mock.summaryCopyFailed", "复制失败，请重试或导出 CSV。"), 3200, "error");
+      }
+    }
+
     function downloadMockCsv(csv: string, name: string) {
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
       downloadBlob(blob, `小驴考试（内测版）-模考-${name}-${new Date().toISOString().slice(0, 10)}.csv`);
@@ -950,7 +988,10 @@
       <Icon name="search" size={13} /> <span class="lv-palette-label">{t("palette.open")}</span> <span class="lv-kbd">⌘K</span>
     </button>
     {#if view === "exam"}
-      <span class="lv-chip num"><Icon name="clock" size={13} /> {remainText()}</span>
+      {@const remainMs = session ? Math.max(0, session.remaining(nowTick)) : 3600000}
+      <span class="lv-chip num" class:lv-chip--amb={remainMs <= 300000 && remainMs > 60000} class:lv-chip--red={remainMs <= 60000} title={remainMs <= 60000 ? t("mock.urgentTime") : remainMs <= 300000 ? t("mock.warningTime") : ""}>
+        <Icon name="clock" size={13} /> {remainText()}
+      </span>
       {#if (session?.state.extraTimeS ?? 0) > 0}
         <span class="lv-chip lv-chip--amb num" title={t("mock.extraTip")}><Icon name="clock" size={13} />+{Math.round((session!.state.extraTimeS ?? 0) / 60)}{t("entry.minutes")}</span>
       {/if}
@@ -1271,7 +1312,10 @@
       <p class="lv-muted">{t("mock.historyEmpty", "完成两场模考后，这里会显示历史趋势。")}</p>
     {/if}
     <!-- 45-08 收口：分段/历史图表的文本等价物 + CSV（同一数据快照） -->
-    <div class="lv-row" style="margin:6px 0">
+    <div class="lv-row" style="margin:6px 0;gap:var(--lv-space-2);flex-wrap:wrap">
+      <button class="lv-btn sm lv-btn--primary" onclick={copyExamSummaryMarkdown} title={t("mock.copySummary")}>
+        <Icon name="copy" size={13} /> {t("mock.copySummary")}
+      </button>
       <button class="lv-btn sm lv-btn--ghost" aria-expanded={mockTableOpen} onclick={() => mockTableOpen = !mockTableOpen}><Icon name="table" size={13} /> {t("data.table")}</button>
       <button class="lv-btn sm lv-btn--ghost" onclick={() => downloadMockCsv(mockSectionsToCsv(score.sections), "sections")}><Icon name="export" size={13} /> CSV</button>
       {#if history.length}

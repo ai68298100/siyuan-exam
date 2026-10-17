@@ -5,6 +5,29 @@
 // ============================================================
 @use "./lv-tokens";
 
+/* —— 现代平滑细滚动条（遵从设计系统 Token，替换 Windows 粗灰原生条） —— */
+.lv-exam-tab {
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--lv-text) 16%, transparent);
+    border-radius: var(--lv-radius-pill);
+    transition: background-color var(--lv-dur-micro) ease;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--lv-text) 30%, transparent);
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--lv-text) 16%, transparent) transparent;
+  }
+}
+
 /* —— 卡片（static / hover 抬升 / 沉浸浮层）
    动效统一走 --lv-ease-out（规范 v6：同一条曲线，禁回弹） —— */
 .lv-card {
@@ -921,8 +944,8 @@ input[type="range"] {
   display: grid;
   place-items: start center;
   padding: 12vh 16px 16px;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   animation: lv-fade-in var(--lv-dur-fast, 0.16s) ease-out;
 }
 .lv-palette {
@@ -930,7 +953,7 @@ input[type="range"] {
   background: var(--lv-surface);
   border: 1px solid var(--lv-border-subtle, var(--lv-border));
   border-radius: var(--lv-r-3);
-  box-shadow: var(--lv-sh-pop), var(--lv-inset-highlight, inset 0 1px 0 transparent);
+  box-shadow: 0 20px 60px color-mix(in srgb, var(--lv-text) 16%, transparent), 0 4px 16px color-mix(in srgb, var(--lv-text) 8%, transparent), var(--lv-inset-highlight, inset 0 1px 0 transparent);
   overflow: hidden;
   animation: lv-pop-in 0.2s var(--lv-ease-out);
 }
@@ -997,7 +1020,7 @@ input[type="range"] {
     background: color-mix(in srgb, var(--lv-accent-soft) 85%, var(--lv-surface));
     border-left-color: var(--lv-accent);
     color: var(--lv-accent);
-    transform: translateX(3px);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--lv-accent) 20%, transparent);
     .lv-icon {
       color: var(--lv-accent);
     }

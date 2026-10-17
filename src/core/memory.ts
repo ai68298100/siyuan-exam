@@ -7,6 +7,7 @@
 // 纯逻辑（映射/挑选）与 IO（riff 调用）分离，测试覆盖纯逻辑
 // ============================================================
 import type { Question } from "./types";
+import { OPTION_LETTERS } from "./answer";
 
 export const DECK_PREFIX = "小驴考试/";
 
@@ -93,4 +94,90 @@ export function dailySet(
     push(shuffled.splice(Math.floor(rnd() * shuffled.length), 1)[0]);
   }
   return out;
+}
+
+/** 将一道 Question 格式化为思源笔记标准的列表闪卡 Markdown（具有完美的正反面遮挡与复习体验） */
+export function questionToFlashCardMarkdown(q: Question): string {
+  const stem = q.stem.trim();
+  let front = "";
+  let back = "";
+
+  switch (q.type) {
+    case "single": {
+      front = `- **【单选题】** ${stem}`;
+      if (q.options.length) {
+        front += "\n  " + q.options.map((opt, i) => `${OPTION_LETTERS[i]}. ${opt.trim()}`).join("\n  ");
+      }
+      const ansLetter = q.answer.trim().toUpperCase();
+      const ansIdx = OPTION_LETTERS.indexOf(ansLetter);
+      const ansText = ansIdx >= 0 && q.options[ansIdx] ? ` (${q.options[ansIdx].trim()})` : "";
+      back = `  - **✔ 正确答案**：**${ansLetter}**${ansText}`;
+      break;
+    }
+    case "multiple": {
+      front = `- **【多选题】** ${stem} *（多选/少选均不得分）*`;
+      if (q.options.length) {
+        front += "\n  " + q.options.map((opt, i) => `${OPTION_LETTERS[i]}. ${opt.trim()}`).join("\n  ");
+      }
+      const letters = [...new Set(q.answer.replace(/[^A-Za-z]/g, "").toUpperCase().split(""))].sort();
+      const ansDetail = letters.map((l) => {
+        const idx = OPTION_LETTERS.indexOf(l);
+        return idx >= 0 && q.options[idx] ? `${l}. ${q.options[idx].trim()}` : l;
+      }).join("；");
+      back = `  - **✔ 正确答案**：**${letters.join(", ")}**` + (ansDetail ? `\n    > ${ansDetail}` : "");
+      break;
+    }
+    case "judge": {
+      front = `- **【判断题】** ${stem}\n  *(A) 正确  |  (B) 错误*`;
+      const isTrue = q.answer.includes("对") || q.answer.includes("正确") || q.answer.trim().toUpperCase() === "A";
+      back = `  - **✔ 正确判断**：**${isTrue ? "正确 ✔" : "错误 ✕"}**`;
+      break;
+    }
+    case "fill": {
+      const isMulti = q.answer.includes(";;") || q.answerSpec?.kind === "multiBlank";
+      if (isMulti) {
+        front = `- **【多空填空题】** ${stem}`;
+        const blanks = q.answer.split(";;").map((b) => b.trim()).filter(Boolean);
+        back = `  - **✔ 参考填空**：\n` + blanks.map((b, i) => `    - 空 ${i + 1}：**${b}**`).join("\n");
+      } else if (q.answerSpec?.kind === "numeric") {
+        const unitTip = q.answerSpec.unit ? ` *(作答单位：${q.answerSpec.unit})*` : "";
+        front = `- **【数值计算题】** ${stem}${unitTip}`;
+        const tol = q.answerSpec.absTol ? ` *(允许误差 ±${q.answerSpec.absTol})*` : "";
+        back = `  - **✔ 正确数值**：**${q.answer.trim()}**${q.answerSpec.unit ? ` ${q.answerSpec.unit}` : ""}${tol}`;
+      } else {
+        front = `- **【填空题】** ${stem}`;
+        back = `  - **✔ 参考答案**：**${q.answer.trim()}**`;
+      }
+      break;
+    }
+    case "short": {
+      front = `- **【问答/解答题】** ${stem}`;
+      back = `  - **✔ 参考得分要点**：\n    ${q.answer.trim().replace(/\n/g, "\n    ")}`;
+      break;
+    }
+    case "material": {
+      front = `- **【材料综合题】**\n  > 📎 **背景材料**：${stem}`;
+      back = `  - **✔ 参考要点**：**${q.answer.trim()}**`;
+      break;
+    }
+    default: {
+      front = `- **【习题】** ${stem}`;
+      back = `  - **✔ 参考答案**：**${q.answer.trim()}**`;
+      break;
+    }
+  }
+
+  // 拼接解析与考点
+  if (q.analysis?.trim()) {
+    back += `\n    > 💡 **核心解析**：${q.analysis.trim().replace(/\n/g, "\n    > ")}`;
+  }
+  if (q.kp?.trim()) {
+    back += `\n    > 🏷️ **考点归纳**：${q.kp.trim()}`;
+  }
+  if (q.source?.trim()) {
+    back += `\n    > 📖 **出处来源**：${q.source.trim()}`;
+  }
+
+  const ial = `{: custom-exam-card-qid="${q.id}" custom-exam-card-type="${q.type}"}`;
+  return `${front}\n${back}\n  ${ial}`;
 }

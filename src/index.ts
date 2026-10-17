@@ -234,6 +234,7 @@ export default class LvExamPlugin extends Plugin {
     }
     try {
       this.examApp = await createExamApp(this);
+      emitExamEvent("app-ready", { ready: true });
     } catch (e) {
       console.error("[lv-exam] app init failed", e);
       showMessage(String(e instanceof Error ? e.message : e), 5200, "error");
@@ -345,13 +346,48 @@ export default class LvExamPlugin extends Plugin {
     this.tabApps = {};
   }
 
-  /** 顶栏主入口（25-P1 首用可发现性）：此前插件仅有 Dock/状态栏/命令面板等隐蔽入口，
-   *  新装用户找不到进入方式；顶栏按钮是最醒目的一级入口。移动端无顶栏，维持块菜单+命令。 */
+  /** 顶栏主入口（小驴考试总入口）：支持左键直接进入工作台，右键弹出模块导航菜单 */
   private registerTopBar() {
     this.addTopBar({
       icon: "iconExam",
-      title: this.i18n["tab.practice"],
+      title: manifest.displayName["zh-CN"] ?? "小驴考试（内测版）",
       callback: () => this.openPractice(),
+      contextMenu: (menu: any) => {
+        if (!menu?.addItem) return;
+        menu.addItem({
+          iconHTML: "<svg><use xlink:href='#iconExam'></use></svg>",
+          label: this.i18n["plugin.workbench"] ?? "小驴考试工作台",
+          click: () => this.openPractice(),
+        });
+        menu.addItem({
+          iconHTML: "<svg><use xlink:href='#iconExam'></use></svg>",
+          label: this.i18n["tab.practice"] ?? "今日练习",
+          click: () => {
+            openPracticeView(this, "entry");
+          },
+        });
+        menu.addItem({
+          iconHTML: "<svg><use xlink:href='#iconMock'></use></svg>",
+          label: this.i18n["tab.mock"] ?? "全真模考",
+          click: () => this.openMock(),
+        });
+        menu.addItem({
+          iconHTML: "<svg><use xlink:href='#iconReport'></use></svg>",
+          label: this.i18n["tab.report"] ?? "学习报告",
+          click: () => this.openReport(),
+        });
+        menu.addItem({
+          iconHTML: "<svg><use xlink:href='#iconWrongbook'></use></svg>",
+          label: this.i18n["dock.wrongbook"] ?? "错题本",
+          click: () => this.openWrongbook(),
+        });
+        if (typeof menu.addSeparator === "function") menu.addSeparator();
+        menu.addItem({
+          icon: "iconSettings",
+          label: this.i18n["setting.title"] ?? "插件设置",
+          click: () => this.openSetting(),
+        });
+      },
     });
   }
 
@@ -417,8 +453,14 @@ export default class LvExamPlugin extends Plugin {
       this.addTab({
         type,
         init() {
+          if (this.element instanceof HTMLElement) {
+            this.element.style.height = "100%";
+            this.element.style.display = "flex";
+            this.element.style.flexDirection = "column";
+          }
           const el = document.createElement("div");
           el.classList.add("fn__flex-1", "lv-exam-tab");
+          el.style.height = "100%";
           const plugin = getPlugin();
           this.element.appendChild(el);
           const instance = mount(component, {

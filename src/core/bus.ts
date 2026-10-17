@@ -30,7 +30,8 @@ export type BusEventType =
   | "open-view" // {view, requestId?} 稳定入口深链，requestId 用于挂载/广播去重
   | "bank-changed" // {bank} 题库创建或切换完成，其他已打开页签重新读取当前库
   | "stats" // {…} publicStats 快照（48-02 lite：信封双发；legacy 裸 detail 兼容保留）
-  | "kernel-connection"; // {online} 内核连接状态翻转（离线横幅/降级提示依据）
+  | "kernel-connection" // {online} 内核连接状态翻转（离线横幅/降级提示依据）
+  | "app-ready"; // {ready} 应用层初始化完毕，通知已打开的标签页重新加载数据
 
 export function busEventName(type: BusEventType): string {
   return BUS_PREFIX + type;

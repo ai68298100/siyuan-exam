@@ -13,7 +13,7 @@ import { randomSeedId, seededPickN } from "./core/random";
 import { inferAnswerSpec } from "./core/structuredAnswer";
 import { appendRevision, specChanged, type QuestionRevision, type RevisionStore } from "./core/revision";
 import { interleaveGroups } from "./core/interleave";
-import { deckNameForBank, selfRatingToRiffRating, pickSameKp, cramQueue, dailySet } from "./core/memory";
+import { deckNameForBank, selfRatingToRiffRating, pickSameKp, cramQueue, dailySet, questionToFlashCardMarkdown } from "./core/memory";
 import { SaveGate } from "./core/saveGate";
 import { normalizeAnswer, questionHash } from "./core/answer";
 import { questionToMarkdown } from "./core/blockTemplate";
@@ -196,6 +196,8 @@ export interface ImportCommitResult {
 
 export class ExamApp {
   readonly attempts: AttemptLog;
+  private deckNameCache = new Map<string, { id: string; ts: number }>();
+  private dueCardsCache = new Map<string, { due: Set<string>; ts: number }>();
   /** 对象级保存确认（Q2/U06）：每个持久化目标独立状态，顶栏可定位失败对象 */
   readonly saves = new SaveGate();
   private replayCache: ReplayResult | null = null;
@@ -1877,13 +1879,53 @@ export class ExamApp {
         return true;
       });
     }
-    const pairs = items.map((w) => ({ wrong: w, q: byId.get(w.qid)! })).filter((p) => p.q);
-    const md = wrongbookToMarkdown(pairs, { bankName, exportedAt: new Date() });
+    const pairs = await Promise.all(
+      items.map(async (w) => {
+        const q = byId.get(w.qid);
+        if (!q) return null;
+        let reflectionText: string | undefined;
+        try {
+          const r = await this.loadWrongReflection(w.qid);
+          reflectionText = r?.text;
+        } catch { /* 忽略单个读取错误 */ }
+        return { wrong: w, q, reflection: reflectionText };
+      }),
+    );
+    const validPairs = pairs.filter((p): p is NonNullable<typeof p> => p !== null);
+    const md = wrongbookToMarkdown(validPairs, { bankName, exportedAt: new Date() });
     await this.ensureDoc(bankId, "/导出");
     const tag = [opts.kpRoot, opts.reason, opts.sinceDays ? `${opts.sinceDays}d` : ""].filter(Boolean).join("-");
     const ymd = new Date().toISOString().slice(0, 10);
     const name = tag ? `/导出/错题册 ${ymd} ${tag}` : `/导出/错题册 ${ymd}`;
     return this.deps.client.createDocWithMd(bankId, name, md);
+  }
+
+  /** 全量同步当前题库到思源本地笔记文档（即使卸载插件，本地笔记亦完整保留且排版优雅） */
+  async syncBankToLocalDocs(bankId: string, bankName: string): Promise<{ wrongbookDocId?: string; flashcardCount?: number }> {
+    if (!this.kernelOnline) throw new Error("思源内核离线，无法写入笔记文档");
+    let wrongbookDocId: string | undefined;
+    let flashcardCount: number | undefined;
+
+    // 1. 同步导出包含个人复盘心得的高清排版《错题复盘本》
+    try {
+      wrongbookDocId = await this.exportWrongbook(bankId, bankName);
+    } catch (e) {
+      console.warn("[lv-exam] sync wrongbook doc failed:", e);
+    }
+
+    // 2. 将在册错题与收藏题同步转换为标准正反面列表卡片
+    try {
+      const qs = await this.listQuestions(bankId);
+      const wrongIds = new Set(this.wrongItems().map((w) => w.qid));
+      const targetQuestions = qs.filter((q) => wrongIds.has(q.id) || q.fav);
+      if (targetQuestions.length) {
+        flashcardCount = await this.convertToCards(bankId, bankName, targetQuestions);
+      }
+    } catch (e) {
+      console.warn("[lv-exam] sync flashcards doc failed:", e);
+    }
+
+    return { wrongbookDocId, flashcardCount };
   }
 
   /** 模考成绩持久化（上限 200 条，FIFO） */
@@ -1908,24 +1950,73 @@ export class ExamApp {
   }
 
   // ---------- 记忆层（v0.2：riff 卡包 / 转卡 / 评级） ----------
-  /** 确保题库卡包存在并返回 deckID（卡包名 小驴考试/<题库名>，与内置闪卡隔离） */
+  /** 确保题库卡包存在并返回 deckID（卡包名 小驴考试/<题库名>，与内置闪卡隔离；带 60s 内存缓存） */
   async ensureDeck(bankName: string): Promise<string> {
     const full = deckNameForBank(bankName);
+    const cached = this.deckNameCache.get(full);
+    if (cached && Date.now() - cached.ts < 60_000) return cached.id;
     const decks = await this.deps.client.getRiffDecks();
     const found = decks.find((d) => d.name === full);
-    if (found) return found.id;
-    return this.deps.client.createRiffDeck(full);
+    if (found) {
+      this.deckNameCache.set(full, { id: found.id, ts: Date.now() });
+      return found.id;
+    }
+    const createdId = await this.deps.client.createRiffDeck(full);
+    this.deckNameCache.set(full, { id: createdId, ts: Date.now() });
+    return createdId;
   }
 
-  /** 错题/收藏转卡：返回成功送入卡包的块数（bankId 预留：将来按章节拆卡包） */
+  /** 错题/收藏转卡：为每道题生成具有专业正反面遮挡与复习体验的标准闪卡，写入卡册并加入题库卡包 */
   async convertToCards(
-    _bankId: string,
+    bankId: string,
     bankName: string,
     questions: (Question & { blockId?: string })[],
   ): Promise<number> {
+    if (!questions.length) return 0;
+    const deckId = await this.ensureDeck(bankName);
+
+    // 若内核在线且传入了有效题库 ID，则为题目在题库内创建专用的正反面闪卡册
+    if (this.kernelOnline && bankId) {
+      const hpath = "/学习闪卡";
+      let docId: string | undefined;
+      try {
+        const rows = await this.deps.client.sql<{ id: string }>(
+          `SELECT id FROM blocks WHERE box = '${bankId}' AND hpath = '${hpath}' AND type = 'p' LIMIT 1`,
+        );
+        docId = rows[0]?.id;
+      } catch {
+        /* 查询失败走新建路径 */
+      }
+      if (!docId) {
+        try {
+          docId = await this.deps.client.createDocWithMd(
+            bankId,
+            hpath,
+            "# 学习闪卡册\n\n> 本卡册由小驴考试自动生成（单选/多选/判断/填空/简答）。正面思考，背面核对，已送入 FSRS 间隔重复卡包。\n",
+          );
+        } catch {
+          /* 创建文档失败将回退原块转卡 */
+        }
+      }
+
+      if (docId) {
+        // 使用 questionToFlashCardMarkdown 将每道题目转换为具有完美遮挡与答案解析的列表项卡片
+        const markdown = questions.map((q) => questionToFlashCardMarkdown(q)).join("\n\n");
+        try {
+          const newBlockIds = await this.deps.client.appendBlock(docId, markdown);
+          if (newBlockIds.length) {
+            await this.deps.client.addRiffCards(deckId, newBlockIds);
+            return questions.length;
+          }
+        } catch {
+          /* appendBlock 失败回退到原题块 ID */
+        }
+      }
+    }
+
+    // 离线或降级路径：使用原题块 ID 送入卡包
     const blockIds = questions.map((q) => q.blockId).filter((s): s is string => !!s);
     if (!blockIds.length) return 0;
-    const deckId = await this.ensureDeck(bankName);
     await this.deps.client.addRiffCards(deckId, blockIds);
     return blockIds.length;
   }
@@ -1963,15 +2054,21 @@ export class ExamApp {
     return { blockIds };
   }
 
-  /** FSRS 到期题（planToday.dueFirst 供给；离线/无卡包/无到期返回空，不建卡包） */
+  /** FSRS 到期题（planToday.dueFirst 供给；离线/无卡包/无到期返回空，不建卡包；带 15s 内存缓存） */
   async dueQuestions(bankName: string, questions: (Question & { blockId?: string })[]): Promise<Question[]> {
     if (!this.kernelOnline) return [];
     try {
       const name = deckNameForBank(bankName);
-      const deck = (await this.deps.client.getRiffDecks()).find((d) => d.name === name);
-      if (!deck) return [];
-      const cards = await this.deps.client.getDueCards(deck.id);
+      const now = Date.now();
+      const cachedDue = this.dueCardsCache.get(name);
+      if (cachedDue && now - cachedDue.ts < 15_000) {
+        return questions.filter((q) => q.blockId != null && cachedDue.due.has(q.blockId));
+      }
+      const deckId = await this.ensureDeck(bankName);
+      if (!deckId) return [];
+      const cards = await this.deps.client.getDueCards(deckId);
       const due = new Set(cards.map((c) => String((c as { blockID?: string }).blockID ?? "")).filter(Boolean));
+      this.dueCardsCache.set(name, { due, ts: now });
       if (!due.size) return [];
       return questions.filter((q) => q.blockId != null && due.has(q.blockId));
     } catch {
