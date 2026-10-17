@@ -1261,5 +1261,9 @@
     "batch.clearSel": "清空勾选",
     "batch.toCards": "批量转闪卡",
     "mock.toggleWrongDetail": "展开逐题复盘",
-    "mock.hideWrongDetail": "收起错题明细"
+    "mock.hideWrongDetail": "收起错题明细",
+    "browse.drillSingle": "练这道题",
+    "browse.drillSingleTip": "以本题开启单题独立作答会话",
+    "recite.retryForgot": "重背没记住的题目",
+    "report.drillWeakAction": "⚡ 攻坚该考点错题"
 }

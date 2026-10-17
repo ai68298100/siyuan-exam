@@ -450,6 +450,17 @@
       openPracticeView(plugin, "browse", { bankId, search: root });
     }
 
+    /** 薄弱考点一键攻坚：直接以该薄弱考点题目开启专项练习会话 */
+    function startWeakDrill(root: string) {
+      if (!app || !bankId) return;
+      const picked = questions.filter((q) => q.type !== "material" && q.kp?.split("/")[0] === root);
+      if (!picked.length) { showMessage(t("state.emptyBank"), 3000, "error"); return; }
+      (plugin as any).pendingPractice = picked;
+      (plugin as any).pendingPracticeBankId = bankId;
+      emitExamEvent("open-practice-questions", { qids: picked.map((q) => q.id), bank: bankId });
+      plugin.openPractice?.();
+    }
+
     /** 下一行动（U15 lite）：完成=用户确认（最小证据）；取消保留记录可回看 */
     async function finishAction(id: string) {
       if (!app || actionBusyId) return;
@@ -852,7 +863,14 @@
       {#if weak.length}
         <div class="lv-card lv-report-next">
           <div><span class="lv-eyebrow">{t("report.nextStep", "建议下一步")}</span><b>{weak[0].root}</b><p class="lv-muted">{t("report.nextStepHint", "从当前薄弱考点开始重练，练习结果会继续记入本地报告。")}</p></div>
-          <button class="lv-btn lv-btn--primary sm" onclick={() => drillWeak(weak[0].root)}>{t("report.drillKp")}</button>
+          <div class="lv-row" style="margin:0;gap:var(--lv-space-compact);flex-wrap:wrap">
+            <button class="lv-btn lv-btn--primary sm" onclick={() => startWeakDrill(weak[0].root)}>
+              <Icon name="play" size={13} /> {t("report.drillWeakAction")}
+            </button>
+            <button class="lv-btn sm lv-btn--ghost" onclick={() => drillWeak(weak[0].root)}>
+              <Icon name="search" size={13} /> {t("report.drillKp")}
+            </button>
+          </div>
         </div>
       {/if}
       {#if weekCmp}

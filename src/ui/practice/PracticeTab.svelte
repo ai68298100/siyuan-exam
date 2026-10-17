@@ -1915,6 +1915,18 @@ import { ttsSpeak } from "@/core/tts";
     }
 
     let syncDocsBusy = $state(false);
+    function retryForgotRecite() {
+      const forgotIndices = reciteRatings.map((r, i) => (r === 1 ? i : -1)).filter((i) => i >= 0);
+      const forgotQueue = forgotIndices.map((i) => reciteQueue[i]).filter(Boolean);
+      if (!forgotQueue.length) return;
+      reciteQueue = forgotQueue;
+      reciteCursor = 0;
+      reciteRevealed = false;
+      reciteDone = false;
+      reciteHint = 0;
+      reciteRatings = [];
+    }
+
     async function copyTodayReportMarkdown() {
       const todayStr = localDate(Date.now());
       const lines = [
@@ -3869,6 +3881,13 @@ import { ttsSpeak } from "@/core/tts";
       if (!hasNextPeek) return;
       expandedId = shownQuestions[currentPeekIndex + 1].id;
     }
+
+    async function drillSingleQuestion(q: Question) {
+      closePeekDrawer();
+      await safeStart([q], "special", () => {
+        feedback = null; selected = ""; confidenceSel = ""; sessionDone = null; view = "session";
+      });
+    }
     let peekDrawerEl = $state<HTMLDivElement | null>(null);
     let peekReturnFocus: HTMLElement | null = null;
     let peekWasOpen = false;
@@ -4984,7 +5003,7 @@ import { ttsSpeak } from "@/core/tts";
                 {#each ["sure", "fuzzy", "guess"] as c, _i (_i)}
                   <button class="lv-chip" class:acc={confidenceSel === c} aria-pressed={confidenceSel === c} title={`Key ${["sure", "fuzzy", "guess"].indexOf(c) + 1}`} onclick={() => confidenceSel = c as "sure" | "fuzzy" | "guess"}>{t("confidence." + c)}</button>
                 {/each}
-                <span class="lv-chip num" class:lv-chip--red={qTimeoutS > 0 && qElapsedS >= qTimeoutS} title={qTimeoutS > 0 ? t("session.timeoutHint").replace("{n}", String(qTimeoutS)) : ""}>
+                <span class="lv-chip num" class:lv-chip--amb={qTimeoutS > 0 && qElapsedS >= qTimeoutS * 0.8 && qElapsedS < qTimeoutS} class:lv-chip--red={qTimeoutS > 0 && qElapsedS >= qTimeoutS} class:lv-pulse={qTimeoutS > 0 && qElapsedS >= qTimeoutS} title={qTimeoutS > 0 ? t("session.timeoutHint").replace("{n}", String(qTimeoutS)) : ""}>
                   <Icon name="clock" size={12} /> {qElapsedS}s
                 </span>
               </div>
@@ -5098,10 +5117,16 @@ import { ttsSpeak } from "@/core/tts";
         {/if}
       </div>
       {#if reciteDone}
+        {@const forgotCount = reciteRatings.filter((x) => x === 1).length}
         <div class="lv-card lv-guard">
           <div class="lv-guard-title"><Icon name="trophy" size={17} /> {t("recite.done")}</div>
           <p class="num lv-muted">{t("recite.dist")}：{t("rate.1")} {reciteRatings.filter((x) => x === 1).length} · {t("rate.2")} {reciteRatings.filter((x) => x === 2).length} · {t("rate.3")} {reciteRatings.filter((x) => x === 3).length} · {t("rate.4")} {reciteRatings.filter((x) => x === 4).length}</p>
           <p class="lv-muted" style="font-size:var(--lv-font-size-sm)">{t("recite.doneHint")}</p>
+          {#if forgotCount > 0}
+            <button class="lv-btn sm lv-btn--primary" style="width:100%;margin-bottom:8px" onclick={retryForgotRecite}>
+              <Icon name="rotate" size={15} /> {t("recite.retryForgot")}（{forgotCount}）
+            </button>
+          {/if}
           <button class="lv-btn lv-btn--primary" style="width:100%" onclick={exitRecite}>{t("session.back")}</button>
         </div>
       {:else if reciteQueue[reciteCursor]}
@@ -6301,6 +6326,7 @@ import { ttsSpeak } from "@/core/tts";
                   {/if}
                   {/if}
                   <div class="lv-row">
+                    <button class="lv-btn sm lv-btn--primary" onclick={() => void drillSingleQuestion(q)} title={t("browse.drillSingleTip")}><Icon name="play" size={13} /> {t("browse.drillSingle")}</button>
                     <button class="lv-btn sm" onclick={() => openEditForm(q)}>✎ {t("edit.open")}</button>
                     <button class="lv-btn sm" onclick={() => openInSiYuan((q as any).rootId)} disabled={!(q as any).rootId} title={!(q as any).rootId ? t("browse.docUnavailable") : t("browse.openDoc")}><Icon name="pin" size={13} /> {t("browse.openDoc")}</button>
                     <button class="lv-btn sm" onclick={() => void loadBacklinks(q.blockId)} disabled={!app.kernelOnline || !!backlinkBusyFor} aria-busy={backlinkBusyFor === q.blockId} title={!app.kernelOnline ? t("state.offlineHint") : t("browse.backlinks")}><Icon name="link" size={13} /> {backlinkBusyFor === q.blockId ? t("browse.backlinkLoading") : t("browse.backlinks")}</button>

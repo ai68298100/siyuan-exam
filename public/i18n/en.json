@@ -1261,5 +1261,9 @@
     "batch.clearSel": "Clear Selection",
     "batch.toCards": "Batch Flashcards",
     "mock.toggleWrongDetail": "Show Questions Detail",
-    "mock.hideWrongDetail": "Hide Questions Detail"
+    "mock.hideWrongDetail": "Hide Questions Detail",
+    "browse.drillSingle": "Practice Question",
+    "browse.drillSingleTip": "Start a practice session with this question",
+    "recite.retryForgot": "Re-recite Forgotten",
+    "report.drillWeakAction": "⚡ Practice Weak Topic"
 }
