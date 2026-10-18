@@ -56,6 +56,13 @@
       { group: t("palette.tabs"), icon: "home", label: t("tab.practice"), keywords: "practice", run: () => plugin.openPractice?.() },
       { group: t("palette.tabs"), icon: "clock", label: t("tab.mock"), keywords: "mock exam", run: () => plugin.openMock?.() },
     ];    let questions = $state<any[]>([]);
+    const questionMap = $derived.by(() => {
+      const map = new Map<string, any>();
+      for (const q of questions) {
+        if (q && q.id) map.set(q.id, q);
+      }
+      return map;
+    });
     let kpi = $state({ attempts: 0, accuracy: 0, eliminated: 0, streak: 0 });
     let heat = $state<{ date: string; count: number }[]>([]);
     let mastery = $state<ReturnType<typeof masteryByKp>>([]);
@@ -499,7 +506,7 @@
       if (!app || !a.qid || actionBusyId) return;
       actionBusyId = a.id;
       try {
-      let q = questions.find((x) => x.id === a.qid);
+      let q = questionMap.get(a.qid);
       let targetBankId = bankId;
       // 行动记录跨题库保存；当前选中的题库没有该题时，自动定位到包含它的题库。
       if (!q) {
@@ -953,7 +960,7 @@
         {#if expList.length}
           <div class="lv-row" style="margin:6px 0 0;flex-direction:column;align-items:stretch;gap:var(--lv-space-1)">
             {#each expList as x (x.qid + x.lastTs)}
-              {@const stem = questions.find((q) => q.id === x.qid)?.stem}
+              {@const stem = questionMap.get(x.qid)?.stem}
               <div class="lv-error-row" style="white-space:normal" title={stem ?? x.qid}>
                 <span class="lv-inline-icon"><Icon name="eye" size={13} /></span> {stem ? stem.slice(0, 60) : x.qid}
                 <span class="lv-muted num"> · {new Date(x.lastTs).toLocaleString()}</span>
@@ -979,7 +986,7 @@
         {#if caOpen}
           <div class="lv-row" style="margin:6px 0 0;flex-direction:column;align-items:stretch;gap:var(--lv-space-1)">
             {#each caList as c, _ci (_ci)}
-              {@const stem = questions.find((x) => x.id === c.qid)?.stem}
+              {@const stem = questionMap.get(c.qid)?.stem}
               <div class="lv-error-row" style="white-space:normal" title={stem ?? c.qid}>
                 <b class="num">↺</b> {stem ? stem.slice(0, 60) : c.qid}
                 <span class="lv-muted"> · {t("report.changedFirst")}: {c.first} → {c.final}</span>
@@ -1127,7 +1134,7 @@
           {#if cwOpen}
             <div class="lv-row" style="margin:6px 0 0;flex-direction:column;align-items:stretch;gap:var(--lv-space-1)">
               {#each cwList as c, _ci (_ci)}
-                {@const stem = questions.find((x) => x.id === c.qid)?.stem}
+                {@const stem = questionMap.get(c.qid)?.stem}
                 <div class="lv-error-row" style="white-space:normal" title={stem ?? c.qid}>
                   <b class="num">✕</b> {stem ? stem.slice(0, 70) : c.qid}
                   {#if c.myAnswer}<span class="lv-muted"> · {t("session.myAnswer")}: {c.myAnswer}</span>{/if}
@@ -1147,7 +1154,7 @@
           {#if ucOpen}
             <div class="lv-row" style="margin:6px 0 0;flex-direction:column;align-items:stretch;gap:var(--lv-space-1)">
               {#each ucList as u, _ui (_ui)}
-                {@const stem = questions.find((x) => x.id === u.qid)?.stem}
+                {@const stem = questionMap.get(u.qid)?.stem}
                 <div class="lv-row" style="margin:0;white-space:normal" title={stem ?? u.qid}>
                   <span class="lv-chip num">{t("confidence." + u.confidence)}</span>
                   <span style="font-size:var(--lv-font-size-meta)">{stem ? stem.slice(0, 70) : u.qid}</span>

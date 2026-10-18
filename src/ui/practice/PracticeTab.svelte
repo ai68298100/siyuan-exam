@@ -103,6 +103,24 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     let questionsLoaded = $state(false);
     let questionLoadSeq = 0;
 
+    const questionMap = $derived.by(() => {
+      const map = new Map<string, Question & { blockId: string; rootId: string }>();
+      for (const q of questions) {
+        map.set(q.id, q);
+      }
+      return map;
+    });
+
+    const materialByGroup = $derived.by(() => {
+      const map = new Map<string, Question & { blockId: string; rootId: string }>();
+      for (const q of questions) {
+        if (q.type === "material" && q.group) {
+          map.set(q.group, q);
+        }
+      }
+      return map;
+    });
+
     // 背诵态（S4 lite）：盖答案 → 四级自评
     let reciteQueue = $state<Question[]>([]);
     let reciteCursor = $state(0);
@@ -356,7 +374,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       // eslint-disable-next-line svelte/prefer-svelte-reactivity
       const map = new Map<string, { kp: string; correct: number; total: number; wrong: number }>();
       for (const a of session.answered) {
-        const q = questions.find((x) => x.id === a.qid);
+        const q = questionMap.get(a.qid);
         const key = q?.kp ?? "";
         if (!key) continue;
         const e = map.get(key) ?? { kp: key, correct: 0, total: 0, wrong: 0 };
@@ -1923,7 +1941,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       if (wrongBusyId) return;
       wrongBusyId = qid;
       try {
-        const question = questions.find((q) => q.id === qid);
+        const question = questionMap.get(qid);
         const { confirmDialogSync } = await import("../../libs/dialog");
         if (!(await confirmDialogSync({
           title: t("wrongbook.masterOneTitle"),
@@ -1981,7 +1999,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     const materialContext = $derived.by(() => {
       const q = view === "session" ? session?.current : null;
       if (!q?.group) return "";
-      const mat = questions.find((x) => x.type === "material" && x.group === q.group);
+      const mat = materialByGroup.get(q.group);
       return mat?.stem ?? "";
     });
 
@@ -2026,7 +2044,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     /** 共用题干：材料组母卡（背诵视图） */    const reciteMaterial = $derived.by(() => {
       const q = reciteQueue[reciteCursor];
       if (!q?.group) return "";
-      const mat = questions.find((x) => x.type === "material" && x.group === q.group);
+      const mat = materialByGroup.get(q.group);
       return mat?.stem ?? "";
     });
 
@@ -2827,7 +2845,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     }
 
     async function runMisdiagnosis(a: { qid: string; grade: { myAnswer: string | null }; timeMs: number }) {
-      const q = questions.find((x) => x.id === a.qid);
+      const q = questionMap.get(a.qid);
       if (!q || misdiagnosisBusy || !session) return;
       if (!app.kernelOnline) { showMessage(t("state.offlineHint"), 2400, "info"); return; }
       misdiagnosisBusy = a.qid;
@@ -3036,8 +3054,8 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       if (!session || !activeBankId) return;
       const wrongQs = session.answered
         .filter((a) => a.grade.verdict === "wrong")
-        .map((a) => questions.find((q) => q.id === a.qid))
-        .filter((q): q is Question & { blockId?: string } => !!q);
+        .map((a) => questionMap.get(a.qid))
+        .filter((q): q is Question & { blockId: string; rootId: string } => !!q);
       if (!wrongQs.length) { showMessage(t("session.noCardable"), 2800, "info"); return; }
       try {
         const n = await app.convertToCards(activeBankId, bankName, wrongQs);
@@ -3057,7 +3075,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       try {
         const wrongQs = session.answered.filter((a) => a.grade.verdict === "wrong");
         const r = await app.addActions(wrongQs.map((a) => {
-          const q = questions.find((x) => x.id === a.qid);
+          const q = questionMap.get(a.qid);
           return {
             kind: "redo" as const,
             qid: a.qid,
@@ -4127,45 +4145,57 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     );
     const filteredQuestions = $derived.by(() => {
       void dataRev; // 错题/受助/近 N 天过滤依赖应用层流水缓存，随总线事件失效（同 wrongList 注）
-      let list = favOnly ? questions.filter((q) => q.fav) : questions;
-      if (sectionSel) list = list.filter((q) => questionInSection(q, sectionSel!));
-      if (filterType) list = list.filter((q) => q.type === filterType);
-      if (filterStatus) list = list.filter((q) => getQuestionLifecycle(q) === filterStatus);
-      if (filterDispute) list = list.filter((q) => isQuestionDisputed(q));
-      if (filterOrphanKind && orphanDiag) {
-        const targetIds = new Set(orphanDiag.byKind[filterOrphanKind].map((item) => item.qid));
-        list = list.filter((q) => targetIds.has(q.id));
-      }
-      if (filterSource === "@@none") list = list.filter((q) => !(q.source ?? "").trim()); // 43-04：缺来源
-      else if (filterSource) list = list.filter((q) => (q.source ?? "").trim() === filterSource);
+      const base = favOnly ? questions.filter((q) => q.fav) : questions;
+      const targetIds = (filterOrphanKind && orphanDiag)
+        ? new Set(orphanDiag.byKind[filterOrphanKind].map((item) => item.qid))
+        : null;
+
+      let helped: Set<string> | null = null;
+      let recent: Set<string> | null = null;
+      let wb: Map<string, { wrongCount: number }> | null = null;
+
       if (filterWrong || filterHelp || filterDays) {
         const events = app.attempts.all();
         const cutoff = filterDays > 0 ? Date.now() - filterDays * 86_400_000 : 0;
         // eslint-disable-next-line svelte/prefer-svelte-reactivity -- 函数内累加集（非组件状态），与 backlinkCache 惯用法一致
-        const helped = new Set<string>();
+        helped = new Set<string>();
         // eslint-disable-next-line svelte/prefer-svelte-reactivity -- 同上
-        const recent = new Set<string>();
+        recent = new Set<string>();
         for (const e of events) {
           if (e.help) helped.add(e.qid);
           if (!cutoff || e.ts >= cutoff) recent.add(e.qid);
         }
         if (filterWrong) {
-          const wb = app.derived().wrongbook;
-          list = list.filter((q) => (wb.get(q.id)?.wrongCount ?? 0) > 0);
+          wb = app.derived().wrongbook as any;
         }
-        if (filterHelp) list = list.filter((q) => helped.has(q.id));
-        if (filterDays) list = list.filter((q) => recent.has(q.id));
       }
+
       const kw = searchDebounced.trim().toLowerCase();
-      if (kw) {
-        list = list.filter((q) =>
-          q.id.toLowerCase().includes(kw) ||
-          q.stem.toLowerCase().includes(kw) ||
-          q.options.some((o) => o.toLowerCase().includes(kw)) ||
-          (q.analysis ?? "").toLowerCase().includes(kw) ||
-          (q.kp ?? "").toLowerCase().includes(kw)); // 51-02：考点可检索（治理面板点击直达）
-      }
-      return list;
+
+      return base.filter((q) => {
+        if (sectionSel && !questionInSection(q, sectionSel)) return false;
+        if (filterType && q.type !== filterType) return false;
+        if (filterStatus && getQuestionLifecycle(q) !== filterStatus) return false;
+        if (filterDispute && !isQuestionDisputed(q)) return false;
+        if (targetIds && !targetIds.has(q.id)) return false;
+        if (filterSource === "@@none") {
+          if ((q.source ?? "").trim()) return false;
+        } else if (filterSource) {
+          if ((q.source ?? "").trim() !== filterSource) return false;
+        }
+        if (filterWrong && ((wb?.get(q.id)?.wrongCount ?? 0) <= 0)) return false;
+        if (filterHelp && (!helped || !helped.has(q.id))) return false;
+        if (filterDays && (!recent || !recent.has(q.id))) return false;
+        if (kw) {
+          const match = q.id.toLowerCase().includes(kw) ||
+            q.stem.toLowerCase().includes(kw) ||
+            q.options.some((o) => o.toLowerCase().includes(kw)) ||
+            (q.analysis ?? "").toLowerCase().includes(kw) ||
+            (q.kp ?? "").toLowerCase().includes(kw); // 51-02：考点可检索（治理面板点击直达）
+          if (!match) return false;
+        }
+        return true;
+      });
     });
     const shownQuestions = $derived(filteredQuestions.slice(0, browseLimit));
     const hasMore = $derived(filteredQuestions.length > browseLimit);
@@ -4280,7 +4310,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     // ---------- 浏览详情：展开/文档跳转/反链 ----------
     let expandedId = $state("");
     let peekHideAnswer = $state(true);
-    const activePeekQuestion = $derived(questions.find((x) => x.id === expandedId) ?? null);
+    const activePeekQuestion = $derived(expandedId ? questionMap.get(expandedId) ?? null : null);
     const currentPeekIndex = $derived(
       activePeekQuestion ? shownQuestions.findIndex((q) => q.id === activePeekQuestion.id) : -1,
     );
@@ -4442,7 +4472,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         if (html && stemHtmlFor === q.id) stemHtml = html;
       });
       // 共用材料同样走 md2html 缓存管线（长材料/公式的可读性）
-      const mat = q.group ? questions.find((x) => x.type === "material" && x.group === q.group) : undefined;
+      const mat = q.group ? materialByGroup.get(q.group) : undefined;
       if (!mat) { materialHtml = ""; materialHtmlFor = ""; return; }
       materialHtml = ""; materialHtmlFor = mat.id;
       void app.renderStem(mat).then((html) => {
@@ -5249,7 +5279,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
           {#if session.answered.length}
             <div class="lv-row" style="flex-wrap:wrap;gap:var(--lv-space-1);margin:8px 0">
               {#each session.answered as a, ai (ai)}
-                {@const aq = questions.find((x) => x.id === a.qid)}
+                {@const aq = questionMap.get(a.qid)}
                 <span class="lv-chip num" class:lv-chip--grn={a.grade.verdict === "correct"} class:lv-chip--red={a.grade.verdict === "wrong"} title={aq?.stem.slice(0, 60) ?? a.qid}>{ai + 1} {a.grade.verdict === "correct" ? "✓" : a.grade.verdict === "wrong" ? "✕" : "–"} {(a.timeMs / 1000).toFixed(0)}s</span>
               {/each}
             </div>
@@ -5268,7 +5298,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
             {#if reviewOpen}
               <div class="lv-detail" style="text-align:left;max-height:260px;overflow:auto">
                 {#each session.answered.filter((a) => a.grade.verdict !== "correct") as a, _ri (_ri)}
-                  {@const aq = questions.find((x) => x.id === a.qid)}
+                  {@const aq = questionMap.get(a.qid)}
                   <div class="lv-error-row" style="white-space:normal">
                     <b class="num">✕</b> {aq?.stem.slice(0, 80) ?? a.qid}
                     <div class="lv-muted num">{t("browse.answer")}: {aq?.answer ?? "—"}{#if a.grade.myAnswer} · {t("session.myAnswer")}: {a.grade.myAnswer}{/if}{#if aq?.analysis} · {aq.analysis}{/if}</div>
@@ -5297,7 +5327,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
                   <!-- 114-05 lite：受助答对 → 自我解释（用自己的话说明依据；可跳过；与错题复盘同层存储） -->
                   <div class="lv-muted" style="margin:8px 0 2px;font-size:var(--lv-font-size-caption)"><Icon name="bulb" size={12} /> {t("selfexplain.header")}</div>
                   {#each session.answered.filter((a) => a.grade.verdict === "correct" && helpShown.get(a.qid)) as a, _si2 (_si2)}
-                    {@const aq = questions.find((x) => x.id === a.qid)}
+                    {@const aq = questionMap.get(a.qid)}
                     <div class="lv-error-row" style="white-space:normal">
                       <b class="num">✓</b> {aq?.stem.slice(0, 80) ?? a.qid}
                       {#if reflections[a.qid]}
@@ -5353,7 +5383,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
               </div>
               <div class="lv-row" style="gap:6px;flex-wrap:wrap;margin:6px 0 12px">
                 {#each groupBatchModal.items as item, ii (item.qid)}
-                  {@const q = questions.find((x) => x.id === item.qid)}
+                  {@const q = questionMap.get(item.qid)}
                   <span class="lv-chip num" class:lv-chip--grn={item.verdict === "correct"} class:lv-chip--red={item.verdict === "wrong"} title={q?.stem ?? item.qid}>
                     {groupBatchModal.fromIndex + ii}. {item.verdict === "correct" ? "✓" : "✕"} {#if item.myAnswer}({item.myAnswer}){/if}
                   </span>
@@ -5702,7 +5732,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
           </div>
         </div>
       {:else}
-        {@const qOf = (qid: string) => questions.find((x) => x.id === qid)}
+        {@const qOf = (qid: string) => questionMap.get(qid)}
         <div class="lv-kpis">
           <div class="lv-card lv-kpi"><div class="l"><span>{t("wrongbook.metric.active")}</span><Icon name="xcircle" size={15} /></div><div class="v num">{wrongList.length}</div><span class="lv-muted" style="font-size:var(--lv-font-size-sm)">{t("wrongbook.metric.active.note")}</span></div>
           <div class="lv-card lv-kpi"><div class="l"><span>{t("wrongbook.metric.eliminated")}</span><Icon name="check" size={15} /></div><div class="v num">{eliminatedCount}</div><span class="lv-muted" style="font-size:var(--lv-font-size-sm)">{t("wrongbook.metric.eliminated.note")}</span></div>
@@ -6653,7 +6683,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
               {#if !app.kernelOnline}<span class="lv-chip lv-chip--amb">{t("state.offlineHint")}</span>{/if}
             </div>
             {#each batchPreview.changes.slice(0, 20) as c, _i (_i)}
-              {@const stem = questions.find((q) => q.id === c.qid)?.stem ?? c.qid}
+              {@const stem = questionMap.get(c.qid)?.stem ?? c.qid}
               <div class="lv-error-row num">{describeChange(c, stem)}</div>
             {/each}
             {#if batchPreview.changes.length > 20}<div class="lv-muted num">… +{batchPreview.changes.length - 20}</div>{/if}

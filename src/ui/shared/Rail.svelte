@@ -134,18 +134,30 @@
       const top = Math.max(panel.top + 8, Math.min(wantedTop, panel.bottom - height - 8));
       launcherPosition = { left: left - aside.left, top: top - aside.top, width, maxHeight, ready: true };
     };
+    let rafId: number | null = null;
+    const scheduleUpdate = () => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        update();
+      });
+    };
     update();
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => scheduleUpdate());
     observer?.observe(root);
     observer?.observe(launcherBtn);
     observer?.observe(launcherMenu);
     // Capture scrolls from the rail itself as well as host split-pane moves.
-    document.addEventListener("scroll", update, true);
-    window.addEventListener("resize", update);
+    document.addEventListener("scroll", scheduleUpdate, true);
+    window.addEventListener("resize", scheduleUpdate);
     return () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
       observer?.disconnect();
-      document.removeEventListener("scroll", update, true);
-      window.removeEventListener("resize", update);
+      document.removeEventListener("scroll", scheduleUpdate, true);
+      window.removeEventListener("resize", scheduleUpdate);
     };
   });
 

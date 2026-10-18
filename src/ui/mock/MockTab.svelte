@@ -309,13 +309,32 @@
       };
     });
 
+    const questionMap = $derived.by(() => {
+      const map = new Map<string, Question>();
+      for (const q of questions) map.set(q.id, q);
+      return map;
+    });
+
     let sheetFilter = $state<"all" | "unanswered" | "flagged">("all");
-    const unansweredIndices = $derived(
-      session ? session.state.qids.map((qid, idx) => ({ qid, idx })).filter(({ qid }) => !answeredMap[qid]?.trim()).map((x) => x.idx) : [],
-    );
-    const flaggedIndices = $derived(
-      session ? session.state.qids.map((qid, idx) => ({ qid, idx })).filter(({ qid }) => session.flags.has(qid)).map((x) => x.idx) : [],
-    );
+    const unansweredIndices = $derived.by(() => {
+      if (!session) return [];
+      const res: number[] = [];
+      const qids = session.state.qids;
+      for (let i = 0; i < qids.length; i++) {
+        const a = answeredMap[qids[i]];
+        if (!a || !a.trim()) res.push(i);
+      }
+      return res;
+    });
+    const flaggedIndices = $derived.by(() => {
+      if (!session) return [];
+      const res: number[] = [];
+      const qids = session.state.qids;
+      for (let i = 0; i < qids.length; i++) {
+        if (session.flags.has(qids[i])) res.push(i);
+      }
+      return res;
+    });
 
     function gotoNextUnanswered() {
       if (!session || !unansweredIndices.length) return;
@@ -325,7 +344,7 @@
 
     const totals = $derived(blueprintTotals(bp));
     const current = $derived(session ? session.state.qids[cursor] : null);
-    const currentQ = $derived(current ? questions.find((q) => q.id === current) ?? null : null);
+    const currentQ = $derived(current ? questionMap.get(current) ?? null : null);
     const currentSection = $derived(current && session ? session.sectionOfQ(current) : "");
     const remainText = $derived(() => {
       if (!session) return "--:--";
@@ -730,7 +749,7 @@
     const wrongList = $derived(score && session
       ? [...session.answers.values()].filter((a) => a.verdict === "wrong").map((a) => ({
           qid: a.qid,
-          stem: (questions.find((q) => q.id === a.qid)?.stem ?? a.qid).slice(0, 40),
+          stem: (questionMap.get(a.qid)?.stem ?? a.qid).slice(0, 40),
         }))
       : []);
     let mockActionNote = $state("");
@@ -1539,7 +1558,7 @@
         {:else}
           <div class="lv-detail" style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
             {#each wrongList as w, wi (w.qid)}
-              {@const q = questions.find((x) => x.id === w.qid)}
+              {@const q = questionMap.get(w.qid)}
               <div class="lv-error-row" style="white-space:normal;padding:8px 12px;border-radius:var(--lv-r-1);background:var(--lv-surface-2)">
                 <div style="font-weight:600"><span class="num">#{wi + 1}</span> {q?.stem ?? w.stem}</div>
                 <div class="lv-row" style="margin:4px 0;gap:var(--lv-space-2)">
