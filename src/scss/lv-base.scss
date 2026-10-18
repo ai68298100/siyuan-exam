@@ -926,27 +926,148 @@ input[type="range"] {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-/* —— 高对比/强制色模式（对齐原型 forced-colors 段） —— */
+/* —— 高对比/强制色模式（对齐原型 forced-colors 与舰队 a11y 规范） —— */
 @media (forced-colors: active) {
+  :root,
+  .lv-exam-tab {
+    --lv-accent: Highlight;
+    --lv-accent-hi: Highlight;
+    --lv-accent-soft: transparent;
+    --lv-accent-grad: Highlight;
+    --lv-accent-deep: Highlight;
+    --lv-on-accent: HighlightText;
+    --lv-btn-primary-bg: Highlight;
+    --lv-canvas: Canvas;
+    --lv-surface: Canvas;
+    --lv-surface-2: Canvas;
+    --lv-text: CanvasText;
+    --lv-text-2: CanvasText;
+    --lv-text-3: CanvasText;
+    --lv-border: CanvasText;
+    --lv-ctl-border: CanvasText;
+    --lv-border-subtle: CanvasText;
+    --lv-border-hover: Highlight;
+    --lv-sh-1: none;
+    --lv-sh-2: none;
+    --lv-sh-card: none;
+    --lv-sh-pop: none;
+    --lv-inset-highlight: none;
+    --lv-inset-subtle: none;
+  }
+
   .lv-card,
   .lv-chip,
   .lv-opt,
   .lv-btn,
   .lv-progress,
   .lv-seg,
-  .lv-kbd {
+  .lv-kbd,
+  .lv-palette,
+  .lv-modal,
+  .lv-drawer,
+  .lv-strip,
+  .lv-pill,
+  .b3-button,
+  .b3-text-field,
+  .b3-select {
     border: 1px solid CanvasText;
   }
+
+  .lv-palette,
+  .lv-modal .lv-sheet,
+  .lv-drawer {
+    border: 2px solid CanvasText;
+    background: Canvas;
+  }
+
   .lv-progress i,
-  .lv-btn--primary {
+  .lv-btn--primary,
+  .b3-button--primary {
     background: Highlight;
-    color: ButtonText;
+    color: HighlightText;
+    border: 1px solid Highlight;
+  }
+
+  .lv-opt--sel,
+  .lv-opt[aria-selected="true"] {
+    outline: 2px solid Highlight;
+    outline-offset: 1px;
+    border-color: Highlight;
+  }
+
+  .lv-seg button.on,
+  .lv-seg button.active,
+  .lv-tab-btn.active,
+  .lv-tab-btn[aria-selected="true"] {
+    outline: 2px solid Highlight;
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  :where(button, input, select, textarea, [tabindex="0"]):focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+
+  .lv-avatar,
+  .lv-icon,
+  .lv-badge,
+  .lv-score-badge,
+  .lv-status-dot,
+  .lv-dot,
+  .lv-progress i,
+  .lv-kpi-icon,
+  .lv-chart-dot,
+  .lv-tag--correct,
+  .lv-tag--wrong,
+  .lv-tag--amber,
+  .lv-opt-idx,
+  .lv-diff-tag {
     forced-color-adjust: none;
   }
+}
+
+/* —— 用户高对比度偏好（prefers-contrast: more）：强化边框、选项区隔与焦点环 —— */
+@media (prefers-contrast: more) {
+  .lv-exam-tab {
+    --lv-border: color-mix(in srgb, var(--lv-text) 45%, transparent);
+    --lv-ctl-border: var(--lv-text);
+    --lv-border-subtle: color-mix(in srgb, var(--lv-text) 35%, transparent);
+    --lv-text-2: var(--lv-text);
+    --lv-text-3: var(--lv-text);
+  }
+
+  .lv-card,
+  .lv-chip,
+  .lv-opt,
+  .lv-btn,
+  .lv-seg,
+  .lv-kbd,
+  .lv-palette,
+  .lv-strip,
+  .b3-button,
+  .b3-select,
+  .b3-text-field {
+    border: 1px solid var(--lv-text);
+  }
+
   .lv-opt--sel,
+  .lv-opt[aria-selected="true"] {
+    outline: 2px solid var(--b3-theme-primary);
+    outline-offset: 1px;
+    font-weight: 600;
+  }
+
   .lv-seg button.on,
-  .lv-seg button.active {
-    outline: 1px solid Highlight;
+  .lv-seg button.active,
+  .lv-tab-btn.active {
+    outline: 2px solid var(--b3-theme-primary);
+    font-weight: 700;
+  }
+
+  :where(button, input, select, textarea, [tabindex="0"]):focus-visible {
+    outline: 3px solid var(--b3-theme-primary);
+    outline-offset: 2px;
   }
 }
 
