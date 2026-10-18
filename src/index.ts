@@ -15,6 +15,7 @@ import { createExamTabDescriptor, findExamTabHeader, findOpenedExamTab, focusExa
 import { combineBlockSources } from "./core/blockSource";
 import { registerExamDailySummary } from "./ecosystem/speedSwitch";
 import { TabAppRegistry } from "./core/tabAppRegistry";
+import { mountLvExamBridge } from "./core/examBridge";
 
 const TAB_PRACTICE = "exam-practice";
 const TAB_MOCK = "exam-mock";
@@ -49,6 +50,10 @@ export default class LvExamPlugin extends Plugin {
   private boundBlockIcon = this.onBlockIconClick.bind(this);
   /** 47-05 lite：设置默认值快照（注册完成时；恢复默认用） */
   private settingDefaults: Map<string, unknown> = new Map();
+  /** Epoch 6：服务桥注销句柄 */
+  private disposeLvExamBridge?: () => void;
+  /** Epoch 6：闪卡事件监听器 */
+  private cardsReviewedHandler?: () => void;
 
   async onload() {
     this.isMobile = getFrontend() === "mobile" || getFrontend() === "browser-mobile";
@@ -265,8 +270,34 @@ export default class LvExamPlugin extends Plugin {
         findPlugin: (name) => (this.app as any)?.plugins?.find?.((p: { name: string }) => p.name === name),
       });
     }
-    // 47-04/48-06 lite：window.siyuanExam 公开 API（稳定命令入口 + 按需脱敏统计快照）
-    this.exposePublicApi();
+    // 47-04/48-06/Epoch 6：挂载考试服务桥公开 API（多别名 + 稳定命令入口 + 按需脱敏统计快照 + 概览）
+    this.disposeLvExamBridge = mountLvExamBridge({
+      version: manifest.version,
+      openPractice: () => this.openPractice(),
+      openWrongbook: () => this.openWrongbook(),
+      openMock: () => this.openMock(),
+      openReport: () => this.openReport(),
+      getStats: () => {
+        if (!this.examApp) return null;
+        return (this as any).lastPublicStats ?? null;
+      },
+      statsRead: async (): Promise<unknown> => {
+        if (!this.examApp) return null;
+        const m = await import("@/core/publicStats");
+        const d = this.examApp.derived();
+        return m.buildPublicStats(d, this.examApp.attempts.all(), streak(d));
+      },
+      onBridgeDisposed: () => {
+        this.disposeLvExamBridge = undefined;
+      },
+    });
+
+    // Epoch 6：监听闪卡学习完成事件（刷新跨插件学习统计）
+    this.cardsReviewedHandler = () => {
+      this.dispatchPublicStats();
+    };
+    window.addEventListener("lv-cards:reviewed", this.cardsReviewedHandler);
+
     // 版本更新引导 lite（TODO 23）：版本变化时提示查看 CHANGELOG
     const K = "lv-exam-last-version";
     try {
@@ -280,32 +311,6 @@ export default class LvExamPlugin extends Plugin {
       // 本地记忆不可用时仍完成插件就绪与统计广播。
     }
     this.dispatchPublicStats();
-  }
-
-  /** 47-04/48-06 lite：window.siyuanExam——open/practice/wrongbook 稳定入口 + stats.read 按需快照。
-   *  脱敏红线与 lv-exam:stats 相同（无题干/答案/key/路径）；stats 按需重算，迟到消费者不再依赖启动广播 */
-  private exposePublicApi() {
-    (window as any).siyuanExam = {
-      version: manifest.version,
-      open: () => this.openPractice(),
-      practice: () => this.openPractice(),
-      wrongbook: () => this.openWrongbook(),
-      mock: () => this.openMock(),
-      report: () => this.openReport(),
-      stats: () => {
-        if (!this.examApp) return null;
-        // 动态加载 publicStats（与广播同一脱敏构建器，单一定义源）
-        // 同步约束：构建器为纯函数，走 pending import 后回调返回不现实 → 缓存最近一次广播快照
-        return (this as any).lastPublicStats ?? null;
-      },
-      /** stats.read 异步形态（推荐）：Promise 脱敏快照 */
-      statsRead: async (): Promise<unknown> => {
-        if (!this.examApp) return null;
-        const m = await import("@/core/publicStats");
-        const d = this.examApp.derived();
-        return m.buildPublicStats(d, this.examApp.attempts.all(), streak(d));
-      },
-    };
   }
 
   private speedSwitchHandle: { dispose: () => void } | null = null;
@@ -339,7 +344,17 @@ export default class LvExamPlugin extends Plugin {
     // 48-05：雷切组件注销（注册/注销配对；重试定时器一并清理）
     this.speedSwitchHandle?.dispose();
     this.speedSwitchHandle = null;
-    delete (window as any).siyuanExam; // 47-04/48-06：公开 API 随插件卸载（无孤儿全局）
+    if (this.cardsReviewedHandler) {
+      window.removeEventListener("lv-cards:reviewed", this.cardsReviewedHandler);
+      this.cardsReviewedHandler = undefined;
+    }
+    // 47-04/48-06/Epoch 6：公开 API 随插件卸载（多别名安全移除，无孤儿全局）
+    if (this.disposeLvExamBridge) {
+      this.disposeLvExamBridge();
+      this.disposeLvExamBridge = undefined;
+    } else {
+      delete (window as any).siyuanExam;
+    }
     // 37-02 卸载顺序：先最终落盘（此时 dirty 仍在），再 dispose 清定时器——
     // 反过来 dispose 先清 dirty 会让随后的 flush 变成空操作，未落盘事件全部丢失
     try {

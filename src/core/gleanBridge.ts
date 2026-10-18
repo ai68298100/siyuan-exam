@@ -24,9 +24,15 @@ export interface GleanBridgeV1 {
   setClipStatus?: (id: string, status: "inbox" | "later" | "reading" | "done" | "archived") => Promise<void>;
 }
 
-/** 探测拾遗桥（apiVersion 必须为 1；不满足 → null，入口隐藏） */
+/** 探测拾遗桥（多别名支持 + apiVersion 必须为 1；不满足 → null，入口隐藏） */
 export function probeGlean(w: unknown): GleanBridgeV1 | null {
-  const g = (w as { siyuanGlean?: GleanBridgeV1 })?.siyuanGlean;
+  const host = w as {
+    siyuanGlean?: GleanBridgeV1;
+    xiaolvGlean?: GleanBridgeV1;
+    lvGlean?: GleanBridgeV1;
+    LvGlean?: GleanBridgeV1;
+  } | undefined;
+  const g = host?.siyuanGlean || host?.xiaolvGlean || host?.lvGlean || host?.LvGlean;
   if (!g || g.apiVersion !== 1) return null;
   if (typeof g.listClips !== "function") return null;
   return g;

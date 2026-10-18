@@ -37,18 +37,26 @@
 - 时机：插件加载完成（`onLayoutReady` 末尾）与数据变更后广播；**启动广播对迟到监听者不可靠**——
   请改用下方 `window.siyuanExam.statsRead()`。
 
-### 3. `window.siyuanExam` 公开 API（47-04/48-06 lite，随插件卸载自动移除）
+### 3. `window.siyuanExam` 公开 API（47-04/48-06/Epoch 6，随插件卸载自动移除）
+
+- **协议版本**：`protocol: 1`
+- **生态别名支持**：`window.siyuanExam`（主别名）、`window.xiaolvExam`、`window.lvExam`、`window.LvExam`。
+- **挂载与注销安全**：采用 First-Instance-Wins 首实例独占保护，且在注销时进行身份核验（`if (w[alias] === bridge) delete w[alias]`），防止多实例冲突或旧实例卸载时误删活跃桥。
 
 | 成员 | 形态 | 说明 |
 | --- | --- | --- |
 | `version` | `string` | 插件版本（manifest） |
+| `protocol` | `number` | 桥协议版本号（当前固定为 1） |
+| `capabilities` | `readonly string[]` | 能力清单（`open`, `practice`, `wrongbook`, `mock`, `report`, `stats`, `statsRead`, `whenReady`, `getOverview`） |
+| `whenReady()` | `() => Promise<boolean>` | 就绪探测（恒为 `resolve(true)`） |
 | `open()` / `practice()` | `() => void` | 打开练习台（稳定入口；等价命令 `openPractice`） |
 | `wrongbook()` | `() => void` | 打开练习台（错题本入口所在） |
 | `mock()` / `report()` | `() => void` | 打开模考场 / 报告中心 |
 | `stats()` | `() => snapshot \| null` | **同步**返回最近一次广播的脱敏快照（可能滞后；未广播过返回 null） |
 | `statsRead()` | `() => Promise<snapshot>` | **异步按需**重算脱敏快照（推荐；迟到消费者用这个） |
+| `getOverview()` | `() => overview` | **同步**返回包含协议版本、版本号、能力列表与当前统计的综合概览（脱敏，无题干泄漏） |
 
-- 兄弟插件调用示例：`window.siyuanExam?.statsRead()?.then(s => render(s))`。
+- 兄弟插件调用示例：`window.siyuanExam?.statsRead()?.then(s => render(s))` 或 `window.lvExam?.getOverview()`。
 - 雷切条目级命令（widget protocol `command` 字段）可用：`"siyuan-exam::openPractice"` 等命令 langKey。
 
 ### 4. 小驴雷切 · 组件面板组件（48-05，协议 v2）

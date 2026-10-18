@@ -79,9 +79,14 @@ export type CheckinSyncStatus =
   | "duplicate" // 幂等命中（当日已同步过）
   | "pending"; // 写入失败 → 保留原引用待重试
 
-/** 探测并返回可用 API（协议不符 → null） */
+/** 探测并返回可用 API（多别名支持 + 协议不符 → null） */
 export function probeCheckinApi(w: unknown): CheckinApiV5 | null {
-  const api = (w as { siyuanCheckin?: CheckinApiV5 })?.siyuanCheckin;
+  const host = w as {
+    siyuanCheckin?: CheckinApiV5;
+    xiaolvCheckin?: CheckinApiV5;
+    lvCheckin?: CheckinApiV5;
+  } | undefined;
+  const api = host?.siyuanCheckin || host?.xiaolvCheckin || host?.lvCheckin;
   if (!api || api.protocol !== "siyuan-checkin") return null;
   return api;
 }
