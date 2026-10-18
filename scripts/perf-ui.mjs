@@ -5,9 +5,8 @@ import { createServer } from "node:http";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { resolve, sep, extname } from "node:path";
 import { gzipSync } from "node:zlib";
-import { chromium } from "playwright-core";
+import { launchHarnessBrowser } from "./visual-harness/browser.mjs";
 
-const executablePath = process.env.PLAYWRIGHT_EXECUTABLE_PATH ?? "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const runs = Number(process.env.PERF_RUNS ?? 5);
 if (!Number.isInteger(runs) || runs < 1 || runs > 50) throw new Error("PERF_RUNS 必须是 1 到 50 之间的整数");
 const root = resolve(import.meta.dirname, "../output/harness");
@@ -37,7 +36,7 @@ await new Promise((resolveListen) => server.listen(0, "127.0.0.1", resolveListen
 const address = server.address();
 const baseUrl = process.env.PERF_HARNESS_URL ?? `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}/`;
 const url = process.env.PERF_LAZY_TABS === "1" ? `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}lazy=1` : baseUrl;
-const browser = await chromium.launch({ headless: true, executablePath });
+const browser = await launchHarnessBrowser({ headless: true });
 const samples = [];
 try {
   for (let i = 0; i < runs; i += 1) {

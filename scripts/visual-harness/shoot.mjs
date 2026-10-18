@@ -1,19 +1,14 @@
-// 可视化测试台截图脚本：本地静态服务 output/harness + 本机 Edge 截图
+// 可视化测试台截图脚本：本地静态服务 output/harness + 本机 Chrome 优先截图
 // 产物：output/playwright/real-<屏>-<变体>.png（改前基准 / 改后对比共用）
 // 用法：node scripts/visual-harness/shoot.mjs [前缀=real]
 import { createServer } from "node:http";
 import { readFileSync, existsSync, mkdirSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
-import { chromium } from "playwright-core";
+import { launchHarnessBrowser } from "./browser.mjs";
 
 const ROOT = resolve(import.meta.dirname, "../../output/harness");
 const OUT = resolve(import.meta.dirname, "../../output/playwright");
 const PREFIX = process.argv[2] ?? "real";
-const EDGE = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
-if (!existsSync(EDGE)) {
-  console.error(`✗ 未找到 Edge：${EDGE}`);
-  process.exit(1);
-}
 if (!existsSync(join(ROOT, "index.html"))) {
   console.error("✗ 缺少 output/harness/index.html——先跑：npx vite build --config scripts/visual-harness/vite.config.ts");
   process.exit(1);
@@ -34,7 +29,7 @@ const server = createServer((req, res) => {
 });
 await new Promise((r) => server.listen(4199, r));
 
-const browser = await chromium.launch({ executablePath: EDGE });
+const browser = await launchHarnessBrowser();
 const shots = [
   ["practice-entry", "practice", false, { width: 1440, height: 900 }],
   ["practice-dark", "practice", true, { width: 1440, height: 900 }],

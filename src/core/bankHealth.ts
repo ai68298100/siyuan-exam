@@ -252,3 +252,161 @@ export function unreviewedStats(qs: readonly Question[]): { count: number; ratio
   const pending = ai.filter((q) => (q.review ?? "pending") === "pending").length;
   return { count: pending, ratio: Math.round((pending / ai.length) * 100) };
 }
+
+// ---------- 43-04 孤儿题目与引用完整性诊断队列 ----------
+
+export type OrphanKind =
+  | "orphan_group_sub" // 孤儿子题：声明了 group 但题库内无同 group 的 material 母块
+  | "orphan_group_material" // 空材料母块：q.type="material" 但题库内无子题引用该 group
+  | "broken_material_ref" // 断链资料：关联了资料 ID 但在资料登记册中不存在
+  | "defect_no_answer" // 严重缺陷：非材料题答案为空
+  | "defect_no_options"; // 严重缺陷：选择题有效选项少于2项
+
+export interface OrphanQueueItem {
+  kind: OrphanKind;
+  qid: string;
+  stem: string;
+  detail: string;
+}
+
+export interface OrphanDiagnosis {
+  total: number;
+  byKind: Record<OrphanKind, OrphanQueueItem[]>;
+  items: OrphanQueueItem[];
+}
+
+export const ORPHAN_KIND_LABELS: Record<OrphanKind, string> = {
+  orphan_group_sub: "无母块子题",
+  orphan_group_material: "空材料母块",
+  broken_material_ref: "资料断链题",
+  defect_no_answer: "缺答案题",
+  defect_no_options: "缺选项题",
+};
+
+/** 43-04 孤儿题目与严重缺陷队列诊断纯函数 */
+export function detectOrphans(
+  questions: readonly Question[],
+  context?: {
+    knownMaterialIds?: ReadonlySet<string>;
+    questionMaterialLinks?: ReadonlyMap<string, string>; // qid -> materialId
+  },
+): OrphanDiagnosis {
+  const byKind: Record<OrphanKind, OrphanQueueItem[]> = {
+    orphan_group_sub: [],
+    orphan_group_material: [],
+    broken_material_ref: [],
+    defect_no_answer: [],
+    defect_no_options: [],
+  };
+
+  // 1. 材料组关联分析
+  const materialGroups = new Set<string>();
+  const subGroupCounts = new Map<string, number>();
+
+  for (const q of questions) {
+    if (q.type === "material" && q.group) {
+      materialGroups.add(q.group);
+    } else if (q.group) {
+      subGroupCounts.set(q.group, (subGroupCounts.get(q.group) ?? 0) + 1);
+    }
+  }
+
+  // 2. 逐题排查
+  for (const q of questions) {
+    // 孤儿子题：标了 group 但题库中无对应 material 母块
+    if (q.type !== "material" && q.group && !materialGroups.has(q.group)) {
+      const item: OrphanQueueItem = {
+        kind: "orphan_group_sub",
+        qid: q.id,
+        stem: q.stem.slice(0, 60),
+        detail: `材料组【${q.group}】缺失母块材料`,
+      };
+      byKind.orphan_group_sub.push(item);
+    }
+
+    // 空母块：材料母块无任何子题引用
+    if (q.type === "material" && q.group && !subGroupCounts.has(q.group)) {
+      const item: OrphanQueueItem = {
+        kind: "orphan_group_material",
+        qid: q.id,
+        stem: q.stem.slice(0, 60),
+        detail: `材料母块【${q.group}】无任何子题关联`,
+      };
+      byKind.orphan_group_material.push(item);
+    }
+
+    // 断链资料：关联了资料但资料 ID 不在 knownMaterialIds 中
+    if (context?.questionMaterialLinks && context?.knownMaterialIds) {
+      const matId = context.questionMaterialLinks.get(q.id);
+      if (matId && !context.knownMaterialIds.has(matId)) {
+        const item: OrphanQueueItem = {
+          kind: "broken_material_ref",
+          qid: q.id,
+          stem: q.stem.slice(0, 60),
+          detail: `关联的资料【${matId}】已从登记册删除或缺失`,
+        };
+        byKind.broken_material_ref.push(item);
+      }
+    }
+
+    // 严重内容缺陷：非材料题缺答案
+    if (q.type !== "material" && !q.answer.trim()) {
+      const item: OrphanQueueItem = {
+        kind: "defect_no_answer",
+        qid: q.id,
+        stem: q.stem.slice(0, 60),
+        detail: "未设置有效答案",
+      };
+      byKind.defect_no_answer.push(item);
+    }
+
+    // 严重内容缺陷：选择题少于 2 项选项
+    if ((q.type === "single" || q.type === "multiple") && q.options.filter((o) => o.trim()).length < 2) {
+      const item: OrphanQueueItem = {
+        kind: "defect_no_options",
+        qid: q.id,
+        stem: q.stem.slice(0, 60),
+        detail: `选项仅 ${q.options.filter((o) => o.trim()).length} 项，不足 2 项`,
+      };
+      byKind.defect_no_options.push(item);
+    }
+  }
+
+  const items = Object.values(byKind).flat();
+  return {
+    total: items.length,
+    byKind,
+    items,
+  };
+}
+
+/** 43-04 题库健康报告与孤儿队列导出为结构化 CSV */
+export function exportHealthReportCsv(
+  report: BankHealthReport,
+  orphans?: OrphanDiagnosis,
+): string {
+  const rows: string[] = ["类别,标识或字段,数量,明细与题干摘要"];
+
+  // 1. 重复簇
+  for (const cl of report.clusters) {
+    const kind = cl.similarity === 1 ? "精确重复" : "疑似重复";
+    const escStem = `"${cl.sampleStem.replace(/"/g, '""')}"`;
+    rows.push(`${kind},${cl.ids.slice(0, 5).join(";")},${cl.ids.length},${escStem}`);
+  }
+
+  // 2. 字段缺失
+  for (const m of report.missing) {
+    rows.push(`字段缺失,${m.field},${m.count},"${m.qids.slice(0, 10).join(";")}"`);
+  }
+
+  // 3. 孤儿与缺陷队列
+  if (orphans?.items.length) {
+    for (const item of orphans.items) {
+      const label = ORPHAN_KIND_LABELS[item.kind] ?? item.kind;
+      const escDetail = `"${item.detail.replace(/"/g, '""')} - ${item.stem.replace(/"/g, '""')}"`;
+      rows.push(`孤儿与缺陷,${label}:${item.qid},1,${escDetail}`);
+    }
+  }
+
+  return "\uFEFF" + rows.join("\r\n");
+}

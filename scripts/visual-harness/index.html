@@ -66,7 +66,8 @@
       .b3-switch { width: 34px; height: 19px; accent-color: var(--b3-theme-primary); }
       .b3-slider { accent-color: var(--b3-theme-primary); width: 200px; }
       .fn__size200 { width: 200px; }
-      * { box-sizing: border-box; }
+      /* Production plugin CSS owns its box model, as in the real host. */
+      #bar, .setting-preview, .setting-preview * { box-sizing: border-box; }
       body { margin: 0; background: var(--b3-theme-background); color: var(--b3-theme-on-background); font: 14px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
       #bar { display: flex; gap: 8px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--b3-border-color); background: var(--b3-theme-surface); font-size: 12px; }
       #bar button { cursor: pointer; min-height: 32px; padding: 4px 12px; border-radius: 8px; border: 1px solid var(--b3-border-color); background: var(--b3-theme-surface); color: inherit; }

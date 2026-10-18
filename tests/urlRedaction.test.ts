@@ -27,5 +27,11 @@ describe("URL display redaction", () => {
     expect(redactUrlForDisplay("https://[invalid?token=secret")).toBe("[blocked URL]");
     expect(redactUrlForDisplay("   ")).toBe("[blocked URL]");
   });
+
+  it("自动清洗 URL 中的不可见控制字符", () => {
+    expect(redactUrlForDisplay("https://example.test\r\n/path\x00?token=secret")).toBe(
+      "https://example.test/path?[redacted]",
+    );
+  });
 });
 

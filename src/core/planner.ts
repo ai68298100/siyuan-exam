@@ -113,6 +113,20 @@ export interface PlanResult {
 }
 
 /**
+ * 从今日计划中剔除当天已经提交过的题目。
+ *
+ * 计划本身描述“今天应该练哪些题”，而作答流水是唯一事实来源；把两者
+ * 在入口层合并后，用户重开插件或完成一轮练习时不会再次看到已经完成的
+ * 题目。该函数保持顺序和计划元数据不变，便于离线测试及后续导出审计。
+ */
+export function remainingPlan(plan: PlanResult, completedQids: ReadonlySet<string>): PlanResult {
+  if (!completedQids.size || !plan.queue.length) return plan;
+  const queue = plan.queue.filter((q) => !completedQids.has(q.id));
+  if (queue.length === plan.queue.length) return plan;
+  return { ...plan, queue };
+}
+
+/**
  * 每日任务聚合规则（PRD §6.10 修订版 + 练题狗加权回流）：
  * - 冲刺姿态（距考 ≤ sprintDays）：cram 队列（错≥2，按 错次×错因权重 排序）优先占满配额，不足补每日一练（到期→高频错→随机）
  * - 常规姿态：到期优先 → 在册错题（按 错次×错因权重 加权排序，知识不会最优先）→ 随机补足

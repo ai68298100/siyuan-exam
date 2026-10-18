@@ -3,6 +3,8 @@
 // schemaVersion: 1 —— 所有持久化结构携带版本，迁移器按版本链升级
 // ============================================================
 
+import type { QuestionDispute } from "./dispute";
+
 export const SCHEMA_VERSION = 1;
 
 export type QuestionType =
@@ -12,6 +14,16 @@ export type QuestionType =
   | "fill" // 填空
   | "short" // 简答（展示/背诵，不做机器判分）
   | "material"; // 共用题干材料（题组母块，不参与判分）
+
+export type QuestionLifecycleStatus = "draft" | "review" | "published" | "deprecated";
+
+/** 43-01 / 55-07 不可变题版快照：记录作答发生瞬间的题面内容指纹与标准答案 */
+export interface QuestionVersionSnapshot {
+  hash: string;
+  answer: string;
+  revTs?: number;
+  specKind?: string;
+}
 
 /** 题目（题源层的内存表示；持久化为思源块 + exam-* 属性） */
 export interface Question {
@@ -30,6 +42,10 @@ export interface Question {
   origin: "imported" | "ai" | "manual";
   batch?: string; // 导入批次
   review?: "pending" | "verified" | "edited" | "rejected";
+  /** 题目作者生命周期状态 (43-01): draft | review | published | deprecated，缺省为 published */
+  status?: QuestionLifecycleStatus;
+  /** 57-04 争议题状态与处置单记录（未解决争议默认排除在组卷/刷题池外） */
+  dispute?: QuestionDispute;
   alt?: string[]; // fill/short 可接受答案别名
   /** 结构化作答规则（54-01 v1 信封；kind="numeric"=数值容差/单位判分（54-02），kind="multiBlank"=多空逐空判分（54-03））。
    *  无 spec = 旧字符串口径。规则属于题面：修订 spec 视为改题（fingerprint 接线见 55-07 扩展，本批如实标注） */
@@ -67,6 +83,10 @@ export interface AttemptEvent {
   device: string; // 设备 ID（分片合并键）
   seq: number; // 设备内单调序号（乱序回放排序键）
   changes?: number; // 改答次数
+  /** 43-01 / 55-07 题版不可变快照（作答瞬间题面指纹与标准答案绑定；历史作答不被未来修订静默覆盖） */
+  qVersion?: QuestionVersionSnapshot;
+  /** 44-04 延迟回炉标记：本次作答为会话内错题重排后的延迟无提示回忆，区分于首次初答 */
+  delayedReview?: boolean;
   /** 改答轨迹（63-03）：首答与每次修改（终答=myAnswer）。可选 additive 字段；edits 上限截断如实标注。
    *  边界：不以改答次数判定能力或粗心；输入框取消（值回到已记录值）不产生轨迹事件 */
   firstAnswer?: string;
@@ -117,6 +137,7 @@ export interface SessionState {
     verdict: "correct" | "wrong" | "not_attempted";
     myAnswer: string | null;
     timeMs: number;
+    delayedReview?: boolean;
   }[];
   /** 已重排题（答错排队尾再来一次，每题至多一次；恢复后不重复重排） */
   requeued?: string[];

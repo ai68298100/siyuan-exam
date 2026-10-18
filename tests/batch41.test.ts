@@ -34,6 +34,16 @@ describe("雷切组件面板接入（48-05，四一批）", () => {
     expect(items[2].value).toBe("1"); // q2 在册
   });
 
+  it("buildDailyItems：提供每日目标时补充目标进度，超额作答保留真实计数", () => {
+    const app = mkApp();
+    app.recordAttempt({ qid: "q1", kind: "practice", mode: "single", verdict: "correct", myAnswer: "A", sessionId: "s1", queue: "normal" });
+    app.recordAttempt({ qid: "q2", kind: "practice", mode: "single", verdict: "wrong", myAnswer: "B", sessionId: "s1", queue: "normal" });
+    app.recordAttempt({ qid: "q3", kind: "practice", mode: "single", verdict: "correct", myAnswer: "A", sessionId: "s1", queue: "normal" });
+    const items = buildDailyItems(app, (_k, fb) => fb ?? "", { dailyGoal: 2 });
+    expect(items.map((x) => x.label)).toEqual(["今日作答", "今日目标", "正确率", "错题在册"]);
+    expect(items[1].value).toBe("3/2");
+  });
+
   it("宿主未就绪 → 有界重试后注册成功；dispose 注销且不再重试", async () => {
     vi.useFakeTimers();
     let host: { registerHomeModule?: unknown } | undefined = undefined;

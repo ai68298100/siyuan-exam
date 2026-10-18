@@ -4,6 +4,8 @@ import { emitExamEvent, onExamEvent, type BusEvent } from "../src/core/bus";
 import { ExamApp } from "../src/app";
 import { MemoryStorage } from "../src/core/attemptLog";
 import type { KernelApiClient } from "../src/kernel/client";
+import { PracticeSession } from "../src/core/session";
+import { makeQuestion } from "../src/core/blockTemplate";
 
 /** node 测试环境无 window：用 EventTarget 桩（与 bus.test.ts 同法） */
 beforeEach(() => {
@@ -62,5 +64,74 @@ describe("48-02 补全：session-ended / wrongbook-changed 事件（四四批）
       { qid: "q2", status: "snoozed" },
     ]);
     off();
+  });
+});
+
+describe("44-04 会话延迟回炉错题策略与回忆事件标记（四四批）", () => {
+  it("错题进入队尾回炉，准确标识 attemptIndex 与 isDelayedReview", () => {
+    const q1 = makeQuestion({ type: "single", stem: "题1", options: ["A", "B"], answer: "A" });
+    const q2 = makeQuestion({ type: "single", stem: "题2", options: ["A", "B"], answer: "B" });
+    const session = new PracticeSession([q1, q2], "quick");
+
+    // 1. 第一题初答答错
+    expect(session.isDelayedReviewAtCurrent()).toBe(false);
+    expect(session.currentAttemptIndex()).toBe(0);
+    const r1 = session.submit("B"); // 错误
+    expect(r1).not.toBeNull();
+    expect(r1?.attemptIndex).toBe(0);
+    expect(r1?.isDelayedReview).toBe(false);
+    expect(session.state.qids).toEqual([q1.id, q2.id, q1.id]); // 队尾追加错题回炉
+
+    // 2. 第二题初答答对
+    expect(session.next()).toBe(true);
+    expect(session.isDelayedReviewAtCurrent()).toBe(false);
+    expect(session.currentAttemptIndex()).toBe(0);
+    const r2 = session.submit("B"); // 正确
+    expect(r2).not.toBeNull();
+    expect(r2?.attemptIndex).toBe(0);
+    expect(r2?.isDelayedReview).toBe(false);
+
+    // 3. 进入队尾回炉题（第一题延迟重测）
+    expect(session.next()).toBe(true);
+    expect(session.isDelayedReviewAtCurrent()).toBe(true);
+    expect(session.currentAttemptIndex()).toBe(1);
+    const r3 = session.submit("A"); // 延迟无提示回忆答对
+    expect(r3).not.toBeNull();
+    expect(r3?.attemptIndex).toBe(1);
+    expect(r3?.isDelayedReview).toBe(true);
+    expect(session.state.answered?.[2].delayedReview).toBe(true);
+
+    // 4. 结算指标：基础统计与细分初答/回炉消灭
+    const summary = session.finish();
+    expect(summary).toEqual({ total: 3, correct: 2, wrong: 1 });
+
+    const breakdown = session.breakdown();
+    expect(breakdown.initialTotal).toBe(2);
+    expect(breakdown.initialCorrect).toBe(1);
+    expect(breakdown.delayedTotal).toBe(1);
+    expect(breakdown.delayedRecovered).toBe(1);
+  });
+
+  it("作答事件支持 delayedReview 标记并与 ExamApp 正常落盘", () => {
+    const app = new ExamApp({
+      client: { sql: async () => [] } as unknown as KernelApiClient,
+      storage: new MemoryStorage(),
+      now: () => 1_800_000_000_000,
+    });
+
+    const event = app.recordAttempt({
+      qid: "q-delayed-1",
+      kind: "practice",
+      mode: "quick",
+      verdict: "correct",
+      myAnswer: "A",
+      sessionId: "s-1",
+      queue: "normal",
+      delayedReview: true,
+    });
+
+    expect(event.delayedReview).toBe(true);
+    const retrieved = app.attempts.all().find((e) => e.qid === "q-delayed-1");
+    expect(retrieved?.delayedReview).toBe(true);
   });
 });

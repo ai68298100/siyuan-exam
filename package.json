@@ -27,6 +27,8 @@
     "metrics:style": "node ./scripts/style-metrics.mjs",
     "e2e": "node ./scripts/smoke-e2e.mjs",
     "smoke:ui": "node ./scripts/visual-harness/smoke-ui.mjs",
+    "smoke:recite-responsive": "run-s build:harness smoke:recite-responsive:run",
+    "smoke:recite-responsive:run": "node ./scripts/visual-harness/smoke-recite-responsive.mjs",
     "smoke:report-actions": "node ./scripts/visual-harness/smoke-report-actions.mjs",
     "check:styles": "node ./scripts/check-styles.mjs",
     "commit:check": "commitlint",

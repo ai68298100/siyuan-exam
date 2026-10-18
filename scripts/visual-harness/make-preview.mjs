@@ -3,9 +3,8 @@
 import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
-import { chromium } from "playwright-core";
+import { launchHarnessBrowser } from "./browser.mjs";
 
-const EDGE = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
 const HARNESS = resolve("output/harness");
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".json": "application/json" };
 const server = createServer((req, res) => {
@@ -20,7 +19,7 @@ const server = createServer((req, res) => {
 });
 await new Promise((r) => server.listen(4209, r));
 
-const browser = await chromium.launch({ executablePath: EDGE });
+const browser = await launchHarnessBrowser();
 // 源图：首帧前注入样式隐藏 harness 工具条（避免渲染中布局抖动）；等应用就绪再拍
 const newPage = async () => {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2 });

@@ -6,6 +6,8 @@ import type { Question } from "./types";
 import { SCHEMA_VERSION } from "./types";
 import { grade, type GradeResult } from "./answer";
 import { gradeIndefinite, guardLockout } from "./cbt";
+import { isQuestionDisputed } from "./dispute";
+import { calculateItemScore, DEFAULT_SCORING_POLICY, applyScoreRounding, type ScoringPolicy } from "./scoringPolicy";
 
 // ---------- 蓝图 ----------
 export type SectionSource = "real" | "mock" | "mixed";
@@ -29,6 +31,8 @@ export interface Blueprint {
   shuffleOptions: boolean;
   sectionTimed: boolean; // 分段计时
   lockout?: boolean; // 人机对话作答流锁：不可回退、顺序作答
+  /** 55-04 版本化评分政策（全对/部分分/倒扣分与舍入政策） */
+  scoringPolicy?: ScoringPolicy;
   sections: BlueprintSection[];
 }
 
@@ -115,11 +119,11 @@ export function assemble(
     !s.kp || q.kp === s.kp || (q.kp?.startsWith(s.kp + "/") ?? false);
 
   for (const s of bp.sections) {
-    let pool = bank.filter((q) => !used.has(q.id) && matchesSource(q, s) && matchesTypes(q, s) && matchesKp(q, s));
+    let pool = bank.filter((q) => !used.has(q.id) && !isQuestionDisputed(q) && matchesSource(q, s) && matchesTypes(q, s) && matchesKp(q, s));
     const strictCount = pool.length;
     // strict 不够且允许 mixed → 用其他来源补齐（考点配额仍生效；显式计数，蓝图配置器出警告）
     if (strictCount < s.count && s.source !== "mixed") {
-      const extra = bank.filter((q) => !used.has(q.id) && !pool.includes(q) && matchesTypes(q, s) && matchesKp(q, s));
+      const extra = bank.filter((q) => !used.has(q.id) && !isQuestionDisputed(q) && !pool.includes(q) && matchesTypes(q, s) && matchesKp(q, s));
       pool = pool.concat(extra);
     }
     const picked: Question[] = [];
@@ -178,7 +182,7 @@ export class MockSession {
   screenSwitches = 0;
   /** 当前题索引（人机对话导航） */
   cursor = 0;
-  private readonly byId: Map<string, Question>;
+  readonly byId: Map<string, Question>;
   private readonly indefinite: Set<string>;
   private readonly sectionStart: Record<string, number> = {}; // section 名 → 进入时刻（相对 ms）
   /** 逐题驻留计时（40-03）：导航切题时结算上一题，作答时刻取真实累计 */
@@ -215,6 +219,10 @@ export class MockSession {
 
   sectionOfQ(qid: string): string {
     return this.sectionOf.get(qid) ?? "";
+  }
+
+  questionOf(qid: string): Question | undefined {
+    return this.byId.get(qid);
   }
 
   /** 相对开考的经过毫秒 */
@@ -381,8 +389,21 @@ export class MockSession {
       if (a.verdict === "correct") {
         sec.correct++;
       }
-      // 不定项部分分：scoreEach × factor；整题对=1；错=0
-      sec.score += (this.scoreOf.get(qid) ?? 0) * (a.verdict === "correct" ? 1 : a.factor);
+      // 55-04：版本化评分政策驱动计分（全对/部分分/倒扣分/保底）
+      const policy = this.bp.scoringPolicy ?? DEFAULT_SCORING_POLICY;
+      const scoreEach = this.scoreOf.get(qid) ?? 0;
+      const itemScore = calculateItemScore(
+        { scoreEach, verdict: a.verdict, factor: a.verdict === "correct" ? 1 : a.factor },
+        policy,
+      );
+      sec.score += itemScore;
+    }
+    // 模块最低保底 0 分检查
+    const policy = this.bp.scoringPolicy ?? DEFAULT_SCORING_POLICY;
+    if (policy.floorZero !== false) {
+      for (const sec of sections.values()) {
+        if (sec.score < 0) sec.score = 0;
+      }
     }
     // 未答的题占满额
     for (const qid of this.state.qids) {
@@ -397,14 +418,19 @@ export class MockSession {
       s.short = s.total < s.required;
     }
     const last20 = this.last20min();
-    const total = [...sections.values()].reduce((n, s) => n + s.score, 0);
-    const full = [...sections.values()].reduce((n, s) => n + s.full, 0);
+    let rawTotal = [...sections.values()].reduce((n, s) => n + s.score, 0);
+    if (policy.floorZero !== false && rawTotal < 0) {
+      rawTotal = 0;
+    }
+    const total = applyScoreRounding(rawTotal, policy.rounding);
+    const full = applyScoreRounding([...sections.values()].reduce((n, s) => n + s.full, 0), policy.rounding);
     return {
       total,
       full,
       // 及格线按百分制比较原始比例；显示值的四舍五入不能把未达线成绩判为通过。
       pass: full > 0 && (total / full) * 100 >= this.bp.passLine,
       percent: full ? Math.round((total / full) * 1000) / 10 : 0,
+      scoringPolicy: this.bp.scoringPolicy,
       sections: [...sections.values()],
       flagsUsed: this.flags.size,
       changes: [...this.answers.values()].reduce((n, a) => n + a.changes, 0),
@@ -502,6 +528,8 @@ export interface MockScore {
   full: number;
   pass: boolean;
   percent: number;
+  /** 55-04 评分政策快照 */
+  scoringPolicy?: ScoringPolicy;
   sections: {
     name: string;
     score: number;

@@ -42,6 +42,8 @@ export function ialOf(q: Question): string {
   if (q.batch) attrs["exam-batch"] = q.batch;
   if (q.group) attrs["exam-group"] = q.group;
   if (q.review) attrs["exam-review"] = q.review;
+  if (q.status) attrs["exam-status"] = q.status;
+  if (q.dispute) attrs["exam-dispute"] = JSON.stringify(q.dispute);
   if (q.analysis) attrs["exam-analysis"] = q.analysis;
   if (q.alt?.length) attrs["exam-alt"] = q.alt.join("|");
   if (q.answerSpec) attrs["exam-answer-spec"] = JSON.stringify(q.answerSpec);
@@ -166,6 +168,8 @@ export function questionFromBlock(input: FromBlockInput): Question | null {
     origin: (attrs["exam-origin"] as Question["origin"]) ?? "imported",
     batch: attrs["exam-batch"],
     review: attrs["exam-review"] as Question["review"],
+    status: (attrs["exam-status"] as Question["status"]) || undefined,
+    dispute: parseDisputeAttr(attrs["exam-dispute"]),
     alt: attrs["exam-alt"] ? attrs["exam-alt"].split("|") : undefined,
     fav: attrs["exam-fav"] === "1",
     /** 54-01：结构化作答规则（custom-exam-answer-spec JSON）；损坏/版本不符忽略，按旧口径判分 */
@@ -199,6 +203,18 @@ function parseAnswerSpecAttr(raw: string | undefined): Question["answerSpec"] {
   }
 }
 
+/** 57-04：块属性 JSON → dispute（宽容解析） */
+function parseDisputeAttr(raw: string | undefined): Question["dispute"] {
+  if (!raw) return undefined;
+  try {
+    const obj = JSON.parse(raw);
+    if (obj && obj.v === 1 && typeof obj.reason === "string") return obj as Question["dispute"];
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 const letterIdx = (L: string) => L.charCodeAt(0) - 65;
 
 /** 便捷构造（手工录题/测试）：规范化答案后生成 Question */
@@ -213,6 +229,10 @@ export function makeQuestion(p: {
   difficulty?: number;
   alt?: string[];
   group?: string;
+  /** 43-01：题目作者生命周期状态 */
+  status?: Question["status"];
+  /** 57-04：争议题状态与处置单 */
+  dispute?: Question["dispute"];
   /** 54 第三刀：显式指定结构化作答规则（缺省时填空题按答案自动识别：;;多空 / 纯数值±单位） */
   answerSpec?: Question["answerSpec"];
 }): Question {
@@ -235,6 +255,8 @@ export function makeQuestion(p: {
     group: p.group || undefined,
     batch: newBatchId(),
     review: "verified",
+    status: p.status ?? "published",
+    dispute: p.dispute,
     alt: p.alt,
     ...(answerSpec ? { answerSpec } : {}),
     hash: questionHash(p.stem, options),

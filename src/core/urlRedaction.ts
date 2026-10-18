@@ -12,6 +12,17 @@ const DISPLAYABLE_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
 const REDACTED_PART = "[redacted]";
 const BLOCKED_URL = "[blocked URL]";
 
+function stripControlChars(s: string): string {
+  let out = "";
+  for (let i = 0; i < s.length; i++) {
+    const code = s.charCodeAt(i);
+    if ((code >= 32 && code !== 127) || code > 127) {
+      out += s[i];
+    }
+  }
+  return out;
+}
+
 /**
  * Return a safe URL representation for human-facing output.
  *
@@ -20,7 +31,7 @@ const BLOCKED_URL = "[blocked URL]";
  * a token and therefore are not safe to echo in an error message.
  */
 export function redactUrlForDisplay(rawUrl: string): string {
-  const raw = rawUrl.trim();
+  const raw = stripControlChars(rawUrl).trim();
   if (!raw) return BLOCKED_URL;
 
   let parsed: URL;

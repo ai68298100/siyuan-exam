@@ -2,11 +2,10 @@
 // 家族设计语言（对齐小驴系列：家=房子 / 闪卡=闪电卡片 / 人脉=双人 / 快门=门框）：
 //   彩色渐变底 + 白色领域图形 + 一个暖色小点缀。考试 = 白色试卷卡 + 靛紫判卷对勾 + 橙点。
 // 用法：node scripts/visual-harness/make-icon.mjs
-import { chromium } from "playwright-core";
+import { launchHarnessBrowser } from "./browser.mjs";
 import { writeFileSync, readFileSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 
-const EDGE = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
 mkdirSync(resolve("design/social"), { recursive: true });
 
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
@@ -38,7 +37,7 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" 
 writeFileSync(resolve("design/social/icon.svg"), svg.trim() + "\n");
 console.log("icon.svg written");
 
-const browser = await chromium.launch({ executablePath: EDGE });
+const browser = await launchHarnessBrowser();
 const html = `<!doctype html><html><head><style>*{margin:0}body{width:1024px;height:1024px}img{display:block;width:1024px;height:1024px}</style></head><body><img src="data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}"></body></html>`;
 
 const page = await (await browser.newContext({ viewport: { width: 1024, height: 1024 }, deviceScaleFactor: 1 })).newPage();

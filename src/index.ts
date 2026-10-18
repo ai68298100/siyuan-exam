@@ -2,7 +2,6 @@ import { Plugin, openTab, showMessage, getFrontend, adaptHotkey } from "siyuan";
 import "./index.scss";
 
 import { SettingUtils } from "./libs/setting-utils";
-import { escapeHtml } from "./libs/sanitize";
 import { mount, unmount, type Component } from "svelte";
 import manifest from "../plugin.json";
 import PracticeTab from "@/ui/practice/PracticeTab.svelte";
@@ -12,14 +11,14 @@ import { createExamApp } from "./app-runtime";
 import type { ExamApp } from "./app";
 import { streak } from "./core/replayer";
 import { emitExamEvent } from "./core/bus";
-import { createExamTabDescriptor, focusExamTab, observeTabOpen, openPracticeView } from "./core/pluginTab";
+import { createExamTabDescriptor, findExamTabHeader, findOpenedExamTab, focusExamTab, observeTabOpen, openPracticeView } from "./core/pluginTab";
 import { combineBlockSources } from "./core/blockSource";
 import { registerExamDailySummary } from "./ecosystem/speedSwitch";
+import { TabAppRegistry } from "./core/tabAppRegistry";
 
 const TAB_PRACTICE = "exam-practice";
 const TAB_MOCK = "exam-mock";
 const TAB_REPORT = "exam-report";
-const DOCK_WRONGBOOK = "dock-wrongbook";
 
 /** 上次打开的页签（SiYuan 重启/刷新后布局恢复不带回插件自定义页签——真机走查两次复现，
  *  用 localStorage 记忆并在 onLayoutReady 时恢复，行为对标编辑器恢复标签页） */
@@ -40,7 +39,8 @@ export default class LvExamPlugin extends Plugin {
   declare i18n: Record<string, string>;
   private isMobile: boolean;
   private settingUtils: SettingUtils;
-  private tabApps: { [tabType: string]: object } = {};
+  /** 每个宿主 Custom 模型独立持有实例；同 type 不是唯一页签身份。 */
+  private tabApps = new TabAppRegistry();
   /** 应用组装层（与基类 Plugin.app: App 无关，刻意改名避免遮蔽） */
   private examApp: ExamApp | null = null;
   private appInitializing = true;
@@ -120,9 +120,14 @@ export default class LvExamPlugin extends Plugin {
     this.settingUtils.addItem({
       title: this.i18n["setting.feedbackTiming.title"],
       description: this.i18n["setting.feedbackTiming.desc"],
-      type: "checkbox",
-      key: "feedbackEndReview",
-      value: false,
+      type: "select",
+      key: "feedbackTiming",
+      value: "immediate",
+      options: {
+        immediate: this.i18n["setting.feedbackTiming.immediate"],
+        group: this.i18n["setting.feedbackTiming.group"],
+        end: this.i18n["setting.feedbackTiming.end"],
+      },
       direction: "row",
     });
     this.settingUtils.addItem({
@@ -212,8 +217,6 @@ export default class LvExamPlugin extends Plugin {
     this.registerTabs();
     if (!this.isMobile) {
       this.registerTopBar();
-      this.registerDock();
-      this.registerStatusBar();
     }
     this.registerCommands();
     // 47-05 lite：注册完成后的值即默认值（load() 在 onLayoutReady 才覆盖）——快照供「恢复默认」
@@ -242,16 +245,23 @@ export default class LvExamPlugin extends Plugin {
     this.appInitializing = false;
     const queued = this.queuedTab;
     this.queuedTab = null;
-    if (queued) this.openTabByType(queued.type, queued.icon, queued.title);
-    this.refreshDock();
-    this.refreshStatusBar();
-    this.restoreLastTabs();
+    if (queued) {
+      // Honor a command or deep link that arrived while the app was starting.
+      // The topbar still queues practice, while mock/report commands must not
+      // be immediately overridden by the default workbench fallback.
+      this.openTabByType(queued.type, queued.icon, queued.title);
+    } else {
+      // The sole visible plugin entry always opens the exam workbench. Internal
+      // Mock/Report views remain reachable from the workbench Rail and commands.
+      this.openPractice();
+    }
     // 48-05：雷切组件面板接入（有界重试；未安装安静降级）
     if (this.examApp) {
       this.speedSwitchHandle = registerExamDailySummary({
         app: this.examApp,
         t: (k, fb) => this.i18n[k] ?? fb ?? k,
         open: () => this.openPractice(),
+        dailyGoal: () => Math.max(1, Number(this.settingUtils?.get?.("dailyGoal") ?? 10) || 10),
         findPlugin: (name) => (this.app as any)?.plugins?.find?.((p: { name: string }) => p.name === name),
       });
     }
@@ -342,100 +352,20 @@ export default class LvExamPlugin extends Plugin {
     } catch {
       /* 卸载栅栏：防卸载后仍触发 saveData */
     }
-    Object.values(this.tabApps).forEach((instance) => unmount(instance));
-    this.tabApps = {};
+    try {
+      await this.tabApps.clear((instance) => unmount(instance));
+    } catch (error) {
+      console.error("[lv-exam] failed to unmount tabs during unload", error);
+    }
   }
 
-  /** 顶栏主入口（小驴考试总入口）：支持左键直接进入工作台，右键弹出模块导航菜单 */
+  /** 唯一顶栏入口：点击后直接进入小驴考试主页面。 */
   private registerTopBar() {
     this.addTopBar({
       icon: "iconExam",
       title: manifest.displayName["zh-CN"] ?? "小驴考试（内测版）",
       callback: () => this.openPractice(),
-      contextMenu: (menu: any) => {
-        if (!menu?.addItem) return;
-        menu.addItem({
-          iconHTML: "<svg><use xlink:href='#iconExam'></use></svg>",
-          label: this.i18n["plugin.workbench"] ?? "小驴考试工作台",
-          click: () => this.openPractice(),
-        });
-        menu.addItem({
-          iconHTML: "<svg><use xlink:href='#iconExam'></use></svg>",
-          label: this.i18n["tab.practice"] ?? "今日练习",
-          click: () => {
-            openPracticeView(this, "entry");
-          },
-        });
-        menu.addItem({
-          iconHTML: "<svg><use xlink:href='#iconMock'></use></svg>",
-          label: this.i18n["tab.mock"] ?? "全真模考",
-          click: () => this.openMock(),
-        });
-        menu.addItem({
-          iconHTML: "<svg><use xlink:href='#iconReport'></use></svg>",
-          label: this.i18n["tab.report"] ?? "学习报告",
-          click: () => this.openReport(),
-        });
-        menu.addItem({
-          iconHTML: "<svg><use xlink:href='#iconWrongbook'></use></svg>",
-          label: this.i18n["dock.wrongbook"] ?? "错题本",
-          click: () => this.openWrongbook(),
-        });
-        if (typeof menu.addSeparator === "function") menu.addSeparator();
-        menu.addItem({
-          icon: "iconSettings",
-          label: this.i18n["setting.title"] ?? "插件设置",
-          click: () => this.openSetting(),
-        });
-      },
     });
-  }
-
-  /** 状态栏迷你进度（TODO 18 组）：今日完成/连胜，点击打开练习台 */
-  private registerStatusBar() {
-    this.addStatusBar({
-      element: (() => {
-        const el = document.createElement("div");
-        el.classList.add("lv-statusbar", "fn__flex-center");
-        el.style.cursor = "pointer";
-        el.tabIndex = 0;
-        el.setAttribute("role", "button");
-        el.setAttribute("aria-label", this.i18n["tab.practice"]);
-        // 25-P1：应用就绪前也保持可见占位（此前初始为空文本，元素不可见）
-        el.textContent = "📝 …";
-        el.title = this.i18n["tab.practice"];
-        el.addEventListener("click", () => this.openPractice());
-        el.addEventListener("keydown", (e) => {
-          if (e.key !== "Enter" && e.key !== " ") return;
-          e.preventDefault();
-          this.openPractice();
-        });
-        return el;
-      })(),
-    });
-  }
-
-  refreshStatusBar() {
-    if (this.isMobile) return;
-    const el = document.querySelector(".lv-statusbar");
-    if (!el) return;
-    if (!this.examApp) {
-      el.textContent = "📝 …"; // 初始化失败：保持占位不空白（25-P1）
-      el.setAttribute("title", this.i18n["state.appNotReady"]);
-      return;
-    }
-    const d = this.examApp.derived();
-    const todayKey = (() => {
-      const t = new Date();
-      return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
-    })();
-    const today = d.days.get(todayKey)?.attempts ?? 0;
-    const wrong = this.examApp.wrongItems().length;
-    el.textContent = `📝 ${today} · ❌ ${wrong} · 🔥 ${streak(d)}`;
-    const summary = (this.i18n["statusbar.summary"] ?? "今日作答 {today} 题 · 在册错题 {wrong} 题 · 连续学习 {streak} 天；点击打开练习台")
-      .replace("{today}", String(today)).replace("{wrong}", String(wrong)).replace("{streak}", String(streak(d)));
-    el.setAttribute("title", summary);
-    el.setAttribute("aria-label", summary);
   }
 
   private registerTabs() {
@@ -453,6 +383,8 @@ export default class LvExamPlugin extends Plugin {
       this.addTab({
         type,
         init() {
+          const plugin = getPlugin();
+          if (plugin.tabApps.has(this)) return;
           if (this.element instanceof HTMLElement) {
             this.element.style.height = "100%";
             this.element.style.display = "flex";
@@ -461,126 +393,21 @@ export default class LvExamPlugin extends Plugin {
           const el = document.createElement("div");
           el.classList.add("fn__flex-1", "lv-exam-tab");
           el.style.height = "100%";
-          const plugin = getPlugin();
           this.element.appendChild(el);
           const instance = mount(component, {
             target: el,
             props: { plugin, examApp: plugin.examApp },
           });
-          plugin.tabApps[type] = instance;
+          plugin.tabApps.set(this, instance);
         },
         destroy() {
           const plugin = getPlugin();
-          if (plugin.tabApps[type]) {
-            unmount(plugin.tabApps[type]);
-            delete plugin.tabApps[type];
-          }
+          void plugin.tabApps.destroy(this, (instance) => unmount(instance)).catch((error) => {
+            console.error(`[lv-exam] failed to unmount tab: ${type}`, error);
+          });
         },
       });
     }
-  }
-
-  private registerDock() {
-    this.addDock({
-      config: {
-        position: "RightBottom",
-        size: { width: 260, height: 0 },
-        icon: "iconWrongbook",
-        title: this.i18n["dock.wrongbook"],
-        hotkey: "⌥⌘E",
-      },
-      data: { plugin: this },
-      type: DOCK_WRONGBOOK,
-      init() {
-        this.element.innerHTML = `<div class="fn__flex-1 lv-dock-body"></div>`;
-        // Dock 面板懒创建：onload 时的 refreshDock 查不到 .lv-dock-body 直接 return，
-        // 首次打开会渲染成空白面板（真机走查实测）——创建后主动渲染一次
-        const plugin = (this.data as { plugin?: LvExamPlugin }).plugin;
-        queueMicrotask(() => plugin?.refreshDock());
-      },
-      update() {
-        (this.data as { plugin?: LvExamPlugin }).plugin?.refreshDock();
-      },
-      destroy() {},
-    });
-  }
-
-  /** 错题 Dock 实数据渲染（作答后由 Tab 调用） */
-  refreshDock() {
-    if (this.isMobile) return;
-    const dockEl = document.querySelector<HTMLElement>(".lv-dock-body");
-    if (!dockEl) return;
-    // 25-P1：应用未就绪（初始化失败）时给出可见原因，不再渲染空白面板
-    if (!this.examApp) {
-      dockEl.innerHTML = `<div class="lv-dock-empty">${escapeHtml(this.i18n["state.appNotReady"])}</div>`;
-      return;
-    }
-    const items = this.examApp.wrongItems();
-    // sanitize 政策（26.2 P0）：innerHTML 插值的动态文本一律 escapeHtml（qid 来自本地流水，纵深防御）
-    const rows = items
-      .slice(0, 30)
-      .map(
-        (w) =>
-          `<div class="lv-dock-row" role="group" aria-label="${escapeHtml(w.qid)}">
-                <button type="button" class="lv-dock-open num" data-qid="${escapeHtml(w.qid)}" title="${escapeHtml(w.qid)}" aria-label="${escapeHtml(this.i18n["blockMenu.addToPractice"])}：${escapeHtml(w.qid)}"><span>${escapeHtml(w.qid)}</span><span class="lv-dock-wrong-count">${this.i18n["dock.wrongTag"]} ${w.wrongCount}</span></button>
-                <button class="lv-dock-act" data-act="mastered" data-qid="${escapeHtml(w.qid)}" title="${escapeHtml(this.i18n["dock.actMastered"])}" aria-label="${escapeHtml(this.i18n["dock.actMastered"])}">✓</button>
-                <button class="lv-dock-act" data-act="removed" data-qid="${escapeHtml(w.qid)}" title="${escapeHtml(this.i18n["dock.actRemoved"])}" aria-label="${escapeHtml(this.i18n["dock.actRemoved"])}">✕</button>
-                <button class="lv-dock-act" data-act="snooze" data-qid="${escapeHtml(w.qid)}" title="${escapeHtml(this.i18n["dock.actSnooze"])}" aria-label="${escapeHtml(this.i18n["dock.actSnooze"])}">⏸</button>
-            </div>`,
-      )
-      .join("");
-    dockEl.innerHTML = `
-<div class="block__icons" style="padding:4px 8px">
-    <div class="block__logo">${this.i18n["dock.wrongbook"]}</div>
-    <span class="fn__flex-1"></span>
-    <span class="lv-chip lv-chip--red num">${items.length}</span>
-</div>
-<div class="lv-dock-list">
-${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedHint"]}</div>` : `<div class="lv-dock-empty">${this.i18n["dock.empty"]}<br/><button class="lv-btn sm lv-dock-go" style="margin-top:8px">${this.i18n["dock.goPractice"]}</button></div>`}
-</div>`;
-    // 空态按钮：打开练习台
-    dockEl.querySelector<HTMLButtonElement>(".lv-dock-go")?.addEventListener("click", () => this.openPractice());
-    // 事件委托：手动处置（覆盖层由 examApp.setWrongStatus 持久化）；snooze=暂缓 7 天（52-06）
-    dockEl.querySelectorAll<HTMLButtonElement>(".lv-dock-act").forEach((btn) => {
-      btn.addEventListener("click", async (ev) => {
-        ev.stopPropagation();
-        const qid = btn.dataset.qid!;
-        const rowButtons = [...(btn.closest(".lv-dock-row")?.querySelectorAll<HTMLButtonElement>("button") ?? [])];
-        const row = btn.closest<HTMLElement>(".lv-dock-row");
-        row?.querySelector(".lv-dock-error")?.remove();
-        rowButtons.forEach((b) => { b.disabled = true; });
-        btn.setAttribute("aria-busy", "true");
-        try {
-          if (btn.dataset.act === "snooze") await this.examApp?.snoozeWrong(qid, 7);
-          else await this.examApp?.setWrongStatus(qid, btn.dataset.act as "mastered" | "removed");
-          this.refreshDock();
-          this.refreshStatusBar();
-        } catch (e) {
-          const message = String(e instanceof Error ? e.message : e);
-          const error = document.createElement("div");
-          error.className = "lv-dock-error";
-          error.setAttribute("role", "alert");
-          error.textContent = (this.i18n["dock.actionFailed"] ?? "处置失败：{message}。再次点击原操作按钮可重试。")
-            .replace("{message}", message);
-          row?.append(error);
-          showMessage(message, 4800, "error");
-        } finally {
-          rowButtons.forEach((b) => { b.disabled = false; });
-          btn.removeAttribute("aria-busy");
-        }
-      });
-    });
-    // 明确的主按钮可用鼠标、触摸和键盘打开本题；处置按钮是同组内的独立操作。
-    dockEl.querySelectorAll<HTMLButtonElement>(".lv-dock-open").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const qid = btn.dataset.qid;
-        if (!qid) return;
-        (this as any).pendingQuestionId = qid;
-        (this as any).pendingPracticeSignal = true;
-        emitExamEvent("open-question", { qid });
-        this.openPractice();
-      });
-    });
   }
 
   private registerCommands() {
@@ -602,7 +429,7 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
     this.addCommand({
       langKey: "command.openWrongbook",
       hotkey: adaptHotkey("⌥⌘E"),
-      // 桌面端 Dock 由思源侧边栏开关管理；此命令在移动端/快捷键场景直达错题本
+      // 快捷键与移动端命令面板直达错题本
       callback: () => this.openWrongbook(),
     });
     this.addCommand({
@@ -635,19 +462,6 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
     });
   }
 
-  /** 恢复上次打开的页签（onLayoutReady：宿主布局恢复不包含插件自定义页签） */
-  private restoreLastTabs() {
-    if (this.isMobile) return;
-    try {
-      const type = localStorage.getItem(OPEN_TABS_KEY) ?? "";
-      if (type === TAB_PRACTICE) this.openPractice();
-      else if (type === TAB_MOCK) this.openMock();
-      else if (type === TAB_REPORT) this.openReport();
-    } catch {
-      /* localStorage 不可用（隐私模式）：跳过恢复 */
-    }
-  }
-
   private openTabByType(type: string, icon: string, title: string): boolean {
     // 早于应用就绪的点击延后执行，避免把 null app 固定传入永久报错的页签。
     if (this.appInitializing) {
@@ -656,8 +470,19 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
       return false;
     }
     // 单例聚焦（26.2）：同类型 Tab 已开则切换过去，避免 tabApps 覆盖引用
-    const existing = (this.getOpenedTab()[type] ?? [])[0] as any;
+    // Layout restoration may expose getOpenedTab under either the short tab
+    // type or the persisted custom id. Search both forms before opening a new
+    // tab; otherwise every plugin restart can append another practice tab.
+    const existing = findOpenedExamTab(this.getOpenedTab(), this.name, type) as any;
     if (existing && focusExamTab(existing)) {
+      rememberOpenTab(type);
+      return true;
+    }
+    // During startup the restored Custom model can lag behind its DOM header.
+    // Focus that header when present instead of appending a duplicate tab.
+    const restoredHeader = findExamTabHeader(this.name, type);
+    if (restoredHeader) {
+      restoredHeader.click();
       rememberOpenTab(type);
       return true;
     }
@@ -904,7 +729,7 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
       });
       return;
     }
-    // 兜底项（25-P1 移动端入口）：移动端无顶栏/Dock/状态栏，块菜单是唯一稳定入口——
+    // 兜底项（25-P1 移动端入口）：移动端没有插件顶栏按钮，块菜单是稳定入口——
     // 点击直接打开练习台（应用未就绪时练习台会显示 appNotReady 原因，不再死胡同）
     detail.menu.addItem({
       iconHTML: "<svg><use xlink:href='#iconExam'></use></svg>",
@@ -928,3 +753,4 @@ ${items.length ? rows + `<div class="lv-dock-hint">${this.i18n["dock.eliminatedH
     this.openTabByType(TAB_REPORT, "iconReport", this.i18n["tab.report"]);
   }
 }
+

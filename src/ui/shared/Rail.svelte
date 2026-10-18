@@ -48,14 +48,36 @@
   let wasDrawerOpen = false;
   let launcherOpen = $state(false);
   let launcherWrapEl = $state<HTMLElement | null>(null);
+  let launcherBtn = $state<HTMLButtonElement | null>(null);
+  let launcherMenu = $state<HTMLElement | null>(null);
+  const componentId = $props.id();
+  const launcherId = `${componentId}-quick-actions`;
+  let launcherPosition = $state({ left: 0, top: 0, width: 220, maxHeight: 0, ready: false });
+
+  function focusLauncherItem(index: number) {
+    const items = launcherMenu?.querySelectorAll<HTMLButtonElement>("[role='menuitem']");
+    if (!items?.length) return;
+    const item = items[(index + items.length) % items.length];
+    item.focus({ preventScroll: true });
+    item.scrollIntoView({ block: "nearest" });
+  }
+
+  async function openLauncher(fromLast = false) {
+    launcherPosition = { ...launcherPosition, ready: false };
+    launcherOpen = true;
+    await tick();
+    if (launcherOpen) focusLauncherItem(fromLast ? -1 : 0);
+  }
 
   function toggleLauncher(e: MouseEvent) {
     e.stopPropagation();
-    launcherOpen = !launcherOpen;
+    if (launcherOpen) closeLauncher(true);
+    else void openLauncher();
   }
 
-  function closeLauncher() {
+  function closeLauncher(restoreFocus = false) {
     launcherOpen = false;
+    if (restoreFocus) launcherBtn?.focus({ preventScroll: true });
   }
 
   function runQuickAction(act: "drill" | "create" | "mock" | "wrong" | "import" | "ai") {
@@ -85,10 +107,47 @@
   }
 
   function onWindowClick(e: MouseEvent) {
-    if (launcherOpen && launcherWrapEl && !launcherWrapEl.contains(e.target as Node)) {
+    if (launcherOpen && launcherWrapEl && !launcherWrapEl.contains(e.target as Node) && !launcherMenu?.contains(e.target as Node)) {
       closeLauncher();
     }
   }
+
+  // Keep the menu inside this plugin pane, outside the rail's scroll clipping.
+  // A compact rail opens to its right; a full sidebar/drawer opens below its
+  // trigger. Short panes scroll the menu without losing the last action.
+  $effect(() => {
+    if (!launcherOpen || !asideEl || !launcherBtn || !launcherMenu) return;
+    const root = asideEl.closest<HTMLElement>(".lv-exam-tab");
+    if (!root) return;
+    const update = () => {
+      if (!asideEl || !launcherBtn || !launcherMenu) return;
+      const panel = root.getBoundingClientRect();
+      const aside = asideEl.getBoundingClientRect();
+      const anchor = launcherBtn.getBoundingClientRect();
+      const width = Math.max(0, Math.min(240, panel.width - 16));
+      const maxHeight = Math.max(0, panel.height - 16);
+      const compact = panel.width >= 760 && panel.width <= 1119;
+      const wantedLeft = compact ? aside.right + 8 : anchor.left;
+      const wantedTop = compact ? anchor.top : anchor.bottom + 6;
+      const left = Math.max(panel.left + 8, Math.min(wantedLeft, panel.right - width - 8));
+      const height = Math.min(launcherMenu.offsetHeight, maxHeight);
+      const top = Math.max(panel.top + 8, Math.min(wantedTop, panel.bottom - height - 8));
+      launcherPosition = { left: left - aside.left, top: top - aside.top, width, maxHeight, ready: true };
+    };
+    update();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    observer?.observe(root);
+    observer?.observe(launcherBtn);
+    observer?.observe(launcherMenu);
+    // Capture scrolls from the rail itself as well as host split-pane moves.
+    document.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      observer?.disconnect();
+      document.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  });
 
   // The rail is a desktop sidebar until the responsive breakpoint. Keep the
   // drawer contract scoped to the narrow layout so a resize while it is open
@@ -165,11 +224,31 @@
   });
 
   function onKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape" && launcherOpen) {
+    if (e.defaultPrevented || e.isComposing) return;
+    const fromTrigger = e.target === launcherBtn;
+    const fromMenu = e.target instanceof Node && launcherMenu?.contains(e.target);
+    if (fromTrigger && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
       e.preventDefault();
-      e.stopPropagation();
-      closeLauncher();
+      void openLauncher(e.key === "ArrowUp");
       return;
+    }
+    if (launcherOpen && (fromTrigger || fromMenu)) {
+      const keys = ["Escape", "ArrowDown", "ArrowUp", "Home", "End", "Tab"];
+      if (keys.includes(e.key)) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.key === "Escape") closeLauncher(true);
+        else if (e.key === "Tab") {
+          const next = asideEl?.querySelector<HTMLElement>(".lv-rail-nav button:not([disabled])");
+          closeLauncher();
+          (e.shiftKey ? launcherBtn : next ?? launcherBtn)?.focus({ preventScroll: true });
+        } else {
+          const items = [...(launcherMenu?.querySelectorAll<HTMLElement>("[role='menuitem']") ?? [])];
+          const current = items.indexOf(document.activeElement as HTMLElement);
+          focusLauncherItem(e.key === "Home" ? 0 : e.key === "End" ? -1 : current + (e.key === "ArrowDown" ? 1 : -1));
+        }
+        return;
+      }
     }
     if (!drawerOpen || !asideEl?.getClientRects().length) return;
     // 命令面板可能在导航抽屉上方打开；抽屉仅接管自己的焦点，避免互相锁死。
@@ -226,6 +305,7 @@
   <button class="lv-nav-backdrop" aria-label={t("menu.closeNav", "关闭导航")} onclick={() => onclose?.()}></button>
 {/if}
 <aside class="lv-rail" class:open={drawerOpen} bind:this={asideEl} role={drawerOpen ? "dialog" : undefined} aria-modal={drawerOpen ? "true" : undefined} aria-label="小驴考试（内测版）">
+  <div class="lv-rail-scroll">
   <div class="lv-brand">
     <span class="lv-brand-mark" aria-hidden="true">驴</span>
     <span class="lv-brand-name">小驴考试（内测版）<span class="lv-brand-sub">LV EXAM</span></span>
@@ -246,9 +326,12 @@
   <div class="lv-quick-launcher-wrap" bind:this={launcherWrapEl}>
     <button
       class="lv-quick-create"
+      bind:this={launcherBtn}
       class:active={launcherOpen}
       title={t("rail.quickActions", "快捷行动")}
+      aria-label={t("rail.quickActions", "快捷行动")}
       aria-expanded={launcherOpen}
+      aria-controls={launcherOpen ? launcherId : undefined}
       aria-haspopup="menu"
       onclick={toggleLauncher}
     >
@@ -258,52 +341,7 @@
       </span>
       <span class="lv-quick-create-chevron" class:expanded={launcherOpen} aria-hidden="true">▾</span>
     </button>
-    {#if launcherOpen}
-      <div class="lv-quick-popover" role="menu" aria-label={t("rail.quickActions", "快捷行动")}>
-        <button class="lv-quick-menu-item" role="menuitem" onclick={() => runQuickAction("drill")}>
-          <span class="lv-quick-item-badge lv-quick-item-badge--zap"><Icon name="play" size={13} /></span>
-          <div class="lv-quick-item-meta">
-            <span class="lv-quick-item-title">{t("rail.quickDrill", "即刻刷题")}</span>
-            <span class="lv-quick-item-desc">{t("rail.quickDrillHint", "快速开练 15 道题")}</span>
-          </div>
-        </button>
-        <button class="lv-quick-menu-item" role="menuitem" onclick={() => runQuickAction("create")}>
-          <span class="lv-quick-item-badge lv-quick-item-badge--pen"><Icon name="pencil" size={13} /></span>
-          <div class="lv-quick-item-meta">
-            <span class="lv-quick-item-title">{t("rail.quickCreate", "快速录题")}</span>
-            <span class="lv-quick-item-desc">{t("rail.quickCreateHint", "录入一道新题目")}</span>
-          </div>
-        </button>
-        <button class="lv-quick-menu-item" role="menuitem" onclick={() => runQuickAction("mock")}>
-          <span class="lv-quick-item-badge lv-quick-item-badge--clock"><Icon name="clock" size={13} /></span>
-          <div class="lv-quick-item-meta">
-            <span class="lv-quick-item-title">{t("rail.quickMock", "全真模考")}</span>
-            <span class="lv-quick-item-desc">{t("rail.quickMockHint", "标准模拟考试")}</span>
-          </div>
-        </button>
-        <button class="lv-quick-menu-item" role="menuitem" onclick={() => runQuickAction("wrong")}>
-          <span class="lv-quick-item-badge lv-quick-item-badge--red"><Icon name="xcircle" size={13} /></span>
-          <div class="lv-quick-item-meta">
-            <span class="lv-quick-item-title">{t("rail.quickWrong", "错题特训")}</span>
-            <span class="lv-quick-item-desc">{t("rail.quickWrongHint", "消灭在册错题")}</span>
-          </div>
-        </button>
-        <button class="lv-quick-menu-item" role="menuitem" onclick={() => runQuickAction("import")}>
-          <span class="lv-quick-item-badge lv-quick-item-badge--lavender"><Icon name="import" size={13} /></span>
-          <div class="lv-quick-item-meta">
-            <span class="lv-quick-item-title">{t("rail.quickImport", "批量导入")}</span>
-            <span class="lv-quick-item-desc">{t("rail.quickImportHint", "Excel / CSV / 剪贴板")}</span>
-          </div>
-        </button>
-        <button class="lv-quick-menu-item" role="menuitem" onclick={() => runQuickAction("ai")}>
-          <span class="lv-quick-item-badge lv-quick-item-badge--accent"><Icon name="sparkles" size={13} /></span>
-          <div class="lv-quick-item-meta">
-            <span class="lv-quick-item-title">{t("rail.quickAi", "AI 出题")}</span>
-            <span class="lv-quick-item-desc">{t("rail.quickAiHint", "智能解析与出题")}</span>
-          </div>
-        </button>
-      </div>
-    {/if}
+
   </div>
   <div>
     <p class="lv-nav-label">{t("rail.workbench", "")}</p>
@@ -325,6 +363,55 @@
     </nav>
   </div>
   <div class="lv-rail-note">{t("rail.note", "")}</div>
+  </div>
+    {#if launcherOpen}
+      <div class="lv-quick-popover" id={launcherId} bind:this={launcherMenu} role="menu" aria-label={t("rail.quickActions", "快捷行动")}
+        style:left={`${launcherPosition.left}px`} style:top={`${launcherPosition.top}px`} style:width={`${launcherPosition.width}px`}
+        style:max-height={`${launcherPosition.maxHeight}px`} style:visibility={launcherPosition.ready ? "visible" : "hidden"}>
+        <button class="lv-quick-menu-item" role="menuitem" tabindex="-1" onclick={() => runQuickAction("drill")}>
+          <span class="lv-quick-item-badge lv-quick-item-badge--zap"><Icon name="play" size={13} /></span>
+          <div class="lv-quick-item-meta">
+            <span class="lv-quick-item-title">{t("rail.quickDrill", "即刻刷题")}</span>
+            <span class="lv-quick-item-desc">{t("rail.quickDrillHint", "快速开练 15 道题")}</span>
+          </div>
+        </button>
+        <button class="lv-quick-menu-item" role="menuitem" tabindex="-1" onclick={() => runQuickAction("create")}>
+          <span class="lv-quick-item-badge lv-quick-item-badge--pen"><Icon name="pencil" size={13} /></span>
+          <div class="lv-quick-item-meta">
+            <span class="lv-quick-item-title">{t("rail.quickCreate", "快速录题")}</span>
+            <span class="lv-quick-item-desc">{t("rail.quickCreateHint", "录入一道新题目")}</span>
+          </div>
+        </button>
+        <button class="lv-quick-menu-item" role="menuitem" tabindex="-1" onclick={() => runQuickAction("mock")}>
+          <span class="lv-quick-item-badge lv-quick-item-badge--clock"><Icon name="clock" size={13} /></span>
+          <div class="lv-quick-item-meta">
+            <span class="lv-quick-item-title">{t("rail.quickMock", "全真模考")}</span>
+            <span class="lv-quick-item-desc">{t("rail.quickMockHint", "标准模拟考试")}</span>
+          </div>
+        </button>
+        <button class="lv-quick-menu-item" role="menuitem" tabindex="-1" onclick={() => runQuickAction("wrong")}>
+          <span class="lv-quick-item-badge lv-quick-item-badge--red"><Icon name="xcircle" size={13} /></span>
+          <div class="lv-quick-item-meta">
+            <span class="lv-quick-item-title">{t("rail.quickWrong", "错题特训")}</span>
+            <span class="lv-quick-item-desc">{t("rail.quickWrongHint", "消灭在册错题")}</span>
+          </div>
+        </button>
+        <button class="lv-quick-menu-item" role="menuitem" tabindex="-1" onclick={() => runQuickAction("import")}>
+          <span class="lv-quick-item-badge lv-quick-item-badge--lavender"><Icon name="import" size={13} /></span>
+          <div class="lv-quick-item-meta">
+            <span class="lv-quick-item-title">{t("rail.quickImport", "批量导入")}</span>
+            <span class="lv-quick-item-desc">{t("rail.quickImportHint", "Excel / CSV / 剪贴板")}</span>
+          </div>
+        </button>
+        <button class="lv-quick-menu-item" role="menuitem" tabindex="-1" onclick={() => runQuickAction("ai")}>
+          <span class="lv-quick-item-badge lv-quick-item-badge--accent"><Icon name="sparkles" size={13} /></span>
+          <div class="lv-quick-item-meta">
+            <span class="lv-quick-item-title">{t("rail.quickAi", "AI 出题")}</span>
+            <span class="lv-quick-item-desc">{t("rail.quickAiHint", "智能解析与出题")}</span>
+          </div>
+        </button>
+      </div>
+    {/if}
 </aside>
 <nav class="lv-mobile-tasknav" class:focus={tasknavhidden} aria-label={t("rail.tasks", "主要功能")}>
   {#each globals as g (g.target)}
@@ -337,8 +424,18 @@
 
 <style>
   .lv-rail {
+    position: relative;
+    min-height: 0;
     border-right: 1px solid var(--lv-border);
     background: color-mix(in srgb, var(--lv-text) 3%, var(--lv-surface-2));
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+  }
+  .lv-rail-scroll {
+    min-width: 0;
+    min-height: 0;
+    flex: 1;
     padding: 26px 14px 18px;
     display: flex;
     flex-direction: column;
@@ -430,7 +527,7 @@
     outline-offset: 1px;
   }
   @container lv-exam (min-width: 760px) and (max-width: 1119px) {
-    .lv-rail {
+    .lv-rail-scroll {
       padding: 22px 10px;
     }
     .lv-brand {
@@ -452,11 +549,6 @@
     .lv-quick-create-text,
     .lv-quick-create-chevron {
       display: none;
-    }
-    .lv-quick-popover {
-      left: 100%;
-      top: 0;
-      margin-left: 8px;
     }
     .lv-rail-btn {
       justify-content: center;
@@ -502,7 +594,7 @@
     justify-content: space-between;
     gap: var(--lv-space-2);
     width: 100%;
-    min-height: 40px;
+    min-height: 44px;
     padding: 8px 12px;
     border: 1px solid color-mix(in srgb, var(--lv-accent) 24%, var(--lv-border));
     border-radius: var(--lv-radius-control-sm);
@@ -556,12 +648,9 @@
   }
   .lv-quick-popover {
     position: absolute;
-    top: calc(100% + 6px);
-    left: 0;
-    width: 220px;
-    max-width: calc(100vw - 32px);
-    max-height: calc(100vh - 160px);
+    box-sizing: border-box;
     overflow-y: auto;
+    overscroll-behavior: contain;
     z-index: 100;
     background: var(--lv-surface);
     border: 1px solid var(--lv-border);
@@ -571,7 +660,7 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    animation: lv-appear var(--lv-dur-view, 0.22s) var(--lv-ease-out);
+    animation: lv-appear var(--lv-dur-micro, 0.12s) var(--lv-ease-out);
   }
   .lv-quick-menu-item {
     display: flex;
@@ -579,6 +668,8 @@
     gap: 10px;
     padding: 8px 10px;
     width: 100%;
+    min-height: 44px;
+    flex: 0 0 auto;
     border: 0;
     border-radius: var(--lv-radius-control-sm);
     background: transparent;
@@ -590,7 +681,12 @@
   }
   .lv-quick-menu-item:hover {
     background: var(--lv-surface-2);
-    transform: translateX(2px);
+    transform: translateX(1px);
+  }
+  .lv-quick-menu-item:focus-visible {
+    outline: 2px solid var(--lv-accent);
+    outline-offset: -2px;
+    background: var(--lv-accent-soft);
   }
   .lv-quick-menu-item:active {
     transform: scale(0.98);
@@ -621,7 +717,7 @@
     line-height: 1.3;
   }
   .lv-quick-item-desc {
-    font-size: 10px;
+    font-size: var(--lv-font-size-label);
     color: var(--lv-text-3);
     line-height: 1.3;
   }
@@ -775,5 +871,15 @@
       min-width: 44px;
       min-height: 44px;
     }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .lv-quick-popover { animation: none; }
+    .lv-quick-create,
+    .lv-quick-create-chevron,
+    .lv-quick-menu-item { transition: none; }
+    .lv-quick-create:hover,
+    .lv-quick-create:active,
+    .lv-quick-menu-item:hover,
+    .lv-quick-menu-item:active { transform: none; }
   }
 </style>

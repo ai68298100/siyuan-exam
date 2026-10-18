@@ -11,11 +11,11 @@ import { reportDateKey, reportWindowStart } from "./core/reportWindow";
 import { PracticeSession, pickRandom, groupAdjacent } from "./core/session";
 import { randomSeedId, seededPickN } from "./core/random";
 import { inferAnswerSpec } from "./core/structuredAnswer";
-import { appendRevision, specChanged, type QuestionRevision, type RevisionStore } from "./core/revision";
+import { appendRevision, checkPublishGuard, diffQuestion, formatDiffSummary, getQuestionLifecycle, LIFECYCLE_LABELS, specChanged, validateLifecycleTransition, type QuestionLifecycleStatus, type QuestionRevision, type RevisionStore } from "./core/revision";
 import { interleaveGroups } from "./core/interleave";
 import { deckNameForBank, selfRatingToRiffRating, pickSameKp, cramQueue, dailySet, questionToFlashCardMarkdown } from "./core/memory";
 import { SaveGate } from "./core/saveGate";
-import { normalizeAnswer, questionHash } from "./core/answer";
+import { normalizeAnswer, questionHash, sha1like } from "./core/answer";
 import { questionToMarkdown } from "./core/blockTemplate";
 import { SAMPLE_BANK_NAME, SAMPLE_BANK_INTRO, sampleQuestions } from "./core/sampleBank";
 import { BATCH_FIELD_ATTR, type BatchField } from "./core/batchEdit";
@@ -31,7 +31,20 @@ import {
   type ActionItem,
   type ActionKind,
 } from "./core/actions";
-import type { ImportReport } from "./importer/pipeline";
+import {
+  createDisputeRecord,
+  filterEligibleQuestions,
+  resolveDisputeRecord,
+  DISPUTE_REASON_LABELS,
+  type DisputeReason,
+} from "./core/dispute";
+export {
+  isStubbornWrong,
+  getStubbornRemediation,
+  filterStubbornWrongs,
+  type StubbornRemediation,
+} from "./core/stubborn";
+import { buildImportCheckpoint, type ImportCheckpoint, type ImportReport } from "./importer/pipeline";
 import { sanitizeRichHtml } from "./libs/sanitize";
 import {
   canCopyIntoAssets,
@@ -151,6 +164,7 @@ const KNOWN_STORAGE_KEYS = [
   "ai/misdiagnosis",
   "estimate/history",
   "import/mappings",
+  "import/checkpoint",
   "browse/smartViews",
   "batchedit/last",
   "materials/registry",
@@ -192,6 +206,22 @@ export interface ImportCommitResult {
   cancelled?: boolean;
   /** 尚未进入写入步骤的题目；与已提交但未读回的题目区分。 */
   unprocessed?: string[];
+}
+
+export interface ImportCommitResult {
+  written: number;
+  docs: string[];
+  readback: {
+    confirmed: string[];
+    missing: string[];
+    verified: boolean;
+  };
+  cancelled?: boolean;
+  unprocessed?: string[];
+  /** 38-04 / U08：已写入文档但 attributes 索引尚未就绪的题目 ID */
+  pendingIndex?: string[];
+  /** 38-04 / U08：未完全入库时的可恢复断点 */
+  checkpoint?: ImportCheckpoint | null;
 }
 
 export class ExamApp {
@@ -635,7 +665,56 @@ export class ExamApp {
     }
     const written = writtenIds.size;
     const unprocessed = expected.filter((id) => !processedIds.has(id) && !confirmedIds.has(id));
-    return cancelled ? { written, docs, readback, cancelled, unprocessed } : { written, docs, readback };
+    const pendingIndex = expected.filter((id) => submittedIds.has(id) && !confirmedIds.has(id));
+
+    let checkpoint: ImportCheckpoint | null = null;
+    if (cancelled || readback.missing.length > 0) {
+      checkpoint = buildImportCheckpoint({
+        batch: report.batch,
+        bankId,
+        allQuestions: uniqueQuestions,
+        confirmedIds: readback.confirmed,
+        docs,
+        now: this.deps.now?.() ?? Date.now(),
+      });
+      if (checkpoint) {
+        try {
+          await this.saveImportCheckpoint(checkpoint);
+        } catch { /* 尽力而为：断点保存失败不破坏写入回执 */ }
+      }
+    } else {
+      try {
+        await this.clearImportCheckpoint();
+      } catch { /* 尽力而为 */ }
+    }
+
+    return {
+      written,
+      docs,
+      readback,
+      ...(cancelled ? { cancelled } : {}),
+      ...(unprocessed.length ? { unprocessed } : {}),
+      ...(pendingIndex.length ? { pendingIndex } : {}),
+      ...(checkpoint ? { checkpoint } : {}),
+    };
+  }
+
+  /** 38-04 / U08：读取上次未完成的导入断点（支持按题库过滤） */
+  async loadImportCheckpoint(bankId?: string): Promise<ImportCheckpoint | null> {
+    const cp = await this.loadAux<ImportCheckpoint>("import/checkpoint");
+    if (!cp || cp.v !== 1) return null;
+    if (bankId && cp.bankId !== bankId) return null;
+    return cp;
+  }
+
+  /** 38-04：保存导入断点（中断或部分失败时记录） */
+  async saveImportCheckpoint(cp: ImportCheckpoint): Promise<void> {
+    await this.saveAux("import/checkpoint", cp);
+  }
+
+  /** 38-04：清除导入断点（全量入库或用户主动丢弃时清理） */
+  async clearImportCheckpoint(): Promise<void> {
+    await this.saveAux("import/checkpoint", null);
   }
 
   private async ensureDoc(bankId: string, hpath: string, markdown?: string): Promise<string> {
@@ -701,10 +780,33 @@ export class ExamApp {
       difficulty?: number;
       /** 54-02 作者规格：显式提供时优先生效并写块属性；未提供走既有推断/保留规则 */
       answerSpec?: import("./core/structuredAnswer").NumericAnswerSpec | import("./core/structuredAnswer").MultiBlankSpec | null;
+      /** 43-01 题目作者生命周期状态 (draft/review/published/deprecated) */
+      status?: QuestionLifecycleStatus;
     },
   ): Promise<Question> {
     if (!this.kernelOnline) throw new Error("离线：题目编辑需要内核可写");
     const answer = q.type === "material" ? "" : normalizeAnswer(q.type, draft.answer) ?? draft.answer;
+    if (draft.status !== undefined) {
+      const currentStatus = getQuestionLifecycle(q);
+      if (draft.status !== currentStatus) {
+        const candidate: Question = {
+          ...q,
+          stem: draft.stem,
+          options: draft.options.map((o) => o.trim()).filter(Boolean),
+          answer,
+          analysis: draft.analysis || undefined,
+          kp: draft.kp || undefined,
+          difficulty: draft.difficulty,
+          status: draft.status,
+          hash: questionHash(draft.stem, draft.options),
+        };
+        const validation = validateLifecycleTransition(currentStatus, draft.status, candidate);
+        if (!validation.ok) {
+          const detail = validation.guardErrors?.length ? `：${validation.guardErrors.join("；")}` : "";
+          throw new Error(`${validation.reason}${detail}`);
+        }
+      }
+    }
     const next: Question = {
       ...q,
       stem: draft.stem,
@@ -713,6 +815,7 @@ export class ExamApp {
       analysis: draft.analysis || undefined,
       kp: draft.kp || undefined,
       difficulty: draft.difficulty,
+      status: draft.status !== undefined ? draft.status : q.status,
       hash: questionHash(draft.stem, draft.options),
     };
     const oldMarkdown = questionToMarkdown(q);
@@ -739,7 +842,7 @@ export class ExamApp {
     // （陈旧 spec 会让新答案全判错；填空答案改为不可识别文本 → 清空属性回旧字符串口径）
     let specWasChanged = false;
     if (q.type === "fill" && draft.answerSpec !== undefined) {
-      next.answerSpec = draft.answerSpec;
+      next.answerSpec = draft.answerSpec ?? undefined;
       specWasChanged = specChanged(q.answerSpec, draft.answerSpec);
       try {
         await this.deps.client.setExamAttrs(q.blockId, {
@@ -766,14 +869,60 @@ export class ExamApp {
         throw Object.assign(new Error(`答案规格写入失败，已恢复编辑前内容：${error instanceof Error ? error.message : String(error)}`), { cause: error });
       }
     }
-    // 43-01 lite：修订时间线快照（答案/考点变更才记；每题 FIFO 10 条）
-    if (answer !== q.answer || (draft.kp.trim() || undefined) !== q.kp || specWasChanged) {
+    // 43-01：生命周期状态写块属性
+    if (draft.status !== undefined && draft.status !== q.status) {
       try {
+        await this.deps.client.setExamAttrs(q.blockId, {
+          "exam-status": draft.status,
+        });
+      } catch (error) {
+        try { await this.saves.run(`edit-q-rollback/${q.blockId}`, () => this.deps.client.updateBlock(q.blockId, oldMarkdown)); }
+        catch (rollbackError) { throw Object.assign(new Error(`生命周期状态写入失败且回滚失败：${String(rollbackError)}`), { cause: error }); }
+        throw Object.assign(new Error(`生命周期状态写入失败，已恢复编辑前内容：${error instanceof Error ? error.message : String(error)}`), { cause: error });
+      }
+    }
+    // 43-01 全量：修订时间线快照（题干/选项/答案/解析/考点/难度/规格/生命周期变更，记录全量快照与 diff）
+    const diffs = diffQuestion(
+      {
+        stem: q.stem,
+        options: q.options,
+        answer: q.answer,
+        analysis: q.analysis,
+        kp: q.kp,
+        difficulty: q.difficulty,
+        answerSpec: q.answerSpec,
+        status: q.status,
+      },
+      {
+        stem: draft.stem,
+        options: draft.options,
+        answer,
+        analysis: draft.analysis,
+        kp: draft.kp,
+        difficulty: draft.difficulty,
+        answerSpec: next.answerSpec,
+        status: next.status,
+      },
+    );
+    if (diffs.length > 0 || specWasChanged) {
+      try {
+        const changedFields = diffs.map((d) => d.field);
+        if (specWasChanged && !changedFields.includes("spec")) {
+          changedFields.push("spec");
+        }
         await this.appendRevision(q.id, {
           ts: this.deps.now?.() ?? Date.now(),
           answer,
-          kp: draft.kp.trim() || undefined,
+          kp: draft.kp.trim(),
           specChanged: specWasChanged || undefined,
+          stem: draft.stem.trim(),
+          options: [...draft.options],
+          analysis: draft.analysis.trim(),
+          difficulty: draft.difficulty ?? null,
+          answerSpec: next.answerSpec ? JSON.parse(JSON.stringify(next.answerSpec)) : null,
+          status: next.status,
+          changedFields,
+          summary: formatDiffSummary(diffs),
         });
       } catch (error) {
         // Revision history is part of the edit receipt. Roll back the block
@@ -790,6 +939,10 @@ export class ExamApp {
         }
         throw Object.assign(new Error(`修订记录保存失败，已恢复编辑前内容：${error instanceof Error ? error.message : String(error)}`), { cause: error });
       }
+    }
+    // 69-04：题干若有改动，使旧题干渲染缓存立即失效
+    if (draft.stem.trim() !== q.stem.trim()) {
+      this.invalidateRenderCache(q.id);
     }
     return next;
   }
@@ -838,14 +991,67 @@ export class ExamApp {
     const items = activeWrongItems(this.derived());
     if (!overlay.size) return items;
     // 手动处置覆盖层：按错次计数判断时效——处置后发生更新的错误（wrongCount 增长）自动清除覆盖；
-    // 暂缓（52-06 lite）：until 未到期在册隐藏，到期或期间再错自动回册
+    // 暂缓（52-06 lite）：until 未到期在册隐藏，到期或期间再错自动回册；
+    // 归档（52-06）：archived 永久封存出刷题池，期间再错自动回册
     return items.filter((w) => {
       const o = overlay.get(w.qid);
       if (!o) return true;
       if (w.wrongCount > o.wrongCount) return true; // 处置后再错 → 覆盖失效
       if (o.status === "snoozed") return (o.until ?? 0) <= now; // 暂缓：到期回册
+      if (o.status === "archived") return false; // 归档：在日常错题池中排除
       return false; // mastered/removed 覆盖生效
     });
+  }
+
+  /** 获取处于封存归档状态的错题清单（52-06 顽固题归档） */
+  listArchivedWrongs(): WrongItem[] {
+    const overlay = this.wrongOverlay;
+    const all = [...this.derived().wrongbook.values()];
+    return all.filter((w) => {
+      const o = overlay.get(w.qid);
+      return !!o && o.status === "archived" && w.wrongCount <= o.wrongCount;
+    });
+  }
+
+  isWrongArchived(qid: string): boolean {
+    const o = this.wrongOverlay.get(qid);
+    const w = this.derived().wrongbook.get(qid);
+    return !!o && o.status === "archived" && (w ? w.wrongCount <= o.wrongCount : true);
+  }
+
+  isWrongSnoozed(qid: string): boolean {
+    const o = this.wrongOverlay.get(qid);
+    const now = this.deps.now?.() ?? Date.now();
+    const w = this.derived().wrongbook.get(qid);
+    return !!o && o.status === "snoozed" && (o.until ?? 0) > now && (w ? w.wrongCount <= o.wrongCount : true);
+  }
+
+  /** 顽固题封存归档（52-06）：彻底移出刷题与模考回流，但历史与统计完整保留 */
+  async archiveWrong(qid: string): Promise<void> {
+    this.assertStorageWritable();
+    const key = "wrongbook/overlays";
+    await this.queueStorageWrite(key, async () => {
+      const current = this.derived().wrongbook.get(qid);
+      const v = await this.loadAux<Record<string, { status: string; at: number; wrongCount: number; until?: number }>>(key);
+      const previous = this.wrongOverlay;
+      const map = { ...(v ?? {}) };
+      const at = this.deps.now?.() ?? Date.now();
+      map[qid] = { status: "archived", at, wrongCount: current?.wrongCount ?? 0 };
+      try {
+        await this.saves.runLatest(key, () => this.deps.storage.save(key, map));
+        this.wrongOverlay = new Map(Object.entries(map));
+        this.invalidate();
+      } catch (e) {
+        this.wrongOverlay = previous;
+        throw e;
+      }
+    });
+    emitExamEvent("wrongbook-changed", { qid, status: "archived" });
+  }
+
+  /** 解除归档（52-06）：将已归档错题恢复为活跃状态 */
+  async unarchiveWrong(qid: string): Promise<void> {
+    await this.setWrongStatus(qid, "active");
   }
 
   /** 手动处置（docs/02 附录 A）：mastered=已掌握 / removed=永久移除；此后更新的错误自动清覆盖 */
@@ -1150,13 +1356,25 @@ export class ExamApp {
 
   /** 手工录题：按考点落文档（无考点 → /手工录入），写块入库 */
   async writeManualQuestion(bankId: string, q: Question): Promise<void> {
+    const status = getQuestionLifecycle(q);
+    if (status === "published") {
+      const guard = checkPublishGuard(q);
+      if (!guard.valid) {
+        throw new Error(`发布守卫阻断：${guard.errors.join("；")}`);
+      }
+    }
     const docId = await this.ensureDoc(bankId, q.kp ? `/${q.kp.split("/")[0]}` : "/手工录入");
     const writtenBlocks = await this.deps.client.appendQuestions(docId, [q]);
-    // 54 第三刀：手工录题的数值/多空 spec 与导入同口径写入块属性（失败不影响入库，读回降级）
     const blockId = writtenBlocks[0]?.blockId;
-    if (blockId && q.answerSpec) {
+    if (blockId) {
+      const attrs: Record<string, string> = {
+        "exam-status": status,
+      };
+      if (q.answerSpec) {
+        attrs["exam-answer-spec"] = JSON.stringify(q.answerSpec);
+      }
       try {
-        await this.deps.client.setExamAttrs(blockId, { "exam-answer-spec": JSON.stringify(q.answerSpec) });
+        await this.deps.client.setExamAttrs(blockId, attrs);
       } catch { /* 如实降级：读回按旧口径 */ }
     }
     this.invalidate();
@@ -1181,7 +1399,7 @@ export class ExamApp {
     kind: "mnemonic" | "note" | "ai-explain",
   ): Promise<void> {
     if (!blockId) throw new Error("题目块不存在（先完成导入）");
-    const md = `{{{row\n${text}\n}}}\n{: exam-note-id="${qid}-n-${Date.now().toString(36)}" exam-note-kind="${kind}"`;
+    const md = `{{{row\n${text}\n}}}\n{: custom-exam-note-id="${qid}-n-${Date.now().toString(36)}" custom-exam-note-kind="${kind}"}`;
     await this.deps.client.appendBlock(blockId, md);
   }
 
@@ -1336,7 +1554,6 @@ export class ExamApp {
     file: File,
     meta: { subject?: string; chapter?: string; title?: string } = {},
   ): Promise<{ material: MaterialDoc; deduped: boolean }> {
-    this.assertStorageWritable();
     this.assertStorageWritable();
     if (this.materialsReadonly) throw new Error("注册表版本较新：只读（降级回滚场景），登记已拒绝");
     if (!this.kernelOnline) throw new Error("离线：登记资料需要内核可写（拷入 assets）");
@@ -2117,43 +2334,72 @@ export class ExamApp {
     return all.filter((q) => ids.has(q.blockId));
   }
 
-  // ---------- 富文本渲染（md2html，按题缓存；离线/失败回退纯文本） ----------
+  // ---------- 富文本渲染（69-04 / 69-05：复合键 qid#hash(stem) + LRU 上限 1000 题；离线/失败回退纯文本） ----------
+  private static readonly MAX_RENDER_CACHE = 1000;
   private renderCache = new Map<string, string>();
 
   async renderStem(q: Question): Promise<string> {
-    if (this.renderCache.has(q.id)) return this.renderCache.get(q.id)!;
+    const key = `${q.id}#${sha1like(q.stem)}`;
+    if (this.renderCache.has(key)) {
+      const cached = this.renderCache.get(key)!;
+      // LRU: 刷新至最新访问位置
+      this.renderCache.delete(key);
+      this.renderCache.set(key, cached);
+      return cached;
+    }
     if (!this.kernelOnline) return "";
     try {
       const raw = await this.deps.client.renderMarkdown(q.stem);
       // P0-07：题干来自导入（不可信源），内核 md2html 透传裸 HTML——渲染产物必须过白名单
       const html = sanitizeRichHtml(raw);
-      this.renderCache.set(q.id, html);
+      if (this.renderCache.size >= ExamApp.MAX_RENDER_CACHE) {
+        const oldest = this.renderCache.keys().next().value;
+        if (oldest !== undefined) this.renderCache.delete(oldest);
+      }
+      this.renderCache.set(key, html);
       return html;
     } catch {
       return "";
     }
   }
 
+  /** 69-04：使指定题目或全部题目的渲染缓存失效 */
+  invalidateRenderCache(qid?: string): void {
+    if (!qid) {
+      this.renderCache.clear();
+      return;
+    }
+    const prefix = `${qid}#`;
+    for (const k of Array.from(this.renderCache.keys())) {
+      if (k.startsWith(prefix)) {
+        this.renderCache.delete(k);
+      }
+    }
+  }
+
   // ---------- 常用抽题 ----------
-  /** 背诵池：优先错题；已毕业（背诵连击 ≥4）的题出清，回选择题形态 */
+  /** 背诵池：优先错题；已毕业（背诵连击 ≥4）的题出清，回选择题形态（默认排除未解决的争议题，57-04） */
   recitePool(questions: Question[]): Question[] {
+    const eligible = filterEligibleQuestions(questions);
     const graduated = new Set([...this.derived().reciteStreak.entries()].filter(([, s]) => s >= 4).map(([qid]) => qid));
-    const wrongs = this.wrongDrill(questions).filter((q) => !graduated.has(q.id));
+    const wrongs = this.wrongDrill(eligible).filter((q) => !graduated.has(q.id));
     const wrongIds = new Set(wrongs.map((q) => q.id));
-    const rest = questions.filter((q) => !graduated.has(q.id) && !wrongIds.has(q.id));
+    const rest = eligible.filter((q) => !graduated.has(q.id) && !wrongIds.has(q.id));
     return wrongs.length ? wrongs : rest;
   }
 
   quickDrill(questions: Question[], n: number, seed?: string, opts?: { avoid?: Set<string> }): Question[] {
     // 65-05 lite：带 seed 走确定性抽样（可复现）；缺省维持 Math.random
     // 65-06 lite：opts.avoid = 近期已见 qid——池充足时优先未见过的新题；不足则回退全量（如实）
+    // 57-04：默认排除未解决的争议题，避免争议题进入日常快刷
+    const eligible = filterEligibleQuestions(questions);
     const avoid = opts?.avoid;
     const pool =
       avoid && avoid.size
-        ? questions.filter((q) => !avoid.has(q.id)).length >= n
-          ? questions.filter((q) => !avoid.has(q.id))
-          : questions
-        : questions;
+        ? eligible.filter((q) => !avoid.has(q.id)).length >= n
+          ? eligible.filter((q) => !avoid.has(q.id))
+          : eligible
+        : eligible;
     return seed ? seededPickN(pool, n, seed) : pickRandom(pool, n);
   }
 
@@ -2184,6 +2430,122 @@ export class ExamApp {
   wrongDrill(questions: Question[]): Question[] {
     const active = new Set(this.wrongItems().map((w) => w.qid));
     return questions.filter((q) => active.has(q.id));
+  }
+
+  /** 43-01 题目作者生命周期流转（draft ↔ review ↔ published ↔ deprecated） */
+  async updateQuestionLifecycle(
+    q: Question & { blockId: string },
+    targetStatus: QuestionLifecycleStatus,
+  ): Promise<Question> {
+    if (!this.kernelOnline) throw new Error("离线：生命周期变更需要内核可写");
+    const currentStatus = getQuestionLifecycle(q);
+    if (currentStatus === targetStatus) return q;
+
+    const validation = validateLifecycleTransition(currentStatus, targetStatus, q);
+    if (!validation.ok) {
+      const detail = validation.guardErrors?.length ? `：${validation.guardErrors.join("；")}` : "";
+      throw new Error(`${validation.reason}${detail}`);
+    }
+
+    const prevStatus = q.status;
+    q.status = targetStatus;
+    try {
+      await this.deps.client.setExamAttrs(q.blockId, { "exam-status": targetStatus });
+      await this.appendRevision(q.id, {
+        ts: this.deps.now?.() ?? Date.now(),
+        answer: q.answer,
+        kp: q.kp,
+        stem: q.stem,
+        options: [...q.options],
+        analysis: q.analysis,
+        difficulty: q.difficulty,
+        answerSpec: q.answerSpec,
+        status: targetStatus,
+        changedFields: ["status"],
+        summary: `状态: ${LIFECYCLE_LABELS[currentStatus]} → ${LIFECYCLE_LABELS[targetStatus]}`,
+      });
+    } catch (e) {
+      q.status = prevStatus;
+      throw e;
+    }
+    this.invalidate();
+    return q;
+  }
+
+  /** 43-01：过滤出已发布题库（默认日常刷题、背诵、模考池排除草稿与废弃题） */
+  publishedQuestions(questions: Question[]): Question[] {
+    return questions.filter((q) => getQuestionLifecycle(q) === "published");
+  }
+
+  /** 57-04：标记题目争议（多解/缺条件/答案存疑/资料过期） */
+  async flagQuestionDispute(
+    q: Question & { blockId: string },
+    reason: DisputeReason,
+    note: string,
+  ): Promise<Question> {
+    if (!this.kernelOnline) throw new Error("离线：标记争议需要内核可写");
+    const dispute = createDisputeRecord(reason, note, this.deps.now?.() ?? Date.now());
+    q.dispute = dispute;
+    await this.deps.client.setExamAttrs(q.blockId, {
+      "exam-dispute": JSON.stringify(dispute),
+    });
+    try {
+      await this.appendRevision(q.id, {
+        ts: this.deps.now?.() ?? Date.now(),
+        answer: q.answer,
+        kp: q.kp,
+        stem: q.stem,
+        options: [...q.options],
+        analysis: q.analysis,
+        difficulty: q.difficulty,
+        answerSpec: q.answerSpec,
+        status: q.status,
+        summary: `标记争议: ${DISPUTE_REASON_LABELS[reason] ?? reason}（${note.slice(0, 30)}）`,
+      });
+    } catch { /* 尽力而为：修订日志失败不阻断块属性写入 */ }
+    this.invalidate();
+    return q;
+  }
+
+  /** 57-04：解决题目争议（处置单完结） */
+  async resolveQuestionDispute(
+    q: Question & { blockId: string },
+    resolution: string,
+  ): Promise<Question> {
+    if (!this.kernelOnline) throw new Error("离线：解决争议需要内核可写");
+    if (!q.dispute) return q;
+    const resolved = resolveDisputeRecord(q.dispute, resolution, this.deps.now?.() ?? Date.now());
+    q.dispute = resolved;
+    await this.deps.client.setExamAttrs(q.blockId, {
+      "exam-dispute": JSON.stringify(resolved),
+    });
+    try {
+      await this.appendRevision(q.id, {
+        ts: this.deps.now?.() ?? Date.now(),
+        answer: q.answer,
+        kp: q.kp,
+        stem: q.stem,
+        options: [...q.options],
+        analysis: q.analysis,
+        difficulty: q.difficulty,
+        answerSpec: q.answerSpec,
+        status: q.status,
+        summary: `解决争议: ${resolution.slice(0, 30)}`,
+      });
+    } catch { /* 尽力而为 */ }
+    this.invalidate();
+    return q;
+  }
+
+  /** 57-04：清除争议标记 */
+  async clearQuestionDispute(q: Question & { blockId: string }): Promise<Question> {
+    if (!this.kernelOnline) throw new Error("离线：清除争议需要内核可写");
+    delete q.dispute;
+    await this.deps.client.setExamAttrs(q.blockId, {
+      "exam-dispute": "",
+    });
+    this.invalidate();
+    return q;
   }
 
   dailySet(questions: Question[], dueFirst: Question[], n: number): Question[] {

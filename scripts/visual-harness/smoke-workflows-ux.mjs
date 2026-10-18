@@ -70,6 +70,19 @@ try {
   {
     const page = await freshPage();
     await page.locator("#app .lv-entry-hero").waitFor();
+    // A host control outside the plugin keeps its native keyboard focus
+    // indicator instead of inheriting the plugin's global ring/reset.
+    const hostControl = page.locator("#theme");
+    await hostControl.focus();
+    await page.keyboard.press("Shift");
+    const hostFocus = await hostControl.evaluate((button) => ({
+      visible: button.matches(":focus-visible"),
+      outline: getComputedStyle(button).outlineStyle,
+      shadow: getComputedStyle(button).boxShadow,
+    }));
+    assert.equal(hostFocus.visible, true);
+    assert.notEqual(hostFocus.outline, "none", "Plugin CSS must not remove the host focus outline");
+    assert.equal(hostFocus.shadow, "none", "Plugin CSS must not add its focus ring to host controls");
     await page.setViewportSize({ width: 390, height: 844 });
     const taskNav = page.getByRole("navigation", { name: "主要功能" });
     await taskNav.waitFor({ state: "visible" });
@@ -125,6 +138,29 @@ try {
     await task("出题").click();
     await page.locator("#app [data-manual-form]").waitFor();
     assert.equal(await task("出题").getAttribute("aria-current"), "page");
+    const studio = page.getByRole("navigation", { name: "出题工作台", exact: true });
+    await studio.waitFor();
+    assert.equal(await studio.getByRole("button").count(), 4);
+    assert.equal(await studio.getByRole("tab").count(), 0);
+    assert.equal(await studio.locator("button[aria-current='page']").count(), 1);
+    const studioSizes = await studio.getByRole("button").evaluateAll((buttons) => buttons.map((button) => {
+      const rect = button.getBoundingClientRect();
+      return { text: button.textContent.trim(), width: rect.width, height: rect.height };
+    }));
+    assert.ok(studioSizes.every((size) => size.width >= 44 && size.height >= 44), `Studio navigation targets are too small: ${JSON.stringify(studioSizes)}`);
+    const manualNav = studio.getByRole("button", { name: await label(page, "tab.manual") ?? "手工录题", exact: true });
+    await manualNav.focus();
+    await page.keyboard.press("Shift");
+    assert.equal(await manualNav.evaluate((button) => button.matches(":focus-visible") && getComputedStyle(button).outlineStyle !== "none"), true);
+    await page.keyboard.press("Tab");
+    const materialsNav = studio.getByRole("button", { name: await label(page, "tab.materials") ?? "学习资料", exact: true });
+    assert.equal(await materialsNav.evaluate((button) => button === document.activeElement), true);
+    await page.keyboard.press("Enter");
+    assert.equal(await materialsNav.getAttribute("aria-current"), "page");
+    assert.equal(await studio.locator("button[aria-current='page']").count(), 1);
+    await manualNav.click();
+    await page.locator("#app [data-manual-form]").waitFor();
+    console.log("✓ 宿主焦点样式独立，出题工作台使用普通按钮导航、44px 目标与 Tab/Enter 键盘交互");
     await task("今日").click();
     await page.locator("#app .lv-entry-hero").waitFor();
     assert.equal(await task("今日").getAttribute("aria-current"), "page");
@@ -200,6 +236,38 @@ try {
     assert.ok(Math.abs(drawerGeometry.backdrop.left - drawerGeometry.pane.left) <= 1 && Math.abs(drawerGeometry.backdrop.right - drawerGeometry.pane.right) <= 1, `navigation backdrop escapes plugin pane: ${JSON.stringify(drawerGeometry)}`);
     await page.getByRole("button", { name: "关闭", exact: true }).click();
     console.log("✓ R54 五项任务导航在 390px 可触发、跨页面目标正确，并受宽窗口内的窄插件面板约束");
+  }
+
+  // File pickers expose native buttons: keyboard activation opens the same
+  // browser file chooser as pointer activation, then CSV reaches preview.
+  {
+    const page = await freshPage();
+    await rail(page, "出题").click();
+    const studio = page.getByRole("navigation", { name: "出题工作台", exact: true });
+    await studio.getByRole("button", { name: await label(page, "tab.import") ?? "批量导入", exact: true }).click();
+    const importPicker = await byKey(page, "import.pickExcel");
+    await importPicker.focus();
+    assert.equal(await importPicker.evaluate((button) => button.tagName === "BUTTON" && button.tabIndex === 0 && button === document.activeElement), true);
+    const [importChooser] = await Promise.all([
+      page.waitForEvent("filechooser"),
+      page.keyboard.press("Enter"),
+    ]);
+    await importChooser.setFiles({
+      name: "键盘文件选择.csv",
+      mimeType: "text/csv",
+      buffer: Buffer.from("题型,题干,选项A,选项B,答案,解析\n单选,键盘导入回归：请选择一,一,二,A,第一项是一。"),
+    });
+    await page.getByRole("button", { name: `${await label(page, "import.commit")} (1)`, exact: true }).waitFor();
+    await studio.getByRole("button", { name: await label(page, "tab.materials") ?? "学习资料", exact: true }).click();
+    const materialPicker = await byKey(page, "materials.pickFile");
+    await materialPicker.focus();
+    assert.equal(await materialPicker.evaluate((button) => button.tagName === "BUTTON" && button.tabIndex === 0 && button === document.activeElement), true);
+    const [materialChooser] = await Promise.all([
+      page.waitForEvent("filechooser"),
+      page.keyboard.press("Space"),
+    ]);
+    await materialChooser.setFiles([]);
+    console.log("✓ 导入与资料文件入口均可用键盘打开选择器，CSV 文件选择后进入有效预览");
   }
 
   // 更新式重导：只有更新行也应能提交；提交中锁定题库选择，按原题库快照更新。
@@ -384,7 +452,7 @@ try {
     await mastered.click();
     await page.getByRole("button", { name: "确认", exact: true }).click();
     await page.waitForFunction(() => window.__wrongStatusCalls === 2);
-    await page.getByText("已标记掌握", { exact: true }).waitFor();
+    await page.getByText(/已彻底掌握|已标记掌握/).waitFor();
     assert.equal(await page.locator("#app .lv-wrong-row").count(), wrongCountBefore - 1);
     console.log("✓ 错题处置有确认、写入失败提示和可重试入口");
   }
@@ -451,6 +519,9 @@ try {
       ];
       window.__app.listMaterials = () => window.__materials;
       window.__app.listMaterialNotes = (id) => window.__notes.filter((note) => note.materialId === id);
+      window.__qrefs = [];
+      window.__app.listQuestionRefs = (id) => window.__qrefs.filter((ref) => ref.materialId === id);
+      window.__qrefs.push({ qid: "seed-q01", materialId: "ux-material-A", revision: 1, locator: null, createdAt: now });
       window.__noteRequests = 0;
       window.__app.addMaterialNote = (payload) => {
         window.__noteRequests++;
@@ -463,6 +534,12 @@ try {
           };
         });
       };
+      window.__deleteNoteRequests = 0;
+      window.__app.deleteMaterialNote = async (id) => {
+        window.__deleteNoteRequests++;
+        if (window.__deleteNoteRequests === 1) throw new Error("回归模拟删除失败");
+        window.__notes = window.__notes.filter((note) => note.id !== id);
+      };
     });
     await rail(page, "学习资料").click();
     const materialItem = (n) => page.locator("#app .lv-material-item").filter({ hasText: `回归资料${n}` });
@@ -470,6 +547,9 @@ try {
     const notesButton = () => detail().getByRole("button", { name: /^笔记/ });
     const noteEditor = () => detail().locator("textarea");
     await materialItem("A").click();
+    assert.equal((await materialItem("A").locator(".lv-material-count").innerText()).trim(), "1");
+    assert.match(await notesButton().innerText(), /（\s*1\s*）/);
+    assert.match(await detail().innerText(), /关联\s*1\s*题/, "资料详情应显示当前题目关联数");
     await notesButton().click();
     await noteEditor().fill("资料A尚未保存的草稿");
     await materialItem("B").click();
@@ -494,6 +574,8 @@ try {
     await page.evaluate(() => window.__rejectNote());
     await page.getByText("回归模拟保存失败", { exact: true }).waitFor();
     assert.equal(await noteEditor().inputValue(), "资料A尚未保存的草稿");
+    assert.equal((await materialItem("A").locator(".lv-material-count").innerText()).trim(), "1", "保存失败不可提前增加计数");
+    assert.match(await notesButton().innerText(), /（\s*1\s*）/);
     await page.setViewportSize({ width: 760, height: 1000 });
     await page.getByText("回归模拟保存失败", { exact: true }).scrollIntoViewIfNeeded();
     await page.screenshot({
@@ -509,12 +591,39 @@ try {
     await page.evaluate(() => window.__resolveNote());
     await page.waitForFunction(() => window.__notes.length === 2);
     await noteEditor().waitFor();
+    await page.waitForFunction(() => {
+      const selected = document.querySelector("#app .lv-material-item.selected .lv-material-count");
+      return selected?.textContent.trim() === "2";
+    });
     assert.equal(await noteEditor().inputValue(), "");
+    assert.equal((await materialItem("A").locator(".lv-material-count").innerText()).trim(), "2", "保存成功应即时更新资料列表计数");
+    assert.match(await notesButton().innerText(), /（\s*2\s*）/, "保存成功应即时更新笔记按钮计数");
     assert.equal(await page.evaluate(() => window.__notePayload.materialId), "ux-material-A");
+    const newNote = () => detail().locator(".lv-material-note").filter({ hasText: "资料A尚未保存的草稿" });
+    const deleteNewNote = async () => newNote().getByRole("button", { name: await label(page, "materials.removeTitle"), exact: true }).click();
+    await deleteNewNote();
+    await page.getByRole("heading", { name: await label(page, "materials.noteDelTitle"), exact: true }).waitFor();
+    await page.getByRole("button", { name: "取消", exact: true }).click();
+    assert.equal(await page.evaluate(() => window.__deleteNoteRequests), 0, "取消确认不可执行删除");
+    await deleteNewNote();
+    await page.getByRole("button", { name: "确认", exact: true }).click();
+    await page.getByText("回归模拟删除失败", { exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => window.__deleteNoteRequests), 1);
+    assert.equal(await newNote().count(), 1, "删除失败必须保留笔记正文");
+    assert.equal((await materialItem("A").locator(".lv-material-count").innerText()).trim(), "2", "删除失败不可减少列表计数");
+    assert.match(await notesButton().innerText(), /（\s*2\s*）/, "删除失败不可减少按钮计数");
+    await deleteNewNote();
+    await page.getByRole("button", { name: "确认", exact: true }).click();
+    await newNote().waitFor({ state: "detached" });
+    assert.equal(await page.evaluate(() => window.__deleteNoteRequests), 2);
+    assert.equal((await materialItem("A").locator(".lv-material-count").innerText()).trim(), "1", "删除成功应即时减少列表计数");
+    assert.match(await notesButton().innerText(), /（\s*1\s*）/, "删除成功应即时减少按钮计数");
     await materialItem("B").click();
     await notesButton().click();
     assert.equal(await noteEditor().inputValue(), "资料B独立的草稿");
-    console.log("✓ 资料草稿按资料隔离，保存中不可切换编辑，失败保留输入，重试成功后清理对应草稿");
+    assert.equal((await materialItem("B").locator(".lv-material-count").innerText()).trim(), "0", "另一资料的计数保持独立");
+    assert.match(await notesButton().innerText(), /（\s*0\s*）/);
+    console.log("✓ 资料草稿按资料隔离，保存/删除成功即时刷新两处计数，取消或失败保留正文与计数");
   }
 
   // 原始请求素材/题库/要求是队列快照；页面后续变化不能污染候选和重试。
@@ -700,7 +809,16 @@ try {
     await page.waitForFunction(
       () => document.querySelector('[aria-label="收藏本题"]')?.getAttribute("aria-pressed") === "true",
     );
-    console.log("✓ 收藏写入失败有明确提示且保留旧状态，重试成功后再切换状态");
+    // A successful write must update the same UI state that a second click
+    // reads; this catches an in-place q.fav mutation being inverted again by
+    // the list update path.
+    await favorite.click();
+    await page.waitForFunction(() => window.__favCalls === 3);
+    await page.waitForFunction(
+      () => document.querySelector('[aria-label="收藏本题"]')?.getAttribute("aria-pressed") === "false",
+    );
+    await page.getByRole("status").filter({ hasText: "已取消收藏" }).waitFor();
+    console.log("✓ 收藏写入失败有明确提示且保留旧状态，重试成功后可稳定切换并显示对应反馈");
   }
 
   // 文件落在插件区域才接管：CSV 自动进入导入预览，保留题型与选项。

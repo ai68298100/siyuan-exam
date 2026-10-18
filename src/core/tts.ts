@@ -1,5 +1,5 @@
 // TTS 读题（v0.5 lite）：Web Speech API 封装（docs/11 听学；纯听题模式待 v0.5.x）
-// 不支持的环境静默降级（返回 false，UI 按钮常显但不生效）
+// 不支持的环境返回 false；UI 由调用方禁用朗读按钮并展示能力边界。
 
 export const ttsSupported = (): boolean =>
   typeof globalThis.speechSynthesis !== "undefined" && typeof globalThis.SpeechSynthesisUtterance !== "undefined";

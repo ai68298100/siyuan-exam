@@ -38,6 +38,40 @@ export interface ImportReport {
   updates?: { row: number; q: Question }[];
 }
 
+/** 38-04 / U08 导入断点检查点：记录中途取消、写入故障或未完成入库的批次状态 */
+export interface ImportCheckpoint {
+  v: 1;
+  batch: string;
+  bankId: string;
+  createdAt: number;
+  confirmedIds: string[];
+  pendingQuestions: Question[];
+  docs: string[];
+}
+
+/** 纯函数：根据当前批次全量题目与已读回确认的 ID 清单构造断点，无剩余题返回 null */
+export function buildImportCheckpoint(params: {
+  batch: string;
+  bankId: string;
+  allQuestions: Question[];
+  confirmedIds: string[];
+  docs?: string[];
+  now?: number;
+}): ImportCheckpoint | null {
+  const confirmedSet = new Set(params.confirmedIds);
+  const pending = params.allQuestions.filter((q) => !confirmedSet.has(q.id));
+  if (!pending.length) return null;
+  return {
+    v: 1,
+    batch: params.batch,
+    bankId: params.bankId,
+    createdAt: params.now ?? Date.now(),
+    confirmedIds: params.confirmedIds,
+    pendingQuestions: pending,
+    docs: params.docs ?? [],
+  };
+}
+
 /** 38-03 重复合并策略：skip=跳过（默认）/ coexist=并存（不回灌已有 hash）/ update=更新已有题答案解析 */
 export type DuplicateStrategy = "skip" | "coexist" | "update";
 

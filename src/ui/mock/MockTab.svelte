@@ -22,6 +22,8 @@
     import SaveStatus from "../shared/SaveStatus.svelte";
     import { mockSectionsToCsv, mockHistoryToCsv } from "../../core/exportMd";
     import { renderInlineText } from "../../libs/sanitize";
+    import { createQuestionVersionSnapshot } from "../../core/revision";
+    import { simulateAllPolicySamples, SCORING_POLICY_LABELS, type ScoringPolicyKind } from "../../core/scoringPolicy";
     
     let { plugin, examApp }: { plugin: any; examApp?: ExamApp | null } = $props();
     let appOverride = $state<ExamApp | null>(null);
@@ -55,8 +57,12 @@
     let bp = $state<Blueprint>({
       id: "bp-default", name: t("mock.defaultName"), durationS: 3600, passLine: 60,
       shuffleOptions: false, sectionTimed: true,
+      scoringPolicy: { v: 1, kind: "standard", floorZero: true, rounding: "raw" },
       sections: []
     });
+
+    let sampleVerifyOpen = $state(false);
+    const policySimulations = $derived(simulateAllPolicySamples());
 
     let session: MockSession | null = $state(null);
     let cursor = $state(0);
@@ -272,6 +278,11 @@
       refreshPendingBankData();
     }
 
+    let isFullscreen = $state(false);
+    function updateFullscreenState() {
+      isFullscreen = Boolean(document.fullscreenElement);
+    }
+
     onMount(() => {
       const initMock = () => {
         if (!app) return;
@@ -279,6 +290,7 @@
         void loadEstimateHistory();
       };
       if (app) initMock();
+      document.addEventListener("fullscreenchange", updateFullscreenState);
       const offs = [
         onExamEvent("app-ready", () => {
           appOverride = plugin?.examApp ?? null;
@@ -291,7 +303,10 @@
           refreshPendingBankData();
         }),
       ];
-      return () => offs.forEach((off) => off());
+      return () => {
+        document.removeEventListener("fullscreenchange", updateFullscreenState);
+        offs.forEach((off) => off());
+      };
     });
 
     let sheetFilter = $state<"all" | "unanswered" | "flagged">("all");
@@ -584,26 +599,31 @@
         // 作答写流水（kind=mock；模考错题自动进错题本——replayer 收录）；examId=runId 与蓝图分离
         const effectiveRunId = runId || "mock-" + bp.id;
         for (const a of session.answers.values()) {
+          const q = session.byId.get(a.qid);
+          const frozen = session.qVersions.get(a.qid);
           app.recordAttempt({
             qid: a.qid, kind: "mock", mode: "paper",
             verdict: a.verdict, myAnswer: a.answer,
             sessionId: effectiveRunId, examId: effectiveRunId,
             queue: "normal", changes: a.changes,
+            qVersion: q ? createQuestionVersionSnapshot(q) : (frozen ? { hash: frozen.hash, answer: frozen.answer } : undefined),
           });
         }
         // 未答题落 not_attempted 审计轨（40-03：进考试分母但不冒充已答；replayer 跳过不计统计分母）
         for (const qid of session.state.qids) {
           if (!session.answers.has(qid)) {
+            const q = session.byId.get(qid);
+            const frozen = session.qVersions.get(qid);
             app.recordAttempt({
               qid, kind: "mock", mode: "paper",
               verdict: "not_attempted", myAnswer: null,
               sessionId: effectiveRunId, examId: effectiveRunId,
               queue: "normal",
+              qVersion: q ? createQuestionVersionSnapshot(q) : (frozen ? { hash: frozen.hash, answer: frozen.answer } : undefined),
             });
           }
         }
         await app.flush();
-        plugin.refreshDock?.();
         score = session.score();
         if (score && app) {
           await app.saveMockResult({
@@ -1109,6 +1129,48 @@
       <label class="lv-row" style="margin:0"><input type="checkbox" bind:checked={bp.lockout} /> {t("mock.lockout")}</label>
       <span class="lv-chip">{t("mock.passLine")} <input class="lv-input num" style="width:64px" type="number" min="0" max="100" bind:value={bp.passLine} aria-label={t("mock.passLine")} />%</span>
     </div>
+    <!-- 55-04 版本化评分政策与样例验算 -->
+    <div class="lv-row" style="margin:8px 0;align-items:center;flex-wrap:wrap;gap:8px">
+      <label class="lv-chip" for="mock-policy-select">{t("mock.scoringPolicy")}</label>
+      <select id="mock-policy-select" class="lv-select" style="max-width:280px"
+        value={bp.scoringPolicy?.kind ?? "standard"}
+        onchange={(e) => {
+          const kind = (e.target as HTMLSelectElement).value as ScoringPolicyKind;
+          bp.scoringPolicy = { v: 1, kind, penaltyRatio: 0.5, floorZero: true, rounding: "raw" };
+        }}>
+        <option value="standard">{t("mock.policyStandard")}</option>
+        <option value="partial_indefinite">{t("mock.policyPartialIndefinite")}</option>
+        <option value="partial_all">{t("mock.policyPartialAll")}</option>
+        <option value="penalty">{t("mock.policyPenalty")}</option>
+      </select>
+      <button type="button" class="lv-btn sm lv-btn--ghost" onclick={() => sampleVerifyOpen = !sampleVerifyOpen} title={t("mock.sampleVerifyTip")}>
+        <Icon name="chart" size={12} /> {t("mock.sampleVerify")}{#if sampleVerifyOpen} ▾{:else} ▸{/if}
+      </button>
+    </div>
+    {#if sampleVerifyOpen}
+      <!-- 55-04 评分政策样例验算对照表 -->
+      <div class="lv-detail" style="margin:4px 0 10px;padding:10px 12px;background:var(--lv-surface-2);border-radius:var(--lv-r-1);border:1px solid var(--lv-border-subtle)">
+        <div class="lv-row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
+          <b style="font-size:var(--lv-font-size-sm)">{t("mock.sampleVerify")}（5 题基准卷 · 满分 10 分）</b>
+          <span class="lv-muted" style="font-size:var(--lv-font-size-caption)">{t("mock.sampleVerifyTip")}</span>
+        </div>
+        <div class="lv-row" style="gap:8px;flex-wrap:wrap">
+          {#each Object.entries(policySimulations) as [pKind, sim] (pKind)}
+            <div class="lv-card" style="flex:1;min-width:140px;padding:8px 10px;border-left:3px solid {bp.scoringPolicy?.kind === pKind ? 'var(--lv-accent)' : 'transparent'}">
+              <div class="lv-row" style="justify-content:space-between;margin:0 0 4px">
+                <span class="lv-chip sm" class:lv-chip--acc={bp.scoringPolicy?.kind === pKind}>{pKind === "standard" ? t("mock.sampleStandard") : pKind === "penalty" ? t("mock.samplePenalty") : t("mock.samplePartial")}</span>
+                <strong class="num" style="color:var(--lv-accent)">{sim.totalScore} / {sim.fullScore}</strong>
+              </div>
+              <div class="lv-muted num" style="font-size:11px">
+                {#each sim.itemScores as is, ii (ii)}
+                  <span>T{ii + 1}:{is >= 0 ? `+${is}` : is} </span>
+                {/each}
+              </div>
+            </div>
+          {/each}
+        </div>
+      </div>
+    {/if}
     {#if !bp.sections.length}<div class="lv-empty">{t("mock.needSec")}</div>{/if}
     <div class="lv-row">
       <button class="lv-btn lv-btn--primary" onclick={startExam} disabled={!canStartExam} title={!canStartExam ? startDisabledReason : ""}><Icon name="play" size={16} /> {starting ? "…" : t("mock.start")}</button>
@@ -1201,7 +1263,7 @@
       <span class="lv-chip num">{cursor + 1}/{session.state.qids.length}</span>
       <span class="fn__flex-1"></span>
       <button class="lv-btn sm lv-flag-btn" class:lv-flag-btn--on={session.flags.has(current)} title={`${t("mock.flag")} (F)`} aria-label={`${t("mock.flag")} (F)`} aria-pressed={session.flags.has(current)} disabled={examLocked} onclick={() => { session?.toggleFlag(current); persistRun(); }}><Icon name="pin" size={14} /> <span class="lv-kbd sm">F</span></button>
-      <button class="lv-btn sm" title={t("mock.fullscreen")} aria-label={t("mock.fullscreen")} disabled={examLocked} onclick={(e) => void toggleExamFullscreen(e.currentTarget)}><Icon name="expand" size={14} /></button>
+      <button class="lv-btn sm" class:acc={isFullscreen} title={isFullscreen ? t("mock.exitFullscreen") : t("mock.fullscreen")} aria-label={isFullscreen ? t("mock.exitFullscreen") : t("mock.fullscreen")} disabled={examLocked} onclick={(e) => void toggleExamFullscreen(e.currentTarget)}><Icon name={isFullscreen ? "close" : "expand"} size={14} /></button>
       <button class="lv-btn lv-btn--primary sm" disabled={examLocked || handInConfirming} aria-busy={submitting || handInConfirming} onclick={() => finishExam(false)}>{submitting ? t("mock.savingScore", "正在保存成绩…") : handInConfirming ? t("mock.confirmingHandIn", "等待交卷确认…") : t("mock.handIn")}</button>
     </div>
     {#if submitError}
@@ -1326,6 +1388,12 @@
       {#if session && revisionDrift.length}
         <!-- 55-07 lite：改题后成绩仍按开考冻结版本记录，历史不静默重算 -->
         <span class="lv-chip lv-chip--amb num" title={t("mock.revisedTip")}><Icon name="pencil" size={12} /> {t("mock.revisedNote").replace("{n}", String(revisionDrift.length))}</span>
+      {/if}
+      {#if score?.scoringPolicy}
+        <!-- 55-04：明示本次考试所采用的评分政策条件 -->
+        <span class="lv-chip num" title={t("mock.policyCondition")}>
+          <Icon name="target" size={12} /> {t("mock.policyCondition")}: {SCORING_POLICY_LABELS[score.scoringPolicy.kind] ?? score.scoringPolicy.kind}
+        </span>
       {/if}
     </div>
     <div class="lv-card lv-score-card" style="margin-bottom:14px">

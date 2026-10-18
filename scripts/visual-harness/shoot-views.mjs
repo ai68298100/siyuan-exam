@@ -4,12 +4,11 @@
 import { createServer } from "node:http";
 import { readFileSync, existsSync, mkdirSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
-import { chromium } from "playwright-core";
+import { launchHarnessBrowser } from "./browser.mjs";
 
 const ROOT = resolve(import.meta.dirname, "../../output/harness");
 const OUT = resolve(import.meta.dirname, "../../output/playwright");
 const PREFIX = process.argv[2] ?? "real";
-const EDGE = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
 if (!existsSync(join(ROOT, "index.html"))) {
   console.error("✗ 先构建 harness：npx vite build --config scripts/visual-harness/vite.config.ts");
   process.exit(1);
@@ -26,7 +25,10 @@ const server = createServer((req, res) => {
   } catch { res.writeHead(404); res.end(); }
 });
 await new Promise((r) => server.listen(4199, r));
-const browser = await chromium.launch({ executablePath: EDGE });
+// Keep visual capture on the workspace's preferred browser (Chrome). The
+// shared launcher still allows PLAYWRIGHT_EXECUTABLE_PATH for CI/isolated
+// environments and falls back to installed Chrome locations.
+const browser = await launchHarnessBrowser();
 
 const shot = async (name, steps) => {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
@@ -58,7 +60,9 @@ await shot("recite", [{ click: "#app .lv-mode:has-text('背诵')" }]);
 await shot("session-feedback", [
   { click: btn("开始（零决策）"), wait: 900 },
   { click: "#app button.lv-opt" },
-  { click: btn("提交"), wait: 900 },
+  // Production copy is "确认作答 (Enter)"; keep the selector semantic so
+  // this capture does not silently stop before the feedback state.
+  { click: '#app button:has-text("确认作答")', wait: 900 },
 ]);
 await shot("settings", [{ eval: "window.__settings()" }]);
 

@@ -275,6 +275,11 @@ export async function generate(channel: AiChannel, sourceText: string, opt: GenO
     if (opt.signal?.aborted) break;
     const messages = buildPrompt(chunk, opt);
     const raw = await channel.chat(messages);
+    // A channel may not support transport-level cancellation (for example the
+    // SiYuan kernel proxy). Ignore a response that arrived after the user
+    // cancelled while it was in flight; completed earlier chunks remain in
+    // `pending` and are returned below.
+    if (opt.signal?.aborted) break;
     const arr = extractJsonArray(raw);
     if (!arr) {
       rejected.push({ index: ++idx, reason: "响应不是有效 JSON 数组", raw: raw.slice(0, 120) });
@@ -300,7 +305,9 @@ export async function generate(channel: AiChannel, sourceText: string, opt: GenO
     }
     // 标准档：二遍换角色核验
     if (quality === "standard" && candidates.length) {
+      if (opt.signal?.aborted) break;
       const verdicts = await reviewQuestions(channel, candidates, chunk);
+      if (opt.signal?.aborted) break;
       for (const q of candidates) {
         const v = verdicts.get(q.id) ?? { confidence: 0, pass: false, reason: "未核验" };
         if (!v.pass || v.confidence < REVIEW_CONFIDENCE_MIN) {
@@ -349,6 +356,7 @@ export async function repairIssues(
   const rejected: GenIssue[] = [];
   let duplicates = 0;
   const quality = opt.quality ?? "standard";
+  if (opt.signal?.aborted) return { pending, rejected: issues, duplicates, batch };
 
   const unfixable = issues.filter((i) => !i.raw.trim().startsWith("{"));
   const fixable = issues.filter((i) => i.raw.trim().startsWith("{"));
@@ -363,9 +371,14 @@ export async function repairIssues(
         .join("\n\n"),
     );
   }
+  let completedFixable = 0;
   for (let ci = 0; ci < chunks.length; ci++) {
     if (opt.signal?.aborted) break;
     const group = fixable.slice(ci * 5, ci * 5 + 5);
+    // Commit each group only after its response and optional review finish.
+    // Cancelling an in-flight group retains its original issues for retry.
+    const groupRejected: GenIssue[] = [];
+    let groupDuplicates = 0;
     const messages: AiMessage[] = [
       {
         role: "system",
@@ -375,9 +388,11 @@ export async function repairIssues(
       { role: "user", content: `【材料】\n${sourceText.slice(0, 3000)}\n\n【待修复题目】\n${chunks[ci]}` },
     ];
     const raw = await channel.chat(messages);
+    if (opt.signal?.aborted) break;
     const arr = extractJsonArray(raw);
     if (!arr) {
       group.forEach((f) => rejected.push({ index: f.index, reason: f.reason + "（修复响应不可解析）", raw: f.raw }));
+      completedFixable += group.length;
       continue;
     }
     const candidates: Question[] = [];
@@ -385,21 +400,23 @@ export async function repairIssues(
       if (!(item && typeof item === "object")) continue;
       const r = toQuestion(item as Record<string, unknown>, opt, batch);
       if (r.reason || !r.q) {
-        rejected.push({ index: 0, reason: r.reason ?? "未知", raw: JSON.stringify(item).slice(0, 120) });
+        groupRejected.push({ index: 0, reason: r.reason ?? "未知", raw: JSON.stringify(item).slice(0, 120) });
         continue;
       }
       if (seenHash.has(r.q.hash)) {
-        duplicates++;
+        groupDuplicates++;
         continue;
       }
       candidates.push(r.q);
     }
     if (quality === "standard" && candidates.length) {
+      if (opt.signal?.aborted) break;
       const verdicts = await reviewQuestions(channel, candidates, sourceText.slice(0, 3000));
+      if (opt.signal?.aborted) break;
       for (const q of candidates) {
         const v = verdicts.get(q.id) ?? { confidence: 0, pass: false, reason: "未核验" };
         if (!v.pass || v.confidence < REVIEW_CONFIDENCE_MIN) {
-          rejected.push({
+          groupRejected.push({
             index: 0,
             reason: `修复后核验仍淘汰：置信 ${v.confidence.toFixed(2)}${v.reason ? " · " + v.reason : ""}`,
             raw: rawOf(q),
@@ -408,7 +425,7 @@ export async function repairIssues(
         }
         q.confidence = v.confidence;
         if (seenHash.has(q.hash)) {
-          duplicates++;
+          groupDuplicates++;
           continue;
         }
         seenHash.add(q.hash);
@@ -417,15 +434,19 @@ export async function repairIssues(
     } else {
       for (const q of candidates) {
         if (seenHash.has(q.hash)) {
-          duplicates++;
+          groupDuplicates++;
           continue;
         }
         seenHash.add(q.hash);
         pending.push(q);
       }
     }
+    rejected.push(...groupRejected);
+    duplicates += groupDuplicates;
+    completedFixable += group.length;
   }
-  // 不可解析的拒绝项原样保留（不参与修复）
-  rejected.push(...unfixable);
+  // Cancelled/current and later groups remain retryable; unparseable input
+  // issues are also retained because they never participated in this run.
+  rejected.push(...fixable.slice(completedFixable), ...unfixable);
   return { pending, rejected, duplicates, batch };
 }

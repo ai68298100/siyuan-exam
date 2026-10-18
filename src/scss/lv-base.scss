@@ -5,6 +5,17 @@
 // ============================================================
 @use "./lv-tokens";
 
+/* Own the plugin box model: SiYuan does not provide a global border-box reset.
+   In particular, 100%-wide padded content must fit inside its host pane. */
+.lv-exam-tab,
+.lv-exam-tab::before,
+.lv-exam-tab::after,
+.lv-exam-tab *,
+.lv-exam-tab *::before,
+.lv-exam-tab *::after {
+  box-sizing: border-box;
+}
+
 /* —— 现代平滑细滚动条（遵从设计系统 Token，替换 Windows 粗灰原生条） —— */
 .lv-exam-tab {
   ::-webkit-scrollbar {
@@ -500,8 +511,9 @@ button.lv-chip {
   white-space: nowrap;
 }
 
-/* —— 全局焦点可见性（规范 v6：环形投影，随元素圆角自适应） —— */
-:focus-visible {
+/* —— 插件内焦点可见性（规范 v6：环形投影，随元素圆角自适应） —— */
+.lv-exam-tab:focus-visible,
+.lv-exam-tab :focus-visible {
   outline: none;
   box-shadow: var(--lv-ring);
 }

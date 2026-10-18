@@ -3,12 +3,11 @@
 import { createServer } from "node:http";
 import { readFileSync, existsSync, mkdirSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
-import { chromium } from "playwright-core";
+import { launchHarnessBrowser } from "./browser.mjs";
 
 const ROOT = resolve(import.meta.dirname, "../../design/prototype");
 const OUT = resolve(import.meta.dirname, "../../output/playwright");
 mkdirSync(OUT, { recursive: true });
-const EDGE = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
 
 const ROUTES = [
   "home",
@@ -44,7 +43,7 @@ const server = createServer((req, res) => {
 });
 await new Promise((r) => server.listen(4198, r));
 
-const browser = await chromium.launch({ executablePath: EDGE });
+const browser = await launchHarnessBrowser();
 for (const route of ROUTES) {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
   const page = await ctx.newPage();

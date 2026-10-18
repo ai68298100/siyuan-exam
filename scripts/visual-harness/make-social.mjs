@@ -5,9 +5,8 @@
 import { createServer } from "node:http";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
-import { chromium } from "playwright-core";
+import { launchHarnessBrowser } from "./browser.mjs";
 
-const EDGE = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
 const HARNESS = resolve("output/harness");
 const OUT_SHOTS = resolve("design/screenshots");
 const OUT_SOCIAL = resolve("design/social");
@@ -26,7 +25,7 @@ const server = createServer((req, res) => {
   }
 });
 await new Promise((r) => server.listen(4210, r));
-const browser = await chromium.launch({ executablePath: EDGE });
+const browser = await launchHarnessBrowser();
 
 const newPage = (width = 1280, height = 800) =>
   (async () => {

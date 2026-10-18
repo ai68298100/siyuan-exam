@@ -4,7 +4,7 @@ import { MemoryStorage } from "../src/core/attemptLog";
 import type { KernelApiClient } from "../src/kernel/client";
 import type { Question } from "../src/core/types";
 import { makeQuestion } from "../src/core/blockTemplate";
-import type { ImportReport } from "../src/importer/pipeline";
+import { buildImportCheckpoint, type ImportReport } from "../src/importer/pipeline";
 
 /** stub 内核：记录写入；listQuestions 可设置为"部分读回"模拟索引缺失 */
 function stubClient() {
@@ -244,4 +244,94 @@ describe("commitImport 应用层（U08：写入+读回确认）", () => {
     expect(progress).toEqual([[2, 6], [4, 6], [6, 6]]);
     expect(r.readback.confirmed).toHaveLength(6);
   }, 15_000);
+
+  it("buildImportCheckpoint：全量确认返回 null，有剩余题目返回完整断点快照", () => {
+    const q1 = makeQuestion({ type: "single", stem: "题1", answer: "A" });
+    const q2 = makeQuestion({ type: "single", stem: "题2", answer: "B" });
+
+    // 1. 全部确认入库：无需断点
+    expect(buildImportCheckpoint({
+      batch: "b-1",
+      bankId: "nb-1",
+      allQuestions: [q1, q2],
+      confirmedIds: [q1.id, q2.id],
+    })).toBeNull();
+
+    // 2. 仅部分确认：产出断点快照，且仅包含未确认项
+    const cp = buildImportCheckpoint({
+      batch: "b-1",
+      bankId: "nb-1",
+      allQuestions: [q1, q2],
+      confirmedIds: [q1.id],
+      docs: ["/言语"],
+      now: 1_700_000_000_000,
+    });
+    expect(cp).not.toBeNull();
+    expect(cp?.batch).toBe("b-1");
+    expect(cp?.bankId).toBe("nb-1");
+    expect(cp?.confirmedIds).toEqual([q1.id]);
+    expect(cp?.pendingQuestions).toHaveLength(1);
+    expect(cp?.pendingQuestions[0].id).toBe(q2.id);
+  });
+
+  it("38-04 / 46-03 中断取消与断点续传：取消生成 checkpoint，续传补齐后断点自动清理", async () => {
+    const { client } = stubClient();
+    const app = mkApp(client, true);
+    const rep = report(6);
+    rep.ok = rep.ok.map((q, i) => ({ ...q, kp: i < 2 ? "言语" : i < 4 ? "数量" : "判断" }));
+
+    // 1. 模拟在处理完第 1 个文档后取消
+    let docCount = 0;
+    const r1 = await app.commitImport("bank1", rep, {
+      isCancelled: () => {
+        docCount++;
+        return docCount > 1; // 第 1 篇文档写入后触发取消
+      },
+    });
+
+    expect(r1.cancelled).toBe(true);
+    expect(r1.checkpoint).toBeDefined();
+    expect(r1.checkpoint?.batch).toBe(rep.batch);
+
+    // 2. 断点持久化在存储中，loadImportCheckpoint 能读回
+    const loadedCp = await app.loadImportCheckpoint("bank1");
+    expect(loadedCp).not.toBeNull();
+    expect(loadedCp?.confirmedIds).toEqual(r1.readback.confirmed);
+    expect(loadedCp?.pendingQuestions.length).toBe(6 - r1.readback.confirmed.length);
+
+    // 3. 跨库查询断点返回 null（防止串库误续传）
+    expect(await app.loadImportCheckpoint("other-bank")).toBeNull();
+
+    // 4. 续传仅提交剩余题目
+    const remainingRep: ImportReport = {
+      batch: loadedCp!.batch,
+      ok: loadedCp!.pendingQuestions,
+      errors: [],
+      duplicates: 0,
+    };
+    const r2 = await app.commitImport("bank1", remainingRep);
+    expect(r2.cancelled).toBeUndefined();
+    expect(r2.readback.confirmed).toHaveLength(loadedCp!.pendingQuestions.length);
+
+    // 5. 全部入库完成后，断点自动被清理
+    expect(await app.loadImportCheckpoint("bank1")).toBeNull();
+  }, 15_000);
+
+  it("手动清理断点 clearImportCheckpoint", async () => {
+    const { client } = stubClient();
+    const app = mkApp(client, true);
+    await app.saveImportCheckpoint({
+      v: 1,
+      batch: "b-test",
+      bankId: "nb-1",
+      createdAt: 1_700_000_000_000,
+      confirmedIds: ["q-1"],
+      pendingQuestions: [makeQuestion({ type: "judge", stem: "题", answer: "对" })],
+      docs: ["/测试"],
+    });
+
+    expect(await app.loadImportCheckpoint("nb-1")).not.toBeNull();
+    await app.clearImportCheckpoint();
+    expect(await app.loadImportCheckpoint("nb-1")).toBeNull();
+  });
 });

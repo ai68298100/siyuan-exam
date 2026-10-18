@@ -6,6 +6,7 @@ import { launchHarnessBrowser } from "./browser.mjs";
 import assert from "node:assert/strict";
 
 const root = resolve(import.meta.dirname, "../../output/harness");
+const messages = JSON.parse(readFileSync(new URL("../../public/i18n/zh-CN.json", import.meta.url), "utf8"));
 const server = createServer((req, res) => {
   const path = req.url.split("?")[0] === "/" ? "/index.html" : req.url.split("?")[0];
   try {
@@ -75,12 +76,12 @@ try {
     window.__plugin.pendingPracticeBankId = bank.id;
     window.__show("practice");
   });
-  const submit = () => click("提交");
-  const next = () =>
-    page
-      .locator(".lv-question button")
-      .filter({ hasText: /^下一题/ })
-      .click();
+  // 作答按钮带快捷键提示；多选已选择时使用带项数的确认提交文案。
+  // 按当前题目中的真实语义定位，禁用状态断言仍指向同一个提交动作。
+  const question = page.locator(".lv-question");
+  const submitButton = question.getByRole("button", { name: /^确认(?:作答|提交)(?:\s|\()/ });
+  const submit = () => submitButton.click();
+  const next = () => question.getByRole("button", { name: /^下一题(?:\s|\()/ }).click();
   const opts = page.locator(".lv-question .lv-opt");
   await opts.first().waitFor();
   assert.equal(await opts.count(), 4);
@@ -98,12 +99,12 @@ try {
 
   await page.locator(".lv-question textarea").fill("基期值");
   await page.locator(".lv-question textarea").fill("");
-  assert.equal(await page.getByRole("button", { name: "提交", exact: true }).isDisabled(), true);
+  assert.equal(await submitButton.isDisabled(), true);
   await page.locator(".lv-question textarea").fill("基期值");
   await submit();
   await next();
   assert.equal(await page.locator(".lv-question textarea").inputValue(), "");
-  assert.equal(await page.getByRole("button", { name: "提交", exact: true }).isDisabled(), true);
+  assert.equal(await submitButton.isDisabled(), true);
   await page.locator(".lv-question textarea").fill("主动回忆并定位错因");
   await submit();
   await page.getByText("参考答案", { exact: true }).waitFor();
@@ -136,12 +137,12 @@ try {
   });
   await blanks.nth(0).fill("80");
   await blanks.nth(0).fill("");
-  assert.equal(await page.getByRole("button", { name: "提交", exact: true }).isDisabled(), true);
+  assert.equal(await submitButton.isDisabled(), true);
   await blanks.nth(0).fill("80");
   await blanks.nth(1).fill("100");
   await submit();
   await next();
-  await page.getByText("本组完成", { exact: true }).waitFor();
+  await page.getByText(messages["session.done"], { exact: true }).waitFor();
   console.log("✓ 数值和多空填空正确读回、输入与判分");
   await page.evaluate(() => window.__show("practice"));
   await page.locator(".lv-entry-week").waitFor();

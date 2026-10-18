@@ -3,8 +3,8 @@
     // 状态设计（docs/11）：loading/empty(守卫)/error/normal 四态可达
     import { onMount, tick } from "svelte";
 import { showMessage } from "siyuan";
-    import { planToday, parseExamProfiles, nearestUpcoming, nextPlanTrace } from "@/core/planner";
-import { ttsSpeak } from "@/core/tts";
+    import { planToday, parseExamProfiles, nearestUpcoming, nextPlanTrace, remainingPlan } from "@/core/planner";
+import { ttsSpeak, ttsSupported } from "@/core/tts";
     import type { ExamApp } from "../../app";
     import type { Question } from "../../core/types";
     import { parseText, parseExcelRows, autoMapExcel, errorsToCsv, extractTextRowAt, type ImportReport } from "../../importer/pipeline";
@@ -21,7 +21,17 @@ import { ttsSpeak } from "@/core/tts";
     import { ELIMINATE_STREAK, localDate, streak, wrongReasonMix } from "../../core/replayer";
     import { recentlySeen } from "../../core/exposure";
     import { validate } from "../../importer/pipeline";
-    import { bankHealthReport, coverageStats, answerDistribution, unreviewedStats, type BankHealthReport } from "../../core/bankHealth";
+    import {
+      bankHealthReport,
+      coverageStats,
+      answerDistribution,
+      unreviewedStats,
+      detectOrphans,
+      exportHealthReportCsv,
+      type BankHealthReport,
+      type OrphanDiagnosis,
+      type OrphanKind,
+    } from "../../core/bankHealth";
     import { planBatchEdit, invertPlan, describeChange } from "../../core/batchEdit";
     import { buildSectionTree, questionInSection } from "../../core/sectionTree";
     import { upsertView, viewBankMismatch } from "@/core/smartViews";
@@ -48,6 +58,12 @@ import { ttsSpeak } from "@/core/tts";
     import SaveStatus from "../shared/SaveStatus.svelte";
     import { SAMPLE_BANK_NAME, SAMPLE_QUESTION_COUNT } from "@/core/sampleBank";
     import { answerChoices, isChoiceQuestion, removeChoiceOption, toggleChoice } from "@/core/answerChoices";
+    import { isQuestionDisputed, type DisputeReason } from "@/core/dispute";
+    import { isStubbornWrong, getStubbornRemediation } from "@/core/stubborn";
+    import { buildMaterialGroupContext, formatMaterialGroupHeader, type SiblingItem } from "@/core/materialContext";
+    import { resolveFeedbackTimingMode, isGroupBatchBoundary, calculateGroupBatchSummary, type GroupBatchSummary, DEFAULT_GROUP_FEEDBACK_SIZE } from "@/core/feedbackTiming";
+    import { analyzeQuestionUsage, exportItemAnalysisCsv, type ItemAnalysisReport } from "@/core/itemAnalysis";
+    import { checkPublishGuard, createQuestionVersionSnapshot, getQuestionLifecycle, isAttemptVersionDrifted, LIFECYCLE_LABELS, questionDraftFromRevision, type QuestionLifecycleStatus } from "@/core/revision";
     import { consumePendingPracticeView, isCurrentPracticeViewRequest } from "@/core/pluginTab";
     import { dailyTrend } from "@/core/weekly";
     import { playSuccessChime, playCelebrationChord } from "@/libs/sound";
@@ -155,10 +171,11 @@ import { ttsSpeak } from "@/core/tts";
       revRestoreFailedKey = "";
       try {
         const { confirmDialogSync } = await import("../../libs/dialog");
-        if (!(await confirmDialogSync({ title: t("rev.restoreTitle"), content: t("rev.restoreConfirm").replace("{a}", escapeHtml(rev.answer)) }))) return;
-        const next = await app.updateQuestionContent(q, {
-          stem: q.stem, options: q.options, answer: rev.answer, analysis: q.analysis ?? "", kp: rev.kp ?? q.kp ?? "", difficulty: q.difficulty,
-        });
+        const confirmContent = rev.summary
+          ? t("rev.restoreConfirmFull").replace("{summary}", rev.summary)
+          : t("rev.restoreConfirm").replace("{a}", escapeHtml(rev.answer));
+        if (!(await confirmDialogSync({ title: t("rev.restoreTitle"), content: confirmContent }))) return;
+        const next = await app.updateQuestionContent(q, questionDraftFromRevision(q, rev));
         questions = questions.map((x) => (x.id === q.id ? { ...x, ...next } : x));
         showMessage(t("rev.restored"), 2400, "info");
         try {
@@ -199,7 +216,17 @@ import { ttsSpeak } from "@/core/tts";
       if (t) trails.set(qid, withLastEditReason(t, reason));
       reasonPromptQid = "";
     }
-    let sessionDone = $state<null | { total: number; correct: number; wrong: number; totalTimeS?: number; avgTimeS?: number }>(null);
+    let sessionDone = $state<null | {
+      total: number;
+      correct: number;
+      wrong: number;
+      initialTotal?: number;
+      initialCorrect?: number;
+      delayedTotal?: number;
+      delayedRecovered?: number;
+      totalTimeS?: number;
+      avgTimeS?: number;
+    }>(null);
     /** 已存错因回显（app.loadWrongReason；答错时载入，选择后即时高亮） */
     let savedReason = $state<string | undefined>(undefined);
     $effect(() => {
@@ -219,6 +246,8 @@ import { ttsSpeak } from "@/core/tts";
     let sampleNotice = $state("");
 
     // 导入态
+    let importFileInput = $state<HTMLInputElement | null>(null);
+    let bankFileInput = $state<HTMLInputElement | null>(null);
     let importText = $state("");
     let importReport = $state<ImportReport | null>(null);
     let importError = $state("");
@@ -229,7 +258,7 @@ import { ttsSpeak } from "@/core/tts";
     const importBusy = $derived(committing || trialBusy || importParsing);
     /** 重复合并策略（2.3/38-03）：skip=跳过（默认）/ coexist=并存（重复行照常入库）/ update=更新已有题答案解析 */
     let dupeStrategy = $state<import("../../importer/pipeline").DuplicateStrategy>("skip");
-    let importResult = $state<null | { written: number; confirmed: number; missing: number; verified: boolean; cancelled?: boolean; unprocessed?: number }>(null);
+    let importResult = $state<null | { written: number; confirmed: number; missing: number; verified: boolean; cancelled?: boolean; unprocessed?: number; pendingIndex?: number }>(null);
 
     /** 答前置信自评（U12 最小）：随本次 attempt 落流水；提交后不可改写最初记录 */
     let confidenceSel = $state<"sure" | "fuzzy" | "guess" | "">("");
@@ -250,6 +279,42 @@ import { ttsSpeak } from "@/core/tts";
       }
       return coverageStats(questions, attempted);
     });
+
+    /** 43-04：孤儿题目与引用完整性诊断队列（无母块材料/空材料/断链资料/缺答案/缺选项） */
+    const orphanDiag = $derived.by<OrphanDiagnosis | null>(() => {
+      if (!healthOpen || !questions.length) return null;
+      const knownMaterialIds = new Set(app?.listMaterials().map((m) => m.id) ?? []);
+      // eslint-disable-next-line svelte/prefer-svelte-reactivity -- derived 内累加映射（重算即弃，非跨状态）
+      const links = new Map<string, string>();
+      if (app) {
+        for (const q of questions) {
+          const ref = app.questionMaterialRef(q.id);
+          if (ref?.materialId) links.set(q.id, ref.materialId);
+        }
+      }
+      return detectOrphans(questions, {
+        knownMaterialIds,
+        questionMaterialLinks: links,
+      });
+    });
+    let filterOrphanKind = $state<OrphanKind | "">("");
+    function drillOrphanKind(kind: OrphanKind) {
+      filterOrphanKind = filterOrphanKind === kind ? "" : kind;
+    }
+    function clearOrphanFilter() {
+      filterOrphanKind = "";
+    }
+    function downloadHealthCsv() {
+      if (!health) return;
+      const csv = exportHealthReportCsv(health, orphanDiag ?? undefined);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `题库体检清单-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
 
     // 每题用时显示 + 超时提示（TODO 13 组 lite）：会话作答期 1s tick；超时阈值取设置（0=关）
     let qTick = $state(0);
@@ -327,12 +392,15 @@ import { ttsSpeak } from "@/core/tts";
       session.setDraft(q.id, draftLive);
     }
     const qTimeoutS = $derived(Math.max(0, Number(plugin.settingUtils?.get?.("perQuestionTimeoutS") ?? 0) || 0));
-    /** 44-01：反馈时机策略（默认逐题即时；勾选=会话末复盘。作答事件两种模式完全一致） */
+    /** 44-01：反馈时机策略（逐题即时 / 小组延迟复盘 / 会话末尾集中复盘。作答事件完全一致） */
     const feedbackMode = $derived(
-      plugin.settingUtils?.get?.("feedbackEndReview") === true || plugin.settingUtils?.get?.("feedbackEndReview") === "true"
-        ? "end"
-        : "immediate",
+      resolveFeedbackTimingMode(
+        plugin.settingUtils?.get?.("feedbackTiming"),
+        plugin.settingUtils?.get?.("feedbackEndReview"),
+      ),
     );
+    let groupBatchModal = $state<GroupBatchSummary | null>(null);
+    let groupBatchStart = $state(1); // 44-01 当前小组批次起始题号（1-based）
 
     // 导入批次回滚（TODO 12 组）：按 custom-exam-batch 定位块逐块删除；只动题块不动流水
     const batchList = $derived(healthOpen && questions.length ? app.listBatches(questions) : []);
@@ -538,6 +606,7 @@ import { ttsSpeak } from "@/core/tts";
     let errataPlan = $state<import("@/core/errata").ErrataPlan | null>(null);
     let errataErrors = $state<{ row: number; reason: string }[]>([]);
     let errataBusy = $state(false);
+    let errataFileInput = $state<HTMLInputElement | null>(null);
     let errataNote = $state("");
 
     function exportErrataTemplate() {
@@ -631,10 +700,10 @@ import { ttsSpeak } from "@/core/tts";
           app.recordAttempt({
             qid: it.q.id, kind: "practice", mode: "paper", verdict: it.verdict,
             myAnswer: it.given, sessionId, queue: "normal",
+            qVersion: createQuestionVersionSnapshot(it.q),
           });
         }
         dataRev++;
-        plugin.refreshDock?.();
         paperText = "";
         paperNote = t("paper.applied").replace("{n}", String(graded.length));
       } finally { paperBusy = false; }
@@ -685,7 +754,7 @@ import { ttsSpeak } from "@/core/tts";
     let editingId = $state("");
     let editBusy = $state(false);
     let editError = $state("");
-    let editDraft = $state<{ stem: string; options: string[]; answer: string; analysis: string; kp: string; difficulty: string; answerSpec?: import("../../core/structuredAnswer").NumericAnswerSpec } | null>(null);
+    let editDraft = $state<{ stem: string; options: string[]; answer: string; analysis: string; kp: string; difficulty: string; status?: QuestionLifecycleStatus; answerSpec?: import("../../core/structuredAnswer").NumericAnswerSpec } | null>(null);
     let editSpecOpen = $state(false);
     let editSpecUnit = $state("");
     let editSpecAbsTol = $state("");
@@ -722,6 +791,7 @@ import { ttsSpeak } from "@/core/tts";
         analysis: q.analysis ?? "",
         kp: q.kp ?? "",
         difficulty: q.difficulty != null ? String(q.difficulty) : "",
+        status: getQuestionLifecycle(q),
         // 编辑表单只编辑数值规格；多空规格原样保留（specFromEditFields 不产出 multiBlank）
         answerSpec: q.answerSpec?.kind === "numeric" ? q.answerSpec : undefined,
       };
@@ -744,6 +814,7 @@ import { ttsSpeak } from "@/core/tts";
           analysis: editDraft.analysis.trim(),
           kp: editDraft.kp.trim(),
           difficulty: editDraft.difficulty ? parseInt(editDraft.difficulty, 10) || undefined : undefined,
+          status: editDraft.status,
           // 54-02：编辑表单的作者规格（打开时自现有 spec 读入；留空字段=清除回自动识别）
           answerSpec: specFromEditFields(),
         });
@@ -753,6 +824,117 @@ import { ttsSpeak } from "@/core/tts";
       } catch (e) {
         editError = offline ? t("state.offlineHint") : String(e instanceof Error ? e.message : e);
       } finally { editBusy = false; }
+    }
+
+    // ---------- 题目生命周期流转（43-01：draft ↔ review ↔ published ↔ deprecated） ----------
+    let peekLifecycleBusy = $state(false);
+    let peekLifecycleError = $state<Record<string, string>>({});
+    async function changePeekLifecycle(q: Question & { blockId: string }, nextStatus: QuestionLifecycleStatus) {
+      if (!app || peekLifecycleBusy) return;
+      peekLifecycleBusy = true;
+      peekLifecycleError = { ...peekLifecycleError, [q.id]: "" };
+      try {
+        const next = await app.updateQuestionLifecycle(q, nextStatus);
+        questions = questions.map((x) => (x.id === q.id ? { ...x, ...next } : x));
+        showMessage(t("lifecycle.changed").replace("{status}", LIFECYCLE_LABELS[nextStatus] ?? nextStatus), 2800, "info");
+      } catch (e) {
+        peekLifecycleError = {
+          ...peekLifecycleError,
+          [q.id]: offline ? t("state.offlineHint") : String(e instanceof Error ? e.message : e),
+        };
+      } finally {
+        peekLifecycleBusy = false;
+      }
+    }
+
+    // ---------- 题目争议标记与处置单（57-04：多解/缺条件/答案存疑/资料过期） ----------
+    let disputeFormOpenFor = $state("");
+    let disputeReason = $state<DisputeReason>("wrong_answer");
+    let disputeNote = $state("");
+    let disputeResolution = $state("");
+    let disputeBusy = $state(false);
+    let disputeError = $state("");
+
+    // ---------- 题目使用深度分析（43-02：选项选择率、干扰项有效性与低样本提示） ----------
+    let itemAnalysisOpenFor = $state("");
+    let itemAnalysisReport = $state<ItemAnalysisReport | null>(null);
+
+    function toggleItemAnalysis(q: Question) {
+      if (itemAnalysisOpenFor === q.id) {
+        itemAnalysisOpenFor = "";
+        itemAnalysisReport = null;
+        return;
+      }
+      itemAnalysisOpenFor = q.id;
+      const events = app?.attempts.all() ?? [];
+      itemAnalysisReport = analyzeQuestionUsage(q, events);
+    }
+
+    function downloadItemAnalysisCsv(report: ItemAnalysisReport) {
+      const csv = exportItemAnalysisCsv(report);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `题目分析-${report.qid}-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function toggleDisputeForm(q: Question) {
+      if (disputeFormOpenFor === q.id) {
+        disputeFormOpenFor = "";
+        disputeNote = "";
+        disputeResolution = "";
+        disputeError = "";
+      } else {
+        disputeFormOpenFor = q.id;
+        disputeReason = q.dispute?.reason ?? "wrong_answer";
+        disputeNote = q.dispute?.note ?? "";
+        disputeResolution = q.dispute?.resolution ?? "";
+        disputeError = "";
+      }
+    }
+
+    async function submitFlagDispute(q: Question & { blockId: string }) {
+      if (disputeBusy || !app) return;
+      if (!disputeNote.trim()) { disputeError = t("dispute.notePlaceholder"); return; }
+      disputeBusy = true; disputeError = "";
+      try {
+        const updated = await app.flagQuestionDispute(q, disputeReason, disputeNote.trim());
+        questions = questions.map((x) => (x.id === q.id ? { ...x, ...updated } : x));
+        disputeFormOpenFor = "";
+        showMessage(t("dispute.flagSuccess"), 3200, "info");
+      } catch (e) {
+        disputeError = String(e instanceof Error ? e.message : e);
+      } finally { disputeBusy = false; }
+    }
+
+    async function submitResolveDispute(q: Question & { blockId: string }) {
+      if (disputeBusy || !app) return;
+      if (!disputeResolution.trim()) { disputeError = t("dispute.resolutionPlaceholder"); return; }
+      disputeBusy = true; disputeError = "";
+      try {
+        const updated = await app.resolveQuestionDispute(q, disputeResolution.trim());
+        questions = questions.map((x) => (x.id === q.id ? { ...x, ...updated } : x));
+        disputeFormOpenFor = "";
+        showMessage(t("dispute.resolveSuccess"), 3200, "info");
+      } catch (e) {
+        disputeError = String(e instanceof Error ? e.message : e);
+      } finally { disputeBusy = false; }
+    }
+
+    async function submitClearDispute(q: Question & { blockId: string }) {
+      if (disputeBusy || !app) return;
+      disputeBusy = true; disputeError = "";
+      try {
+        const updated = await app.clearQuestionDispute(q);
+        questions = questions.map((x) => (x.id === q.id ? { ...x, ...updated } : x));
+        disputeFormOpenFor = "";
+        showMessage(t("dispute.clearSuccess"), 2800, "info");
+      } catch (e) {
+        disputeError = String(e instanceof Error ? e.message : e);
+      } finally { disputeBusy = false; }
     }
 
     // ---------- 章节树过滤（TODO 2.2：notebook→doc→heading） ----------
@@ -858,7 +1040,7 @@ import { ttsSpeak } from "@/core/tts";
       } else {
         loading = true;
       }
-      /** Dock/块菜单 → 单题会话（qid 定位；首次挂载 questions 未加载，先按库拉取） */
+      /** 错题本/块菜单 → 单题会话（qid 定位；首次挂载 questions 未加载，先按库拉取） */
       async function startSingleById(pid: string) {
         if (!pid) return false;
         const all = questions.length ? questions : await loadQuestions();
@@ -922,6 +1104,10 @@ import { ttsSpeak } from "@/core/tts";
         loading = false;
         dataRev++;
         switchView(next as View);
+        // External commands/deep links can open the materials view without
+        // going through the Rail/Palette click handlers. Refresh the
+        // non-reactive material store before rendering that entry.
+        if (next === "materials" && app) loadMaterials();
         const requestedBankId = request?.bankId;
         if (requestedBankId && banks.some((b) => b.id === requestedBankId) && requestedBankId !== activeBankId) {
           activeBankId = requestedBankId;
@@ -940,7 +1126,13 @@ import { ttsSpeak } from "@/core/tts";
       const onDataChanged = () => { dataRev++; };
       const onAppReady = () => {
         appOverride = plugin?.examApp ?? null;
-        if (appOverride) initAppData();
+        if (appOverride) {
+          initAppData();
+          // A pending deep link may have selected materials while the app was
+          // still initializing. The initial branch cannot load its snapshot
+          // until this callback supplies the live app instance.
+          if (view === "materials") loadMaterials();
+        }
       };
       const offs = [
         onExamEvent("app-ready", onAppReady),
@@ -961,13 +1153,14 @@ import { ttsSpeak } from "@/core/tts";
         applyMaterialRequest(pendingView);
         loading = false;
         switchView(initialView as View);
+        if (initialView === "materials" && app) loadMaterials();
         if (typeof pendingView?.search === "string") {
           clearBrowseFilters();
           setSearch(pendingView.search);
         }
         return;
       }
-      // Dock 信号优先：按 qid 直达单题
+      // 错题本信号优先：按 qid 直达单题
       const pid = (plugin as any).pendingQuestionId as string | undefined;
       if (pid) {
         (plugin as any).pendingQuestionId = undefined;
@@ -1081,12 +1274,15 @@ import { ttsSpeak } from "@/core/tts";
       qrefError = "";
       qrefBusyFor = qid;
       try {
+        const previousRef = app.questionMaterialRef(qid);
         const page = qrefPage.trim() ? Number(qrefPage) : undefined;
         if (qrefPage.trim() && (!Number.isInteger(page) || page! < 1)) throw new Error(t("materials.badPage"));
         const tSec = qrefTime.trim() ? parseTimeToSec(qrefTime) : undefined;
         const locator = page == null && tSec == null ? null : { page, tSec };
         const r = await app.linkQuestionMaterial(qid, qrefMatId, locator);
         qrefFormFor = ""; refreshQref(qid);
+        if (previousRef?.materialId && previousRef.materialId !== qrefMatId) refreshMaterialQuestionCount(previousRef.materialId);
+        refreshMaterialQuestionCount(qrefMatId);
         showMessage(r.replaced ? t("qref.relinked") : t("qref.linked"), 2000, "info");
       } catch (e) {
         qrefError = String(e instanceof Error ? e.message : e);
@@ -1097,10 +1293,12 @@ import { ttsSpeak } from "@/core/tts";
       qrefBusyFor = qid;
       qrefActionError = { ...qrefActionError, [qid]: "" };
       try {
+        const ref = app.questionMaterialRef(qid);
         const { confirmDialogSync } = await import("../../libs/dialog");
         if (!(await confirmDialogSync({ title: t("qref.unlinkTitle"), content: t("qref.unlinkConfirm") }))) return;
         await app.unlinkQuestionMaterial(qid);
         refreshQref(qid);
+        if (ref?.materialId) refreshMaterialQuestionCount(ref.materialId);
         showMessage(t("qref.unlinked"), 2200, "info");
       } catch (e) {
         qrefActionError = { ...qrefActionError, [qid]: String(e instanceof Error ? e.message : e) };
@@ -1403,10 +1601,31 @@ import { ttsSpeak } from "@/core/tts";
     });
     const practiceQuestions = $derived(questions.filter((q) => q.type !== "material"));
     const cramCount = $derived(app ? app.cramDrill(practiceQuestions).length : 0);
-    function todayQueueFor(available: Question[], planned: Question[] = plan?.queue ?? []) {
-      return groupAdjacent((planned.length ? planned : available.slice(0, 10)).filter((q) => q.type !== "material"));
+    function todayQueueFor(available: Question[], planned?: Question[]) {
+      // 传入计划时即使为空也保持空队列；仅未生成计划时才使用题库前 10 题兜底。
+      const source = planned !== undefined ? planned : available.slice(0, 10);
+      return groupAdjacent(source.filter((q) => q.type !== "material"));
     }
-    const todayQueue = $derived(todayQueueFor(practiceQuestions));
+    // 备考计划状态在驾驶舱 widgets 与入口卡片之间共享。
+    let plan = $state<ReturnType<typeof import("@/core/planner").planToday> | null>(null);
+    const todayAnsweredIds = $derived.by(() => {
+      void dataRev;
+      const today = localDateKeyOf(Date.now());
+      // Snapshot is intentionally a plain Set: this derived value is consumed as an immutable filter.
+      // eslint-disable-next-line svelte/prefer-svelte-reactivity
+      const ids = new Set<string>();
+      try {
+        for (const event of app?.attempts.all() ?? []) {
+          if (event.verdict !== "not_attempted" && localDateKeyOf(event.ts) === today) ids.add(event.qid);
+        }
+      } catch { /* 读取流水失败时保持原计划，不阻断练习入口 */ }
+      return ids;
+    });
+    const todayQueue = $derived(
+      plan
+        ? todayQueueFor(practiceQuestions, remainingPlan(plan, todayAnsweredIds).queue)
+        : todayQueueFor(practiceQuestions),
+    );
     const favoriteCount = $derived(practiceQuestions.filter((q) => q.fav).length);
     /** 错因计数：口径在 core/wrongReasonMix（reasons map 优先 → 遗留字段 → 未标注桶） */
     const reasonMap = $derived.by(() => {
@@ -1426,15 +1645,63 @@ import { ttsSpeak } from "@/core/tts";
       eliminatedCount + wrongList.length ? Math.round((eliminatedCount / (eliminatedCount + wrongList.length)) * 100) : 0,
     );
     /** 错题队列：错次降序 → 最近错误降序（紧迫度序） */
+    let wbTab = $state<"active" | "archived">("active");
     let wbReasonFilter = $state<"all" | "careless" | "unknown" | "trap">("all");
+    let wbFilterStubborn = $state(false);
+    const archivedWrongList = $derived.by(() => {
+      void dataRev;
+      if (!app) return [];
+      const ids = new Set(questions.map((q) => q.id));
+      return app.listArchivedWrongs().filter((w) => ids.has(w.qid));
+    });
     const wrongQueue = $derived(
       [...wrongList].sort((a, b) => b.wrongCount - a.wrongCount || b.lastWrongAt - a.lastWrongAt),
     );
-    const filteredWrongQueue = $derived(
-      wbReasonFilter === "all" ? wrongQueue : wrongQueue.filter((w) => reasonOf(w.qid) === wbReasonFilter),
-    );
+    const filteredWrongQueue = $derived.by(() => {
+      let list = wrongQueue;
+      if (wbReasonFilter !== "all") list = list.filter((w) => reasonOf(w.qid) === wbReasonFilter);
+      if (wbFilterStubborn) list = list.filter((w) => isStubbornWrong(w));
+      return list;
+    });
 
-    function switchView(next: View) { errorMsg = ""; view = next; }
+    async function archiveWrong(qid: string) {
+      if (!app) return;
+      try {
+        await app.archiveWrong(qid);
+        dataRev++;
+        showMessage(t("wrongbook.archivedSuccess"), 2800, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
+      }
+    }
+
+    async function unarchiveWrong(qid: string) {
+      if (!app) return;
+      try {
+        await app.unarchiveWrong(qid);
+        dataRev++;
+        showMessage(t("wrongbook.unarchivedSuccess"), 2800, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
+      }
+    }
+
+    async function snoozeWrong(qid: string, days = 7) {
+      if (!app) return;
+      try {
+        await app.snoozeWrong(qid, days);
+        dataRev++;
+        showMessage(t("wrongbook.snoozeDone"), 2800, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
+      }
+    }
+
+    function switchView(next: View) {
+      errorMsg = "";
+      view = next;
+      if (next === "import") void checkImportCheckpoint();
+    }
     const railItems = $derived([
       { icon: "table", name: t("mode.browse"), on: at("browse"), onclick: () => { switchView("browse"); void loadQuestions(); } },
       { icon: "xcircle", name: t("wrongbook.title"), on: at("wrongbook"), badge: wrongList.length ? String(wrongList.length) : undefined, onclick: () => { dataRev++; switchView("wrongbook"); void loadQuestions(); } },
@@ -1694,16 +1961,20 @@ import { ttsSpeak } from "@/core/tts";
 
     // ---------- 收藏（exam-fav；E 键 + 星标 + 过滤） ----------
     let favBusy = $state(false);
-    async function toggleFavCurrent() {
-      const q = session?.current as (Question & { blockId?: string; fav?: boolean }) | undefined;
-      if (!q || favBusy) return;
+    async function toggleFavQuestion(q: (Question & { blockId?: string; fav?: boolean }) | undefined) {
+      if (!q || !app || favBusy) return;
       favBusy = true;
       try {
-        await app.toggleFav(q);
+        const nextFav = await app.toggleFav(q);
+        questions = questions.map((item) => (item.id === q.id ? { ...item, fav: nextFav } : item));
         dataRev++;
+        showMessage(nextFav ? t("session.favAdded") : t("session.favRemoved"), 2000, "info");
       } catch (e) {
         showMessage(t("session.favFailed").replace("{message}", offline ? t("state.offlineHint") : String(e instanceof Error ? e.message : e)), 4200, "error");
       } finally { favBusy = false; }
+    }
+    async function toggleFavCurrent() {
+      await toggleFavQuestion(session?.current as (Question & { blockId?: string; fav?: boolean }) | undefined);
     }
 
     /** 共用题干：材料组母卡（同组材料的题干作为上下文渲染） */
@@ -1713,6 +1984,38 @@ import { ttsSpeak } from "@/core/tts";
       const mat = questions.find((x) => x.type === "material" && x.group === q.group);
       return mat?.stem ?? "";
     });
+
+    /** 43-03 材料组上下文与兄弟题导航快照 */
+    const groupContext = $derived.by(() => {
+      if (view !== "session" || !session) return null;
+      void sessionRev;
+      return buildMaterialGroupContext({
+        currentQ: session.current,
+        bankQuestions: questions,
+        sessionQids: session.state.qids,
+        sessionAnswered: session.state.answered,
+        currentSessionCursor: session.state.cursor,
+      });
+    });
+
+    /** 43-03 点击兄弟题药丸一键跳转到卷面对应题目 */
+    function jumpToSibling(sib: SiblingItem) {
+      if (!session || sib.sessionCursor === undefined) return;
+      if (session.jumpTo(sib.sessionCursor)) {
+        clearReciteSubmitTimer();
+        feedback = null;
+        selected = "";
+        draftLive = "";
+        confidenceSel = "";
+        materialExpanded = false;
+        answerStart = Date.now();
+        hideOptions = false;
+        recallDraft = "";
+        leakPending = null;
+        restoreQuestionControls();
+        sessionRev++;
+      }
+    }
 
     /** 长材料折叠（TODO 12 组）：>500 字默认折叠，切题重置；展开后完整可读 */
     const MATERIAL_FOLD_AT = 500;
@@ -1730,7 +2033,6 @@ import { ttsSpeak } from "@/core/tts";
     /** 备考计划（v0.5）：读取设置考日 → planToday 聚合（冲刺 cram 优先/常规到期优先） */
     // 可练习题过滤在 loadQuestions 后各入口处执行（材料母块只作上下文）
 
-    let plan = $state<ReturnType<typeof import("@/core/planner").planToday> | null>(null);
     /** 今日卡片说明：按 planner 结构化口径本地化渲染（plan.reason 为 zh 审计口径，不直接上界面） */
     function planReasonText(p: NonNullable<typeof plan>): string {
       const d = p.reasonData ?? { days: 0, cram: 0, stubborn: 0, due: 0 };
@@ -1759,7 +2061,7 @@ import { ttsSpeak } from "@/core/tts";
       const wrongCounts = new Map<string, number>();
       for (const w of app.derived().wrongbook.values()) wrongCounts.set(w.qid, w.wrongCount);
       const activeWrongIds = new Set(app.wrongItems().map((w) => w.qid));
-      plan = planToday({
+      const freshPlan = planToday({
         examDate: effectiveExamDate,
         sprintDays: Number.isFinite(sprintDays) && sprintDays > 0 ? sprintDays : 14,
         dailyGoal: Number.isFinite(goal) && goal > 0 ? goal : 10,
@@ -1767,6 +2069,15 @@ import { ttsSpeak } from "@/core/tts";
         wrongReasons: (app as any).wrongReasonMap?.() ?? undefined,
         dueFirst: dueFirst ?? [],
       });
+      // 今日计划与作答流水合并：完成后重算入口时自动显示剩余题目。
+      const today = localDateKeyOf(Date.now());
+      const completedToday = new Set(
+        app.attempts
+          .all()
+          .filter((event) => event.verdict !== "not_attempted" && localDateKeyOf(event.ts) === today)
+          .map((event) => event.qid),
+      );
+      plan = remainingPlan(freshPlan, completedToday);
       // 53-01 lite：今日计划分钟预算（按题型历史用时中位；缺历史题型如实标注默认值）
       const typeOf = new Map(questions.map((q) => [q.id, q.type] as const));
       planTime = estimatePlanMinutes(plan.queue, avgMsByType(app.attempts.all(), (qid) => typeOf.get(qid)));
@@ -1793,7 +2104,7 @@ import { ttsSpeak } from "@/core/tts";
       let due: Question[];
       try { due = await (app as any).dueQuestions(bankName, qs); } catch { due = []; }
       rebuildPlan(due);
-      const queue = todayQueueFor(qs);
+      const queue = todayQueueFor(qs, plan?.queue ?? []);
       await safeStart(queue, plan?.mode === "sprint" ? "cram" : "daily", () => {
         feedback = null; selected = ""; confidenceSel = ""; sessionDone = null;
         view = "session";
@@ -1837,7 +2148,6 @@ import { ttsSpeak } from "@/core/tts";
       try {
         await app.reciteAnswer(bankName, q as Question & { blockId?: string }, rating, reciteSessionId, 0);
         reciteRatings.push(rating);
-        plugin.refreshDock?.();
         reciteHint = 0;
         if (reciteCursor < reciteQueue.length - 1) {
           reciteCursor++; reciteRevealed = false;
@@ -1953,8 +2263,7 @@ import { ttsSpeak } from "@/core/tts";
       if (!activeBankId || syncDocsBusy) return;
       syncDocsBusy = true;
       try {
-        const r = await app?.syncBankToLocalDocs(activeBankId, bankName);
-        void r;
+        await app?.syncBankToLocalDocs(activeBankId, bankName);
         showMessage(t("sync.docsDone"), 3600, "info");
       } catch (e) {
         showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
@@ -1973,8 +2282,30 @@ import { ttsSpeak } from "@/core/tts";
         }
         importText = text;
         showMessage(t("import.clipboardPasted"), 2800, "info");
-      } catch (e) {
+      } catch {
         showMessage(t("import.clipboardFailed"), 3200, "info");
+      }
+    }
+
+    let importDragOver = $state(false);
+    async function onImportFileDrop(e: DragEvent) {
+      e.preventDefault();
+      e.stopPropagation();
+      importDragOver = false;
+      if (importBusy || !e.dataTransfer?.files?.length) return;
+      const file = e.dataTransfer.files[0];
+      if (/\.(xlsx|xls|csv)$/i.test(file.name)) {
+        await onExcelFile(inputLike(file) as unknown as Event);
+      } else if (/\.(txt|md|gift|aiken)$/i.test(file.name)) {
+        try {
+          const text = await file.text();
+          importText = text;
+          showMessage(t("import.fileLoaded"), 2800, "info");
+        } catch {
+          showMessage(t("import.readFailed"), 3200, "error");
+        }
+      } else {
+        showMessage(t("import.dropUnsupported", t("import.unsupportedDrop")), 3200, "info");
       }
     }
 
@@ -2622,6 +2953,8 @@ import { ttsSpeak } from "@/core/tts";
         qid: q.id, kind: "practice", mode: session.state.mode,
         verdict: g.verdict, myAnswer: g.myAnswer, sessionId: session.id,
         queue: session.state.mode === "wrong" ? "wrong" : "normal", timeMs,
+        qVersion: createQuestionVersionSnapshot(q),
+        delayedReview: r.isDelayedReview || undefined,
         confidence: confidenceSel || undefined,   // U12：答前快照随 attempt；未选=如实缺省
         help: helpShown.get(q.id),               // 114-01：本题曾被讲解/提示 → 受助作答如实标记
         recall: recallUsed.has(q.id) || undefined, // 52-02：先回忆模式揭示可追溯
@@ -2632,11 +2965,23 @@ import { ttsSpeak } from "@/core/tts";
           return { firstAnswer: t.first, edits: t.edits };
         })(),
       });
-      plugin.refreshDock?.();
       void app.saveSession().catch(() => undefined);   // 37-05 checkpoint：作答即存（SaveGate 同键合并，重载不重复作答）
       if (feedbackMode === "end") {
         // 44-01：会话末复盘——作答事件完全一致，仅对错不在逐题显示，结算页统一回看
         showMessage(t("session.recordedSilent"), 1500, "info");
+        nextQuestion();
+        return;
+      }
+      if (feedbackMode === "group") {
+        // 44-01：小组延迟复盘——每 5 题统一展示小组小结卡片，平时提交静默前进
+        const doneCount = (session.state.answered ?? []).length;
+        if (isGroupBatchBoundary(doneCount, DEFAULT_GROUP_FEEDBACK_SIZE)) {
+          groupBatchModal = calculateGroupBatchSummary(session.state.answered ?? [], groupBatchStart, doneCount);
+          groupBatchStart = doneCount + 1;
+          sessionRev++;
+          return;
+        }
+        showMessage(t("session.recordedGroup"), 1200, "info");
         nextQuestion();
         return;
       }
@@ -2667,7 +3012,7 @@ import { ttsSpeak } from "@/core/tts";
 
     async function finishSession() {
       clearReciteSubmitTimer();
-      sessionDone = session.finish();
+      sessionDone = { ...session.finish(), ...session.breakdown() };
       // 用时统计（考试 prep 时间管理关键指标）
       const times = session.answered.map((a) => a.timeMs).filter((t) => t > 0);
       sessionDone.totalTimeS = Math.round(times.reduce((s, t) => s + t, 0) / 1000);
@@ -2682,7 +3027,6 @@ import { ttsSpeak } from "@/core/tts";
       });
       await app.saveSession();
       await app.flush();
-      plugin.refreshDock?.();
       rebuildPlan();
       void runCheckinBridge().catch((e: unknown) => showMessage(String(e instanceof Error ? e.message : e), 4200, "error")); // 48-03 lite：结算自动同步打卡（幂等 externalRef，失败进待重试）
     }
@@ -2748,7 +3092,7 @@ import { ttsSpeak } from "@/core/tts";
         await app.saveSession();
         await app.flush();
         session = null; feedback = null; selected = ""; draftLive = ""; confidenceSel = ""; sessionDone = null;
-        plugin.refreshDock?.();
+        groupBatchModal = null; groupBatchStart = 1;
         view = "entry";
       } catch (e) {
         showMessage(offline ? t("state.offlineHint") : String(e instanceof Error ? e.message : e), 4200, "error");
@@ -2772,6 +3116,8 @@ import { ttsSpeak } from "@/core/tts";
     let mSpecAbsTol = $state("");
     let mSpecRelPct = $state("");
     let mSpecAltUnits = $state("");
+    /** 43-01 题目作者生命周期状态 (draft/review/published) */
+    let mStatus = $state<QuestionLifecycleStatus>("published");
     let mSaving = $state(false);
     let mSaved = $state("");
     let manualErrorMsg = $state("");
@@ -2858,10 +3204,12 @@ import { ttsSpeak } from "@/core/tts";
       return spec;
     }
 
-    async function saveManual() {
+    async function saveManual(targetStatus?: QuestionLifecycleStatus) {
+      const statusToSave = targetStatus ?? mStatus;
       if (mSaving || !mStem.trim()) return;
+      if (statusToSave === "published" && !mAnswer.trim() && mType !== "short") return;
       const targetBankId = activeBankId;
-      const draftSignature = () => JSON.stringify([mType, mStem, mOptions, mAnswer, mAnalysis, mKp, mSource, mGroup, mSpecOpen, mSpecUnit, mSpecAbsTol, mSpecRelPct, mSpecAltUnits]);
+      const draftSignature = () => JSON.stringify([mType, mStem, mOptions, mAnswer, mAnalysis, mKp, mSource, mGroup, mStatus, mSpecOpen, mSpecUnit, mSpecAbsTol, mSpecRelPct, mSpecAltUnits]);
       const signature = draftSignature();
       mSaving = true; mSaved = ""; errorMsg = ""; clearManualValidation();
       try {
@@ -2870,23 +3218,27 @@ import { ttsSpeak } from "@/core/tts";
           options: mType === "single" || mType === "multiple" ? mOptions.map((o) => o.trim()) : [],
           answer: mAnswer, analysis: mAnalysis, kp: mKp, source: mSource,
           group: mGroup.trim() || undefined,
+          status: statusToSave,
           ...(mType === "fill" && mSpecOpen ? { answerSpec: buildAuthorSpec() } : {}),
         });
-        const invalid = validate(q);
-        if (invalid) {
-          manualErrorMsg = invalid;
-          manualErrorField = manualFieldForError(q, invalid);
-          await tick();
-          document.querySelector<HTMLElement>(`[data-manual-field="${manualErrorField}"]`)?.focus();
-          return;
+        if (statusToSave === "published") {
+          const guard = checkPublishGuard(q);
+          if (!guard.valid) {
+            manualErrorMsg = guard.errors.join("；");
+            manualErrorField = manualFieldForError(q, guard.errors[0]);
+            await tick();
+            document.querySelector<HTMLElement>(`[data-manual-field="${manualErrorField}"]`)?.focus();
+            return;
+          }
         }
         await app.writeManualQuestion(targetBankId, q);
         mSaved = q.id;
         if (signature === draftSignature()) {
-        mStem = ""; mOptions = ["", ""]; mAnswer = ""; mAnalysis = "";
-        mSpecOpen = false; mSpecUnit = ""; mSpecAbsTol = ""; mSpecRelPct = ""; mSpecAltUnits = "";
-        draftRestored = false;
-        void app.saveAux(MANUAL_DRAFT_KEY, null).catch(() => undefined); // 45-06：提交成功清理草稿
+          mStem = ""; mOptions = ["", ""]; mAnswer = ""; mAnalysis = "";
+          mSpecOpen = false; mSpecUnit = ""; mSpecAbsTol = ""; mSpecRelPct = ""; mSpecAltUnits = "";
+          mStatus = "published";
+          draftRestored = false;
+          void app.saveAux(MANUAL_DRAFT_KEY, null).catch(() => undefined); // 45-06：提交成功清理草稿
         }
         await refreshQuestionsAfterWrite(questions.length + 1);
       } catch (e) {
@@ -2897,6 +3249,7 @@ import { ttsSpeak } from "@/core/tts";
     function blankManualDraft() {
       mStem = ""; mOptions = ["", ""]; mAnswer = ""; mAnalysis = "";
       mSpecOpen = false; mSpecUnit = ""; mSpecAbsTol = ""; mSpecRelPct = ""; mSpecAltUnits = "";
+      mStatus = "published";
       draftRestored = false;
       clearManualValidation();
       void app.saveAux(MANUAL_DRAFT_KEY, null).catch(() => undefined);
@@ -2985,7 +3338,16 @@ import { ttsSpeak } from "@/core/tts";
     let aiSaved = $state(0);
     /** 累计 AI 用量（app.aiUsage；本地统计，生成后刷新） */
     let aiUsageTotal = $state<{ totalTokens: number; totalCalls: number } | null>(null);
-    $effect(() => { void (app as any).aiUsage().then((u: { totalTokens: number; totalCalls: number }) => (aiUsageTotal = u)); });
+    $effect(() => {
+      const currentApp = app;
+      if (!currentApp) {
+        aiUsageTotal = null;
+        return;
+      }
+      void currentApp.aiUsage()
+        .then((u: { totalTokens: number; totalCalls: number }) => (aiUsageTotal = u))
+        .catch(() => { aiUsageTotal = null; });
+    });
     /** 待审核队列持久化（TODO 27 组）：切视图/重载不丢生成结果 */
     async function persistAiQueue() {
       try { await app.saveAux("ai/review-queue", { queue: aiQueue, rejected: aiRejected, duplicates: aiDuplicates, bankId: aiQueueBankId, material: aiQueueMaterial, options: aiQueueOptions }); }
@@ -3052,6 +3414,12 @@ import { ttsSpeak } from "@/core/tts";
         await saveGenerationUsage(counting);
         aiQueue = r.pending; aiRejected = r.rejected; aiDuplicates = r.duplicates;
         gleanPendingDone = requestGleanClips;
+        if (aiCancel.aborted) {
+          // The kernel channel cannot abort an in-flight request. `generate`
+          // drops its late response, while preserving candidates from earlier
+          // chunks; surface the final state so the user can retry explicitly.
+          showMessage(t("ai.cancelled"), 4200, "info");
+        }
         void persistAiQueue();
         // 60-01 写方向：出题成功且素材来自拾遗 → 提供「标记已读」闭环入口
         if (r.pending.length && gleanPendingDone.length) {
@@ -3123,7 +3491,8 @@ import { ttsSpeak } from "@/core/tts";
         aiRejected = r.rejected;
         aiDuplicates += r.duplicates;
         void persistAiQueue();
-        if (r.pending.length) showMessage(t("ai.repaired").replace("{n}", String(r.pending.length)), 2600, "info");
+        if (aiCancel.aborted) showMessage(t("ai.cancelled"), 4200, "info");
+        else if (r.pending.length) showMessage(t("ai.repaired").replace("{n}", String(r.pending.length)), 2600, "info");
       } catch (e) {
         aiError = String(e instanceof Error ? e.message : e);
       } finally {
@@ -3398,7 +3767,15 @@ import { ttsSpeak } from "@/core/tts";
 
     // ---------- 学习资料（120-01/02/06 lite）：登记 / 列表 / 最低查看 ----------
     let materialsList = $state<import("../../core/materials").MaterialDoc[]>([]);
+    // ExamApp's note store is not Svelte state; keep both visible count badges
+    // in an explicit reactive snapshot alongside the rendered note list.
+    const materialNoteCounts = new SvelteMap<string, number>();
+    // Question↔material links live in ExamApp's non-reactive store too. Keep the
+    // material-side link badge in a reactive snapshot so a link/unlink made from
+    // the Peek drawer is reflected when the user returns to this workspace.
+    const materialQuestionCounts = new SvelteMap<string, number>();
     let materialsBusy = $state(false);
+    let materialFileInput = $state<HTMLInputElement | null>(null);
     let materialsNote = $state("");
     let matSubject = $state("");
     let matChapter = $state("");
@@ -3420,7 +3797,24 @@ import { ttsSpeak } from "@/core/tts";
 
     function loadMaterials() {
       materialsList = app.listMaterials();
+      materialNoteCounts.clear();
+      materialQuestionCounts.clear();
+      for (const material of materialsList) {
+        refreshMaterialNoteCount(material.id);
+        refreshMaterialQuestionCount(material.id);
+      }
       if (selectedMaterialId && !materialsList.some((m) => m.id === selectedMaterialId)) selectedMaterialId = "";
+      // Keep an already-open notes drawer in sync when returning to the
+      // materials view or after a host-side refresh. A removed material must
+      // not leave its stale notes rendered under the next selection.
+      if (notesOpenId) {
+        if (materialsList.some((m) => m.id === notesOpenId)) {
+          notesCache = refreshMaterialNoteCount(notesOpenId);
+        } else {
+          notesOpenId = "";
+          notesCache = [];
+        }
+      }
     }
 
     function matIconName(kind: string): string {
@@ -3569,8 +3963,18 @@ import { ttsSpeak } from "@/core/tts";
         if (draft) { noteEditingId = draft.editingId; noteText = draft.text; notePage = draft.page; noteTime = draft.time; noteQuote = draft.quote; noteTags = draft.tags; noteBaseline = draft.baseline; }
       }
     }
+    function refreshMaterialNoteCount(materialId: string) {
+      const notes = app.listMaterialNotes(materialId);
+      materialNoteCounts.set(materialId, notes.length);
+      return notes;
+    }
+    function refreshMaterialQuestionCount(materialId: string) {
+      const count = app.listQuestionRefs(materialId).length;
+      materialQuestionCounts.set(materialId, count);
+      return count;
+    }
     function refreshNotes(m: import("../../core/materials").MaterialDoc) {
-      notesCache = app.listMaterialNotes(m.id);
+      notesCache = refreshMaterialNoteCount(m.id);
     }
     function resetNoteForm() {
       noteEditingId = ""; noteText = ""; notePage = ""; noteTime = ""; noteQuote = ""; noteTags = ""; noteFormError = "";
@@ -3607,8 +4011,9 @@ import { ttsSpeak } from "@/core/tts";
         const tags = noteTags.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
         if (editingId) await app.updateMaterialNote(editingId, { locator, text: noteText, tags });
         else await app.addMaterialNote({ materialId: m.id, revision: m.revision, locator, text: noteText, tags });
+        const savedNotes = refreshMaterialNoteCount(m.id);
         if (notesOpenId === m.id) {
-          refreshNotes(m);
+          notesCache = savedNotes;
           if (signature === noteSignature()) { resetNoteForm(); noteDrafts.delete(m.id); }
         }
         materialsNote = t("materials.noteSaved");
@@ -3710,6 +4115,10 @@ import { ttsSpeak } from "@/core/tts";
     let filterType = $state("");
     let filterSource = $state("");
     let filterWrong = $state(false);
+    /** 43-01 题目作者生命周期筛选 (draft/review/published/deprecated) */
+    let filterStatus = $state("");
+    /** 57-04 争议题筛选（多解/缺条件/答案存疑/资料过期） */
+    let filterDispute = $state(false);
     /** 三七批补全：仅受助（本题作答前被讲解/提示过）/ 近 N 天有作答（0=不限） */
     let filterHelp = $state(false);
     let filterDays = $state(0);
@@ -3721,6 +4130,12 @@ import { ttsSpeak } from "@/core/tts";
       let list = favOnly ? questions.filter((q) => q.fav) : questions;
       if (sectionSel) list = list.filter((q) => questionInSection(q, sectionSel!));
       if (filterType) list = list.filter((q) => q.type === filterType);
+      if (filterStatus) list = list.filter((q) => getQuestionLifecycle(q) === filterStatus);
+      if (filterDispute) list = list.filter((q) => isQuestionDisputed(q));
+      if (filterOrphanKind && orphanDiag) {
+        const targetIds = new Set(orphanDiag.byKind[filterOrphanKind].map((item) => item.qid));
+        list = list.filter((q) => targetIds.has(q.id));
+      }
       if (filterSource === "@@none") list = list.filter((q) => !(q.source ?? "").trim()); // 43-04：缺来源
       else if (filterSource) list = list.filter((q) => (q.source ?? "").trim() === filterSource);
       if (filterWrong || filterHelp || filterDays) {
@@ -3851,7 +4266,7 @@ import { ttsSpeak } from "@/core/tts";
       } finally { smartViewBusy = false; }
     }
 
-    /** Dock/块菜单/浏览详情 → 单题会话（qid 定位；首次挂载 questions 未加载，先按库拉取） */
+    /** 错题本/块菜单/浏览详情 → 单题会话（qid 定位；首次挂载 questions 未加载，先按库拉取） */
     async function startSingleById(pid: string) {
       if (!pid) return false;
       const all = questions.length ? questions : await loadQuestions();
@@ -3968,6 +4383,9 @@ import { ttsSpeak } from "@/core/tts";
       } else if (e.key === "ArrowDown" || e.key === "j" || e.key === "ArrowRight") {
         e.preventDefault();
         nextPeekQuestion();
+      } else if (e.key.toLowerCase() === "e" && activePeekQuestion) {
+        e.preventDefault();
+        void toggleFavQuestion(activePeekQuestion);
       }
     }
 
@@ -4163,6 +4581,39 @@ import { ttsSpeak } from "@/core/tts";
     let retryBatch = $state("");
     let retryBankId = $state("");
 
+    /** 38-04 / U08：未完成导入任务的断点恢复对象 */
+    let importCheckpoint = $state<import("../../importer/pipeline").ImportCheckpoint | null>(null);
+
+    async function checkImportCheckpoint() {
+      if (!app || !activeBankId) { importCheckpoint = null; return; }
+      try {
+        importCheckpoint = await app.loadImportCheckpoint(activeBankId);
+      } catch {
+        importCheckpoint = null;
+      }
+    }
+
+    async function resumeCheckpoint() {
+      if (!importCheckpoint || importBusy) return;
+      const cp = importCheckpoint;
+      const report: import("../../importer/pipeline").ImportReport = {
+        ok: cp.pendingQuestions,
+        errors: [],
+        duplicates: 0,
+        batch: cp.batch,
+      };
+      trialConfirmed = [...cp.confirmedIds];
+      importCheckpoint = null;
+      await runCommit(report);
+    }
+
+    async function discardCheckpoint() {
+      if (!importCheckpoint || importBusy) return;
+      await app?.clearImportCheckpoint().catch(() => undefined);
+      importCheckpoint = null;
+      showMessage(t("import.checkpointDiscarded"), 2400, "info");
+    }
+
     /** 46-03：入库进度与取消（取消在文档间生效；已写文档保留，可用批次撤销整批回退） */
     let commitProgress = $state<{ done: number; total: number } | null>(null);
     let commitCancelRequested = false;
@@ -4188,10 +4639,12 @@ import { ttsSpeak } from "@/core/tts";
           verified: r.readback.verified || !report.ok.length,
           cancelled: r.cancelled === true,
           unprocessed: r.unprocessed?.length ?? 0,
+          pendingIndex: r.pendingIndex?.length ?? 0,
         };
         retryPool = report.ok.filter((q) => r.readback.missing.includes(q.id));
         retryBatch = report.batch;
         retryBankId = targetBankId;
+        void checkImportCheckpoint();
         if (r.cancelled || commitCancelRequested) {
           importResult.cancelled = true;
           importReport = { ...report, ok: retryPool };
@@ -4344,20 +4797,20 @@ import { ttsSpeak } from "@/core/tts";
 
 <div class="fn__flex-1 lv-exam-tab" bind:this={tabRoot} role="region" aria-label={t("tab.practice")}>
   {#snippet studioNav()}
-    <div class="lv-studio-nav" role="tablist" aria-label="出题工作台">
-      <button class="lv-studio-tab" class:active={view === "manual"} onclick={() => (view = "manual")} role="tab" aria-selected={view === "manual"}>
+    <nav class="lv-studio-nav" aria-label="出题工作台">
+      <button type="button" class="lv-studio-tab" class:active={view === "manual"} onclick={() => (view = "manual")} aria-current={view === "manual" ? "page" : undefined}>
         <Icon name="pencil" size={13} /> {t("tab.manual", "手工录题")}
       </button>
-      <button class="lv-studio-tab" class:active={view === "materials"} onclick={() => (view = "materials")} role="tab" aria-selected={view === "materials"}>
+      <button type="button" class="lv-studio-tab" class:active={view === "materials"} onclick={() => (view = "materials")} aria-current={view === "materials" ? "page" : undefined}>
         <Icon name="book" size={13} /> {t("tab.materials", "学习资料")}
       </button>
-      <button class="lv-studio-tab" class:active={view === "import"} onclick={() => (view = "import")} role="tab" aria-selected={view === "import"}>
+      <button type="button" class="lv-studio-tab" class:active={view === "import"} onclick={() => (view = "import")} aria-current={view === "import" ? "page" : undefined}>
         <Icon name="import" size={13} /> {t("tab.import", "批量导入")}
       </button>
-      <button class="lv-studio-tab" class:active={view === "ai"} onclick={() => (view = "ai")} role="tab" aria-selected={view === "ai"}>
+      <button type="button" class="lv-studio-tab" class:active={view === "ai"} onclick={() => (view = "ai")} aria-current={view === "ai" ? "page" : undefined}>
         <Icon name="sparkles" size={13} /> {t("tab.ai", "AI 出题")}
       </button>
-    </div>
+    </nav>
   {/snippet}
   <div class="block__icons" class:lv-focus-toolbar={view === "session" && !sessionDone}>
     <button class="lv-menu-btn" aria-label={t("menu.open")} aria-expanded={railOpen} bind:this={menuBtn} onclick={() => railOpen = true}><Icon name="menu" size={16} /></button>
@@ -4729,7 +5182,8 @@ import { ttsSpeak } from "@/core/tts";
               <button class="lv-btn sm lv-btn--primary" onclick={exportWrong}><Icon name="export" size={14} /> {t("export.run")}</button>
               <div class="lv-row" style="margin:6px 0 0">
                 <button class="lv-btn sm" disabled={offline} onclick={exportBank}><Icon name="export" size={14} /> {t("share.export")}</button>
-                <label class="lv-btn sm" class:disabled={offline} style={offline ? "opacity:.5;pointer-events:none" : ""}><Icon name="import" size={14} /> {t("share.import")}<input type="file" accept=".sy.zip,.zip" style="display:none" onchange={importBank} /></label>
+                <button type="button" class="lv-btn sm" disabled={offline} onclick={() => bankFileInput?.click()}><Icon name="import" size={14} /> {t("share.import")}</button>
+                <input bind:this={bankFileInput} type="file" accept=".sy.zip,.zip" hidden onchange={importBank} disabled={offline} />
                 <span class="lv-muted">{t("share.desktopOnly")}</span>
               </div>
             </div>
@@ -4748,6 +5202,18 @@ import { ttsSpeak } from "@/core/tts";
             <div class="good"><strong>{sessionDone.correct}</strong><span>{t("session.correct")}</span></div>
             <div class="bad"><strong>{sessionDone.wrong}</strong><span>{t("session.wrong")}</span></div>
           </div>
+          {#if sessionDone.initialTotal}
+            <div class="lv-row" style="justify-content:center;gap:var(--lv-space-2);margin:6px 0 2px" role="status">
+              <span class="lv-chip num" title={t("session.initialRateTip")}>
+                {t("session.initialAccuracy")}: {Math.round((sessionDone.initialCorrect / sessionDone.initialTotal) * 100)}% ({sessionDone.initialCorrect}/{sessionDone.initialTotal})
+              </span>
+              {#if (sessionDone.delayedTotal ?? 0) > 0}
+                <span class="lv-chip lv-chip--grn num" title={t("session.delayedRecoveredTip")}>
+                  🔄 {t("session.delayedRecovered")}: {sessionDone.delayedRecovered}/{sessionDone.delayedTotal}
+                </span>
+              {/if}
+            </div>
+          {/if}
           {#if sessionDone.totalTimeS}
             <div class="lv-row" style="justify-content:center;gap:var(--lv-space-3);margin:6px 0 2px" role="status">
               <span class="lv-chip num"><Icon name="clock" size={12} /> {t("session.totalTime")} {sessionDone.totalTimeS >= 60 ? `${Math.floor(sessionDone.totalTimeS / 60)}m${sessionDone.totalTimeS % 60 ? ` ${sessionDone.totalTimeS % 60}s` : ""}` : `${sessionDone.totalTimeS}s`}</span>
@@ -4860,12 +5326,17 @@ import { ttsSpeak } from "@/core/tts";
               <span class="num lv-muted">{curProgress.done}/{curProgress.total}</span>
             </div>
             <span class="lv-chip lv-chip--acc">{t("qtype." + q.type)}</span>
+            {#if session.isDelayedReviewAtCurrent()}
+              <span class="lv-chip lv-chip--amb" title={t("session.delayedRetestTip")}>
+                🔄 {t("session.delayedRetest")}
+              </span>
+            {/if}
             {#if q.group}
               {@const sibs = questions.filter((x) => x.group === q.group)}
               {@const pos = sibs.findIndex((x) => x.id === q.id) + 1}
               <span class="lv-chip num"><Icon name="link" size={12} /> {t("session.groupPos")} {pos}/{sibs.length}</span>
             {/if}
-            <button class="lv-chip" title={t("tts.read")} aria-label={t("tts.read")} onclick={() => ttsSpeak([q.stem, ...q.options].join(" "))}><Icon name="volume" size={13} /></button>
+            <button class="lv-chip" title={ttsSupported() ? t("tts.read") : t("tts.unsupported", "当前前端不支持朗读")} aria-label={t("tts.read")} disabled={!ttsSupported()} onclick={() => ttsSpeak([q.stem, ...q.options].join(" "))}><Icon name="volume" size={13} /></button>
             <button class="lv-chip" class:acc={reciteToggle} title={t("session.reciteMode")} aria-pressed={reciteToggle} onclick={toggleRecite}><Icon name="eye" size={13} /> {t("session.reciteMode")}</button>
             <button class="lv-chip" class:acc={soundEnabled} title={soundEnabled ? t("sound.disable") : t("sound.enable")} onclick={() => { soundEnabled = !soundEnabled; writeLocal("lv-exam/sound", soundEnabled ? "1" : "0"); }}><Icon name={soundEnabled ? "volume" : "volume-x"} size={13} /></button>
             <button class="lv-chip" class:acc={hotkeysHelpOpen} title={t("hotkeys.tip")} onclick={() => hotkeysHelpOpen = !hotkeysHelpOpen}><Icon name="activity" size={13} /> ?</button>
@@ -4873,15 +5344,58 @@ import { ttsSpeak } from "@/core/tts";
               <button class="lv-chip" class:acc={!!q.fav} title="E" aria-label={t("session.kbdFav")} aria-pressed={!!q.fav} aria-busy={favBusy} disabled={favBusy} onclick={() => toggleFavCurrent()}><Icon name="star" size={13} /></button>
           </div>
           <div class="lv-session-main">
+          {#if groupBatchModal}
+            <!-- 44-01：小组延迟批次复盘小结卡 -->
+            <div class="lv-card lv-pad-card" style="margin-bottom:12px;background:var(--lv-surface-2);border-left:3px solid var(--lv-accent);padding:14px 16px">
+              <div class="lv-row" style="justify-content:space-between;align-items:center;margin-bottom:8px">
+                <b><Icon name="check" size={15} /> {t("session.groupFeedback")}（{t("material.subQ").replace("{n}", String(groupBatchModal.fromIndex))} - {t("material.subQ").replace("{n}", String(groupBatchModal.toIndex))}）</b>
+                <span class="lv-chip lv-chip--acc num">{t("session.initialAccuracy")}: {groupBatchModal.accuracy}% ({groupBatchModal.correct}/{groupBatchModal.total})</span>
+              </div>
+              <div class="lv-row" style="gap:6px;flex-wrap:wrap;margin:6px 0 12px">
+                {#each groupBatchModal.items as item, ii (item.qid)}
+                  {@const q = questions.find((x) => x.id === item.qid)}
+                  <span class="lv-chip num" class:lv-chip--grn={item.verdict === "correct"} class:lv-chip--red={item.verdict === "wrong"} title={q?.stem ?? item.qid}>
+                    {groupBatchModal.fromIndex + ii}. {item.verdict === "correct" ? "✓" : "✕"} {#if item.myAnswer}({item.myAnswer}){/if}
+                  </span>
+                {/each}
+              </div>
+              <button class="lv-btn lv-btn--primary" onclick={() => { groupBatchModal = null; nextQuestion(); }}>
+                <Icon name="play" size={13} /> {t("session.groupContinue")}
+              </button>
+            </div>
+          {/if}
           <div class="lv-card lv-question" class:lv-pure={pureListen}>
             {#if materialContext}
               <div class="lv-analysis lv-rich b3-typography" style="margin-bottom:12px">
-                <b class="lv-mat-chip"><Icon name="paperclip" size={14} /> {t("material.shared")}</b>{@html materialLong && !materialExpanded ? escapeHtml(materialShown) : (materialHtml || escapeHtml(materialShown))}
-                {#if materialLong}
-                  <button class="lv-chip num" style="margin-left:6px" onclick={() => { materialExpanded = !materialExpanded; if (materialExpanded && !feedback) addExposure(q.id, "material"); }}>
-                    {materialExpanded ? t("material.fold") : t("material.expand")}
-                  </button>
+                <div class="lv-row" style="margin:0 0 6px;justify-content:space-between;align-items:center;flex-wrap:wrap">
+                  <b class="lv-mat-chip"><Icon name="paperclip" size={14} /> {groupContext ? formatMaterialGroupHeader(groupContext) : t("material.shared")}</b>
+                  {#if materialLong}
+                    <button class="lv-chip num" onclick={() => { materialExpanded = !materialExpanded; if (materialExpanded && !feedback) addExposure(q.id, "material"); }}>
+                      {materialExpanded ? t("material.fold") : t("material.expand")}
+                    </button>
+                  {/if}
+                </div>
+                {#if groupContext && groupContext.siblings.length > 1}
+                  <!-- 43-03 兄弟题导航条：展示已答对/已答错/当前/未答状态，支持卷面一键跳转 -->
+                  <div class="lv-row lv-sibling-nav" style="margin:4px 0 8px;gap:6px;flex-wrap:wrap" role="group" aria-label={t("material.siblings")}>
+                    {#each groupContext.siblings as sib (sib.qid)}
+                      <button
+                        type="button"
+                        class="lv-chip num lv-sibling-pill"
+                        class:acc={sib.isCurrent}
+                        class:lv-chip--grn={sib.verdict === "correct"}
+                        class:lv-chip--red={sib.verdict === "wrong"}
+                        disabled={!sib.inSession}
+                        title={sib.inSession ? `${t("material.jumpTo")}: ${sib.stemSnippet}` : t("material.notInSession")}
+                        onclick={() => jumpToSibling(sib)}
+                      >
+                        {t("material.subQ").replace("{n}", String(sib.subIndex))}
+                        {#if sib.verdict === "correct"}✓{:else if sib.verdict === "wrong"}✕{/if}
+                      </button>
+                    {/each}
+                  </div>
                 {/if}
+                {@html materialLong && !materialExpanded ? escapeHtml(materialShown) : (materialHtml || escapeHtml(materialShown))}
               </div>
             {/if}
             {#if stemHtml}<div class="lv-stem lv-rich b3-typography">{@html stemHtml}</div>{:else}<div class="lv-stem">{q.stem}</div>{/if}
@@ -5113,7 +5627,7 @@ import { ttsSpeak } from "@/core/tts";
           <span class="lv-chip num"><Icon name="link" size={12} /> {t("session.groupPos")}</span>
         {/if}
         {#if reciteQueue[reciteCursor]}
-          <button class="lv-chip" title={t("tts.read")} aria-label={t("tts.read")} onclick={() => ttsSpeak(reciteQueue[reciteCursor].stem)}><Icon name="volume" size={13} /></button>
+          <button class="lv-chip" title={ttsSupported() ? t("tts.read") : t("tts.unsupported", "当前前端不支持朗读")} aria-label={t("tts.read")} disabled={!ttsSupported()} onclick={() => ttsSpeak(reciteQueue[reciteCursor].stem)}><Icon name="volume" size={13} /></button>
         {/if}
       </div>
       {#if reciteDone}
@@ -5214,47 +5728,91 @@ import { ttsSpeak } from "@/core/tts";
             </div>
             <div class="lv-card">
               <div class="lv-row" style="justify-content:space-between;margin:0 0 6px">
-                <b class="lv-block-title" style="margin:0">{t("wrongbook.queue")}</b>
+                <div class="lv-row" style="margin:0;gap:8px">
+                  <b class="lv-block-title" style="margin:0">{t("wrongbook.queue")}</b>
+                  <button type="button" class="lv-chip sm" class:acc={wbTab === "active"} onclick={() => wbTab = "active"}>
+                    {t("wrongbook.tabActive")} ({wrongList.length})
+                  </button>
+                  <button type="button" class="lv-chip sm" class:acc={wbTab === "archived"} onclick={() => wbTab = "archived"}>
+                    {t("wrongbook.tabArchived")} ({archivedWrongList.length})
+                  </button>
+                </div>
                 <span class="lv-muted" style="font-size:var(--lv-font-size-caption)">{t("wrongbook.queue.note")}</span>
               </div>
-              <div class="lv-row" style="gap:var(--lv-space-compact);margin:8px 0 12px;flex-wrap:wrap;align-items:center">
-                <button class="lv-chip" class:acc={wbReasonFilter === "all"} onclick={() => wbReasonFilter = "all"}>
-                  {t("wrongbook.filterAll")} ({wrongQueue.length})
-                </button>
-                <button class="lv-chip" class:acc={wbReasonFilter === "careless"} onclick={() => wbReasonFilter = "careless"}>
-                  {t("wrongbook.filterCareless")} ({reasonCounts.careless})
-                </button>
-                <button class="lv-chip" class:acc={wbReasonFilter === "unknown"} class:lv-chip--red={reasonCounts.unknown > 0} onclick={() => wbReasonFilter = "unknown"}>
-                  {t("wrongbook.filterUnknown")} ({reasonCounts.unknown})
-                </button>
-                <button class="lv-chip" class:acc={wbReasonFilter === "trap"} onclick={() => wbReasonFilter = "trap"}>
-                  {t("wrongbook.filterTrap")} ({reasonCounts.trap})
-                </button>
-                {#if filteredWrongQueue.length > 0}
-                  <button class="lv-btn sm lv-btn--primary" style="margin-left:auto" onclick={() => void startFilteredWrongDrill()} title={t("wrongbook.drillFiltered")}>
-                    <Icon name="play" size={13} /> {t("wrongbook.drillFiltered")} ({filteredWrongQueue.length})
+              {#if wbTab === "active"}
+                <div class="lv-row" style="gap:var(--lv-space-compact);margin:8px 0 12px;flex-wrap:wrap;align-items:center">
+                  <button class="lv-chip" class:acc={wbReasonFilter === "all"} onclick={() => wbReasonFilter = "all"}>
+                    {t("wrongbook.filterAll")} ({wrongQueue.length})
                   </button>
-                {/if}
-              </div>
-              {#each filteredWrongQueue as w, wi (w.qid)}
-                {@const q = qOf(w.qid)}
-                <div class="lv-wrong-row">
-                  <span class="task-number num">{wi + 1}</span>
-                  <div class="lv-wrong-main">
-                    <div class="lv-wrong-stem" title={q?.stem ?? w.qid}>{q?.stem.slice(0, 80) ?? w.qid}</div>
-                    <div class="lv-wrong-meta">
-                      <span>{t("wrongbook.wrongN").replace("{n}", String(w.wrongCount))}</span>
-                      {#if w.streakCorrect > 0}<span class="lv-chip lv-chip--grn num">{t("wrongbook.reClear").replace("{n}", String(ELIMINATE_STREAK - w.streakCorrect))}</span>{/if}
-                      {#if reasonOf(w.qid)}<span class="lv-chip num">{t("reason." + reasonOf(w.qid))}</span>{/if}
-                      <span>{t("wrongbook.lastWrong")} {new Date(w.lastWrongAt).toLocaleDateString()}</span>
-                      {#if q?.kp}<span class="lv-chip num">{q.kp}</span>{/if}
-                    </div>
-                  </div>
-                  <button class="lv-btn sm" onclick={() => void startWrongFor(w.qid)}><Icon name="play" size={13} /> {t("wrongbook.retry")}</button>
-                  <button class="lv-btn sm lv-btn--ghost" title={t("wrongbook.sameKpTip")} onclick={() => void startSameKpFor(w.qid)}><Icon name="link" size={13} /> {t("wrongbook.sameKp")}</button>
-                  <button class="lv-btn sm lv-btn--ghost" title={t("wrongbook.masteredTip")} disabled={wrongBusyId === w.qid || !!wrongBusyId} aria-busy={wrongBusyId === w.qid} onclick={() => void masterWrong(w.qid)}>{wrongBusyId === w.qid ? "…" : t("wrongbook.mastered")}</button>
+                  <button class="lv-chip" class:acc={wbReasonFilter === "careless"} onclick={() => wbReasonFilter = "careless"}>
+                    {t("wrongbook.filterCareless")} ({reasonCounts.careless})
+                  </button>
+                  <button class="lv-chip" class:acc={wbReasonFilter === "unknown"} class:lv-chip--red={reasonCounts.unknown > 0} onclick={() => wbReasonFilter = "unknown"}>
+                    {t("wrongbook.filterUnknown")} ({reasonCounts.unknown})
+                  </button>
+                  <button class="lv-chip" class:acc={wbReasonFilter === "trap"} onclick={() => wbReasonFilter = "trap"}>
+                    {t("wrongbook.filterTrap")} ({reasonCounts.trap})
+                  </button>
+                  <button class="lv-chip" class:acc={wbFilterStubborn} class:lv-chip--amb={wbFilterStubborn} onclick={() => wbFilterStubborn = !wbFilterStubborn} title={t("wrongbook.filterStubbornTip")}>
+                    🔥 {t("wrongbook.filterStubborn")}
+                  </button>
+                  {#if filteredWrongQueue.length > 0}
+                    <button class="lv-btn sm lv-btn--primary" style="margin-left:auto" onclick={() => void startFilteredWrongDrill()} title={t("wrongbook.drillFiltered")}>
+                      <Icon name="play" size={13} /> {t("wrongbook.drillFiltered")} ({filteredWrongQueue.length})
+                    </button>
+                  {/if}
                 </div>
-              {/each}
+                {#each filteredWrongQueue as w, wi (w.qid)}
+                  {@const q = qOf(w.qid)}
+                  {@const stubborn = isStubbornWrong(w)}
+                  <div class="lv-wrong-row">
+                    <span class="task-number num">{wi + 1}</span>
+                    <div class="lv-wrong-main">
+                      <div class="lv-wrong-stem" title={q?.stem ?? w.qid}>{q?.stem.slice(0, 80) ?? w.qid}</div>
+                      <div class="lv-wrong-meta">
+                        <span>{t("wrongbook.wrongN").replace("{n}", String(w.wrongCount))}</span>
+                        {#if stubborn}
+                          <span class="lv-chip lv-chip--amb sm" title={getStubbornRemediation(w).reasonText}>
+                            🔥 {t("wrongbook.stubbornBadge")}
+                          </span>
+                        {/if}
+                        {#if w.streakCorrect > 0}<span class="lv-chip lv-chip--grn num">{t("wrongbook.reClear").replace("{n}", String(ELIMINATE_STREAK - w.streakCorrect))}</span>{/if}
+                        {#if reasonOf(w.qid)}<span class="lv-chip num">{t("reason." + reasonOf(w.qid))}</span>{/if}
+                        <span>{t("wrongbook.lastWrong")} {new Date(w.lastWrongAt).toLocaleDateString()}</span>
+                        {#if q?.kp}<span class="lv-chip num">{q.kp}</span>{/if}
+                      </div>
+                    </div>
+                    <button class="lv-btn sm" onclick={() => void startWrongFor(w.qid)}><Icon name="play" size={13} /> {t("wrongbook.retry")}</button>
+                    <button class="lv-btn sm lv-btn--ghost" title={t("wrongbook.snooze7")} onclick={() => void snoozeWrong(w.qid, 7)}><Icon name="clock" size={12} /> {t("wrongbook.snooze7")}</button>
+                    <button class="lv-btn sm lv-btn--ghost" title={t("wrongbook.archiveTip")} onclick={() => void archiveWrong(w.qid)}><Icon name="folder" size={12} /> {t("wrongbook.archive")}</button>
+                    <button class="lv-btn sm lv-btn--ghost" title={t("wrongbook.sameKpTip")} onclick={() => void startSameKpFor(w.qid)}><Icon name="link" size={13} /> {t("wrongbook.sameKp")}</button>
+                    <button class="lv-btn sm lv-btn--ghost" title={t("wrongbook.masteredTip")} disabled={wrongBusyId === w.qid || !!wrongBusyId} aria-busy={wrongBusyId === w.qid} onclick={() => void masterWrong(w.qid)}>{wrongBusyId === w.qid ? "…" : t("wrongbook.mastered")}</button>
+                  </div>
+                {/each}
+              {:else}
+                <!-- 52-06：已归档封存错题列表 -->
+                <div class="stack-sm" style="margin-top:8px">
+                  {#each archivedWrongList as w, wi (w.qid)}
+                    {@const q = qOf(w.qid)}
+                    <div class="lv-wrong-row" style="opacity:0.85">
+                      <span class="task-number num">{wi + 1}</span>
+                      <div class="lv-wrong-main">
+                        <div class="lv-wrong-stem" title={q?.stem ?? w.qid}>{q?.stem.slice(0, 80) ?? w.qid}</div>
+                        <div class="lv-wrong-meta">
+                          <span class="lv-chip sm">{t("wrongbook.tabArchived")}</span>
+                          <span>{t("wrongbook.wrongN").replace("{n}", String(w.wrongCount))}</span>
+                          {#if q?.kp}<span class="lv-chip num">{q.kp}</span>{/if}
+                        </div>
+                      </div>
+                      <button class="lv-btn sm lv-btn--primary" onclick={() => void unarchiveWrong(w.qid)}>
+                        <Icon name="rotate" size={12} /> {t("wrongbook.unarchive")}
+                      </button>
+                    </div>
+                  {:else}
+                    <div class="lv-muted" style="padding:16px 0;text-align:center">{t("browse.empty")}</div>
+                  {/each}
+                </div>
+              {/if}
             </div>
           </div>
           <div class="stack">
@@ -5301,6 +5859,12 @@ import { ttsSpeak } from "@/core/tts";
           {#each ["single", "multiple", "judge", "fill", "short"] as tt, _i (_i)}
             <button class="lv-chip" class:acc={mType === tt} aria-pressed={mType === tt} onclick={() => void switchManualType(tt as typeof mType)}>{t("qtype." + tt)}</button>
           {/each}
+        </div>
+        <div class="lv-row" role="group" aria-label={t("manual.status")}>
+          <span class="lv-chip">{t("manual.status")}</span>
+          <button type="button" class="lv-chip" class:acc={mStatus === "published"} aria-pressed={mStatus === "published"} onclick={() => { mStatus = "published"; clearManualValidation(); }}>{t("lifecycle.published")}</button>
+          <button type="button" class="lv-chip" class:acc={mStatus === "review"} aria-pressed={mStatus === "review"} onclick={() => { mStatus = "review"; clearManualValidation(); }}>{t("lifecycle.review")}</button>
+          <button type="button" class="lv-chip" class:acc={mStatus === "draft"} aria-pressed={mStatus === "draft"} onclick={() => { mStatus = "draft"; clearManualValidation(); }}>{t("lifecycle.draft")}</button>
         </div>
         <div class="lv-field"><label class="lv-muted" for="lv-manual-stem">{t("manual.stem")}</label>
           <textarea id="lv-manual-stem" class="lv-input lv-textarea" bind:value={mStem} oninput={clearManualValidation} placeholder={t("manual.stemPlaceholder")} data-manual-field="stem" aria-invalid={manualErrorField === "stem" ? "true" : undefined} aria-describedby={manualErrorField === "stem" ? "manual-validation-error" : undefined}></textarea>
@@ -5368,9 +5932,14 @@ import { ttsSpeak } from "@/core/tts";
         </div>
         <div class="lv-row">
           {#if manualErrorMsg}<p class="lv-error" id="manual-validation-error" role="alert">{manualErrorMsg}</p>{/if}
-          <button class="lv-btn lv-btn--primary" onclick={saveManual} disabled={mSaving || !mStem.trim() || !mAnswer.trim()}>
-            {mSaving ? "…" : t("manual.save")}
+          <button class="lv-btn lv-btn--primary" onclick={() => saveManual("published")} disabled={mSaving || !mStem.trim() || (mStatus === "published" && !mAnswer.trim() && mType !== "short")}>
+            {mSaving ? "…" : mStatus === "draft" ? t("manual.saveDraft") : t("manual.save")}
           </button>
+          {#if mStatus !== "draft"}
+            <button class="lv-btn lv-btn--ghost" onclick={() => saveManual("draft")} disabled={mSaving || !mStem.trim()} title={t("manual.saveAsDraftTip")}>
+              {t("manual.saveDraft")}
+            </button>
+          {/if}
           <button class="lv-btn lv-btn--ghost" onclick={blankManualDraft} disabled={mSaving || (!mStem && !mAnswer && !mAnalysis)} title={t("manual.blankTitle", "清空并开始录入新题")}>
             {t("manual.blank", "换一道新题")}
           </button>
@@ -5463,6 +6032,7 @@ import { ttsSpeak } from "@/core/tts";
           <span class="lv-chip lv-chip--grn" title={t("ai.endpointTitle")}>{t("ai.channel.siyuan")}</span>
         {/if}
       </div>
+      <p class="lv-muted">{t("report.aiSetupHint", "AI 需要先配置：可使用思源设置中的可用模型，或在本插件设置中填写兼容端点、模型与密钥。统计和手动练习无需 AI。")}</p>
       <div class="lv-studio-grid lv-studio-grid--ai">
       <div class="lv-card lv-pad-card lv-ai-source-card">
         <div class="lv-section-head">
@@ -5654,10 +6224,10 @@ import { ttsSpeak } from "@/core/tts";
       </div>
       <div class="lv-card" style="margin-top:10px">
         <div class="lv-row">
-          <label class="lv-btn" class:disabled={materialsBusy || offline || app.materialsReadonly} style={(materialsBusy || offline || app.materialsReadonly) ? "opacity:.62;cursor:not-allowed;pointer-events:none" : ""} aria-disabled={materialsBusy || offline || app.materialsReadonly} title={app.materialsReadonly ? t("materials.readonly") : offline ? t("state.offlineHint") : ""}>
+          <button type="button" class="lv-btn" disabled={materialsBusy || offline || app.materialsReadonly} title={app.materialsReadonly ? t("materials.readonly") : offline ? t("state.offlineHint") : ""} onclick={() => materialFileInput?.click()}>
             <Icon name="paperclip" size={14} /> {t("materials.pickFile")}
-            <input type="file" accept=".pdf,.mp4,.webm,.m4v,.mp3,.m4a,.wav,.ogg,.png,.jpg,.jpeg,.gif,.webp,.md,.txt,.docx,.epub" style="display:none" onchange={onMaterialFile} disabled={materialsBusy || offline || app.materialsReadonly} />
-          </label>
+          </button>
+          <input bind:this={materialFileInput} type="file" accept=".pdf,.mp4,.webm,.m4v,.mp3,.m4a,.wav,.ogg,.png,.jpg,.jpeg,.gif,.webp,.md,.txt,.docx,.epub" hidden onchange={onMaterialFile} disabled={materialsBusy || offline || app.materialsReadonly} />
           <span class="lv-muted">{t("materials.copyHint")}</span>
         </div>
         <div class="lv-row">
@@ -5689,7 +6259,7 @@ import { ttsSpeak } from "@/core/tts";
               <button class="lv-material-item" class:selected={selectedMaterial?.id === m.id} aria-current={selectedMaterial?.id === m.id ? "true" : undefined} disabled={materialsBusy} aria-disabled={materialsBusy} onclick={() => { if (!materialsBusy) selectedMaterialId = m.id; }}>
                 <span class="lv-material-icon"><Icon name={matIconName(m.kind)} size={15} /></span>
                 <span class="lv-material-copy"><b>{m.title}</b><small>{[m.subject, m.chapter, t("mkind." + m.kind)].filter(Boolean).join(" · ")}</small></span>
-                <span class="lv-material-count num">{app.listMaterialNotes(m.id).length}</span>
+                <span class="lv-material-count num">{materialNoteCounts.get(m.id) ?? 0}</span>
               </button>
             {/each}
           </aside>
@@ -5704,7 +6274,7 @@ import { ttsSpeak } from "@/core/tts";
                 {#if m.subject}<span class="lv-chip">{m.subject}</span>{/if}
                 {#if m.chapter}<span class="lv-chip">{m.chapter}</span>{/if}
                 <span class="lv-chip num">v{m.revision}</span>
-                {#if app.listQuestionRefs(m.id).length}<span class="lv-chip num" title={t("qref.linkedTip")}><Icon name="link" size={11} /> {t("qref.linkedCount").replace("{n}", String(app.listQuestionRefs(m.id).length))}</span>{/if}
+                {#if materialQuestionCounts.get(m.id)}<span class="lv-chip num" title={t("qref.linkedTip")}><Icon name="link" size={11} /> {t("qref.linkedCount").replace("{n}", String(materialQuestionCounts.get(m.id) ?? 0))}</span>{/if}
               </div>
               <div class="lv-material-locations">
                 <b>{t("materials.meta")}</b>
@@ -5714,7 +6284,7 @@ import { ttsSpeak } from "@/core/tts";
               </div>
               <div class="lv-row lv-material-actions">
                 <button class="lv-btn lv-btn--primary sm" onclick={() => openMaterial(m)}><Icon name="external-link" size={13} /> {t("materials.open")}</button>
-                <button class="lv-btn sm" aria-expanded={notesOpenId === m.id} onclick={() => toggleNotes(m)} disabled={materialsBusy}><Icon name="pencil" size={13} /> {t("materials.notes")}（<span class="num">{app.listMaterialNotes(m.id).length}</span>）</button>
+                <button class="lv-btn sm" aria-expanded={notesOpenId === m.id} onclick={() => toggleNotes(m)} disabled={materialsBusy}><Icon name="pencil" size={13} /> {t("materials.notes")}（<span class="num">{materialNoteCounts.get(m.id) ?? 0}</span>）</button>
                 <button class="lv-btn sm lv-btn--ghost" onclick={() => bridgeMaterialToManual(m)} title="把当前资料来源带入手工录题"><Icon name="edit" size={13} /> {t("materials.toManual", "带入录题")}</button>
                 <button class="lv-btn sm lv-btn--ghost" onclick={() => bridgeMaterialToAi(m)} title="把当前资料与笔记带入 AI 出题"><Icon name="sparkles" size={13} /> {t("materials.toAi", "带入 AI")}</button>
                 <button class="lv-btn sm lv-btn--ghost" onclick={() => void removeMaterialEntry(m)} disabled={materialsBusy || app.materialsReadonly} title={app.materialsReadonly ? t("materials.readonly") : t("materials.removeTitle")}><Icon name="trash" size={13} /></button>
@@ -5769,6 +6339,13 @@ import { ttsSpeak } from "@/core/tts";
             <option value={tp}>{t("qtype." + tp)}</option>
           {/each}
         </select>
+        <select class="lv-select" style="max-width:115px" bind:value={filterStatus} onchange={() => (browseLimit = 200)} title={t("browse.filterStatus")}>
+          <option value="">{t("browse.filterStatusAll")}</option>
+          <option value="published">{t("lifecycle.published")}</option>
+          <option value="review">{t("lifecycle.review")}</option>
+          <option value="draft">{t("lifecycle.draft")}</option>
+          <option value="deprecated">{t("lifecycle.deprecated")}</option>
+        </select>
         {#if sourceOptions.length}
           <select class="lv-select" style="max-width:130px" bind:value={filterSource} onchange={() => (browseLimit = 200)} title={t("browse.fSource")}>
             <option value="">{t("browse.fAnySource")}</option>
@@ -5776,6 +6353,7 @@ import { ttsSpeak } from "@/core/tts";
           </select>
         {/if}
         <button class="lv-chip" class:acc={filterWrong} onclick={() => (filterWrong = !filterWrong)} title={t("browse.fWrongTip")}>✕ {t("browse.fWrong")}</button>
+        <button class="lv-chip" class:acc={filterDispute} class:lv-chip--red={filterDispute} onclick={() => (filterDispute = !filterDispute)} title={t("browse.fDisputeTip")}><Icon name="alert-triangle" size={12} /> {t("browse.fDispute")}</button>
         <button class="lv-chip" class:acc={filterHelp} onclick={() => (filterHelp = !filterHelp)} title={t("browse.fHelpTip")}><Icon name="bulb" size={12} /> {t("browse.fHelp")}</button>
         <button class="lv-chip" class:acc={favOnly} onclick={() => favOnly = !favOnly}><Icon name="star" size={12} /> {t("browse.favOnly")}</button>
         <select class="lv-select" style="max-width:110px" bind:value={filterDays} title={t("browse.fDaysTip")}>
@@ -5992,10 +6570,10 @@ import { ttsSpeak } from "@/core/tts";
           </div>
           <div class="lv-row" style="margin:6px 0 0">
             <button class="lv-btn sm lv-btn--ghost" onclick={exportErrataTemplate}><Icon name="export" size={13} /> {t("errata.template")}</button>
-            <label class="lv-btn sm">
+            <button type="button" class="lv-btn sm" disabled={errataBusy} onclick={() => errataFileInput?.click()}>
               <Icon name="import" size={13} /> {t("errata.import")}
-              <input type="file" accept=".csv,.tsv,.txt" style="display:none" onchange={onErrataFile} disabled={errataBusy} />
-            </label>
+            </button>
+            <input bind:this={errataFileInput} type="file" accept=".csv,.tsv,.txt" hidden onchange={onErrataFile} disabled={errataBusy} />
           </div>
           {#if errataErrors.length}
             {#each errataErrors.slice(0, 5) as er, _ei (_ei)}
@@ -6137,6 +6715,35 @@ import { ttsSpeak } from "@/core/tts";
               <span class="lv-chip lv-chip--amb num" title={row.qids.slice(0, 10).join(" · ")}>{t("health.field." + row.field)} {row.count}</span>
             {/each}
           {/if}
+          {#if orphanDiag}
+            <!-- 43-04：孤儿与缺陷队列（无母块子题/空材料母块/资料断链/缺答案/缺选项），点击直达过滤列表 -->
+            <div class="lv-row" style="margin:8px 0 0;flex-wrap:wrap;gap:var(--lv-space-1);align-items:center">
+              <span class="lv-chip num" title={t("health.orphans")}>
+                <Icon name="alert-triangle" size={11} /> {t("health.orphans")}（{orphanDiag.total}）
+              </span>
+              {#if orphanDiag.total === 0}
+                <span class="lv-chip lv-chip--grn">✓ {t("health.orphansClean")}</span>
+              {:else}
+                {#each (["orphan_group_sub", "orphan_group_material", "broken_material_ref", "defect_no_answer", "defect_no_options"] as const) as kind (kind)}
+                  {@const count = orphanDiag.byKind[kind].length}
+                  {#if count > 0}
+                    <button
+                      type="button"
+                      class="lv-chip lv-chip--red num"
+                      class:acc={filterOrphanKind === kind}
+                      onclick={() => drillOrphanKind(kind)}
+                      title="点击过滤此缺陷队列"
+                    >
+                      {t("health.orphan." + kind)} {count}
+                    </button>
+                  {/if}
+                {/each}
+              {/if}
+              <button class="lv-btn sm lv-btn--ghost" onclick={downloadHealthCsv} title={t("health.exportCsv")}>
+                ⬇️ CSV
+              </button>
+            </div>
+          {/if}
           {#if batchList.length}
             <div class="lv-row" style="margin:10px 0 0">
               <b style="font-size:var(--lv-font-size-meta)">{t("import.batches")}</b>
@@ -6165,6 +6772,15 @@ import { ttsSpeak } from "@/core/tts";
           </div>
         </div>
       {:else}
+        {#if filterOrphanKind}
+          <div class="lv-row" style="margin:6px 0;align-items:center">
+            <span class="lv-chip lv-chip--red">
+              <Icon name="alert-triangle" size={12} />
+              {t("health.orphanFilter").replace("{label}", t("health.orphan." + filterOrphanKind)).replace("{n}", String(filteredQuestions.length))}
+            </span>
+            <button class="lv-btn sm lv-btn--ghost" onclick={clearOrphanFilter}>{t("health.orphanClear")}</button>
+          </div>
+        {/if}
         {#each shownQuestions as q (q.id)}
           <div class="lv-card lv-qrow" class:sel={batchMode && !!selectedIds[q.id]} class:active-peek={!batchMode && expandedId === q.id}>
             <button type="button" class="lv-qrow-head"
@@ -6178,6 +6794,16 @@ import { ttsSpeak } from "@/core/tts";
               <span class="lv-chip lv-chip--acc">{t("qtype." + q.type)}</span>
               {#if q.kp}<span class="lv-chip">{q.kp}</span>{/if}
               {#if q.source}<span class="lv-muted lv-qrow-src">{q.source}</span>{/if}
+              {#if q.status && q.status !== "published"}
+                <span class="lv-chip sm" class:lv-chip--amb={q.status === "draft"} class:lv-chip--acc={q.status === "review"} style={q.status === "deprecated" ? "opacity:0.6" : undefined}>
+                  {t("lifecycle." + q.status, LIFECYCLE_LABELS[q.status])}
+                </span>
+              {/if}
+              {#if isQuestionDisputed(q)}
+                <span class="lv-chip lv-chip--red sm" title={q.dispute?.note ?? ""}>
+                  ⚠️ {t("dispute.badge")} · {t("dispute.reason." + q.dispute?.reason)}
+                </span>
+              {/if}
               {#if !batchMode && expandedId === q.id}
                 <span class="lv-chip lv-chip--acc num" style="margin-left:auto">{t("browse.viewing", "查看中 ▾")}</span>
               {/if}
@@ -6187,7 +6813,8 @@ import { ttsSpeak } from "@/core/tts";
         {/each}
         {#if activePeekQuestion}
           {@const q = activePeekQuestion}
-          {@const links = app.kernelOnline ? backlinkCache.get(q.blockId) : undefined}
+          {@const status = getQuestionLifecycle(q)}
+          {@const links = app?.kernelOnline ? backlinkCache.get(q.blockId) : undefined}
           <div class="lv-peek-backdrop" onclick={closePeekDrawer} role="presentation"></div>
           <div bind:this={peekDrawerEl} class="lv-card lv-peek-drawer" aria-label={t("browse.detailTitle", "题目详情与操作")} role="dialog" aria-modal="true" tabindex="-1" onkeydown={onPeekDrawerKeydown}>
             <div class="lv-peek-sheet-handle" aria-hidden="true"></div>
@@ -6196,6 +6823,18 @@ import { ttsSpeak } from "@/core/tts";
                 <span class="lv-chip lv-chip--acc">{t("qtype." + q.type)}</span>
                 {#if q.kp}<span class="lv-chip">{q.kp}</span>{/if}
                 {#if q.source}<span class="lv-muted lv-peek-src">{q.source}</span>{/if}
+                <span class="lv-chip sm" class:lv-chip--grn={status === "published"} class:lv-chip--amb={status === "draft"} class:lv-chip--acc={status === "review"} style={status === "deprecated" ? "opacity:0.6" : undefined} title={t("browse.lifecycle")}>
+                  {t("lifecycle." + status, LIFECYCLE_LABELS[status])}
+                </span>
+                {#if isQuestionDisputed(q)}
+                  <span class="lv-chip lv-chip--red sm" title={q.dispute?.note ?? ""}>
+                    ⚠️ {t("dispute.badge")} · {t("dispute.reason." + q.dispute?.reason)}
+                  </span>
+                {:else if q.dispute?.resolved}
+                  <span class="lv-chip lv-chip--grn sm" title={q.dispute.resolution ?? ""}>
+                    ✓ {t("dispute.resolved")}
+                  </span>
+                {/if}
               </div>
               <div class="lv-row" style="margin:0;gap:var(--lv-space-1)">
                 {#if currentPeekIndex >= 0}
@@ -6209,6 +6848,9 @@ import { ttsSpeak } from "@/core/tts";
                     ›
                   </button>
                 {/if}
+                <button class="lv-btn sm lv-btn--ghost" class:lv-chip--amb={!!q.fav} title={`${t("session.kbdFav")} (E)`} aria-label={t("session.kbdFav")} aria-pressed={!!q.fav} disabled={favBusy} onclick={() => void toggleFavQuestion(q)}>
+                  <Icon name="star" size={13} />
+                </button>
                 <button class="lv-btn sm lv-btn--ghost" title={t("browse.openDoc")} aria-label={t("browse.openDoc")} onclick={() => openInSiYuan((q as any).rootId)} disabled={!(q as any).rootId}>
                   <Icon name="pin" size={13} />
                 </button>
@@ -6245,6 +6887,13 @@ import { ttsSpeak } from "@/core/tts";
                     <select id="lv-edit-diff" class="lv-select" bind:value={editDraft.difficulty}>
                       <option value="">—</option>
                       {#each [1, 2, 3, 4, 5] as d, _i (_i)}<option value={String(d)}>{d}</option>{/each}
+                    </select>
+                    <label class="lv-muted" for="lv-edit-status">{t("browse.lifecycle")}</label>
+                    <select id="lv-edit-status" class="lv-select" bind:value={editDraft.status}>
+                      <option value="published">{t("lifecycle.published")}</option>
+                      <option value="review">{t("lifecycle.review")}</option>
+                      <option value="draft">{t("lifecycle.draft")}</option>
+                      <option value="deprecated">{t("lifecycle.deprecated")}</option>
                     </select>
                   </div>
                   {#if q.type === "fill"}
@@ -6297,8 +6946,79 @@ import { ttsSpeak } from "@/core/tts";
                     </div>
                   {/if}
                   {#if st && st.attempts}
-                    <!-- 43-02 lite：题目使用分析（作答次数/正确率/最近作答/错次），数据不足如实不显示 -->
-                    <div class="lv-muted num" role="status"><Icon name="chart" size={11} /> {t("browse.usage").replace("{a}", String(st.attempts)).replace("{c}", String(Math.round((st.correct / st.attempts) * 100)))}{#if wr} · {t("browse.wrongCount").replace("{n}", String(wr.wrongCount))}{/if} · {new Date(st.lastAt).toLocaleDateString()}</div>
+                    {@const stubborn = wr ? isStubbornWrong(wr) : false}
+                    {@const isArchived = app?.isWrongArchived(q.id)}
+                    <!-- 43-02 lite：题目使用分析（作答次数/正确率/最近作答/错次） -->
+                    <div class="lv-row" style="margin:6px 0 2px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+                      <div class="lv-muted num" role="status">
+                        <Icon name="chart" size={11} /> {t("browse.usage").replace("{a}", String(st.attempts)).replace("{c}", String(Math.round((st.correct / st.attempts) * 100)))}{#if wr} · {t("browse.wrongCount").replace("{n}", String(wr.wrongCount))}{/if} · {new Date(st.lastAt).toLocaleDateString()}
+                        {#if stubborn}
+                          <span class="lv-chip lv-chip--amb sm" style="margin-left:6px" title={wr ? getStubbornRemediation(wr).reasonText : ""}>
+                            🔥 {t("wrongbook.stubbornBadge")}
+                          </span>
+                        {/if}
+                        {#if isArchived}
+                          <span class="lv-chip sm" style="margin-left:6px">{t("wrongbook.tabArchived")}</span>
+                        {/if}
+                      </div>
+                      <div class="lv-row" style="margin:0;gap:4px">
+                        {#if stubborn && !isArchived}
+                          <button class="lv-btn sm lv-btn--ghost" onclick={() => void snoozeWrong(q.id, 7)} title={t("wrongbook.snooze7")}>
+                            <Icon name="clock" size={11} /> {t("wrongbook.snooze7")}
+                          </button>
+                          <button class="lv-btn sm lv-btn--ghost" onclick={() => void archiveWrong(q.id)} title={t("wrongbook.archiveTip")}>
+                            <Icon name="folder" size={11} /> {t("wrongbook.archive")}
+                          </button>
+                        {:else if isArchived}
+                          <button class="lv-btn sm lv-btn--ghost" onclick={() => void unarchiveWrong(q.id)} title={t("wrongbook.unarchive")}>
+                            <Icon name="rotate" size={11} /> {t("wrongbook.unarchive")}
+                          </button>
+                        {/if}
+                        <button class="lv-btn sm lv-btn--ghost" onclick={() => toggleItemAnalysis(q)} title={t("browse.itemAnalysis")}>
+                          <Icon name="chart" size={12} /> {t("browse.itemAnalysis")}
+                        </button>
+                      </div>
+                    </div>
+                    {#if itemAnalysisOpenFor === q.id && itemAnalysisReport}
+                      <!-- 43-02 全量：选项选择率分布、有效/零命中干扰项与低样本提示 -->
+                      <div class="lv-detail" style="margin:4px 0 8px;padding:8px 12px;background:var(--lv-surface-2);border-radius:var(--lv-r-1);border:1px solid var(--lv-border-subtle)">
+                        <div class="lv-row" style="justify-content:space-between;align-items:center">
+                          <b>{t("browse.itemAnalysis")}</b>
+                          <button class="lv-btn sm lv-btn--ghost" onclick={() => downloadItemAnalysisCsv(itemAnalysisReport!)}>
+                            ⬇️ {t("browse.exportItemAnalysis")}
+                          </button>
+                        </div>
+                        {#if itemAnalysisReport.isLowSample}
+                          <div class="lv-chip lv-chip--amb sm" style="margin:4px 0" role="status">
+                            ⚠️ {t("browse.lowSample")}
+                          </div>
+                        {/if}
+                        <div class="lv-row num" style="margin:4px 0;gap:8px;font-size:var(--lv-font-size-caption)">
+                          <span>{t("browse.avgTime")}: {(itemAnalysisReport.avgTimeMs / 1000).toFixed(1)}s</span>
+                          <span>{t("browse.skipRate")}: {itemAnalysisReport.skipRate}%</span>
+                        </div>
+                        {#if itemAnalysisReport.options.length}
+                          <div class="lv-col" style="gap:4px;margin-top:6px">
+                            <div class="lv-muted" style="font-size:var(--lv-font-size-caption)">{t("browse.optionDist")}:</div>
+                            {#each itemAnalysisReport.options as opt (opt.letter)}
+                              <div class="lv-row" style="margin:2px 0;align-items:center;gap:6px;font-size:var(--lv-font-size-caption)">
+                                <span class="lv-chip sm" class:lv-chip--grn={opt.isCorrect} class:lv-chip--acc={!opt.isCorrect}>
+                                  {opt.letter}
+                                </span>
+                                <div style="flex:1;min-width:80px;height:6px;background:var(--lv-surface-3);border-radius:3px;overflow:hidden">
+                                  <div style="height:100%;width:{opt.pct}%;background:{opt.isCorrect ? 'var(--lv-green)' : 'var(--lv-accent)'}"></div>
+                                </div>
+                                <span class="num lv-muted" style="min-width:38px">{opt.pct}%</span>
+                                <span class="num lv-muted">({opt.count})</span>
+                                {#if opt.isDeadDistractor}
+                                  <span class="lv-chip lv-chip--amb sm" title={t("browse.deadDistractor")}>0%</span>
+                                {/if}
+                              </div>
+                            {/each}
+                          </div>
+                        {/if}
+                      </div>
+                    {/if}
                   <div class="lv-row" style="margin:4px 0 0">
                     <button class="lv-btn sm lv-btn--ghost" aria-expanded={revOpenFor === q.id} aria-busy={revLoadingFor === q.id || revRestoreKey.startsWith(`${q.id}#`)} disabled={!!revLoadingFor || !!revRestoreKey} onclick={() => void toggleRevisions(q.id)}><Icon name="pencil" size={12} /> {revLoadingFor === q.id ? t("rev.loading") : t("rev.drill")}{#if revOpenFor === q.id && revLoaded[q.id] !== undefined}（<span class="num">{revList(q.id).length}</span>）{/if}</button>
                   </div>
@@ -6311,12 +7031,20 @@ import { ttsSpeak } from "@/core/tts";
                         <button class="lv-btn sm" disabled={!!revLoadingFor} onclick={() => void loadRevisions(q.id)}>{t("rev.retry")}</button>
                       {:else}
                         {#each revList(q.id) as r (r.ts)}
-                          <div class="lv-error-row" style="white-space:normal">
-                            <b class="num">{new Date(r.ts).toLocaleString()}</b> · {t("report.changedFirst")}: {r.answer}
-                            {#if r.specChanged}<span class="lv-chip lv-chip--amb" style="margin-left:4px">{t("rev.specChanged")}</span>{/if}
+                          <div class="lv-error-row" style="white-space:normal;flex-wrap:wrap;gap:4px 6px;align-items:center">
+                            <b class="num">{new Date(r.ts).toLocaleString()}</b>
+                            {#if r.changedFields?.length}
+                              {#each r.changedFields as f (f)}
+                                <span class="lv-chip lv-chip--acc sm">
+                                  {f === "stem" ? t("rev.fieldStem") : f === "options" ? t("rev.fieldOptions") : f === "answer" ? t("rev.fieldAnswer") : f === "analysis" ? t("rev.fieldAnalysis") : f === "kp" ? t("rev.fieldKp") : f === "difficulty" ? t("rev.fieldDifficulty") : t("rev.specChanged")}
+                                </span>
+                              {/each}
+                            {/if}
+                            <span class="lv-muted num">{t("browse.answer")}: <b>{r.answer}</b></span>
                             {#if r.kp}<span class="lv-muted"> · {r.kp}</span>{/if}
+                            {#if r.summary}<span class="lv-muted" style="font-size:var(--lv-font-size-caption);width:100%" title={r.summary}>📝 {r.summary}</span>{/if}
                             {#if revRestoreFailedKey === `${q.id}#${r.ts}`}<span class="lv-error" role="alert">{t("rev.restoreFailed").replace("{message}", revRestoreError[q.id])}</span><button class="lv-btn sm" disabled={!!revRestoreKey} onclick={() => void restoreRevision(q, r)}>{t("rev.retry")}</button>{/if}
-                            <button class="lv-btn sm lv-btn--ghost" style="margin-left:6px" disabled={!!revRestoreKey} aria-busy={revRestoreKey === `${q.id}#${r.ts}`} onclick={() => void restoreRevision(q, r)}>{revRestoreKey === `${q.id}#${r.ts}` ? "…" : t("rev.restore")}</button>
+                            <button class="lv-btn sm lv-btn--ghost" style="margin-left:auto" disabled={!!revRestoreKey} aria-busy={revRestoreKey === `${q.id}#${r.ts}`} onclick={() => void restoreRevision(q, r)}>{revRestoreKey === `${q.id}#${r.ts}` ? "…" : t("rev.restore")}</button>
                           </div>
                         {:else}
                           <span class="lv-muted num">{t("rev.empty")}</span>
@@ -6325,9 +7053,28 @@ import { ttsSpeak } from "@/core/tts";
                     </div>
                   {/if}
                   {/if}
-                  <div class="lv-row">
+                  <div class="lv-row" style="flex-wrap:wrap;gap:var(--lv-space-1)">
                     <button class="lv-btn sm lv-btn--primary" onclick={() => void drillSingleQuestion(q)} title={t("browse.drillSingleTip")}><Icon name="play" size={13} /> {t("browse.drillSingle")}</button>
                     <button class="lv-btn sm" onclick={() => openEditForm(q)}>✎ {t("edit.open")}</button>
+                    <button class="lv-btn sm lv-btn--ghost" class:acc-btn={isQuestionDisputed(q)} onclick={() => toggleDisputeForm(q)}>
+                      <Icon name="alert-triangle" size={13} /> {isQuestionDisputed(q) ? t("dispute.resolveAction") : t("dispute.flagAction")}
+                    </button>
+                    {#if status === "draft" || status === "review"}
+                      <button class="lv-btn sm lv-btn--primary" disabled={peekLifecycleBusy || offline} aria-busy={peekLifecycleBusy} onclick={() => void changePeekLifecycle(q, "published")}>
+                        <Icon name="check" size={12} /> {t("lifecycle.publishNow")}
+                      </button>
+                    {:else if status === "published"}
+                      <button class="lv-btn sm lv-btn--ghost" disabled={peekLifecycleBusy || offline} aria-busy={peekLifecycleBusy} onclick={() => void changePeekLifecycle(q, "review")}>
+                        {t("lifecycle.toReview")}
+                      </button>
+                      <button class="lv-btn sm lv-btn--ghost" disabled={peekLifecycleBusy || offline} aria-busy={peekLifecycleBusy} onclick={() => void changePeekLifecycle(q, "deprecated")}>
+                        {t("lifecycle.deprecateNow")}
+                      </button>
+                    {:else if status === "deprecated"}
+                      <button class="lv-btn sm lv-btn--ghost" disabled={peekLifecycleBusy || offline} aria-busy={peekLifecycleBusy} onclick={() => void changePeekLifecycle(q, "draft")}>
+                        {t("lifecycle.toDraft")}
+                      </button>
+                    {/if}
                     <button class="lv-btn sm" onclick={() => openInSiYuan((q as any).rootId)} disabled={!(q as any).rootId} title={!(q as any).rootId ? t("browse.docUnavailable") : t("browse.openDoc")}><Icon name="pin" size={13} /> {t("browse.openDoc")}</button>
                     <button class="lv-btn sm" onclick={() => void loadBacklinks(q.blockId)} disabled={!app.kernelOnline || !!backlinkBusyFor} aria-busy={backlinkBusyFor === q.blockId} title={!app.kernelOnline ? t("state.offlineHint") : t("browse.backlinks")}><Icon name="link" size={13} /> {backlinkBusyFor === q.blockId ? t("browse.backlinkLoading") : t("browse.backlinks")}</button>
                     {#if links}
@@ -6335,6 +7082,54 @@ import { ttsSpeak } from "@/core/tts";
                       {:else}{#each links as l, _i (_i)}<span class="lv-chip" title={l.content}><Icon name="paperclip" size={11} /> {l.title}</span>{/each}{/if}
                     {/if}
                   </div>
+                  {#if disputeFormOpenFor === q.id}
+                    <!-- 57-04：争议标记与解决处置单面板 -->
+                    <div class="lv-detail" style="margin:6px 0;background:var(--lv-surface-2);border-radius:var(--lv-r-1);padding:10px 12px;border:1px solid var(--lv-border-subtle)">
+                      <div class="lv-row" style="margin:0 0 6px;align-items:center;justify-content:space-between">
+                        <b style="font-size:var(--lv-font-size-sm)">
+                          <Icon name="alert-triangle" size={13} /> {isQuestionDisputed(q) ? t("dispute.resolveAction") : t("dispute.flagAction")}
+                        </b>
+                        <button class="lv-btn sm lv-btn--ghost" onclick={() => toggleDisputeForm(q)}>✕</button>
+                      </div>
+                      {#if isQuestionDisputed(q)}
+                        <div class="lv-muted" style="margin:4px 0 8px;font-size:var(--lv-font-size-caption)">
+                          <b>{t("dispute.reason." + q.dispute?.reason)}</b> · {new Date(q.dispute?.at ?? Date.now()).toLocaleDateString()}: {q.dispute?.note}
+                        </div>
+                        <input class="lv-input" style="width:100%;margin:4px 0" bind:value={disputeResolution} placeholder={t("dispute.resolutionPlaceholder")} disabled={disputeBusy} />
+                        <div class="lv-row" style="margin-top:6px;gap:6px">
+                          <button class="lv-btn lv-btn--primary sm" disabled={disputeBusy || !disputeResolution.trim()} onclick={() => void submitResolveDispute(q)}>
+                            {disputeBusy ? "…" : t("dispute.resolveBtn")}
+                          </button>
+                          <button class="lv-btn sm lv-btn--ghost" disabled={disputeBusy} onclick={() => void submitClearDispute(q)}>
+                            {t("dispute.clearBtn")}
+                          </button>
+                        </div>
+                      {:else}
+                        <div class="lv-row" style="margin:4px 0 6px;gap:8px">
+                          <select class="lv-select" bind:value={disputeReason} disabled={disputeBusy}>
+                            <option value="wrong_answer">{t("dispute.reason.wrong_answer")}</option>
+                            <option value="multi_answer">{t("dispute.reason.multi_answer")}</option>
+                            <option value="missing_condition">{t("dispute.reason.missing_condition")}</option>
+                            <option value="expired_data">{t("dispute.reason.expired_data")}</option>
+                            <option value="other">{t("dispute.reason.other")}</option>
+                          </select>
+                        </div>
+                        <textarea class="lv-input lv-textarea" rows="2" bind:value={disputeNote} placeholder={t("dispute.notePlaceholder")} disabled={disputeBusy}></textarea>
+                        <div class="lv-row" style="margin-top:6px;gap:6px">
+                          <button class="lv-btn lv-btn--primary sm" disabled={disputeBusy || !disputeNote.trim()} onclick={() => void submitFlagDispute(q)}>
+                            {disputeBusy ? "…" : t("dispute.flagBtn")}
+                          </button>
+                          <button class="lv-btn sm lv-btn--ghost" disabled={disputeBusy} onclick={() => toggleDisputeForm(q)}>
+                            {t("edit.cancel")}
+                          </button>
+                        </div>
+                      {/if}
+                      {#if disputeError}<div class="lv-error" role="alert" style="margin-top:4px">{disputeError}</div>{/if}
+                    </div>
+                  {/if}
+                  {#if peekLifecycleError[q.id]}
+                    <div class="lv-error" role="alert" style="margin:4px 0;overflow-wrap:anywhere">{peekLifecycleError[q.id]}</div>
+                  {/if}
                   {#if backlinkError[q.blockId]}<div class="lv-error" role="alert" style="display:flex;align-items:center;justify-content:space-between;gap:var(--lv-space-relaxed);overflow-wrap:anywhere"><span>{backlinkError[q.blockId]}</span><button class="lv-btn sm" disabled={!!backlinkBusyFor || !app.kernelOnline} onclick={() => void loadBacklinks(q.blockId)}>{t("rev.retry")}</button></div>{/if}
                   {#if qrefView[q.id]}
                     <!-- 120-05 lite：题目↔资料关联（回 PDF 页/视频时间点） -->
@@ -6385,10 +7180,16 @@ import { ttsSpeak } from "@/core/tts";
                         {/if}
                         {#each receiptCache as e (e.seq)}
                           {@const rkey = `${e.qid}#${e.seq}`}
+                          {@const drifted = isAttemptVersionDrifted(e, q)}
                           <div class="lv-row" style="flex-wrap:wrap;font-size:var(--lv-font-size-caption);margin:3px 0;gap:var(--lv-space-1)">
                             <span class="lv-chip num">{new Date(e.ts).toLocaleString()}</span>
                             <span class="lv-chip">{e.verdict === "correct" ? "✓" : e.verdict === "wrong" ? "✕" : "—"}</span>
                             {#if e.myAnswer}<span class="lv-chip num">{t("session.myAnswer")}: {e.myAnswer}</span>{/if}
+                            {#if drifted}
+                              <span class="lv-chip lv-chip--amb sm" title={t("receipt.driftTip")}>
+                                ✏️ {t("receipt.drift")}{#if e.qVersion?.answer}（{t("receipt.origAnswer")}: {e.qVersion.answer}）{/if}
+                              </span>
+                            {/if}
                             {#if e.confidence}<span class="lv-chip">{t("confidence." + e.confidence)}</span>{/if}
                             {#if e.help}<span class="lv-chip lv-chip--amb"><Icon name="bulb" size={11} /> {t("receipt.help")}</span>{/if}
                             {#if e.recall}<span class="lv-chip"><Icon name="eyeoff" size={11} /> {t("receipt.recall")}</span>{/if}
@@ -6472,9 +7273,39 @@ import { ttsSpeak } from "@/core/tts";
       {#if !hasBank}
         <div class="lv-empty">{t("guard.needBankFirst")}</div>
       {:else}
-        <div class="lv-card lv-pad-card">
+        {#if importCheckpoint}
+          <!-- 38-04 / U08：未完成导入任务断点恢复提示条 -->
+          <div class="lv-card lv-pad-card" style="margin-bottom:12px;border-left:3px solid var(--lv-accent);background:var(--lv-surface-2)">
+            <div class="lv-row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+              <div>
+                <b><Icon name="activity" size={14} /> {t("import.checkpointTitle")}</b>
+                <div class="lv-muted" style="font-size:var(--lv-font-size-caption);margin-top:2px">
+                  {t("import.checkpointDesc")} <code>{importCheckpoint.batch}</code> · {t("import.checkpointStats").replace("{c}", String(importCheckpoint.confirmedIds.length)).replace("{p}", String(importCheckpoint.pendingQuestions.length))}
+                </div>
+              </div>
+              <div class="lv-row" style="margin:0;gap:6px">
+                <button class="lv-btn lv-btn--primary sm" disabled={importBusy} onclick={resumeCheckpoint}>
+                  <Icon name="play" size={12} /> {t("import.checkpointResume").replace("{n}", String(importCheckpoint.pendingQuestions.length))}
+                </button>
+                <button class="lv-btn lv-btn--ghost sm" disabled={importBusy} onclick={discardCheckpoint}>
+                  {t("import.checkpointDiscard")}
+                </button>
+              </div>
+            </div>
+          </div>
+        {/if}
+        <div
+          class="lv-card lv-pad-card lv-import-card"
+          role="region"
+          aria-label={t("import.title")}
+          class:dragover={importDragOver}
+          ondragover={(e) => { e.preventDefault(); importDragOver = true; }}
+          ondragleave={() => { importDragOver = false; }}
+          ondrop={onImportFileDrop}
+        >
           <div class="lv-row">
-            <label class="lv-btn"><Icon name="folder" size={15} /> {t("import.pickExcel")}<input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange={onExcelFile} disabled={importBusy} /></label>
+            <button type="button" class="lv-btn" disabled={importBusy} onclick={() => importFileInput?.click()}><Icon name="folder" size={15} /> {t("import.pickExcel")}</button>
+            <input bind:this={importFileInput} type="file" accept=".xlsx,.xls,.csv" hidden onchange={onExcelFile} disabled={importBusy} />
             <button class="lv-btn sm" onclick={downloadTemplate}><Icon name="import" size={15} /> {t("import.template")}</button>
             <button class="lv-btn sm lv-btn--ghost" onclick={pasteClipboardToImport} disabled={importBusy} title={t("import.pasteClipboardTip")}><Icon name="copy" size={14} /> {t("import.pasteClipboard")}</button>
             <span class="lv-muted">{t("import.orPaste")}</span>
@@ -6655,7 +7486,14 @@ import { ttsSpeak } from "@/core/tts";
               {#if importResult.cancelled}
                 <span class="lv-chip lv-chip--amb num">{t("import.cancelledNote").replace("{w}", String(importResult.written))}</span>
               {/if}
-              {#if importResult.unprocessed}<span class="lv-chip num">{t("import.unprocessed").replace("{n}", String(importResult.unprocessed))}</span>{/if}
+              {#if importResult.unprocessed}
+                <span class="lv-chip num" title={t("import.unprocessedTip")}>{t("import.unprocessed").replace("{n}", String(importResult.unprocessed))}</span>
+              {/if}
+              {#if importResult.pendingIndex}
+                <span class="lv-chip lv-chip--acc num" title={t("import.pendingIndexTip")}>
+                  ⏳ {t("import.pendingIndex").replace("{n}", String(importResult.pendingIndex))}
+                </span>
+              {/if}
               {#if importResult.verified}
                 {#if importResult.missing === 0}
                   <span class="lv-chip lv-chip--grn num">✓ {t("import.readbackOk").replace("{n}", String(importResult.confirmed))}</span>
@@ -6709,6 +7547,7 @@ import { ttsSpeak } from "@/core/tts";
 
 <style>
   .lv-pad { padding: var(--lv-space-4) 22px var(--lv-space-9); overflow: auto; }
+  .lv-import-card.dragover { border-color: var(--lv-accent); background: color-mix(in srgb, var(--lv-accent-soft) 35%, var(--lv-surface)); }
   .lv-hotkeys-backdrop { position: fixed; inset: 0; z-index: 124; background: var(--lv-overlay); border: 0; padding: 0; cursor: pointer; backdrop-filter: blur(10px); animation: lv-appear var(--lv-dur-view, 0.22s) var(--lv-ease-out); }
   .lv-hotkeys-wrap { position: fixed; inset: 0; z-index: 125; display: grid; place-items: center; padding: 16px; pointer-events: none; animation: lv-appear var(--lv-dur-view, 0.22s) var(--lv-ease-out); }
   .lv-hotkeys-card { width: min(480px, 100%); pointer-events: auto; background: var(--lv-surface); border: 1px solid var(--lv-border); border-radius: var(--lv-r-card, 16px); box-shadow: var(--lv-sh-pop); padding: 22px; max-height: 85vh; overflow-y: auto; }
@@ -6891,7 +7730,6 @@ import { ttsSpeak } from "@/core/tts";
     .lv-session-head > .lv-chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .lv-answer-actions { align-items: stretch; }
     .lv-answer-actions > .lv-btn { flex: 1 1 auto; min-width: 0; }
-    .lv-rate { grid-template-columns: repeat(2, 1fr); gap: var(--lv-space-2); }
   }
   .lv-pure .lv-stem, .lv-pure .lv-opt > span:not(.key) { display: none; }
   .lv-pure .lv-opt .key { filter: none; }
@@ -6962,7 +7800,7 @@ import { ttsSpeak } from "@/core/tts";
   .lv-more-pop button:hover { background: var(--lv-accent-soft); color: var(--lv-accent); transform: translateX(2px); }
   .lv-more-pop button[aria-checked="true"] { color: var(--lv-accent); font-weight: 600; background: color-mix(in srgb, var(--lv-accent-soft) 80%, transparent); }
   .lv-more-sep { height: 1px; margin: 4px 6px; background: var(--lv-border); }
-  .lv-rate { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 14px; }
+  .lv-rate { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
   .lv-reason-btn { padding: 4px 10px; border-radius: var(--lv-r-1); cursor: pointer; touch-action: manipulation; transition: transform var(--lv-dur-micro) ease, background-color var(--lv-dur-micro) ease, border-color var(--lv-dur-micro) ease; }
   .lv-reason-btn:hover { transform: translateY(-1px); border-color: var(--lv-accent); }
   .lv-reason-btn:active { transform: scale(0.96); }
@@ -6980,12 +7818,20 @@ import { ttsSpeak } from "@/core/tts";
   .lv-rate .r2:hover { border-color: var(--lv-amber); color: var(--lv-amber); background: color-mix(in srgb, var(--lv-amber-soft) 60%, var(--lv-surface)); box-shadow: 0 4px 12px color-mix(in srgb, var(--lv-amber) 18%, transparent); }
   .lv-rate .r3:hover { border-color: var(--lv-green); color: var(--lv-green); background: color-mix(in srgb, var(--lv-green-soft) 60%, var(--lv-surface)); box-shadow: 0 4px 12px color-mix(in srgb, var(--lv-green) 18%, transparent); }
   .lv-rate .r4:hover { border-color: var(--lv-accent); color: var(--lv-accent); background: color-mix(in srgb, var(--lv-accent-soft) 60%, var(--lv-surface)); box-shadow: 0 4px 12px color-mix(in srgb, var(--lv-accent) 18%, transparent); }
+  /* Keep the narrow override after the base grid so all four ratings stay
+     visible without horizontal scrolling inside the recitation paper. */
+  @container lv-exam (max-width: 600px) {
+    .lv-rate { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--lv-space-2); }
+    .lv-rate .lv-btn { min-width: 0; white-space: normal; }
+    .lv-rate-key { flex-shrink: 0; }
+  }
   @container lv-exam (max-width: 960px) { .lv-modes { grid-template-columns: repeat(2, 1fr); } }
   @container lv-exam (max-width: 480px) { .lv-modes { grid-template-columns: 1fr; } }
   /* —— R54 原型高级交互：题目浏览 Peek 抽屉 (Desktop 右侧抽屉 / Mobile 底部 Sheet) —— */
   .lv-studio-nav { display: inline-flex; align-items: center; gap: 4px; padding: 4px; margin: 6px 0 14px; background: var(--lv-surface-2); border: 1px solid var(--lv-border); border-radius: var(--lv-r-card, 12px); max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; box-shadow: var(--lv-inset-subtle, inset 0 1px 0 transparent); }
   .lv-studio-nav::-webkit-scrollbar { display: none; }
-  .lv-studio-tab { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: var(--lv-text-2); font: inherit; font-size: var(--lv-font-size-body-compact, 13px); font-weight: var(--lv-font-weight-medium, 500); cursor: pointer; white-space: nowrap; transition: background-color var(--lv-dur-micro) var(--lv-ease-out), color var(--lv-dur-micro) var(--lv-ease-out), border-color var(--lv-dur-micro) var(--lv-ease-out), box-shadow var(--lv-dur-micro) var(--lv-ease-out); }
+  .lv-studio-tab { display: inline-flex; align-items: center; gap: 6px; min-height: var(--lv-control-height-md, 44px); padding: 6px 14px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: var(--lv-text-2); font: inherit; font-size: var(--lv-font-size-body-compact, 13px); font-weight: var(--lv-font-weight-medium, 500); cursor: pointer; white-space: nowrap; transition: background-color var(--lv-dur-micro) var(--lv-ease-out), color var(--lv-dur-micro) var(--lv-ease-out), border-color var(--lv-dur-micro) var(--lv-ease-out), box-shadow var(--lv-dur-micro) var(--lv-ease-out); }
+  .lv-studio-tab:focus-visible { outline: 2px solid var(--lv-accent); outline-offset: 2px; }
   .lv-studio-tab:hover { color: var(--lv-text); background: color-mix(in srgb, var(--lv-surface) 60%, transparent); }
   .lv-studio-tab.active { background: var(--lv-surface); color: var(--lv-accent); border-color: var(--lv-border); box-shadow: var(--lv-sh-1), var(--lv-inset-highlight, inset 0 1px 0 transparent); font-weight: var(--lv-font-weight-semibold, 600); }
   .lv-qrow.active-peek { border-color: var(--lv-accent); border-left: 3.5px solid var(--lv-accent); background: color-mix(in srgb, var(--lv-accent-soft) 35%, var(--lv-surface)); box-shadow: 0 4px 16px color-mix(in srgb, var(--lv-accent) 18%, transparent); }

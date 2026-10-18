@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { duplicateClusters, missingFields, bankHealthReport, jaccard } from "../src/core/bankHealth";
+import {
+  duplicateClusters,
+  missingFields,
+  bankHealthReport,
+  jaccard,
+  detectOrphans,
+  exportHealthReportCsv,
+  ORPHAN_KIND_LABELS,
+} from "../src/core/bankHealth";
 import { makeQuestion } from "../src/core/blockTemplate";
 import type { Question } from "../src/core/types";
 
@@ -64,5 +72,60 @@ describe("题库健康：字段缺失清单（TODO 2.2）", () => {
     expect(fields).toContain("analysis");
     expect(fields).toContain("kp");
     expect(report.clusters).toHaveLength(0);
+  });
+});
+
+describe("43-04 孤儿题目诊断队列与健康清单导出", () => {
+  it("准确检出无母块子题、空材料母块、缺答案与缺选项等异常", () => {
+    const normalSub = makeQuestion({ type: "single", stem: "正常子题", options: ["A", "B"], answer: "A", group: "grp-good" });
+    const goodMat = makeQuestion({ type: "material", stem: "共用材料", options: [], answer: "", group: "grp-good" });
+    const orphanSub = makeQuestion({ type: "single", stem: "孤儿子题", options: ["A", "B"], answer: "A", group: "grp-lost" });
+    const emptyMat = makeQuestion({ type: "material", stem: "空母块材料", options: [], answer: "", group: "grp-empty" });
+    const noAns = makeQuestion({ type: "single", stem: "缺答案", options: ["A", "B"], answer: "" });
+    const noOpts = makeQuestion({ type: "single", stem: "缺选项", options: ["仅一项"], answer: "A" });
+
+    const diag = detectOrphans([normalSub, goodMat, orphanSub, emptyMat, noAns, noOpts]);
+
+    expect(diag.total).toBe(4);
+    expect(diag.byKind.orphan_group_sub).toHaveLength(1);
+    expect(diag.byKind.orphan_group_sub[0].qid).toBe(orphanSub.id);
+    expect(diag.byKind.orphan_group_material).toHaveLength(1);
+    expect(diag.byKind.orphan_group_material[0].qid).toBe(emptyMat.id);
+    expect(diag.byKind.defect_no_answer).toHaveLength(1);
+    expect(diag.byKind.defect_no_answer[0].qid).toBe(noAns.id);
+    expect(diag.byKind.defect_no_options).toHaveLength(1);
+    expect(diag.byKind.defect_no_options[0].qid).toBe(noOpts.id);
+  });
+
+  it("准确检出断链资料关联", () => {
+    const q1 = makeQuestion({ type: "single", stem: "题1", options: ["A", "B"], answer: "A" });
+    const q2 = makeQuestion({ type: "single", stem: "题2", options: ["A", "B"], answer: "A" });
+
+    const diag = detectOrphans([q1, q2], {
+      knownMaterialIds: new Set(["mat-exists"]),
+      questionMaterialLinks: new Map([
+        [q1.id, "mat-exists"],
+        [q2.id, "mat-deleted-404"],
+      ]),
+    });
+
+    expect(diag.total).toBe(1);
+    expect(diag.byKind.broken_material_ref).toHaveLength(1);
+    expect(diag.byKind.broken_material_ref[0].qid).toBe(q2.id);
+    expect(diag.byKind.broken_material_ref[0].detail).toContain("mat-deleted-404");
+  });
+
+  it("exportHealthReportCsv 正确生成带 BOM 的结构化 CSV 清单", () => {
+    const q1 = q("题目1");
+    const report = bankHealthReport([q1]);
+    const diag = detectOrphans([
+      makeQuestion({ type: "single", stem: "问题题", options: ["A"], answer: "" }),
+    ]);
+
+    const csv = exportHealthReportCsv(report, diag);
+    expect(csv.startsWith("\uFEFF")).toBe(true);
+    expect(csv).toContain("类别,标识或字段,数量,明细与题干摘要");
+    expect(csv).toContain("缺答案题");
+    expect(ORPHAN_KIND_LABELS.orphan_group_sub).toBe("无母块子题");
   });
 });

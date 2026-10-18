@@ -1,6 +1,6 @@
 # 小驴考试交付说明
 
-> 文档基线：2026-10-16 · 版本：`0.10.2`（版本号以 `package.json` 与 `plugin.json` 为准；远端记录见 [GitHub Release](https://github.com/ai68298100/siyuan-exam/releases/tag/v0.10.2)）。
+> 当前审计：2026-10-18 · 源码版本 `0.10.4`。当前功能、隔离宿主与 GitHub 状态见 [STATUS-2026-10-18](STATUS-2026-10-18.md)，UI / 原型对照见 [UI-AUDIT-2026-10-18](UI-AUDIT-2026-10-18.md)。最新公开 Release 仍为 [v0.10.3](https://github.com/ai68298100/siyuan-exam/releases/tag/v0.10.3)；存在 v0.10.4 tag 不代表已有可下载发行包。本文第 8 节保留原日期的历史测量，不能用作当前版本重跑结果。
 >
 > `design/prototype-r54/` 是布局、视觉和已演示 UI 状态的设计基线；它使用合成数据，不是生产功能行为的证据。只有第 3 节明确列出的入口和状态映射经过核对，才可称为对应；未覆盖的生产能力与差异必须显式记录。实际功能以 `src/ui/`、`src/core/`、自动化测试和真实思源宿主验证为准，不得把原型演示数据当作真实题库或成绩。
 
@@ -40,20 +40,20 @@ pnpm smoke:ui
 node scripts/visual-harness/smoke-prototype-states.mjs
 ```
 
-上述 Vite 命令先生成 `output/harness/`，之后生产 UI 的 smoke 才有可运行产物。R54 静态原型可直接用浏览器打开 `design/prototype-r54/index.html`；原型状态 smoke 独立通过 Playwright 读取该目录，不依赖思源或 harness 构建。Playwright smoke 共用 `scripts/visual-harness/browser.mjs`：优先使用 `PLAYWRIGHT_EXECUTABLE_PATH`，否则自动查找本机 Edge、Chrome 或 Playwright 管理的 Chromium。自动查找失败时，可设置完整路径后重试：
+上述 Vite 命令先生成 `output/harness/`，之后生产 UI 的 smoke 才有可运行产物。R54 静态原型可直接用浏览器打开 `design/prototype-r54/index.html`；原型状态 smoke 独立通过 Playwright 读取该目录，不依赖思源或 harness 构建。Playwright smoke 共用 `scripts/visual-harness/browser.mjs`：优先使用 `PLAYWRIGHT_EXECUTABLE_PATH`，否则先查找本机 Chrome，再回退 Edge 或 Playwright 管理的 Chromium；本工作区 UI 走查和截图使用 Chrome。自动查找失败时，可设置完整路径后重试：
 
 ```powershell
-$env:PLAYWRIGHT_EXECUTABLE_PATH = "C:\Program Files\Microsoft\Edge\Application\msedge.exe"
+$env:PLAYWRIGHT_EXECUTABLE_PATH = "C:\Program Files\Google\Chrome\Application\chrome.exe"
 node scripts/visual-harness/smoke-prototype-states.mjs
 ```
 
-`PLAYWRIGHT_EXECUTABLE_PATH` 只影响本地 Playwright 浏览器启动，不影响生产构建或思源插件运行。仍有少数生成截图的旧脚本保留 Edge 路径常量，尚未迁移到共享启动器。
+`PLAYWRIGHT_EXECUTABLE_PATH` 只影响本地 Playwright 浏览器启动，不影响生产构建或思源插件运行。生产 UI、原型状态和截图生成脚本统一使用共享启动器，默认优先 Chrome，缺失时才回退 Edge 或 Playwright Chromium。
 
 生产构建输出 `dist/` 和根目录 `package.zip`。本地复制安装使用 `pnpm make-install`；该命令会先构建，再把 `dist/` 复制到选择的思源插件目录。复制安装和软链安装都会改变本机文件，请确认目标工作空间。
 
 ### 真实思源冒烟
 
-写型脚本必须使用隔离的测试工作空间。脚本会拒绝存在非临时笔记本的共享内核；只有明确确认风险时才设置 `SIYUAN_E2E_ALLOW_SHARED=1`。推荐：
+写型脚本必须使用隔离的测试工作空间。脚本会拒绝存在非临时笔记本的共享内核；只有明确确认风险时才设置 `SIYUAN_E2E_ALLOW_SHARED=1`。宿主 UI 重载冒烟使用 `--settle-ms 750`（连续热重载时等待插件生命周期完成；高压力回归可用 1500），推荐：
 
 ```powershell
 $env:SIYUAN_BASE_URL = "http://127.0.0.1:6807"
@@ -74,7 +74,7 @@ pnpm e2e
 
 | 路径                                                                 | 责任                                                                                                           |
 | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `src/index.ts`                                                       | 思源插件生命周期、设置、命令、顶栏/Dock/Tab 注册，以及 `openPractice`、`openMock`、`openReport` 入口。         |
+| `src/index.ts`                                                       | 思源插件生命周期、设置、命令、桌面唯一顶栏/三个 Tab 注册，以及 `openPractice`、`openMock`、`openReport` 入口；当前不注册独立 Dock 或状态栏。 |
 | `src/app.ts`                                                         | `ExamApp` 应用组装层；题库、作答流水、会话、模考、报告和保存协调的统一入口。                                   |
 | `src/app-runtime.ts`                                                 | 思源 `fetchSyncPost`、超时/取消、在线状态和插件私有存储适配。                                                  |
 | `src/kernel/client.ts`                                               | 内核请求客户端与错误分类。                                                                                     |
@@ -159,6 +159,7 @@ R54 原型的页面导航是“今日、题库、出题、模考、复盘、设�
 | `pnpm verify:package`               | 检查 `package.zip` 是否只含发行白名单文件。                                          |
 | `pnpm release:check`                | 版本/i18n/依赖/CHANGELOG/构建/包/文档本地链接检查。                                  |
 | `pnpm smoke:ui`                     | 本地可视化 harness UI 流程冒烟。                                                     |
+| `pnpm smoke:recite-responsive`      | 构建 harness 并检查背诵评分在窄屏、窄分栏、暗色和放大文字下的布局、触达尺寸与保存回执。 |
 | `pnpm perf:ui`                      | Chrome 单文件 UI harness 性能采样（主界面 shell 可见、Tab 首次挂载/切换、节点数、CLS、长任务及 p50/p95；不等于用户输入可交互性）。 |
 | `pnpm build:harness`                | 构建真实 Svelte 组件的本地视觉/性能 harness。                                        |
 | `pnpm preflight`                    | 运行中的思源内核 API 预检（写型、隔离工作区）。                                      |
@@ -218,7 +219,7 @@ R54 原型的页面导航是“今日、题库、出题、模考、复盘、设�
 | `scripts/visual-harness/make-preview.mjs`           | 生成集市预览图。                                                                                                                          |
 | `scripts/visual-harness/make-social.mjs`            | 生成社交预览图。                                                                                                                          |
 
-`scripts/visual-harness/` 的 Playwright smoke 使用共享浏览器启动器；缺少浏览器时只影响截图和 UI harness，不影响生产构建。部分旧截图生成脚本仍单独使用 Edge 路径配置。`output/` 被 `.gitignore` 忽略，截图不能作为发行包文件。
+`scripts/visual-harness/` 的 Playwright smoke 与截图生成脚本均使用共享浏览器启动器；缺少浏览器时只影响截图和 UI harness，不影响生产构建。`output/` 被 `.gitignore` 忽略，截图不能作为发行包文件。
 
 ## 6. 环境变量与参数
 
@@ -252,7 +253,23 @@ R54 原型的页面导航是“今日、题库、出题、模考、复盘、设�
 
 ## 8. 验收记录与未完成事项
 
-2026-10-16 v0.10.1 发布核验：`pnpm guard` 已通过，包含 115 个测试文件 / 661 项测试、类型检查、Svelte（0 错误 / 0 警告）、1200 个 i18n 键、42 项架构检查、样式与 lint。本版修复示例题库写入回执缺项时的文档回读确认，修正只读 e2e 实际存储路径与合法空快照审计，并新增 CLI 回归。生产构建、9 文件包白名单、8/8 发版检查和生产依赖审计通过。产物为 `dist/index.js` 1,201,594 bytes、`dist/index.css` 87,373 bytes、仓库根目录 `package.zip` 669,931 bytes；远端 tag、CI 与资产以本版 Release 记录为准。
+### 当前审计（2026-10-18）
+
+当前最终通过 `pnpm check` / `pnpm guard`：117 个测试文件 / 704 项测试（新增 `TabAppRegistry` 4 项回归），Svelte 0 错误 / 0 警告，1278 个 i18n 键及 42 项架构检查，类型、样式和 lint 通过。`pnpm build`（Vite `index.js` 1,253.18 kB / CSS 107.03 kB）、9 个文件包校验和 `release:check` 8/8（367 个链接）通过；最终 `dist` 9 个文件逐一 hash 校验后部署到隔离宿主。资料关联题数响应式刷新、启动命令队列语义及 workflow 回归已纳入本轮。浏览器 harness 与真实内核证据分开记录，详情见本页顶部链接的审计。
+
+当前隔离宿主为 SiYuan 3.8.8-alpha.3（6817）/ Chrome browser-desktop / 插件 v0.10.4。历史布局两轮各 5 次入口点击 + 10 次重载通过；清理旧恢复页签后以 `smoke-host-ui.mjs --reloads 20 --settle-ms 1500` 单会话通过，练习页签 1→1，顶栏 1、状态栏 0、Dock 0、主页面可见、运行时 0.10.4、`pageErrors=[]`、`diagnostics=[]`、`horizontalOverflow=0`；最终 dist 与宿主 index.js/index.css/plugin.json SHA256 一致。最终包资料笔记回归 `before=4`、`after=5`，切换/重载读回、文件仅一条 marker、`errors=[]`；harness 取消删除、失败保留正文、成功 2→1 计数均通过。只读 E2E 最新为 10 pass / 12 wait / 0 fail，当前包含 47 条作答事件（17 条模考事件）、2 份资料、5 条笔记；待数据不计为通过。`report-actions` 通过。此前已完成练习、错题复练、手工 1 题 + CSV 2 题读回及模考恢复交卷，模考进度 7/7，最终得分 4/7（57.1%）。日常主宿主安装态 v0.10.3 不作本轮验收依据。
+
+探索阶段连续立即启动多个宿主 smoke 会话时曾出现 `{code:410,msg:'Plugin lifecycle has ended'}` 和空白，记录为 `output/host-ui-smoke-before-tab-ownership-fix.json`。现已通过按实例管理的 `TabAppRegistry` 修复同 type 页签互相误卸载的确定性缺陷；并将真实宿主主内容 44px 横向溢出修到 0，移除 harness 全局盒模型 reset，避免掩盖生产样式。干净重启隔离内核后两轮证据为 `output/host-ui-smoke-tab-ownership-round1.json`、`output/host-ui-smoke-tab-ownership-round2.json` 及最新重载截图，资料证据为 `output/host-material-notes-final.json` / `.png`。这些结果只证明当前隔离环境及本轮次数内通过，410 仍是需关注的宿主生命周期时序边界，不表示所有平台启动问题已根治。宿主交互回归入口为 `scripts/smoke-host-ui.mjs`，必须显式指定隔离 URL 与 workspace。
+
+当前 Chrome harness 结果：`smoke-ui` 12/12，`sample-ui` 19 项通过（含 16 个断点无横向溢出、无页面错误），`shared-ux` 9 项及 workflow 全部通过；新增 `smoke-recite-responsive` 覆盖背诵评分窄屏/窄分栏、暗色、放大文字和评分保存；资料关联题数新增/改链/解绑回归通过；`shoot-views.mjs` 已改用共享 Chrome 启动器并更新为当前“确认作答”文案，8 张审计截图重新生成。测试使用固定真实形状的种子题，文案断言已跟随当前提交/完成状态修正。
+
+当前桌面只有一个顶栏入口，无独立 Dock/状态栏；移动端通过命令/块菜单兜底和页内导航。真实 AI、Android、打卡桥、TTS 发声、打印、下载、剪贴板、外部阅读器和完整读屏仍需相应设备/服务验收。题目生命周期、完整来源证明、全部历史作答冻结修订和发布守卫尚未接通生产闭环；模考已存在的冻结卷不等于全部题目历史已冻结。
+
+### 历史核验（2026-10-16 · v0.10.1）
+
+以下段落保留当时的源码、安装版本和输出；不代表 v0.10.4 已重跑同一检查。当时的状态栏/Dock 和待办顺序已被当前入口与旅程证据更新。
+
+2026-10-16 v0.10.1 发布核验：`pnpm guard` 已通过，包含 115 个测试文件 / 661 项测试、类型检查、Svelte（0 错误 / 0 警告）、1200 个 i18n 键、42 项架构检查、样式与 lint。本版修复示例题库写入回执缺项时的文档回读确认，修正只读 e2e 实际存储路径与合法空快照审计，并新增 CLI 回归。生产构建、9 文件包白名单、8/8 发版检查和生产依赖审计通过。产物为 `dist/index.js` 1,201,594 bytes、`dist/index.css` 87,373 bytes、仓库根目录 `package.zip` 669,931 bytes；远端 tag、CI 与资产以该版 Release 记录为准。
 
 本轮临时隔离 SiYuan 3.8.7 宿主的安装态为 v0.10.0，不代表 v0.10.1 已完成安装/升级验收。将隔离 workspace 的 `bazaar.trust` 设为 `true` 后，Chrome `browser-desktop` 实际加载顶栏、状态栏、错题本停靠入口和练习台；原创示例 12 题已由文档回读和 SQL 属性计数确认。已走通单选、填空与正确反馈/解析，重载后确认 2 条 v2 作答事件（1 错、1 对）和 `session/active.json`。修正审计脚本后，同一 workspace 的只读 e2e 为 3 通过、19 待数据、0 失败。隔离写型 smoke 通过 preflight 16/16、数据 6/6、CSV 5/5 和 500 题性能；headless 原生导出路径取回 404、无有效 ZIP 时跳过 multipart 导入仍为 WARN。临时实例已停止，桌面主实例未用于写型检查。
 
@@ -262,7 +279,7 @@ R54 原型的页面导航是“今日、题库、出题、模考、复盘、设�
 
 可复现的自动验收入口包括 `pnpm check`、`pnpm guard`、`pnpm build`、`pnpm verify:package`、`pnpm release:check`、`pnpm metrics:style`、`pnpm perf:ui`、生产 UI harness 的 `pnpm smoke:ui` 和 `pnpm smoke:report-actions`，以及 `node scripts/visual-harness/smoke-prototype-states.mjs`、`node scripts/visual-harness/smoke-sample-ui.mjs`、`node scripts/visual-harness/smoke-shared-ux.mjs`、`node scripts/visual-harness/smoke-workflows-ux.mjs` 和 `node design/prototype-r54/smoke-structured-answers.mjs`。以下是 2026-10-14 的历史验收记录，不代表当前构建或测试数字：当日以 Chrome 重跑 `pnpm guard`（114 个测试文件/655 项）；主流程在模考快照失败重试路径下 12/12；`pnpm smoke:ui` 12/12、`pnpm smoke:report-actions`、包白名单校验（9 个文件）和 `pnpm release:check`（8 项）通过。此前示例题库与 16 个生产断点边缘、共享导航/键盘、导入/录题/资料/AI 工作流、原型状态演练（18 个视口边缘）也有通过记录。浏览器无未捕获错误。当日生产构建 `dist/index.js` 为 1,200,898 bytes（Vite 报告 1,200.89 kB，gzip 376.69 kB），`dist/index.css` 为 74,561 bytes（gzip 12.00 kB），`package.zip` 为 666,774 bytes；发行包白名单 9 个文件校验通过。这些自动检查不提供逐像素比较、生产全控件逐一点击、完整断点逐档视觉对照或真实宿主证据。运行结果必须以本次命令输出为准，旧截图不能证明当前宿主行为。
 
-当前仍需真实宿主或后续版本确认的范围：
+当时仍需真实宿主或后续版本确认的范围（当前已通过和仍待验部分见本节开头及审计快照）：
 
 - 错题复练、模考暂停/恢复/交卷和报告核对；宿主 UI 导入、题块读回、保存失败、完整重载恢复与跨窗口同步；
 - Android WebView 的软键盘、触摸、下载、打印、剪贴板、`window.open` 和安全区；

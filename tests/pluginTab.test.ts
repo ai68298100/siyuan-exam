@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { consumePendingPracticeView, createExamTabDescriptor, focusExamTab, isCurrentPracticeViewRequest, observeTabOpen, openPracticeView } from "../src/core/pluginTab";
+import { consumePendingPracticeView, createExamTabDescriptor, findExamTabHeader, findOpenedExamTab, focusExamTab, isCurrentPracticeViewRequest, observeTabOpen, openPracticeView } from "../src/core/pluginTab";
 import { onExamEvent } from "../src/core/bus";
 
 describe("自定义页签持久化数据", () => {
@@ -33,6 +33,69 @@ describe("自定义页签持久化数据", () => {
     expect(focusExamTab({ parent: { headElement: head } })).toBe(true);
     expect(head.click).toHaveBeenCalledOnce();
     expect(focusExamTab({})).toBe(false);
+  });
+
+  it("跨宿主 getOpenedTab 键名找到恢复中的页签，并支持 tab 形态模型", () => {
+    const head = { click: vi.fn() } as unknown as HTMLElement;
+    const restored = { type: "siyuan-examexam-practice", tab: { headElement: head } };
+    const opened = { "siyuan-examexam-practice": [restored] };
+    expect(findOpenedExamTab(opened, "siyuan-exam", "exam-practice")).toBe(restored);
+    expect(focusExamTab(restored)).toBe(true);
+    expect(head.click).toHaveBeenCalledOnce();
+  });
+
+  it("恢复页签模型没有可识别 type 时仍按稳定 map key 聚焦", () => {
+    const head = { click: vi.fn() } as unknown as HTMLElement;
+    const restored = { tab: { headElement: head } };
+    expect(findOpenedExamTab({ "exam-practice": [restored] }, "siyuan-exam", "exam-practice")).toBe(restored);
+    expect(focusExamTab(restored)).toBe(true);
+  });
+
+  it("模型尚未注册时可从恢复的宿主标题节点聚焦", () => {
+    const header = {
+      getAttribute: (name: string) => name === "data-id" ? "siyuan-examexam-practice" : "tab-header",
+    } as unknown as HTMLElement;
+    vi.stubGlobal("document", { querySelectorAll: () => [header] });
+    try {
+      expect(findExamTabHeader("siyuan-exam", "exam-practice")).toBe(header);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("真实宿主 UUID 标题按 data-initdata 中的 customModelType 复用，不增加恢复页签", () => {
+    const header = {
+      getAttribute: (name: string) => name === "data-id"
+        ? "304278d0-18b5-44e2-b219-ccebd32c11e8"
+        : name === "data-initdata"
+          ? JSON.stringify({ customModelData: {}, customModelType: "siyuan-examexam-practice", instance: "Custom" })
+          : null,
+    } as unknown as HTMLElement;
+    vi.stubGlobal("document", { querySelectorAll: () => [header] });
+    try {
+      expect(findExamTabHeader("siyuan-exam", "exam-practice")).toBe(header);
+      expect(findExamTabHeader("siyuan-exam", "exam-mock")).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("宿主恢复数据损坏或属于其他实例时不拦截新页签打开", () => {
+    const header = (initData: string) => ({
+      getAttribute: (name: string) => name === "data-initdata" ? initData : "host-tab-uuid",
+    });
+    vi.stubGlobal("document", {
+      querySelectorAll: () => [
+        header("{broken"),
+        header(JSON.stringify({ instance: "Editor", customModelType: "siyuan-examexam-practice" })),
+        header(JSON.stringify({ instance: "Custom", customModelType: "other-pluginexam-practice" })),
+      ],
+    });
+    try {
+      expect(findExamTabHeader("siyuan-exam", "exam-practice")).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("已存在页签收到一次广播，新页签只消费挂载目标，连续目标只保留最新待进入视图", () => {

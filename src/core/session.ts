@@ -8,6 +8,15 @@ import { newSessionId } from "./ids";
 
 export type SessionPhase = "running" | "finished";
 
+export interface PracticeSubmitResult {
+  q: Question;
+  grade: GradeResult;
+  /** 44-04 本题在当前会话的尝试序号（0=首次初答；1+=会话内回炉尝试） */
+  attemptIndex: number;
+  /** 44-04 是否为会话内错题排到队尾后的延迟回忆重测 */
+  isDelayedReview: boolean;
+}
+
 export class PracticeSession {
   readonly state: SessionState;
   private readonly byId: Map<string, Question>;
@@ -56,6 +65,20 @@ export class PracticeSession {
     return { done: this.state.cursor, total: this.state.qids.length };
   }
 
+  /** 判断当前卷面位置是否为错题回炉的延迟重测（44-04） */
+  isDelayedReviewAtCurrent(): boolean {
+    const q = this.current;
+    if (!q) return false;
+    return (this.state.answered ?? []).some((a) => a.qid === q.id && a.pos < this.state.cursor);
+  }
+
+  /** 获取当前题在当前会话中的尝试序号（0=首答，1+=回炉）（44-04） */
+  currentAttemptIndex(): number {
+    const q = this.current;
+    if (!q) return 0;
+    return (this.state.answered ?? []).filter((a) => a.qid === q.id && a.pos < this.state.cursor).length;
+  }
+
   setDraft(qid: string, value: string) {
     this.state.drafts[qid] = value;
     this.touch();
@@ -68,11 +91,15 @@ export class PracticeSession {
   /** 提交当前题：判分 + 记录待写流水事件；返回判分结果（UI 渲染反馈态）。
    *  已答快照（含位置）与重排集合同步进 state（37-05），暂停/重载后可完整恢复。
    *  已答位置守卫（兜底审计）：K 回退到已答位置再提交返回 null 不重计；重排队错题在新位置可重答 */
-  submit(myAnswer: string | null, timeMs = 0): { q: Question; grade: GradeResult } | null {
+  submit(myAnswer: string | null, timeMs = 0): PracticeSubmitResult | null {
     const q = this.current;
     if (!q || this.phase === "finished") return null;
     if ((this.state.answered ?? []).some((a) => a.pos === this.state.cursor)) return null;
     const g = grade(q, myAnswer);
+    const priorAttempts = (this.state.answered ?? []).filter((a) => a.qid === q.id);
+    const attemptIndex = priorAttempts.length;
+    const isDelayedReview = attemptIndex > 0;
+
     this.answered.push({ qid: q.id, grade: g, timeMs });
     (this.state.answered ??= []).push({
       qid: q.id,
@@ -80,6 +107,7 @@ export class PracticeSession {
       verdict: g.verdict,
       myAnswer: g.myAnswer,
       timeMs,
+      delayedReview: isDelayedReview ? true : undefined,
     });
     // 学习科学 re-review：答错且尚未重排过 → 排到队尾再来一次（每题至多一次，防死循环）
     if (g.verdict === "wrong" && !this.requeued.has(q.id)) {
@@ -88,7 +116,7 @@ export class PracticeSession {
       this.state.qids.push(q.id);
     }
     this.touch();
-    return { q, grade: g };
+    return { q, grade: g, attemptIndex, isDelayedReview };
   }
 
   /** 已作答的卷面位置集合（恢复推进用；重排队同 qid 多位置互不影响） */
@@ -134,7 +162,35 @@ export class PracticeSession {
     return false;
   }
 
-  /** 结束会话（幂等）：返回本会话统计 */
+  /** 43-03 跳转到卷面指定游标位置（兄弟题/答题卡导航） */
+  jumpTo(index: number): boolean {
+    if (index >= 0 && index < this.state.qids.length && index !== this.state.cursor) {
+      this.state.cursor = index;
+      this.clearPreviousAttemptDraft();
+      this.touch();
+      return true;
+    }
+    return false;
+  }
+
+  /** 43-03 根据 qid 查找并跳转到卷面对应题目（优先跳转至未答位置） */
+  jumpToQid(qid: string): boolean {
+    const answeredDone = this.answeredPositions();
+    let target = -1;
+    for (let i = 0; i < this.state.qids.length; i++) {
+      if (this.state.qids[i] === qid) {
+        if (!answeredDone.has(i)) {
+          target = i;
+          break;
+        }
+        if (target < 0) target = i;
+      }
+    }
+    if (target >= 0) return this.jumpTo(target);
+    return false;
+  }
+
+  /** 结束会话（幂等）：返回本会话基础统计 */
   finish(): { total: number; correct: number; wrong: number } {
     if (!this.state.finishedAt) {
       this.state.finishedAt = this.now();
@@ -143,6 +199,35 @@ export class PracticeSession {
     const correct = this.answered.filter((a) => a.grade.verdict === "correct").length;
     const wrong = this.answered.filter((a) => a.grade.verdict === "wrong").length;
     return { total: this.answered.length, correct, wrong };
+  }
+
+  /** 44-04 细分指标：首答 vs 回炉延迟回忆统计（区分即时作答与延迟消灭） */
+  breakdown(): {
+    initialTotal: number;
+    initialCorrect: number;
+    delayedTotal: number;
+    delayedRecovered: number;
+  } {
+    const firstAttempts = new Map<string, GradeResult["verdict"]>();
+    const delayedAttempts = new Map<string, GradeResult["verdict"]>();
+    for (const a of this.state.answered ?? []) {
+      if (!firstAttempts.has(a.qid)) {
+        firstAttempts.set(a.qid, a.verdict);
+      } else {
+        delayedAttempts.set(a.qid, a.verdict);
+      }
+    }
+    const initialTotal = firstAttempts.size;
+    const initialCorrect = [...firstAttempts.values()].filter((v) => v === "correct").length;
+    const delayedTotal = delayedAttempts.size;
+    const delayedRecovered = [...delayedAttempts.entries()].filter(([qid, v]) => v === "correct" && firstAttempts.get(qid) === "wrong").length;
+
+    return {
+      initialTotal,
+      initialCorrect,
+      delayedTotal,
+      delayedRecovered,
+    };
   }
 
   private touch() {

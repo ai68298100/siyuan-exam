@@ -5,6 +5,7 @@ import { inferAnswerSpec, splitBlanks, joinBlanks, gradeWithSpec } from "../src/
 import { makeQuestion } from "../src/core/blockTemplate";
 import { ExamApp } from "../src/app";
 import { MemoryStorage } from "../src/core/attemptLog";
+import { questionDraftFromRevision, type QuestionRevision } from "../src/core/revision";
 import type { KernelApiClient } from "../src/kernel/client";
 
 describe("inferAnswerSpec（导入识别）", () => {
@@ -24,6 +25,77 @@ describe("inferAnswerSpec（导入识别）", () => {
     expect(inferAnswerSpec("fill", "保留")).toBeUndefined();
     expect(inferAnswerSpec("fill", "光年;;")).toBeUndefined(); // 单段（分号后为空）
     expect(inferAnswerSpec("single", "1.5 m")).toBeUndefined();
+  });
+});
+
+describe("编辑修订 JSON 持久化与完整恢复", () => {
+  function setup() {
+    let lastMd = "";
+    let clock = 1;
+    const attrs: Record<string, unknown>[] = [];
+    const client = {
+      updateBlock: async (_block: string, markdown: string) => { lastMd = markdown; },
+      getBlockKramdown: async () => lastMd,
+      setExamAttrs: async (_block: string, values: Record<string, unknown>) => { attrs.push(values); },
+    } as unknown as KernelApiClient;
+    const app = new ExamApp({ client, storage: new MemoryStorage(), now: () => clock++ });
+    app.kernelOnline = true;
+    return { app, attrs };
+  }
+
+  it("清空值经过 JSON 落盘仍可恢复，恢复后不会留下后来新增的字段", async () => {
+    const { app, attrs } = setup();
+    const initial = {
+      ...makeQuestion({ type: "fill", stem: "数值？", options: [], answer: "3.14" }),
+      analysis: "原解析", kp: "原考点", difficulty: 2, blockId: "b-clear",
+    };
+    const cleared = await app.updateQuestionContent(initial, {
+      stem: initial.stem, options: [], answer: initial.answer, analysis: "", kp: "", answerSpec: null,
+    });
+    const snapshot = JSON.parse(JSON.stringify((await app.questionRevisions(initial.id))[0])) as QuestionRevision;
+    expect(snapshot).toMatchObject({ analysis: "", kp: "", difficulty: null, answerSpec: null });
+    const later = await app.updateQuestionContent({ ...cleared, blockId: initial.blockId }, {
+      stem: initial.stem, options: [], answer: initial.answer, analysis: "后来解析", kp: "后来考点", difficulty: 5,
+      answerSpec: { v: 1, kind: "numeric", absTol: 0.1 },
+    });
+    const restored = await app.updateQuestionContent({ ...later, blockId: initial.blockId }, questionDraftFromRevision(later, snapshot));
+    expect(restored.analysis).toBeUndefined();
+    expect(restored.kp).toBeUndefined();
+    expect(restored.difficulty).toBeUndefined();
+    expect(restored.answerSpec).toBeUndefined();
+    expect(attrs.at(-1)?.["exam-answer-spec"]).toBe("");
+  });
+
+  it("连续只修改数值容差会记录两版，恢复后判分与历史规格一致", async () => {
+    const { app, attrs } = setup();
+    const initial = { ...makeQuestion({ type: "fill", stem: "圆周率？", options: [], answer: "3.14" }), blockId: "b-numeric" };
+    const draft = { stem: initial.stem, options: [], answer: initial.answer, analysis: "", kp: "" };
+    const strict = await app.updateQuestionContent(initial, { ...draft, answerSpec: { v: 1, kind: "numeric", absTol: 0.01 } });
+    const wide = await app.updateQuestionContent({ ...strict, blockId: initial.blockId }, { ...draft, answerSpec: { v: 1, kind: "numeric", absTol: 0.05 } });
+    const history = JSON.parse(JSON.stringify(await app.questionRevisions(initial.id))) as QuestionRevision[];
+    expect(history).toHaveLength(2);
+    expect(grade(wide, "3.17").verdict).toBe("correct");
+    const restored = await app.updateQuestionContent({ ...wide, blockId: initial.blockId }, questionDraftFromRevision(wide, history[0]));
+    expect(restored.answerSpec).toEqual({ v: 1, kind: "numeric", absTol: 0.01 });
+    expect(grade(restored, "3.17").verdict).toBe("wrong");
+    expect(attrs.at(-1)?.["exam-answer-spec"]).toBe(JSON.stringify(history[0].answerSpec));
+  });
+
+  it("多空嵌套别名和大小写规则完整冻结与恢复", async () => {
+    const { app } = setup();
+    const initial = { ...makeQuestion({ type: "fill", stem: "单位？", options: [], answer: "光年;;天文单位" }), blockId: "b-multi" };
+    const spec = { v: 1 as const, kind: "multiBlank" as const, blanks: [{ answers: ["光年", "ly"], caseSensitive: true }, { answers: ["天文单位", "AU"], caseSensitive: false }] };
+    const first = await app.updateQuestionContent(initial, {
+      stem: initial.stem, options: [], answer: initial.answer, analysis: "", kp: "", answerSpec: spec,
+    });
+    spec.blanks[0].answers.push("不应污染历史");
+    const history = JSON.parse(JSON.stringify(await app.questionRevisions(initial.id))) as QuestionRevision[];
+    expect(history[0].answerSpec).not.toEqual(spec);
+    const later = { ...first, answerSpec: undefined };
+    const restored = await app.updateQuestionContent({ ...later, blockId: initial.blockId }, questionDraftFromRevision(later, history[0]));
+    expect(restored.answerSpec).toEqual(history[0].answerSpec);
+    expect(grade(restored, "ly;;au").verdict).toBe("correct");
+    expect(grade(restored, "LY;;au").verdict).toBe("wrong");
   });
 });
 

@@ -35,6 +35,10 @@ export interface AppendInput {
   selfRating?: number;
   examId?: string | null;
   changes?: number;
+  /** 43-01 / 55-07 题版不可变快照 */
+  qVersion?: AttemptEvent["qVersion"];
+  /** 44-04 延迟回炉标记 */
+  delayedReview?: AttemptEvent["delayedReview"];
   /** 63-03 改答轨迹：首答 + 每次修改（终答=myAnswer）；上限截断如实标注 */
   firstAnswer?: string;
   edits?: AttemptEvent["edits"];
@@ -134,6 +138,8 @@ export class AttemptLog {
       device: this.device,
       seq: ++this.seq,
       changes: input.changes,
+      qVersion: input.qVersion,
+      delayedReview: input.delayedReview,
       firstAnswer: input.firstAnswer,
       edits: input.edits,
       confidence: input.confidence,

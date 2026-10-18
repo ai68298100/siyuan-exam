@@ -41,6 +41,7 @@ const server = createServer((req, res) => {
 });
 await new Promise((r) => server.listen(4202, r));
 let browser = await launchHarnessBrowser();
+const errorDetail = (error) => error?.stack ?? String(error);
 
 /** 单轮完整走查：新开 context（干净库），返回 { results, pageErrors } */
 async function runSuite() {
@@ -54,7 +55,7 @@ async function runSuite() {
   });
   const page = await ctx.newPage();
   const pageErrors = [];
-  page.on("pageerror", (err) => pageErrors.push(String(err).slice(0, 120)));
+  page.on("pageerror", (err) => pageErrors.push(errorDetail(err)));
   await page.goto("http://127.0.0.1:4202/");
   await page.waitForTimeout(900);
 
@@ -69,16 +70,35 @@ async function runSuite() {
       const all = window.__app.attempts.all();
       return all[all.length - 1] ?? null;
     });
+  const waitForQuestion = (qid) => page.waitForFunction(
+    (id) => window.__app.currentSession()?.current?.id === id,
+    qid,
+    { timeout: 4000 },
+  );
+  const waitForAttempt = (qid, previousEid) => page.waitForFunction(
+    ({ id, before }) => {
+      const events = window.__app.attempts.all();
+      const event = events[events.length - 1];
+      return event?.qid === id && event.eid !== before;
+    },
+    { id: qid, before: previousEid },
+    { timeout: 4000 },
+  );
+  const pickOption = (key) => page.locator("#app button.lv-opt")
+    .filter({ has: page.locator(".key", { hasText: new RegExp(`^${key}$`) }) })
+    .click({ timeout: 3000 });
   // 作答兜底：数值框/多空框/选项/简答，能填哪个填哪个
   const answerSomehow = async (value) => {
     const num = page.locator("#app .lv-answer-num");
     if (await num.count()) {
       await num.first().fill(value, { timeout: 2000 });
+      await num.first().blur(); // 与真实输入一致：提交 change，记录文本题首答/改答。
       return true;
     }
     const blank = page.locator("#app .lv-answer-blank");
     if (await blank.count()) {
       await blank.first().fill(value, { timeout: 2000 });
+      await blank.first().blur();
       return true;
     }
     const opt = page.locator("#app button.lv-opt");
@@ -89,6 +109,7 @@ async function runSuite() {
     const ta = page.locator("#app textarea.lv-textarea");
     if (await ta.count()) {
       await ta.first().fill(value, { timeout: 2000 });
+      await ta.first().blur();
       return true;
     }
     return false;
@@ -96,46 +117,63 @@ async function runSuite() {
 
   // ---------- 流程 36：作答信心 → attempts 事件 ----------
   try {
-    await T("错题重练"); // 确定性入口：首题恒为数值题（.lv-answer-num 可填）
-    await page.waitForTimeout(1000);
+    await page.waitForFunction(() => window.__app && window.__plugin);
+    // 只固定抽题结果；仍使用真实 Question、PracticeSession、评分及流水写入。
+    // 前两题覆盖信心和选择改答，第三题留给背题定时器卸载测试。
+    await page.evaluate(async () => {
+      const app = window.__app;
+      const bank = app.listBanks().find((item) => item.id === "20260101000000-hhseedbk");
+      if (!bank) throw new Error("流程 36 的种子题库不存在");
+      const questions = await app.listQuestions(bank.id);
+      const queue = ["seed-q01", "seed-q02", "seed-q03"].map((id) => {
+        const question = questions.find((item) => item.id === id);
+        if (!question || question.type !== "single" || question.options?.length !== 4) {
+          throw new Error(`流程 36 / 63-03 缺少四选一真实种子题：${id}`);
+        }
+        return question;
+      });
+      app.quickDrill = () => [...queue];
+    });
+    await T("快速刷题");
+    await waitForQuestion("seed-q01");
+    const previousEid = (await lastEvent())?.eid;
     await page.locator('#app button.lv-chip:has-text("确定")').first().click({ timeout: 3000 });
-    await answerSomehow("999");
-    await T("提交");
-    await page.waitForTimeout(600);
+    await pickOption("C");
+    await T("确认作答");
+    await waitForAttempt("seed-q01", previousEid);
     const ev = await lastEvent();
     record(
       "36 作答信心→流水",
-      !!ev && ev.confidence === "sure" && ev.kind === "practice",
-      ev ? `confidence=${ev.confidence} verdict=${ev.verdict}` : "无事件",
+      !!ev && ev.qid === "seed-q01" && ev.myAnswer === "C" && ev.verdict === "correct" && ev.confidence === "sure" && ev.kind === "practice",
+      ev ? `qid=${ev.qid} answer=${ev.myAnswer} confidence=${ev.confidence} verdict=${ev.verdict}` : "无事件",
     );
     await T("下一题");
-    await page.waitForTimeout(500);
+    await waitForQuestion("seed-q02");
   } catch (e) {
-    record("36 作答信心→流水", false, String(e).slice(0, 90));
+    record("36 作答信心→流水", false, errorDetail(e));
   }
 
   // ---------- 流程 63-03：改答轨迹（改答 → 原因追问 → 终答落事件） ----------
   try {
-    const v2 = "222";
-    await answerSomehow("111");
-    await page.waitForTimeout(300);
-    await answerSomehow(v2);
-    await page.waitForTimeout(500);
-    const reasonShown = await page.locator('#app :text("为什么改答")').count();
-    const reasonBtn = page.locator('#app button:has-text("误触")');
-    if (await reasonBtn.count()) await reasonBtn.first().click({ timeout: 2000 });
-    await T("提交");
-    await page.waitForTimeout(600);
+    await waitForQuestion("seed-q02");
+    const previousEid = (await lastEvent())?.eid;
+    await pickOption("A");
+    await pickOption("B");
+    const reasonGroup = page.getByRole("group", { name: "为什么改答案？（可选）", exact: true });
+    await reasonGroup.waitFor({ state: "visible", timeout: 3000 });
+    await reasonGroup.getByRole("button", { name: "误触", exact: true }).click();
+    await T("确认作答");
+    await waitForAttempt("seed-q02", previousEid);
     const ev = await lastEvent();
     record(
       "63-03 改答轨迹→终答",
-      !!ev && String(ev.myAnswer ?? "").includes(v2),
-      ev ? `追问=${reasonShown > 0} myAnswer=${JSON.stringify(ev.myAnswer).slice(0, 30)}` : "无事件",
+      !!ev && ev.qid === "seed-q02" && ev.kind === "practice" && ev.firstAnswer === "A" && ev.myAnswer === "B" && ev.verdict === "wrong" && ev.edits?.length === 1 && ev.edits[0].to === "B" && ev.edits[0].reason === "misclick",
+      ev ? `qid=${ev.qid} 首答=${JSON.stringify(ev.firstAnswer)} 终答=${JSON.stringify(ev.myAnswer)} verdict=${ev.verdict} edits=${JSON.stringify(ev.edits)}` : "无事件",
     );
     await T("下一题");
-    await page.waitForTimeout(500);
+    await waitForQuestion("seed-q03");
   } catch (e) {
-    record("63-03 改答轨迹→终答", false, String(e).slice(0, 90));
+    record("63-03 改答轨迹→终答", false, errorDetail(e));
   }
 
   // ---------- Practice delayed work:背题自动提交必须在 Tab 卸载时取消 ----------
@@ -148,7 +186,7 @@ async function runSuite() {
     const after = await page.evaluate(() => window.__app.attempts.all().length);
     record("Practice 背题延迟提交在切页时取消", after === before, `流水 ${before} → ${after}`);
   } catch (e) {
-    record("Practice 背题延迟提交在切页时取消", false, String(e).slice(0, 90));
+    record("Practice 背题延迟提交在切页时取消", false, errorDetail(e));
   }
 
   // ---------- 流程 27：模考作答 → 刷新 → 恢复 ----------
@@ -207,7 +245,7 @@ async function runSuite() {
       `刷新前后进度 ${before || "?"} → ${after || "?"}`,
     );
   } catch (e) {
-    record("27 模考刷新恢复", false, String(e).slice(0, 90));
+    record("27 模考刷新恢复", false, errorDetail(e));
   }
 
   // ---------- 流程 40-06：纯键盘作答（A 选择 / → 导航；27 恢复后的卷面） ----------
@@ -241,7 +279,7 @@ async function runSuite() {
       `${keyboardNote} · → 后进度=${progress(prog) || "?"}`,
     );
   } catch (e) {
-    record("40-06 键盘作答", false, String(e).slice(0, 90));
+    record("40-06 键盘作答", false, errorDetail(e));
   }
 
   // ---------- 流程 28：过期恢复（改写持久化快照的 startedAt） ----------
@@ -273,7 +311,7 @@ async function runSuite() {
     const alive = await page.locator("#app .lv-question, #app .lv-stem, #app .lv-chip").count();
     record("28 过期恢复不崩", alive > 0, `过期卷面元素=${alive}`);
   } catch (e) {
-    record("28 过期恢复", false, String(e).slice(0, 90));
+    record("28 过期恢复", false, errorDetail(e));
   }
 
   // ---------- 流程 38：AI stub 通道 → 结果卡优雅呈现 ----------
@@ -292,7 +330,7 @@ async function runSuite() {
       `错误卡=${graceful.errorCard} · 结果卡=${graceful.explainCard}`,
     );
   } catch (e) {
-    record("38 AI 通道优雅降级", false, String(e).slice(0, 90));
+    record("38 AI 通道优雅降级", false, errorDetail(e));
   }
 
   // ---------- 模考估分：读取失败可重试、字段校验定位、写入失败可重试 ----------
@@ -338,7 +376,7 @@ async function runSuite() {
       window.__app.saveEstimate = window.__baseSaveEstimate;
     });
   } catch (e) {
-    record("模考估分交互", false, String(e).slice(0, 100));
+    record("模考估分交互", false, errorDetail(e));
   }
 
   await ctx.close();

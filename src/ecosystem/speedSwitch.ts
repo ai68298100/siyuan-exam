@@ -36,6 +36,8 @@ export interface ExamDailyDeps {
   t: (key: string, fallback?: string) => string;
   /** 组件「打开插件」跳转目标 */
   open: () => void;
+  /** 当日目标（设置项；未提供时仅展示已记录指标，保持向后兼容） */
+  dailyGoal?: () => number;
   /** 宿主查找（index.ts 注入 app.plugins.find，便于测试注入） */
   findPlugin: (name: string) => unknown | undefined;
 }
@@ -49,6 +51,7 @@ export function assertModuleId(id: string): boolean {
 export function buildDailyItems(
   app: ExamApp,
   t: (key: string, fallback?: string) => string,
+  options?: { dailyGoal?: number },
 ): { label: string; value: string }[] {
   const d = app.derived();
   const today = localDateKey(Date.now());
@@ -64,6 +67,9 @@ export function buildDailyItems(
   const wrongActive = [...d.wrongbook.values()].filter((w) => w.status === "active").length;
   const items = [
     { label: t("eco.todayAttempts", "今日作答"), value: String(attempts) },
+    ...(Number.isFinite(options?.dailyGoal) && Number(options?.dailyGoal) > 0
+      ? [{ label: t("eco.goal", "今日目标"), value: `${attempts}/${Math.max(1, Math.round(Number(options?.dailyGoal)))}` }]
+      : []),
     {
       label: t("eco.accuracy", "正确率"),
       value: attempts ? `${Math.round((correct / attempts) * 100)}%` : "—",
@@ -104,7 +110,7 @@ export function registerExamDailySummary(deps: ExamDailyDeps): ExamDailySummaryH
       supportedDevices: ["desktop", "sidebar", "mobile"],
       sizes: ["xs", "small"],
       description: deps.t("eco.moduleDesc", "今日作答量、正确率与错题在册"),
-      read: async () => ({ items: buildDailyItems(deps.app, deps.t) }),
+      read: async () => ({ items: buildDailyItems(deps.app, deps.t, { dailyGoal: deps.dailyGoal?.() }) }),
       open: () => deps.open(),
       source: { pluginId: "siyuan-exam", name: "小驴考试（内测版）", icon: "iconExam" },
     };
@@ -143,3 +149,4 @@ export function registerExamDailySummary(deps: ExamDailyDeps): ExamDailySummaryH
     settled: () => registered,
   };
 }
+

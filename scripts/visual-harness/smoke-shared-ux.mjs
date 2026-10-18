@@ -52,6 +52,47 @@ try {
   if (await page.locator("#app .block__icons[inert]").count()) throw new Error("关闭后背景仍 inert");
   console.log("✓ 方向键滚动跟随选中项，Esc 后归还焦点和背景操作");
 
+  // Compact rails must not clip their action menu, including split panes and
+  // short windows. Keyboard focus must follow the menu rather than disappear
+  // into a removed item when it closes.
+  const quickTrigger = page.locator("#app .lv-quick-create");
+  const quickMenu = page.locator("#app .lv-quick-popover");
+  for (const viewport of [{ width: 900, height: 900 }, { width: 1440, height: 900 }, { width: 900, height: 350 }]) {
+    await page.setViewportSize(viewport);
+    await quickTrigger.click();
+    await quickMenu.waitFor();
+    const menuBounds = await quickMenu.evaluate((el) => {
+      const menu = el.getBoundingClientRect();
+      const panel = el.closest(".lv-exam-tab").getBoundingClientRect();
+      const items = [...el.querySelectorAll("button")];
+      return {
+        inside: menu.left >= panel.left && menu.right <= panel.right && menu.top >= panel.top && menu.bottom <= panel.bottom,
+        firstHit: document.elementFromPoint(menu.left + menu.width / 2, items[0].getBoundingClientRect().top + items[0].getBoundingClientRect().height / 2)?.closest("button") === items[0],
+        targets: items.every((item) => item.getBoundingClientRect().height >= 44),
+      };
+    });
+    if (!menuBounds.inside || !menuBounds.firstHit || !menuBounds.targets) throw new Error(`快捷菜单裁切或触达尺寸失败 ${viewport.width}×${viewport.height}: ${JSON.stringify(menuBounds)}`);
+    await page.keyboard.press("End");
+    const lastVisible = await quickMenu.locator("button").last().evaluate((el) => {
+      const item = el.getBoundingClientRect();
+      const menu = el.closest(".lv-quick-popover").getBoundingClientRect();
+      return el === document.activeElement && item.top >= menu.top && item.bottom <= menu.bottom && document.elementFromPoint(item.left + item.width / 2, item.top + item.height / 2)?.closest("button") === el;
+    });
+    if (!lastVisible) throw new Error(`快捷菜单末项键盘不可达 ${viewport.width}×${viewport.height}`);
+    await page.keyboard.press("ArrowDown");
+    if (!await quickMenu.locator("button").first().evaluate((el) => el === document.activeElement)) throw new Error("快捷菜单方向键未循环至首项");
+    await page.keyboard.press("Escape");
+    if (!await quickTrigger.evaluate((el) => el === document.activeElement)) throw new Error("快捷菜单 Esc 后未归还触发钮焦点");
+  }
+  await quickTrigger.press("ArrowUp");
+  await quickMenu.waitFor();
+  if (!await quickMenu.locator("button").last().evaluate((el) => el === document.activeElement)) throw new Error("快捷菜单 ArrowUp 未从末项打开");
+  await page.keyboard.press("Home");
+  await page.keyboard.press("Tab");
+  await quickMenu.waitFor({ state: "hidden" });
+  if (!await page.locator("#app .lv-rail-nav .lv-rail-btn").first().evaluate((el) => el === document.activeElement)) throw new Error("快捷菜单 Tab 关闭后未继续导航焦点");
+  console.log("✓ 快捷行动菜单宽/紧凑/低高度可命中，方向键循环、Esc 及 Tab 焦点完整");
+
   await page.setViewportSize({ width: 759, height: 900 });
   const menu = page.locator("#app .lv-menu-btn");
   if (await menu.getAttribute("aria-expanded") !== "false") throw new Error("closed navigation trigger must expose aria-expanded=false");

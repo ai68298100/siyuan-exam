@@ -3,12 +3,11 @@
 import { createServer } from "node:http";
 import { readFileSync, existsSync, mkdirSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
-import { chromium } from "playwright-core";
+import { launchHarnessBrowser } from "./browser.mjs";
 
 const ROOT = resolve(import.meta.dirname, "../../output/harness");
 const OUT = resolve(import.meta.dirname, "../../output/playwright");
 const PREFIX = process.argv[2] ?? "ux2";
-const EDGE = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
 if (!existsSync(join(ROOT, "index.html"))) {
   console.error("✗ 先构建 harness：npx vite build --config scripts/visual-harness/vite.config.ts");
   process.exit(1);
@@ -27,7 +26,7 @@ const server = createServer((req, res) => {
   }
 });
 await new Promise((r) => server.listen(4201, r));
-let browser = await chromium.launch({ executablePath: EDGE });
+let browser = await launchHarnessBrowser();
 
 const shot = async (name, { dark = false, narrow = false, steps = [] } = {}) => {
   const ctx = await browser.newContext({

@@ -56,6 +56,9 @@ const DYNAMIC_PREFIXES = [
   "confidence.",
   "health.field.",
   "action.kind.",
+  "lifecycle.",
+  "dispute.reason.",
+  "health.orphan.",
 ];
 const missingUsed = [...used].filter((k) => !zk.has(k) && !DYNAMIC_PREFIXES.some((p) => k.startsWith(p)));
 if (missingUsed.length) {

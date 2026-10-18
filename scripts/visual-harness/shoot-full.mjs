@@ -3,12 +3,11 @@
 import { createServer } from "node:http";
 import { readFileSync, existsSync, mkdirSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
-import { chromium } from "playwright-core";
+import { launchHarnessBrowser } from "./browser.mjs";
 
 const ROOT = resolve(import.meta.dirname, "../../output/harness");
 const OUT = resolve(import.meta.dirname, "../../output/playwright");
 const PREFIX = process.argv[2] ?? "now";
-const EDGE = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
 if (!existsSync(join(ROOT, "index.html"))) {
   console.error("✗ 先构建 harness：npx vite build --config scripts/visual-harness/vite.config.ts");
   process.exit(1);
@@ -34,7 +33,7 @@ const server = createServer((req, res) => {
   }
 });
 await new Promise((r) => server.listen(4199, r));
-let browser = await chromium.launch({ executablePath: EDGE });
+let browser = await launchHarnessBrowser();
 
 const btn = (text) => `#app button:has-text("${text}")`;
 const shotOnce = async (name, { dark = false, narrow = false, steps = [] } = {}) => {
@@ -79,7 +78,7 @@ const shotOnce = async (name, { dark = false, narrow = false, steps = [] } = {})
   try {
     await page.screenshot({ path: join(OUT, `${PREFIX}-${name}.png`) });
   } catch (e) {
-    // Edge 偶发截图崩溃：等一拍重试一次
+    // 浏览器偶发截图崩溃：等一拍重试一次
     await page.waitForTimeout(800);
     await page.screenshot({ path: join(OUT, `${PREFIX}-${name}.png`) });
   }
@@ -91,7 +90,7 @@ const shotOnce = async (name, { dark = false, narrow = false, steps = [] } = {})
   }
   await ctx.close();
 };
-// Edge 长会话偶发整浏览器断连：自动重启并重试该张一次
+// 长会话偶发整浏览器断连：自动重启并重试该张一次
 const shot = async (name, opts = {}) => {
   try {
     await shotOnce(name, opts);
@@ -102,7 +101,7 @@ const shot = async (name, opts = {}) => {
     } catch {
       /* 已死 */
     }
-    browser = await chromium.launch({ executablePath: EDGE });
+    browser = await launchHarnessBrowser();
     await shotOnce(name, opts);
   }
 };

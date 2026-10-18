@@ -113,6 +113,54 @@ describe("sanitizeRichHtml（富文本白名单）", () => {
     expect(out).toContain('src="#p"');
     expect(out).toContain('src="data:image/png;base64,AA=="');
   });
+
+  it("拦截 @import、CSS 自定义变量覆盖与动画过渡属性", () => {
+    const out = sanitizeRichHtml(
+      `<span style="@import url('https://evil.example/x.css');color:red">import</span>` +
+      `<span style="--lv-accent:red;color:blue">css-var</span>` +
+      `<span style="animation:spin 1s infinite">anim</span>` +
+      `<span style="transition:all 0.5s">trans</span>` +
+      `<span style="color:green;font-weight:bold">normal</span>`,
+    );
+    expect(out).not.toContain("import url");
+    expect(out).not.toContain("--lv-accent");
+    expect(out).not.toContain("animation");
+    expect(out).not.toContain("transition");
+    expect(out).toContain('<span style="color:green;font-weight:bold">normal</span>');
+  });
+
+  it("<a> 标签外链自动添加 noopener noreferrer，阻断危险协议", () => {
+    const out = sanitizeRichHtml(
+      `<a href="https://example.com/test">link</a>` +
+      `<a href="data:text/html,<script>alert(1)</script>">data-link</a>` +
+      `<a href="blob:https://example.com/uuid">blob-link</a>`,
+    );
+    expect(out).toContain('href="https://example.com/test"');
+    expect(out).toContain('rel="noopener noreferrer"');
+    expect(out).not.toContain('href="data:');
+    expect(out).not.toContain('href="blob:');
+  });
+
+  it("<input> 仅允许 checkbox，剥离伪装表单控件", () => {
+    const out = sanitizeRichHtml(
+      `<input type="checkbox" checked>` +
+      `<input type="password" name="pwd">` +
+      `<input type="text" value="fake">`,
+    );
+    expect(out).toContain('type="checkbox"');
+    expect(out).not.toContain('type="password"');
+    expect(out).not.toContain('type="text"');
+  });
+
+  it("过滤非安全图片类型的 data: URI", () => {
+    const out = sanitizeRichHtml(
+      `<img src="data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==" alt="fake-img">` +
+      `<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" alt="real-img">`,
+    );
+    expect(out).not.toContain("data:text/html");
+    expect(out).toContain('alt="real-img"');
+    expect(out).toContain('data:image/png;base64');
+  });
 });
 
 describe("renderStem 源头净化（ExamApp 边界）", () => {
@@ -133,6 +181,47 @@ describe("renderStem 源头净化（ExamApp 边界）", () => {
     expect(html).toContain("题干");
     expect(html).not.toContain("onerror");
     expect(html).not.toContain("<script");
+  });
+
+  it("相同题干命中复合缓存，题干修改后自动失效并拉取新渲染（69-04）", async () => {
+    let callCount = 0;
+    const t: KernelTransport = {
+      async post(endpoint, body) {
+        if (endpoint === "/api/lute/md2html") {
+          callCount++;
+          const md = (body as { markdown?: string })?.markdown ?? "";
+          return { code: 0, msg: "", data: { html: `<p>rendered: ${md}</p>` } };
+        }
+        return { code: 0, msg: "", data: {} };
+      },
+    };
+    const app = new ExamApp({
+      client: new KernelApiClient(t),
+      storage: { async load() { return undefined; }, async save() {} },
+    });
+    app.kernelOnline = true;
+
+    const q = makeQuestion({ id: "q-test-01", type: "single", stem: "初始题干", options: ["A", "B"], answer: "A" });
+    const h1 = await app.renderStem(q);
+    expect(h1).toBe("<p>rendered: 初始题干</p>");
+    expect(callCount).toBe(1);
+
+    // 相同题干再次调用：命中缓存，调用次数不变
+    const h2 = await app.renderStem(q);
+    expect(h2).toBe("<p>rendered: 初始题干</p>");
+    expect(callCount).toBe(1);
+
+    // 题干内容被修改（新 stem）：由于复合键包含题干 hash，自动失效并重新向内核请求
+    const qModified = { ...q, stem: "已修改的新题干" };
+    const h3 = await app.renderStem(qModified);
+    expect(h3).toBe("<p>rendered: 已修改的新题干</p>");
+    expect(callCount).toBe(2);
+
+    // 调用 invalidateRenderCache(q.id) 定向清理后再次调用：重新请求
+    app.invalidateRenderCache(q.id);
+    const h4 = await app.renderStem(qModified);
+    expect(h4).toBe("<p>rendered: 已修改的新题干</p>");
+    expect(callCount).toBe(3);
   });
 });
 

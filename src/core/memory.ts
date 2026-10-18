@@ -101,8 +101,8 @@ export function questionToFlashCardMarkdown(q: Question): string {
   // 保持题干与选项中多行文本的列表缩进，防止多行内容被解析为列表外部段落
   const indentLines = (text: string, indent = "  ") => text.trim().replace(/\r?\n/g, `\n${indent}`);
   const stem = indentLines(q.stem, "  ");
-  let front = "";
-  let back = "";
+  let front: string;
+  let back: string;
 
   switch (q.type) {
     case "single": {

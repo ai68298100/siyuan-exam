@@ -44,6 +44,87 @@ function smartChannel(
 }
 
 describe("repairIssues", () => {
+  it("取消发生在开始前时不请求服务，原始拒绝队列完整保留", async () => {
+    let calls = 0;
+    const channel: AiChannel = { id: "openai", async chat() { calls++; return "[]"; } };
+    const issues: GenIssue[] = [
+      { index: 1, reason: "不可解析", raw: "原响应" },
+      { index: 2, reason: "待修复", raw: GOOD },
+    ];
+    const result = await repairIssues(channel, issues, "材料", { ...OPT, signal: { aborted: true } });
+    expect(calls).toBe(0);
+    expect(result.pending).toHaveLength(0);
+    expect(result.rejected).toEqual(issues);
+  });
+
+  it.each(["repair", "review"] as const)("%s 请求在途时取消，忽略迟到响应并保留可再次重试的原始题目", async (phase) => {
+    const signal = { aborted: false };
+    let notifyEntered: () => void;
+    let release: () => void;
+    const entered = new Promise<void>((resolve) => { notifyEntered = resolve; });
+    const blocked = new Promise<void>((resolve) => { release = resolve; });
+    // The invalid candidate exercises a cancellation during review after
+    // parsing has already produced provisional rejection feedback.
+    const scripted = smartChannel(JSON.stringify([JSON.parse(GOOD), { type: "unknown", stem: "不可用候选" }])).channel;
+    const channel: AiChannel = {
+      id: "openai",
+      async chat(messages) {
+        const isReview = messages[0]?.content.includes("审题人");
+        if ((phase === "review") === isReview) {
+          notifyEntered();
+          await blocked;
+        }
+        return scripted.chat(messages);
+      },
+    };
+    const issues: GenIssue[] = [{ index: 7, reason: "原始拒绝原因", raw: GOOD }];
+    const run = repairIssues(channel, issues, "材料", { ...OPT, signal });
+    await entered;
+    signal.aborted = true;
+    release();
+    const result = await run;
+    expect(result.pending).toHaveLength(0);
+    expect(result.rejected).toEqual(issues);
+    expect(result.duplicates).toBe(0);
+    const retry = await repairIssues(smartChannel(JSON.stringify([JSON.parse(GOOD)])).channel, result.rejected, "材料", OPT);
+    expect(retry.pending).toHaveLength(1);
+    expect(retry.rejected).toHaveLength(0);
+  });
+
+  it("保留已完成批次，取消中的批次和后续批次原样留在拒绝队列", async () => {
+    const signal = { aborted: false };
+    const issues: GenIssue[] = Array.from({ length: 11 }, (_, index) => ({
+      index: index + 1, reason: `原始原因 ${index + 1}`,
+      raw: JSON.stringify({ ...JSON.parse(GOOD), stem: `第 ${index + 1} 道独立题目，题干长度足够进行校验` }),
+    }));
+    const unparseable = { index: 12, reason: "原始不可解析响应", raw: "不是 JSON" };
+    issues.push(unparseable);
+    let calls = 0;
+    let notifyEntered: () => void;
+    let release: () => void;
+    const entered = new Promise<void>((resolve) => { notifyEntered = resolve; });
+    const blocked = new Promise<void>((resolve) => { release = resolve; });
+    const channel: AiChannel = {
+      id: "openai",
+      async chat() {
+        calls++;
+        if (calls === 1) return JSON.stringify(issues.slice(0, 5).map((issue) => JSON.parse(issue.raw)));
+        notifyEntered();
+        await blocked;
+        return JSON.stringify(issues.slice(5, 10).map((issue) => JSON.parse(issue.raw)));
+      },
+    };
+    const run = repairIssues(channel, issues, "材料", { ...OPT, quality: "economy", signal });
+    await entered;
+    signal.aborted = true;
+    release();
+    const result = await run;
+    expect(calls).toBe(2);
+    expect(result.pending.map((question) => question.stem)).toEqual(issues.slice(0, 5).map((issue) => JSON.parse(issue.raw).stem));
+    expect(result.rejected).toEqual(issues.slice(5));
+    expect(result.duplicates).toBe(0);
+  });
+
   it("可修复过滤：非 JSON raw 原样保留在 rejected", async () => {
     const { channel } = smartChannel(JSON.stringify([JSON.parse(GOOD)]));
     const issues: GenIssue[] = [

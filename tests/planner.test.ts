@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { daysUntil, planToday } from "../src/core/planner";
+import { daysUntil, planToday, remainingPlan } from "../src/core/planner";
 import { makeQuestion } from "../src/core/blockTemplate";
 import type { Question } from "../src/core/types";
 
@@ -100,5 +100,29 @@ describe("planToday", () => {
     // qs[0]=5×1.2(默认粗心)=6.0 > qs[1]=2×1.6=3.2 > qs[2]=1×1.2=1.2
     expect(p.queue.map((q) => q.id)).toEqual([qs[0].id, qs[1].id, qs[2].id]);
     expect(p.reason).toContain("顽固 1");
+  });
+});
+
+describe("remainingPlan", () => {
+  const base = planToday({
+    dailyGoal: 3,
+    all: qs,
+    wrongCounts: new Map(),
+    activeWrongIds: new Set<string>(),
+    rnd: () => 0,
+  }, NOW);
+
+  it("剔除今日已完成题目并保留原计划顺序", () => {
+    const done = new Set([base.queue[1]?.id]);
+    const remaining = remainingPlan(base, done);
+    expect(remaining.queue.map((q) => q.id)).toEqual([base.queue[0]?.id, base.queue[2]?.id]);
+    expect(remaining.mode).toBe(base.mode);
+    expect(remaining.reasonData).toEqual(base.reasonData);
+  });
+
+  it("没有完成记录或计划为空时复用原对象", () => {
+    expect(remainingPlan(base, new Set())).toBe(base);
+    const empty = { ...base, queue: [] };
+    expect(remainingPlan(empty, new Set([qs[0].id]))).toBe(empty);
   });
 });

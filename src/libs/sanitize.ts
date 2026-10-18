@@ -45,8 +45,8 @@ const RICH_ALLOWED_ATTR = [
 // CSS 属性值可以影响插件壳的布局和交互，即使没有执行脚本也可能把题面
 // 覆盖在导航/按钮上，或把必要内容隐藏。这里仅拦截高影响属性，保留颜色、
 // 字体、间距、表格等正常排版；活动 token 则仍然按下方的整段 style 策略处理。
-const CSS_LAYOUT_OR_INTERACTION_RE = /(?:^|;)\s*(?:-[a-z]+-)?(?:position|inset(?:-(?:block|inline)(?:-(?:start|end))?)?|top|right|bottom|left|z-index|pointer-events|visibility|opacity|display|transform(?:-[a-z-]+)?|translate|rotate|scale|clip(?:-path)?|mask(?:-[a-z-]+)?|filter|mix-blend-mode|isolation|contain|content|all)\s*:/i;
-const CSS_ACTIVE_TOKEN_RE = /(?:url\s*\(|expression\s*\(|behavior\s*:|-moz-binding\s*:|var\s*\(|\/\*|\\)/i;
+const CSS_LAYOUT_OR_INTERACTION_RE = /(?:^|;)\s*(?:-[a-z]+-)?(?:position|inset(?:-(?:block|inline)(?:-(?:start|end))?)?|top|right|bottom|left|z-index|pointer-events|visibility|opacity|display|transform(?:-[a-z-]+)?|translate|rotate|scale|clip(?:-path)?|mask(?:-[a-z-]+)?|filter|mix-blend-mode|isolation|contain|content|all|animation(?:-[a-z-]+)?|transition(?:-[a-z-]+)?|will-change)\s*:/i;
+const CSS_ACTIVE_TOKEN_RE = /(?:@import|url\s*\(|image-set\s*\(|expression\s*\(|behavior\s*:|-moz-binding\s*:|var\s*\(|attr\s*\(|env\s*\(|--[a-z0-9_-]+\s*:|\/\*|\\)/i;
 
 /**
  * 富文本净化：所有进入 {@html} / dialog innerHTML 的第三方/渲染产物（md2html、AI 输出、
@@ -66,17 +66,36 @@ export function sanitizeRichHtml(html: string): string {
     ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
   });
   // 73-02：题文中的远程图片不能在用户打开题目时静默外发请求。
-  // 保留相对路径、# 锚点和 data 等本地或已内嵌资源；blob 等其他协议仍由
+  // 保留相对路径、# 锚点和安全 data 等本地或已内嵌资源；blob 等其他协议仍由
   // DOMPurify 的 URI 策略处理。外链仍可作为 <a>
   // 由用户显式打开，且不改变其他富文本标签的渲染策略。
   if (typeof DOMParser === "undefined") return sanitized;
   const doc = new DOMParser().parseFromString(sanitized, "text/html");
   for (const image of Array.from(doc.querySelectorAll("img[src]"))) {
     const src = image.getAttribute("src")?.trim() ?? "";
-    if (/^(?:https?:|\/\/|\\\\)/i.test(src)) image.removeAttribute("src");
+    if (/^(?:https?:|\/\/|\\\\)/i.test(src)) {
+      image.removeAttribute("src");
+    } else if (src.startsWith("data:") && !/^data:image\/(?:png|jpeg|jpg|gif|webp|svg\+xml);base64,/i.test(src)) {
+      image.removeAttribute("src");
+    }
+  }
+  // <a> 标签加固：防范危险协议与自动注入 noopener noreferrer
+  for (const anchor of Array.from(doc.querySelectorAll("a[href]"))) {
+    const href = anchor.getAttribute("href")?.trim() ?? "";
+    if (/^(?:javascript|vbscript|file|blob|data):/i.test(href)) {
+      anchor.removeAttribute("href");
+    } else if (/^https?:\/\//i.test(href)) {
+      anchor.setAttribute("rel", "noopener noreferrer");
+    }
+  }
+  // <input> 标签加固：GFM 任务列表仅允许 checkbox，阻断伪装表单控件
+  for (const input of Array.from(doc.querySelectorAll("input"))) {
+    if (input.getAttribute("type") !== "checkbox") {
+      input.remove();
+    }
   }
   // CSS 的 url()/expression()/behavior 等能触发远程请求或协议注入；反斜杠、
-  // 注释和 var() 还可隐藏这些 token。保留普通 KaTeX 样式，风险 token 命中就
+  // 注释、var() 和 @import 还可隐藏或注入样式。保留普通 KaTeX 样式，风险 token 命中就
   // 移除整段 style，避免用不完整 CSS 解析器做错误放行。
   for (const element of Array.from(doc.querySelectorAll("[style]"))) {
     const style = element.getAttribute("style") ?? "";
