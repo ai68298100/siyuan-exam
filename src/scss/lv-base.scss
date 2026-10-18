@@ -932,27 +932,55 @@ input[type="range"] {
   .lv-exam-tab {
     --lv-accent: Highlight;
     --lv-accent-hi: Highlight;
+    --lv-accent-strong: Highlight;
     --lv-accent-soft: transparent;
+    --lv-accent-line: Highlight;
     --lv-accent-grad: Highlight;
     --lv-accent-deep: Highlight;
+    --lv-accent-contrast: HighlightText;
     --lv-on-accent: HighlightText;
     --lv-btn-primary-bg: Highlight;
+    --lv-btn-primary-shadow: none;
+    --lv-btn-primary-shadow-hover: none;
     --lv-canvas: Canvas;
     --lv-surface: Canvas;
     --lv-surface-2: Canvas;
+    --lv-surface-raised: Canvas;
+    --lv-surface-muted: Canvas;
     --lv-text: CanvasText;
     --lv-text-2: CanvasText;
     --lv-text-3: CanvasText;
     --lv-border: CanvasText;
+    --lv-border-strong: CanvasText;
     --lv-ctl-border: CanvasText;
     --lv-border-subtle: CanvasText;
     --lv-border-hover: Highlight;
+    --lv-line: CanvasText;
+    --lv-line-strong: CanvasText;
+    --lv-green: Highlight;
+    --lv-green-soft: transparent;
+    --lv-on-green: HighlightText;
+    --lv-red: CanvasText;
+    --lv-red-soft: transparent;
+    --lv-on-red: CanvasText;
+    --lv-amber: CanvasText;
+    --lv-amber-soft: transparent;
+    --lv-overlay: transparent;
     --lv-sh-1: none;
     --lv-sh-2: none;
     --lv-sh-card: none;
     --lv-sh-pop: none;
     --lv-inset-highlight: none;
     --lv-inset-subtle: none;
+
+    --b3-theme-primary: Highlight;
+    --b3-theme-primary-light: transparent;
+    --b3-theme-on-primary: HighlightText;
+    --b3-theme-background: Canvas;
+    --b3-theme-surface: Canvas;
+    --b3-theme-surface-light: Canvas;
+    --b3-theme-on-background: CanvasText;
+    --b3-border-color: CanvasText;
   }
 
   .lv-card,
@@ -967,6 +995,13 @@ input[type="range"] {
   .lv-drawer,
   .lv-strip,
   .lv-pill,
+  .lv-qrow,
+  .lv-tile,
+  .lv-stat-box,
+  .lv-empty,
+  .lv-skeleton,
+  .lv-error,
+  .lv-screen-head,
   .b3-button,
   .b3-text-field,
   .b3-select {
@@ -975,37 +1010,44 @@ input[type="range"] {
 
   .lv-palette,
   .lv-modal .lv-sheet,
-  .lv-drawer {
-    border: 2px solid CanvasText;
-    background: Canvas;
+  .lv-drawer,
+  .b3-dialog__container {
+    border: 2px solid CanvasText !important;
+    background: Canvas !important;
   }
 
   .lv-progress i,
   .lv-btn--primary,
   .b3-button--primary {
-    background: Highlight;
-    color: HighlightText;
-    border: 1px solid Highlight;
+    background: Highlight !important;
+    color: HighlightText !important;
+    border: 1px solid Highlight !important;
   }
 
   .lv-opt--sel,
   .lv-opt[aria-selected="true"] {
-    outline: 2px solid Highlight;
+    outline: 2px solid Highlight !important;
     outline-offset: 1px;
-    border-color: Highlight;
+    border-color: Highlight !important;
+    color: HighlightText !important;
+    background: Highlight !important;
   }
 
   .lv-seg button.on,
   .lv-seg button.active,
   .lv-tab-btn.active,
-  .lv-tab-btn[aria-selected="true"] {
-    outline: 2px solid Highlight;
-    background: Highlight;
-    color: HighlightText;
+  .lv-tab-btn[aria-selected="true"],
+  [aria-selected="true"] {
+    outline: 2px solid Highlight !important;
+    outline-offset: 1px;
+    background: Highlight !important;
+    color: HighlightText !important;
   }
 
-  :where(button, input, select, textarea, [tabindex="0"]):focus-visible {
-    outline: 2px solid Highlight;
+  :where(button, a, input, select, textarea, [tabindex="0"]):focus-visible,
+  :focus-visible {
+    outline: 2px solid Highlight !important;
+    outline-color: Highlight !important;
     outline-offset: 2px;
   }
 
@@ -1022,7 +1064,11 @@ input[type="range"] {
   .lv-tag--wrong,
   .lv-tag--amber,
   .lv-opt-idx,
-  .lv-diff-tag {
+  .lv-diff-tag,
+  .lv-meter i,
+  input[type="checkbox"].b3-switch,
+  input[type="checkbox"].b3-switch::after,
+  svg {
     forced-color-adjust: none;
   }
 }
@@ -1035,6 +1081,7 @@ input[type="range"] {
     --lv-border-subtle: color-mix(in srgb, var(--lv-text) 35%, transparent);
     --lv-text-2: var(--lv-text);
     --lv-text-3: var(--lv-text);
+    --b3-border-color: var(--b3-theme-on-background);
   }
 
   .lv-card,
@@ -1060,12 +1107,15 @@ input[type="range"] {
 
   .lv-seg button.on,
   .lv-seg button.active,
-  .lv-tab-btn.active {
+  .lv-tab-btn.active,
+  .lv-tab-btn[aria-selected="true"] {
     outline: 2px solid var(--b3-theme-primary);
+    outline-offset: 1px;
     font-weight: 700;
   }
 
-  :where(button, input, select, textarea, [tabindex="0"]):focus-visible {
+  :where(button, a, input, select, textarea, [tabindex="0"]):focus-visible,
+  :focus-visible {
     outline: 3px solid var(--b3-theme-primary);
     outline-offset: 2px;
   }

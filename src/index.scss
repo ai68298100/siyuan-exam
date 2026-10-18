@@ -113,3 +113,67 @@
   padding: var(--lv-space-2);
   overflow: auto;
 }
+
+// ── body 级原生弹窗高对比度与无障碍加固 (Epoch 5) ──────────────
+@media (forced-colors: active) {
+  .b3-dialog:has(.b3-dialog__content),
+  .b3-dialog:has(.b3-dialog__action),
+  .b3-dialog {
+    .b3-dialog__container {
+      border: 2px solid CanvasText !important;
+      background: Canvas !important;
+      color: CanvasText !important;
+      box-shadow: none !important;
+    }
+
+    .b3-dialog__header {
+      background: Canvas !important;
+      color: CanvasText !important;
+      border-bottom: 1px solid CanvasText !important;
+    }
+
+    .b3-dialog__content {
+      background: Canvas !important;
+      color: CanvasText !important;
+    }
+
+    .b3-dialog__action {
+      background: Canvas !important;
+      color: CanvasText !important;
+      border-top: 1px solid CanvasText !important;
+    }
+
+    .b3-button--primary,
+    #confirmDialogConfirmBtn {
+      background: Highlight !important;
+      color: HighlightText !important;
+      border: 1px solid Highlight !important;
+    }
+
+    :is(.b3-button, .b3-text-field, .b3-select) {
+      border: 1px solid CanvasText;
+    }
+
+    :where(button, a, input, select, textarea, [tabindex="0"]):focus-visible,
+    :focus-visible {
+      outline: 2px solid Highlight !important;
+      outline-color: Highlight !important;
+      outline-offset: 2px;
+    }
+  }
+}
+
+@media (prefers-contrast: more) {
+  .b3-dialog:has(.b3-dialog__content),
+  .b3-dialog:has(.b3-dialog__action),
+  .b3-dialog {
+    .b3-dialog__container {
+      border: 2px solid var(--b3-theme-on-background) !important;
+    }
+
+    .b3-dialog__header,
+    .b3-dialog__action {
+      border-color: var(--b3-theme-on-background) !important;
+    }
+  }
+}
