@@ -59,6 +59,14 @@ export interface Question {
         altUnits?: { unit: string; factor: number }[];
       }
     | { v: 1; kind: "multiBlank"; blanks: { answers: string[]; caseSensitive?: boolean }[] };
+  /** 55-05 主观采分点规格（简答/论述题自评依据）；缺省 = 无 rubric，按纯展示题处理 */
+  rubric?: {
+    v: 1;
+    kind: "rubric";
+    fullScore: number;
+    criteria: { id: string; label: string; weight: number; example?: string; levels?: { key: "full" | "partial" | "none"; label: string; ratio: number }[] }[];
+    revision?: number;
+  };
   confidence?: number; // AI 二遍核验置信度 0-1（ Quanta 范式：≥0.90 可信）
   fav?: boolean; // 收藏（exam-fav="1"，docs/02 §2.4）
   group?: string; // 共用题干组 ID（材料与子题共享，cbt 引擎）

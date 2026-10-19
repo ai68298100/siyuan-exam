@@ -326,6 +326,25 @@ describe("ExamApp 集成（mock 内核 + 内存存储）", () => {
     expect(app.wrongItems().map((w) => w.qid)).toContain("q1");
   });
 
+  it("39-05：消灭后再手动 mastered，再错按约定恢复在册（即使错次在新一轮重计为 1）", async () => {
+    const { app } = await setup();
+    // 错一次，连续对两次 → 消灭
+    app.recordAttempt({ qid: "q1", kind: "practice", mode: "single", verdict: "wrong", myAnswer: "A", sessionId: "s" });
+    app.recordAttempt({ qid: "q1", kind: "practice", mode: "wrong", verdict: "correct", myAnswer: "B", sessionId: "s" });
+    app.recordAttempt({ qid: "q1", kind: "practice", mode: "wrong", verdict: "correct", myAnswer: "B", sessionId: "s" });
+    expect(app.derived().wrongbook.get("q1")!.status).toBe("eliminated");
+
+    // 手动处置为 mastered
+    await app.setWrongStatus("q1", "mastered");
+    expect(app.wrongItems().map((w) => w.qid)).not.toContain("q1");
+
+    // 后来又做错了一次：新一轮 wrongCount 在 replayer 重置为 1
+    // 旧实现以 w.wrongCount > o.wrongCount 判断失效，导致 1 > 1 为 false，题目无法重回错题池！
+    // 39-05 修复后以 lastWrongAt > at 判断失效，题目如期恢复！
+    app.recordAttempt({ qid: "q1", kind: "practice", mode: "single", verdict: "wrong", myAnswer: "C", sessionId: "s" });
+    expect(app.wrongItems().map((w) => w.qid)).toContain("q1");
+  });
+
   it("流水→错题：recordAttempt 后 wrongItems 可见，重练消灭", async () => {
     const { app } = await setup();
     app.recordAttempt({

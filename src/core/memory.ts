@@ -2,8 +2,11 @@
 // 记忆服务（v0.2）：思源内核 riff 的领域封装
 // - 卡包命名空间隔离：小驴考试/<题库名>（与内置闪卡共存，docs/03 #1）
 // - 错题转卡：blockIds → addRiffCards；导入/转卡去重由内核按块幂等
-// - 自评→FSRS rating 映射：四级自评（墨墨式）→ 0=Again 1=Hard 2=Good 3=Easy
-//   （rating 数值语义待真机复核——TODO 27 组真机冒烟项）
+// - 自评→FSRS rating 映射：四级自评（墨墨式）→ riff.Rating
+//   （39-01 定案：rating 取值经上游源码核对——github.com/siyuan-note/riff store.go
+//    `Again Rating = iota + 1` 即 Again=1/Hard=2/Good=3/Easy=4，与 go-fsrs 一致；
+//    此前实现的 0–3 整体偏移一位，且 0 在 riff 中并不存在（go-fsrs 的 0 是 Manual，
+//    riff 未使用），会使 fsrs_store.Review 以不存在的键索引调度表。非法值一律不发。）
 // 纯逻辑（映射/挑选）与 IO（riff 调用）分离，测试覆盖纯逻辑
 // ============================================================
 import type { Question } from "./types";
@@ -13,25 +16,29 @@ export const DECK_PREFIX = "小驴考试/";
 
 export const deckNameForBank = (bankName: string) => DECK_PREFIX + bankName;
 
-/** 四级自评 → riff rating（1不会 2模糊 3会 4熟知） */
-export function selfRatingToRiffRating(selfRating: number): 0 | 1 | 2 | 3 {
+/** riff 四档评级（与 github.com/siyuan-note/riff 的 Rating 常量一一对应）
+ *  Again=1 完全不会 / Hard=2 有点难 / Good=3 一般 / Easy=4 很容易 */
+export type RiffRating = 1 | 2 | 3 | 4;
+
+/** 四级自评 → riff rating（1不会 2模糊 3会 4熟知，与 riff 四档同序同值） */
+export function selfRatingToRiffRating(selfRating: number): RiffRating | null {
   switch (selfRating) {
     case 1:
-      return 0; // Again
+      return 1; // Again
     case 2:
-      return 1; // Hard
+      return 2; // Hard
     case 3:
-      return 2; // Good
+      return 3; // Good
     case 4:
-      return 3; // Easy
+      return 4; // Easy
     default:
-      return 0;
+      return null; // 非法值不映射，由调用方跳过发送（39-01：非法值不发送）
   }
 }
 
-/** 二元自评（记住/忘了）→ rating */
-export function binaryToRiffRating(remembered: boolean): 0 | 1 | 2 | 3 {
-  return remembered ? 2 : 0;
+/** 二元自评（记住/忘了）→ rating：记住=Good(3)、忘了=Again(1) */
+export function binaryToRiffRating(remembered: boolean): RiffRating {
+  return remembered ? 3 : 1;
 }
 
 /** 举一反三：完整考点优先 → 同章节（kp 首段）→ 任意；排除已做 */

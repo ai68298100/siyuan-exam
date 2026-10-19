@@ -13,4 +13,4 @@
 
 ## 后果
 - 对用户只讲一个词"掌握度"；错题本=待消灭清单，闪卡=长期记忆。
-- riff 端点未文档化 → 收口在 kernel/client.ts 单文件，rating 数值语义（0-3）待真机复核（27 组）。
+- riff 端点未文档化 → 收口在 kernel/client.ts 单文件。**39-01 定案（2026-10-19）**：rating 数值语义经上游源码核对确认，`github.com/siyuan-note/riff` 定义 `Again=1/Hard=2/Good=3/Easy=4`（`iota + 1`），与 `go-fsrs` 同值；既有实现曾用 0–3 偏移值（其中 0 在 riff 中不存在），已修正为 1–4，非法值不再发送。

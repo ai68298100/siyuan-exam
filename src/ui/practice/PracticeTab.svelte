@@ -14,6 +14,12 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     import { makeQuestion } from "../../core/blockTemplate";
     import { normalizeAnswer, questionHash } from "../../core/answer";
     import { specOf, splitBlanks, joinBlanks } from "../../core/structuredAnswer";
+    import {
+      parseRubricFromText, validateRubric, scoreRubric,
+      createRubricAssessmentSnapshot, isRubricDrifted, exportRubricBreakdownCsv,
+      DEFAULT_RUBRIC_LEVELS, type RubricSpec, type CriterionRating, type CriterionAssessment,
+      type RubricAssessmentSnapshot,
+    } from "../../core/rubric";
     import { startTrail, recordEdit, trailValue, trailChanged, withLastEditReason, type AnswerTrail } from "../../core/answerTrail";
     import { helpFromExposure } from "../../core/exposure";
     import { abandonedExposureInputs } from "../../core/exposure";
@@ -34,7 +40,10 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       type OrphanKind,
     } from "../../core/bankHealth";
     import { planBatchEdit, invertPlan, describeChange } from "../../core/batchEdit";
-    import { buildSectionTree, questionInSection } from "../../core/sectionTree";
+    import { buildSectionTree } from "../../core/sectionTree";
+    import { matchesBrowseFilter } from "../../core/browseFilter";
+    import { queueKindOf, queueSemantics, writeBackReceipt } from "../../core/queueIdentity";
+    import { RatingGuard, ratingAttemptKey, type RatingOutcomeView } from "../../core/ratingOutcome";
     import { upsertView, viewBankMismatch } from "@/core/smartViews";
     import { avgMsByType, estimatePlanMinutes } from "@/core/timeBudget";
     import { kpAudit, planKpMerge, planEmptyKpFill } from "@/core/kpGovernance";
@@ -136,6 +145,10 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     let reciteSaving = $state(false);
     let reciteError = $state("");
     let reciteRatings = $state<number[]>([]);
+    /** 39-03：本次背诵评级的结果状态（未转卡/已写回/待确认/失败/离线未写回） */
+    let reciteOutcome = $state<RatingOutcomeView | null>(null);
+    /** 39-03：防双击与重复提交（同会话同题同评级只写一次；失败后放行重试） */
+    const reciteGuard = new RatingGuard();
 
     // 会话态
     let session = $state<any>(null);
@@ -250,6 +263,8 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       totalTimeS?: number;
       avgTimeS?: number;
     }>(null);
+    /** 39-02：本次结算的会话模式（finishSession 时冻结，供队列身份/写回回执标注） */
+    let settleMode = $state("");
     /** 已存错因回显（app.loadWrongReason；答错时载入，选择后即时高亮） */
     let savedReason = $state<string | undefined>(undefined);
     $effect(() => {
@@ -285,6 +300,88 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
 
     /** 答前置信自评（U12 最小）：随本次 attempt 落流水；提交后不可改写最初记录 */
     let confidenceSel = $state<"sure" | "fuzzy" | "guess" | "">("");
+
+    // ---------- 55-05 主观题逐采分点自评 ----------
+    /** 当前题的采分点自评选择（criterionId → 等级）；切题/提交后重置 */
+    let rubricRatings = $state<Record<string, CriterionRating>>({});
+    /** 当前题的采分点自评依据（可选备注，进 breakdown 不回写分数） */
+    let rubricNotes = $state<Record<string, string>>({});
+    /** 自评存档（qid → 冻结快照）。自评是对作答的自我判断，不是作答事件本身，
+     *  因此不写进 attempt 流水（避免污染正确率/错题派生），改用 aux 键持久化。 */
+    let rubricArchive = $state<Record<string, RubricAssessmentSnapshot>>({});
+    /** 自评已记录回执（当前题最近一次写入成功） */
+    let rubricSaved = $state(false);
+    let rubricSaveBusy = $state(false);
+    /** 当前题是否有 rubric 规格且在反馈态 */
+    const currentRubric = $derived(session?.current?.rubric as RubricSpec | undefined);
+    /** 当前题的自评计分（未评项不计入分母） */
+    const rubricScore = $derived.by(() => {
+      const q = session?.current;
+      if (!q?.rubric) return null;
+      const assessments: CriterionAssessment[] = Object.entries(rubricRatings).map(([criterionId, rating]) => ({
+        criterionId,
+        rating,
+        note: rubricNotes[criterionId] || undefined,
+      }));
+      return scoreRubric(q.rubric as RubricSpec, assessments, q.score);
+    });
+    /** 当前题已记录的自评快照（从存档读回，记录后不随 UI 草稿变化） */
+    const recordedRubricSnapshot = $derived.by(() => {
+      const q = session?.current;
+      if (!q) return null;
+      return rubricArchive[q.id] ?? null;
+    });
+    /** 作者改 rubric 后，历史自评分如实标注漂移而非静默重算 */
+    const currentRubricDrifted = $derived(
+      currentRubric && recordedRubricSnapshot ? isRubricDrifted(currentRubric as RubricSpec, recordedRubricSnapshot) : false,
+    );
+
+    // ---------- 55-05 自评存档读写（aux 键 rubric/assessments；不污染 attempt 流水与统计） ----------
+    const RUBRIC_ARCHIVE_KEY = "rubric/assessments";
+    async function loadRubricArchive() {
+      try {
+        const v = await app.loadAux<Record<string, RubricAssessmentSnapshot>>(RUBRIC_ARCHIVE_KEY);
+        rubricArchive = v && typeof v === "object" ? v : {};
+      } catch {
+        rubricArchive = {}; // 读取失败按空存档处理（不冒充已有自评）
+      }
+    }
+    /** 记录当前题的自评（冻结快照；未评完也可记录，快照如实标注 unratedCount） */
+    async function recordRubricAssessment() {
+      const q = session?.current;
+      if (!q?.rubric || !rubricScore || rubricSaveBusy) return;
+      rubricSaveBusy = true;
+      try {
+        const snap = createRubricAssessmentSnapshot(rubricScore, q.rubric as RubricSpec);
+        rubricArchive = { ...rubricArchive, [q.id]: snap };
+        await app.saveAux(RUBRIC_ARCHIVE_KEY, rubricArchive);
+        rubricSaved = true;
+        showMessage(
+          snap.finalScore != null
+            ? t("rubric.recordedFinal").replace("{score}", String(snap.finalScore)).replace("{full}", String(snap.fullScore))
+            : t("rubric.recordedPartial").replace("{n}", String(snap.unratedCount)),
+          2600,
+          "info",
+        );
+      } catch (e) {
+        showMessage(t("rubric.recordFailed").replace("{message}", String(e instanceof Error ? e.message : e)), 3200, "error");
+      } finally {
+        rubricSaveBusy = false;
+      }
+    }
+    function exportCurrentRubricCsv() {
+      if (!rubricScore) return;
+      const blob = new Blob([exportRubricBreakdownCsv(rubricScore)], { type: "text/csv;charset=utf-8" });
+      const a = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      a.href = url;
+      a.download = `小驴考试（内测版）-主观题自评-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.hidden = true;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+      showMessage(t("rubric.exportReady"), 2600, "info");
+    }
 
     // 题库健康（TODO 2.2）：重复聚类 + 缺字段清单（纯函数，浏览视图按需展开）
     let healthOpen = $state(false);
@@ -1050,10 +1147,11 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
           await loadAiTaskLog();
           void retryCheckinPending().catch((e: unknown) => showMessage(String(e instanceof Error ? e.message : e), 3600, "error")); // 48-03：上次未写入的打卡事件原引用补写
           void loadCheckinStreak(); // 48-04 lite：桥开启时读连续天数（只读投影）
+          void loadRubricArchive(); // 55-05：读回已记录的主观题自评存档
           // 45-06：恢复未提交的录题草稿（切视图/重载不丢输入）
           try {
             const d = await app.loadAux<
-              | { type: string; stem: string; options: string[]; answer: string; analysis: string; kp: string; source: string; group: string; specOpen?: boolean; specUnit?: string; specAbsTol?: string; specRelPct?: string; specAltUnits?: string }
+              | { type: string; stem: string; options: string[]; answer: string; analysis: string; kp: string; source: string; group: string; specOpen?: boolean; specUnit?: string; specAbsTol?: string; specRelPct?: string; specAltUnits?: string; rubricOpen?: boolean; rubricText?: string }
               | undefined>("draft/manual");
             if (d?.stem?.trim()) {
               mType = (d.type as typeof mType) ?? "single";
@@ -1061,6 +1159,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
               mAnswer = d.answer ?? ""; mAnalysis = d.analysis ?? "";
               mKp = d.kp ?? ""; mSource = d.source ?? ""; mGroup = d.group ?? "";
               mSpecOpen = d.specOpen ?? false; mSpecUnit = d.specUnit ?? ""; mSpecAbsTol = d.specAbsTol ?? ""; mSpecRelPct = d.specRelPct ?? ""; mSpecAltUnits = d.specAltUnits ?? "";
+              mRubricOpen = d.rubricOpen ?? false; mRubricText = d.rubricText ?? "";
               draftRestored = true;
             }
           } catch { /* 草稿读取失败静默 */ }
@@ -2206,10 +2305,16 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       if (reciteSaving) return;
       const q = reciteQueue[reciteCursor];
       if (!q) return;
+      // 39-03：防双击与重复提交——同会话同题同评级只允许写一次
+      const attemptKey = ratingAttemptKey(reciteSessionId, q.id, rating);
+      if (!reciteGuard.tryAcquire(attemptKey)) return;
       reciteSaving = true;
       reciteError = "";
       try {
-        await app.reciteAnswer(bankName, q as Question & { blockId?: string }, rating, reciteSessionId, 0);
+        // 39-03：返回评级结果状态（未转卡/已写回/待确认/失败/离线），不再静默吞失败
+        const outcome = await app.reciteAnswer(bankName, q as Question & { blockId?: string }, rating, reciteSessionId, 0);
+        reciteGuard.settle(attemptKey, outcome.terminal);
+        reciteOutcome = outcome;
         reciteRatings.push(rating);
         reciteHint = 0;
         if (reciteCursor < reciteQueue.length - 1) {
@@ -2218,7 +2323,9 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
           reciteDone = true;
         }
       } catch (e) {
+        reciteGuard.settle(attemptKey, false); // 失败：允许重试
         reciteError = String(e instanceof Error ? e.message : e);
+        reciteOutcome = null;
       } finally {
         reciteSaving = false;
       }
@@ -2226,6 +2333,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
 
     function exitRecite() {
       view = "entry"; reciteQueue = []; reciteRevealed = false; reciteDone = false; reciteHint = 0; reciteRatings = [];
+      reciteGuard.clear(); reciteOutcome = null;
     }
 
     /** 错题册导出：Markdown 文档写入题库"导出"区（支持考点/错因/时间过滤） */
@@ -2994,6 +3102,13 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       draftLive = q && !isChoiceQuestion(q) ? (saved?.myAnswer ?? session.getDraft(q.id)) : "";
       confidenceSel = ""; materialExpanded = false; answerStart = Date.now();
       hideOptions = false; recallDraft = ""; leakPending = null;
+      resetRubricDraft(); // 55-05：切题/恢复不沿用上一题的自评选择
+    }
+    /** 55-05：重置当前题的自评 UI 草稿（选择与备注），不动已记录存档 */
+    function resetRubricDraft() {
+      rubricRatings = {};
+      rubricNotes = {};
+      rubricSaved = false;
     }
     function submitAnswer() {
       clearReciteSubmitTimer();
@@ -3015,7 +3130,8 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       app.recordAttempt({
         qid: q.id, kind: "practice", mode: session.state.mode,
         verdict: g.verdict, myAnswer: g.myAnswer, sessionId: session.id,
-        queue: session.state.mode === "wrong" ? "wrong" : "normal", timeMs,
+        queue: queueKindOf(session.state.mode), // 39-02：cram/wrong 不再被误记为 normal
+        timeMs,
         qVersion: createQuestionVersionSnapshot(q),
         delayedReview: r.isDelayedReview || undefined,
         confidence: confidenceSel || undefined,   // U12：答前快照随 attempt；未选=如实缺省
@@ -3076,6 +3192,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     async function finishSession() {
       clearReciteSubmitTimer();
       sessionDone = { ...session.finish(), ...session.breakdown() };
+      settleMode = session.state.mode; // 39-02：冻结本次队列身份，供结算回执如实标注
       // 用时统计（考试 prep 时间管理关键指标）
       const times = session.answered.map((a) => a.timeMs).filter((t) => t > 0);
       sessionDone.totalTimeS = Math.round(times.reduce((s, t) => s + t, 0) / 1000);
@@ -3202,6 +3319,10 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     let mSpecAbsTol = $state("");
     let mSpecRelPct = $state("");
     let mSpecAltUnits = $state("");
+    /** 55-05 作者设置：主观采分点（简答题显示；每行 `描述 | 权重 | 参考要点`） */
+    let mRubricOpen = $state(false);
+    let mRubricText = $state("");
+    let mRubricRevision = $state(1);
     /** 43-01 题目作者生命周期状态 (draft/review/published) */
     let mStatus = $state<QuestionLifecycleStatus>("published");
     let mSaving = $state(false);
@@ -3263,6 +3384,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         type: mType, stem: mStem, options: [...mOptions], answer: mAnswer,
         analysis: mAnalysis, kp: mKp, source: mSource, group: mGroup, savedAt: Date.now(),
         specOpen: mSpecOpen, specUnit: mSpecUnit, specAbsTol: mSpecAbsTol, specRelPct: mSpecRelPct, specAltUnits: mSpecAltUnits,
+        rubricOpen: mRubricOpen, rubricText: mRubricText,
       };
       if (draftTimer) clearTimeout(draftTimer);
       if (!snap.stem.trim() && !snap.answer.trim() && !snap.analysis.trim()) return; // 空草稿不写
@@ -3290,15 +3412,47 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       return spec;
     }
 
+    /** 55-05 作者设置：表单文本 → rubric 规格（每行一个采分点）。
+     *  文本非空但解析失败 → null，由调用方如实报错而非静默丢弃作者输入。 */
+    function buildAuthorRubric(): RubricSpec | null | undefined {
+      if (!mRubricOpen) return undefined;
+      if (!mRubricText.trim()) return undefined; // 未填写 = 无 rubric（纯展示题）
+      return parseRubricFromText(mRubricText, 0, mRubricRevision);
+    }
+    /** 55-05：录题时的采分点预览（解析失败为 null，界面如实提示而非假装成功） */
+    const authorRubricPreview = $derived(
+      mType === "short" && mRubricOpen && mRubricText.trim() ? parseRubricFromText(mRubricText, 0, mRubricRevision) : null,
+    );
+
     async function saveManual(targetStatus?: QuestionLifecycleStatus) {
       const statusToSave = targetStatus ?? mStatus;
       if (mSaving || !mStem.trim()) return;
       if (statusToSave === "published" && !mAnswer.trim() && mType !== "short") return;
       const targetBankId = activeBankId;
-      const draftSignature = () => JSON.stringify([mType, mStem, mOptions, mAnswer, mAnalysis, mKp, mSource, mGroup, mStatus, mSpecOpen, mSpecUnit, mSpecAbsTol, mSpecRelPct, mSpecAltUnits]);
+      const draftSignature = () => JSON.stringify([mType, mStem, mOptions, mAnswer, mAnalysis, mKp, mSource, mGroup, mStatus, mSpecOpen, mSpecUnit, mSpecAbsTol, mSpecRelPct, mSpecAltUnits, mRubricOpen, mRubricText]);
       const signature = draftSignature();
       mSaving = true; mSaved = ""; errorMsg = ""; clearManualValidation();
       try {
+        // 55-05：rubric 仅在简答题开放；文本非空但解析失败 → 如实报错，不静默丢弃作者输入
+        const authorRubric = mType === "short" ? buildAuthorRubric() : undefined;
+        if (authorRubric === null) {
+          manualErrorMsg = t("manual.rubricParseFailed");
+          manualErrorField = "rubric";
+          await tick();
+          document.querySelector<HTMLElement>(`[data-manual-field="rubric"]`)?.focus();
+          return;
+        }
+        if (authorRubric) {
+          const issues = validateRubric(authorRubric);
+          const blocking = issues.filter((x) => !x.includes("满分必须为正数")); // fullScore=0 由 q.score 兜底
+          if (blocking.length) {
+            manualErrorMsg = blocking.join("；");
+            manualErrorField = "rubric";
+            await tick();
+            document.querySelector<HTMLElement>(`[data-manual-field="rubric"]`)?.focus();
+            return;
+          }
+        }
         const q = makeQuestion({
           type: mType, stem: mStem,
           options: mType === "single" || mType === "multiple" ? mOptions.map((o) => o.trim()) : [],
@@ -3306,6 +3460,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
           group: mGroup.trim() || undefined,
           status: statusToSave,
           ...(mType === "fill" && mSpecOpen ? { answerSpec: buildAuthorSpec() } : {}),
+          ...(authorRubric ? { rubric: authorRubric } : {}),
         });
         if (statusToSave === "published") {
           const guard = checkPublishGuard(q);
@@ -3322,6 +3477,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         if (signature === draftSignature()) {
           mStem = ""; mOptions = ["", ""]; mAnswer = ""; mAnalysis = "";
           mSpecOpen = false; mSpecUnit = ""; mSpecAbsTol = ""; mSpecRelPct = ""; mSpecAltUnits = "";
+          mRubricOpen = false; mRubricText = ""; mRubricRevision = 1;
           mStatus = "published";
           draftRestored = false;
           void app.saveAux(MANUAL_DRAFT_KEY, null).catch(() => undefined); // 45-06：提交成功清理草稿
@@ -4240,30 +4396,22 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
 
       const kw = searchDebounced.trim().toLowerCase();
 
-      return base.filter((q) => {
-        if (sectionSel && !questionInSection(q, sectionSel)) return false;
-        if (filterType && q.type !== filterType) return false;
-        if (filterStatus && getQuestionLifecycle(q) !== filterStatus) return false;
-        if (filterDispute && !isQuestionDisputed(q)) return false;
-        if (targetIds && !targetIds.has(q.id)) return false;
-        if (filterSource === "@@none") {
-          if ((q.source ?? "").trim()) return false;
-        } else if (filterSource) {
-          if ((q.source ?? "").trim() !== filterSource) return false;
-        }
-        if (filterWrong && ((wb?.get(q.id)?.wrongCount ?? 0) <= 0)) return false;
-        if (filterHelp && (!helped || !helped.has(q.id))) return false;
-        if (filterDays && (!recent || !recent.has(q.id))) return false;
-        if (kw) {
-          const match = q.id.toLowerCase().includes(kw) ||
-            q.stem.toLowerCase().includes(kw) ||
-            q.options.some((o) => o.toLowerCase().includes(kw)) ||
-            (q.analysis ?? "").toLowerCase().includes(kw) ||
-            (q.kp ?? "").toLowerCase().includes(kw); // 51-02：考点可检索（治理面板点击直达）
-          if (!match) return false;
-        }
-        return true;
-      });
+      // 过滤谓词已抽到 core（可单测）；此处只负责把响应式状态装配成纯输入
+      return base.filter((q) => matchesBrowseFilter(q, {
+        section: sectionSel,
+        type: filterType,
+        status: filterStatus,
+        disputedOnly: filterDispute,
+        targetIds,
+        source: filterSource,
+        wrongOnly: filterWrong,
+        helpedOnly: filterHelp,
+        recentOnly: filterDays > 0,
+        keyword: kw,
+        wrongCountOf: (id) => wb?.get(id)?.wrongCount ?? 0,
+        helped,
+        recent,
+      }));
     });
     const shownQuestions = $derived(filteredQuestions.slice(0, browseLimit));
     const hasMore = $derived(filteredQuestions.length > browseLimit);
@@ -5413,6 +5561,13 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
               <span class="lv-chip num">{t("session.avgTime")} {sessionDone.avgTimeS}s</span>
             </div>
           {/if}
+          <!-- 39-02：队列身份与写回回执——明确本次是否调用内核 riff 调度，避免「普通练习伪装成内核复习」 -->
+          <div class="lv-row" style="justify-content:center;margin:6px 0 2px" role="status">
+            <span class="lv-chip num" class:lv-chip--amb={queueSemantics(settleMode).kind === "cram"}
+              title={writeBackReceipt(settleMode)}>
+              <Icon name="info" size={11} /> {queueSemantics(settleMode).label} · {t("session.noWriteBack")}
+            </span>
+          </div>
           {#if kpBreakdown.length > 1}
             <!-- 知识点分布：本次会话按考点聚合对错，帮助即时识别薄弱考点 -->
             <div class="lv-row" style="flex-wrap:wrap;justify-content:center;gap:var(--lv-space-1);margin:8px 0 2px">
@@ -5725,6 +5880,54 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
                 </div>
               </div>
               {#if q.type === "short"}<div class="lv-analysis"><b>{t("session.referenceAnswer")}</b><div>{q.answer}</div></div>{/if}
+              {#if q.type === "short" && currentRubric && rubricScore}
+                <!-- 55-05 主观题逐采分点自评：未评项不计入分母、不折成 0；全部评完才给最终自评分 -->
+                <div class="lv-card" style="margin:10px 0;padding:var(--lv-space-3) var(--lv-space-4)">
+                  <div class="lv-row" style="justify-content:space-between;align-items:center;margin:0 0 8px;flex-wrap:wrap;gap:var(--lv-space-2)">
+                    <b style="font-size:var(--lv-font-size-body-compact)"><Icon name="target" size={13} /> {t("rubric.title")}</b>
+                    <span class="lv-muted" style="font-size:var(--lv-font-size-caption)">{t("rubric.notOfficial")}</span>
+                  </div>
+                  {#if currentRubricDrifted}
+                    <!-- 作者改 rubric 后历史自评分如实标注漂移，不静默重算 -->
+                    <p class="lv-chip lv-chip--amb num" role="status" style="margin:0 0 8px"><Icon name="pencil" size={11} /> {t("rubric.driftNote")}</p>
+                  {/if}
+                  {#each currentRubric.criteria as c (c.id)}
+                    <div class="lv-row" style="margin:6px 0;align-items:flex-start;flex-wrap:wrap;gap:var(--lv-space-2)">
+                      <span class="lv-chip num" style="flex:0 0 auto">{Math.round(c.weight * 100)}%</span>
+                      <span style="flex:1;min-width:140px;font-size:var(--lv-font-size-sm)">{c.label}{#if c.example}<span class="lv-muted"> · {c.example}</span>{/if}</span>
+                      <div class="lv-row" style="margin:0;gap:var(--lv-space-1)">
+                        {#each DEFAULT_RUBRIC_LEVELS as lvl (lvl.key)}
+                          <button type="button" class="lv-chip" class:acc={rubricRatings[c.id] === lvl.key}
+                            aria-pressed={rubricRatings[c.id] === lvl.key}
+                            onclick={() => { rubricRatings = { ...rubricRatings, [c.id]: lvl.key }; rubricSaved = false; }}>
+                            {t("rubric.level." + lvl.key)}
+                          </button>
+                        {/each}
+                        <button type="button" class="lv-chip" class:amb={rubricRatings[c.id] === "unknown"}
+                          aria-pressed={rubricRatings[c.id] === "unknown"}
+                          title={t("rubric.unknownTip")}
+                          onclick={() => { rubricRatings = { ...rubricRatings, [c.id]: "unknown" }; rubricSaved = false; }}>
+                          {t("rubric.level.unknown")}
+                        </button>
+                      </div>
+                    </div>
+                  {/each}
+                  <div class="lv-row" style="margin:8px 0 0;align-items:center;gap:var(--lv-space-2);flex-wrap:wrap">
+                    {#if rubricScore.complete}
+                      <span class="lv-chip lv-chip--acc num" style="font-weight:700">{t("rubric.finalScore").replace("{s}", String(rubricScore.finalScore)).replace("{f}", String(rubricScore.fullScore))}</span>
+                    {:else}
+                      <span class="lv-chip lv-chip--amb num">{t("rubric.partialScore").replace("{e}", String(rubricScore.earned)).replace("{m}", String(rubricScore.ratedMax)).replace("{n}", String(rubricScore.unratedCount))}</span>
+                    {/if}
+                    <button type="button" class="lv-btn sm lv-btn--ghost" disabled={rubricSaveBusy || rubricSaved} onclick={() => void recordRubricAssessment()} aria-busy={rubricSaveBusy}>
+                      <Icon name="save" size={12} /> {rubricSaveBusy ? "…" : rubricSaved ? t("rubric.recorded") : t("rubric.record")}
+                    </button>
+                    <button type="button" class="lv-btn sm lv-btn--ghost" onclick={exportCurrentRubricCsv}><Icon name="export" size={12} /> CSV</button>
+                    {#if recordedRubricSnapshot && !currentRubricDrifted}
+                      <span class="lv-muted" style="font-size:var(--lv-font-size-caption)">{recordedRubricSnapshot.complete ? t("rubric.hasRecordedFinal").replace("{s}", String(recordedRubricSnapshot.finalScore ?? 0)).replace("{f}", String(recordedRubricSnapshot.fullScore)) : t("rubric.hasRecordedPartial").replace("{n}", String(recordedRubricSnapshot.unratedCount))}</span>
+                    {/if}
+                  </div>
+                </div>
+              {/if}
               {#if q.analysis}<div class="lv-analysis">{q.analysis}</div>{/if}
               {#if feedback.verdict === "wrong"}
                 <div class="lv-row lv-session-reason-row" style="margin:10px 0;gap:var(--lv-space-compact);align-items:center;flex-wrap:wrap">
@@ -5910,6 +6113,18 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
                 <button class="lv-btn r3" disabled={reciteSaving} onclick={() => rateSelf(3)}><span class="lv-rate-key">3</span> {reciteSaving ? "…" : t("rate.3")}</button>
                 <button class="lv-btn r4" disabled={reciteSaving} onclick={() => rateSelf(4)}><span class="lv-rate-key">4</span> {reciteSaving ? "…" : t("rate.4")}</button>
               </div>
+            </div>
+          {/if}
+          {#if reciteOutcome}
+            <!-- 39-03：评级结果如实回执（未转卡/已写回/待确认/失败/离线），不把失败当成功 -->
+            <div class="lv-row" style="justify-content:center;margin:6px 0 0" role="status">
+              <span class="lv-chip num"
+                class:lv-chip--grn={reciteOutcome.outcome === "recorded"}
+                class:lv-chip--amb={reciteOutcome.outcome === "pending-confirm" || reciteOutcome.outcome === "skipped-offline"}
+                class:lv-chip--red={reciteOutcome.outcome === "failed"}
+                title={reciteOutcome.note}>
+                <Icon name="info" size={11} /> {t("rate.writeback." + reciteOutcome.outcome)}
+              </span>
             </div>
           {/if}
           {#if reciteError}<div class="lv-error" role="alert">{reciteError}</div>{/if}
@@ -6152,6 +6367,37 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
                   <input class="lv-input" bind:value={mSpecAltUnits} placeholder="km/h, cm/s" />
                 </label>
               </div>
+            {/if}
+          {/if}
+          {#if mType === "short"}
+            <!-- 55-05 作者设置：主观采分点（每行 `描述 | 权重 | 参考要点`；≥2 个采分点） -->
+            <div class="lv-row" style="margin:4px 0 0">
+              <button class="lv-btn sm lv-btn--ghost" onclick={() => (mRubricOpen = !mRubricOpen)}>
+                {t("rubric.authorSection")}{#if mRubricOpen} ▾{/if}
+              </button>
+              {#if authorRubricPreview}<span class="lv-chip num">{t("rubric.criteriaCount").replace("{n}", String(authorRubricPreview.criteria.length))}</span>{/if}
+            </div>
+            {#if mRubricOpen}
+              <div class="lv-field">
+                <label class="lv-muted" for="lv-manual-rubric">{t("rubric.textLabel")}</label>
+                <textarea id="lv-manual-rubric" class="lv-input lv-textarea" style="min-height:72px" bind:value={mRubricText} oninput={clearManualValidation}
+                  placeholder={t("rubric.textPlaceholder")} data-manual-field="rubric"
+                  aria-invalid={manualErrorField === "rubric" ? "true" : undefined} aria-describedby={manualErrorField === "rubric" ? "manual-validation-error" : undefined}></textarea>
+                <p class="lv-muted" style="margin:4px 0 0;font-size:var(--lv-font-size-caption)">{t("rubric.textHint")}</p>
+              </div>
+              {#if authorRubricPreview}
+                <div class="lv-detail" style="margin:4px 0 0;padding:8px 10px;background:var(--lv-surface-2);border-radius:var(--lv-r-1)">
+                  {#each authorRubricPreview.criteria as c, ci (ci)}
+                    <div class="lv-row" style="margin:2px 0;gap:var(--lv-space-2)">
+                      <span class="lv-chip num">{Math.round(c.weight * 100)}%</span>
+                      <span style="font-size:var(--lv-font-size-sm)">{c.label}</span>
+                      {#if c.example}<span class="lv-muted" style="font-size:var(--lv-font-size-caption)">· {c.example}</span>{/if}
+                    </div>
+                  {/each}
+                </div>
+              {:else if mRubricText.trim()}
+                <p class="lv-error" role="alert">{t("rubric.parseFailed")}</p>
+              {/if}
             {/if}
           {/if}
         {/if}

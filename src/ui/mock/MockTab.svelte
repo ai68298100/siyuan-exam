@@ -24,6 +24,7 @@
     import { renderInlineText } from "../../libs/sanitize";
     import { createQuestionVersionSnapshot } from "../../core/revision";
     import { simulateAllPolicySamples, SCORING_POLICY_LABELS, type ScoringPolicyKind } from "../../core/scoringPolicy";
+    import { buildPoolModel, computePercentile, buildScoreBands, buildPercentileCurve, historyPercents, exportPercentileCsv } from "../../core/percentile";
     import { getScratchpadText, updateScratchpadText, clearCurrentScratchpad, type ScratchpadStore, type ScratchpadMode } from "../../core/scratchpad";
     
     let { plugin, examApp }: { plugin: any; examApp?: ExamApp | null } = $props();
@@ -956,6 +957,26 @@
     /** 55-07 lite：当前题库相对开考冻结题版已修订的题（成绩单如实标注，不重算历史） */
     const revisionDrift = $derived(session ? session.revisionDrift(questions) : []);
 
+    // ---------- 63-05 虚拟排名与百分位模拟 ----------
+    // 参考池优先用本人历史模考成绩建模；样本 < PERCENTILE_MIN_SAMPLES 时回退到显式标注的
+    // 通用虚拟模型。历史里掺入本次成绩会让「自己拉高自己的池均值」，因此排除当前 run。
+    const percentilePool = $derived(buildPoolModel(historyPercents(history.filter((h) => h?.runId !== runId))));
+    const percentileVerdict = $derived(score ? computePercentile(score.percent, percentilePool) : null);
+    const percentileBands = $derived(percentileVerdict ? buildScoreBands(percentileVerdict.percent, percentilePool) : []);
+    /** 分数段柱形归一化基准（同一快照内最大值，避免逐项重算整表） */
+    const percentileBandMax = $derived(Math.max(...percentileBands.map((b) => b.share), 1));
+    const percentileCurve = $derived(percentileVerdict ? buildPercentileCurve(percentileVerdict.percent, percentilePool, 41) : null);
+    /** 模型是否来自本人历史样本（决定文案是「个人历史分布」还是「通用虚拟模型」） */
+    const percentileIsPersonal = $derived(percentilePool.source === "history");
+    /** 池内可用历史场次（排除本次 run） */
+    const percentileSampleCount = $derived(percentilePool.sampleSize);
+    let percentileOpen = $state(true);
+
+    function exportPercentileModelCsv() {
+      if (!percentileVerdict) return;
+      downloadMockCsv(exportPercentileCsv(percentileVerdict, percentileBands), "percentile");
+    }
+
     // 45-08 收口：成绩单分段/历史数据表 + CSV（与雷达/折线同一数据快照）
     let mockTableOpen = $state(false);
     let showWrongDetail = $state(false);
@@ -1518,6 +1539,64 @@
         {/if}
       </div>
     </div>
+    <!-- 63-05 虚拟排名与百分位模拟：参考池要么是本人历史场次，要么是显式标注的通用虚拟模型 -->
+    {#if percentileVerdict}
+      <div class="lv-card" style="margin-bottom:14px;padding:var(--lv-space-3) var(--lv-space-4)">
+        <div class="lv-row" style="justify-content:space-between;align-items:center;margin:0;flex-wrap:wrap;gap:var(--lv-space-2)">
+          <b style="font-size:var(--lv-font-size-body-compact)"><Icon name="chart" size={13} /> {t("mock.percentileTitle")}</b>
+          <div class="lv-row" style="margin:0;gap:var(--lv-space-2);align-items:center">
+            <span class="lv-chip num" class:lv-chip--amb={!percentileIsPersonal} title={percentileIsPersonal ? t("mock.percentilePoolPersonalTip") : t("mock.percentilePoolSyntheticTip")}>
+              {percentileIsPersonal ? t("mock.percentilePoolPersonal").replace("{n}", String(percentileSampleCount)) : t("mock.percentilePoolSynthetic")}
+            </span>
+            <button class="lv-btn sm lv-btn--ghost" aria-expanded={percentileOpen} onclick={() => percentileOpen = !percentileOpen}>{percentileOpen ? "▾" : "▸"}</button>
+          </div>
+        </div>
+        <div class="lv-row" style="margin:8px 0 0;align-items:baseline;gap:var(--lv-space-3);flex-wrap:wrap">
+          <span class="num" style="font-size:26px;font-weight:800;color:var(--lv-accent)">{t("mock.percentileTop").replace("{n}", String(percentileVerdict.topPercent))}</span>
+          <span class="lv-chip num" title={t("mock.percentilePercentileTip")}>{t("mock.percentilePercentile").replace("{n}", String(percentileVerdict.percentile))}</span>
+          <span class="lv-chip num" title={t("mock.percentileZTip")}>z = {percentileVerdict.zScore}</span>
+        </div>
+        {#if percentileOpen}
+          <p class="lv-muted" style="margin:8px 0 6px;font-size:var(--lv-font-size-caption)">
+            {percentileIsPersonal ? t("mock.percentilePersonalNote").replace("{n}", String(percentileSampleCount)) : t("mock.percentileSyntheticNote")}
+          </p>
+          <!-- 分数段分布：模型下各档理论占比与本次所在段，同一快照供图形与数据表 -->
+          <div class="lv-row" style="margin:6px 0 0;gap:3px;align-items:flex-end;height:76px">
+            {#each percentileBands as band, bi (bi)}
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:2px">
+                <span class="lv-muted num" style="font-size:9px">{band.share}</span>
+                <div style="width:100%;background:{band.mine ? 'var(--lv-accent)' : 'var(--lv-surface-3, var(--lv-surface-2))'};height:{(band.share / percentileBandMax) * 46}px;min-height:2px;border-radius:2px 2px 0 0;border:1px solid {band.mine ? 'var(--lv-accent)' : 'transparent'}"
+                  title={t("mock.percentileBandTip").replace("{label}", band.label).replace("{share}", String(band.share))}></div>
+                <span class="lv-muted num" style="font-size:9px">{band.label}</span>
+              </div>
+            {/each}
+          </div>
+          {#if percentileCurve}
+            <!-- 45-08：曲线 + 数据表 + CSV 同一快照；读屏以 aria-label 说明为模型演算值 -->
+            <svg viewBox="0 0 {percentileCurve.xMax - percentileCurve.xMin} 100" preserveAspectRatio="none"
+              style="width:100%;max-width:460px;height:72px;display:block;margin:10px 0 0"
+              role="img" aria-label={t("mock.percentileCurveAria")}>
+              <polyline
+                points={percentileCurve.points.map((p) => `${(p.x - percentileCurve!.xMin)},${100 - (p.pdf / percentileCurve!.pdfPeak) * 92}`).join(" ")}
+                fill="none" stroke="var(--lv-border-subtle)" stroke-width="1.2" vector-effect="non-scaling-stroke" />
+              <polyline
+                points={percentileCurve.points.map((p) => `${(p.x - percentileCurve!.xMin)},${100 - p.cdf}`).join(" ")}
+                fill="none" stroke="var(--lv-accent)" stroke-width="2" vector-effect="non-scaling-stroke" />
+              {#each percentileCurve.points.filter((p) => p.mine) as mp (mp.x)}
+                <line x1={mp.x - percentileCurve!.xMin} y1="0" x2={mp.x - percentileCurve!.xMin} y2="100" stroke="var(--lv-amber)" stroke-width="1.5" vector-effect="non-scaling-stroke" />
+              {/each}
+            </svg>
+            <p class="lv-muted" style="margin:2px 0 6px;font-size:9px">{t("mock.percentileCurveLegend")}</p>
+          {/if}
+        {/if}
+        <div class="lv-row" style="margin:8px 0 0;gap:var(--lv-space-2);flex-wrap:wrap">
+          <button class="lv-btn sm lv-btn--ghost" onclick={exportPercentileModelCsv}><Icon name="export" size={13} /> {t("mock.percentileExport")}</button>
+          {#if !percentileIsPersonal}
+            <span class="lv-muted" style="font-size:var(--lv-font-size-caption)">{t("mock.percentileNeedMore").replace("{n}", String(Math.max(0, 5 - percentileSampleCount)))}</span>
+          {/if}
+        </div>
+      </div>
+    {/if}
     {#each score.sections as sec, _i (_i)}
       <div class="lv-row" style="margin:4px 0">
         <span style="width:70px">{sec.name}</span>

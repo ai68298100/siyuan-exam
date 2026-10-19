@@ -9,6 +9,7 @@ import {
   type AiTaskContext,
 } from "../src/ai/task";
 import type { AiChannel } from "../src/ai/client";
+import { CountingChannel } from "../src/ai/counting";
 import { makeQuestion } from "../src/core/blockTemplate";
 
 const q = makeQuestion({ type: "single", stem: "1+1=?", options: ["1", "2", "3"], answer: "B" });
@@ -114,5 +115,79 @@ describe("AI 任务信封（Q5/G1/G2/G6）", () => {
     const newCtx = ctx({ questionRevision: questionFingerprint(revisedQ) });
     expect(applyResult(env, newCtx).reason).toBe("stale"); // 题被修订
     expect(applyResult({ ...env, status: "failed" }, ctx()).reason).toBe("not-ok");
+  });
+});
+
+describe("41-05 失败调用用量记账（花费统计不漏失败调用）", () => {
+  it("用 CountingChannel 时失败信封 tokens > 0（输入已送出，不再恒为 0）", async () => {
+    const failing = new CountingChannel({
+      id: "test",
+      chat: async () => {
+        throw new Error("boom");
+      },
+    });
+    const runner = new AiTaskRunner(failing);
+    const env = await runner.run(ctx(), [{ role: "user", content: "一段足够长的题面内容用于估算用量" }]);
+    expect(env.status).toBe("failed");
+    // 旧实现恒为 tokens: 0 —— 失败调用的花费被漏记
+    expect(env.tokens).toBeGreaterThan(0);
+  });
+
+  it("CountingChannel 账本记录失败调用（outcome=failed）且计入输入消耗", async () => {
+    const failing = new CountingChannel({
+      id: "test",
+      chat: async () => {
+        throw new Error("boom");
+      },
+    });
+    await expect(failing.chat([{ role: "user", content: "abcde" }])).rejects.toThrow("boom");
+    expect(failing.ledger.calls).toHaveLength(1);
+    expect(failing.ledger.calls[0]).toMatchObject({ outcome: "failed", charsIn: 5, charsOut: 0 });
+    expect(failing.ledger.totals.sent).toBe(1);
+    expect(failing.ledger.totals.charsIn).toBe(5);
+  });
+
+  it("超时/取消类错误记为 cancelled（同样计入用量）", async () => {
+    const c = new CountingChannel({
+      id: "test",
+      chat: async () => {
+        throw new Error("request timeout");
+      },
+    });
+    await expect(c.chat([{ role: "user", content: "abc" }])).rejects.toThrow();
+    expect(c.ledger.calls[0].outcome).toBe("cancelled");
+    expect(c.ledger.totals.cancelled).toBe(1);
+    expect(c.ledger.totals.sent).toBe(1);
+  });
+
+  it("成功与失败混合账本：成功计输出、失败只计输入", async () => {
+    let n = 0;
+    const c = new CountingChannel({
+      id: "test",
+      chat: async () => {
+        n++;
+        if (n === 1) return "ok-output";
+        throw new Error("boom");
+      },
+    });
+    await c.chat([{ role: "user", content: "aaaa" }]);
+    await expect(c.chat([{ role: "user", content: "bbbbbb" }])).rejects.toThrow("boom");
+    expect(c.ledger.totals.ok).toBe(1);
+    expect(c.ledger.totals.failed).toBe(1);
+    expect(c.ledger.totals.sent).toBe(2);
+    expect(c.ledger.totals.charsIn).toBe(10); // 4 + 6，失败调用的输入同样计入
+    expect(c.ledger.totals.charsOut).toBe(9); // 仅成功的输出
+  });
+
+  it("非计数通道的失败信封仍按消息字符数保守估算（不退化为 0）", async () => {
+    const runner = new AiTaskRunner({
+      id: "test",
+      chat: async () => {
+        throw new Error("boom");
+      },
+    });
+    const env = await runner.run(ctx(), [{ role: "user", content: "x".repeat(400) }]);
+    expect(env.status).toBe("failed");
+    expect(env.tokens).toBeGreaterThanOrEqual(100);
   });
 });

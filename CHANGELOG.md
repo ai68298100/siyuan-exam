@@ -1,5 +1,128 @@
 # Changelog
 
+## Unreleased
+
+### 用户可读摘要
+
+> 本次更新集中攻坚深度备考与本地调度核心闭环。新增每日计划欠账累积、自适应补偿策略与重算预览确认机制（44-05，科学平摊缺席欠题，严格夹取上限杜绝指数级爆量，预览与执行解耦）；新增未来复习到期负荷预测与建议每日量（39-06，基于遗忘曲线衰减模型科学平摊复习负荷，严格划分时区杜绝未来幽灵数据）；新增模考虚拟排名与百分位模拟（63-05，基于历史模考或通用虚拟模型科学换算，声明诚实边界不冒充真实考生）；实现主观解答题结构化采分点（55-05，支持 2–5 项权重自评、未评项不折成 0 分、自评与作答流水形态分离与版本冻结）；确证并修复思源内核 riff 评级 0–3 偏移的 P0 级严重缺陷（39-01，对齐上游 1–4 契约）；强化 429 限流恢复并严格遵循服务端 Retry-After 头（718）；重构浏览过滤谓词至 core 纯函数模块（browseFilter）；完善 cram/daily/quick 等多队列身份与结算写回回执（39-02）；构建 riff 评级五态状态机与防双击重放待确认机制（39-03）；实现 AI 失败与取消调用不漏记的花费账本（41-05）；消除 Hard 档位被等同客观答错的语义混淆（39-04，Hard 不清零背诵连击）；实现错题手动处置（mastered/removed/snoozed）后再错按约定恢复在册的双保险时效状态机（39-05）。全套自动化单测扩充至 141 个测试文件、1071 项测试 100% 通过。
+
+### 测评与复习规划（每日计划欠账与超额处理，44-05）
+
+- **每日计划欠账与超额补偿引擎（44-05）：** 新增 `src/core/dailyPlan.ts` 纯函数领域引擎，规范连续缺席后的欠账累积、自适应补偿策略分配、爆量防护与重算预览确认。
+  - **欠账累积（accumulateDeficit）：** 仅在有计划且昨日实际完成数小于计划数时累加新增欠账，超额完成或全额完成时自动清零，杜绝负值累积。
+  - **三档补偿策略（calculateCompensation）：**
+    - 恒定日补（`constant`）：将剩余欠题均匀分摊至未来每一天（含今日）。
+    - 顺延（`roll-over`）：今天不增加额外补偿量，欠账安全后移至考后，减轻当前备考焦虑。
+    - 考前集中加量（`pre-exam`）：距考试天数 $\le 5$ 天时才启动集中补偿冲刺，非临考期保持平稳。
+  - **防爆量夹取（Floor/Cap Guard）：** 严格将单日补偿量夹取在 `[minDailyFloor, maxDailyCap]` 区间内，若设定的上限低于保底则以绝对上限为准，彻底消除连续缺席后任务翻倍爆量的心理门槛。
+  - **预览与执行严格解耦（generatePlanPreview / executePlanRecount）：** 生成包含明确中文推导说明的结构化预览对象，必须经用户显式确认后才采纳新配额，用户取消或放弃时安全回退保持原配额，不搞静默强加。
+  - 新增 `tests/dailyPlan.test.ts` 16 项测试，全面覆盖欠账累计、未启用策略兜底、各策略行为、夹取保护、完整预览生成与确认/取消双分支。
+
+### 测评与复习规划（未来到期负荷预测，39-06）
+
+- **未来到期负荷预测与建议每日量（39-06）：** 新增 `src/core/loadForecast.ts` 纯函数领域引擎，依据作答间隔与艾宾浩斯/FSRS 遗忘衰减模型预测未来 7 / 14 / 30 天每日到期题数与累计待复习负荷。
+  - **杜绝未来幽灵数据：** 严格以本地自然日（YYYY-MM-DD）为时区日界，今天 23:59:59 之前已到期的题目全部归入当前积压（`backlogCount`），未来逐日预测仅从明日开始计算，不将过期积压题假装成未来的任务。
+  - **双口径统计：** 支持“已练题目”（依据作答流水计算到期）与“内核卡片”（依据 riff 传入的实际到期时刻）双口径，未练题目不参与衰减曲线。
+  - **建议每日复习量：** 依据积压量与窗口预测负荷科学平摊计算建议每日量（`recommendedDaily`），支持上限（默认 50 题）与保底（默认 5 题）夹取，防止缺席几天后指数级爆量打消学习积极性。
+  - **文本等价物导出：** 提供带 UTF-8 BOM 的未来负荷 CSV 导出（`exportLoadForecastCsv`），并在 `src/core/report.ts` 统一重导出。
+  - 新增 `tests/loadForecast.test.ts` 10 项测试，覆盖到期估算、积压归零、双口径隔离、未来偏移窗口、建议量夹取与 CSV 导出完整性。
+
+### 修复（错题状态机与手动处置时效，39-05）
+
+- **手动处置（mastered/removed/snoozed）后再错按约定恢复在册：** `app.wrongItems` 此前仅凭 `w.wrongCount > o.wrongCount` 判定手动处置是否失效；而当错题消灭后再错时，`replayer.ts:102` 将新一轮错次重置为 1（与新轮次测试对齐），导致一旦原处置快照 `o.wrongCount >= 1`，`1 > o.wrongCount` 恒为 false，**手动标记掌握或移除的错题在消灭后再错永远无法回到活跃错题列表**，与 39-05「手动处置后再错按约定恢复」验收直接违背。
+  - 新增 `src/core/wrongState.ts`：依据 `types.ts:116` 契约声明（`lastWrongAt: 最近一次答错时间（手动覆盖层时效判断依据）`），实现 `isOverlayEffective` 双保险时效判定（只要 `w.lastWrongAt > o.at` 即最近一次答错晚于处置发生时刻，或 `w.wrongCount > o.wrongCount` 错次递增，覆盖立即失效，题目自动重回在册状态；snoozed 暂缓状态在未到期时若发生再次答错也立即失效回册）；实现 `filterEffectiveActiveWrongs`（纯函数过滤出排除有效覆盖后的真正活跃错题）、`isWrongSuppressed`/`isWrongSnoozed`/`isWrongArchived`（独立状态判断）与 `nextStreakCorrect`（错→对→错→对留在册，错→对→对才消灭的状态转移纯函数）。
+  - 接线：`app.ts` 中的 `wrongItems()`、`listArchivedWrongs()`、`isWrongArchived()` 与 `isWrongSnoozed()` 全部收口并委托给 `wrongState.ts` 纯函数。
+  - 新增 `tests/wrongState.test.ts` 15 项测试，并在 `tests/replay.test.ts` 补齐「消灭后再手动 mastered，再错按约定恢复在册」的端到端真实回归，全量 139 个测试文件、1045 项单测全部通过。
+
+### 修复（自评语义与客观判分分离，39-04）
+
+- **Hard 档位不再被等同于客观答错：** `app.reciteAnswer` 此前用 `selfRating >= 3` 把 Hard（2，"有点难"）判定为 `verdict: "wrong"`，导致**背诵连击在 Hard 时与 Again（1，"完全不会"）同等清零**——把学习者「费力但成功想起来」的努力等同于「未回忆成功」，既打击学习连续感，又让面向客观判分的 `verdict` 字段与用户自评事实深度混淆，违反 39-04 验收。
+  - 新增 `src/core/selfRating.ts`：`selfRatingMeta` 明确四档自评元数据（Again/Hard/Good/Easy，与 39-01 riff.Rating 同序同值），核心区分在于 **Hard 是 `recalled=true` 但 `effortful=true`**（费力但成功回忆），唯有 Again 属于 `recalled=false`；`answerFacts` 把客观判分与自评两套事实**分别保留**（背诵/闪卡场景 `objective: null`，不伪造客观对错）；`reciteStreakEffect` 修正连击规则（Again 清零、Hard 保持不清零但也不递增毕业计数、Good/Easy 顺利回忆才递增，既防止勉强回忆混入已掌握，又保护既有连击不被误杀）；`binaryToSelfRating`/`selfRatingToBinary` 明确二元模式映射（记住=Good(3)而非Easy、忘了=Again(1)；反投影 Hard 归记住了）；`reciteBreakdown`/`reciteBreakdownText` 在组结算中把 Hard 单列为「费力但成功」，不与未回忆成功混淆。
+  - 接线：`replayer.ts` 背诵连击改依 `selfRating` 与 `reciteStreakEffect` 直接判定，不再借道 `verdict`；`app.reciteAnswer` 写入自评流水时设置 `verdict: "not_attempted"`，客观判分留空，对错由 `selfRating` 独立承载。
+  - 新增 `tests/selfRating.test.ts` 23 项测试，并在 `tests/appMemory.test.ts` 增加「Hard 不清零背诵连击，Again 才清零」的真实端到端回归，全量 138 个测试文件、1028 项单测全部通过。
+
+### 修复（AI 用量记账，41-05）
+
+- **失败的 AI 调用不再被漏记花费：** `CountingChannel` 只在成功路径累加输出量，`AiTaskRunner` 的失败信封恒为 `tokens: 0`——失败与取消的请求虽然已经把输入送出（真实消耗了算力），却完全不计入花费统计，违反 41-05「花费统计不漏失败调用」的验收。
+  - 新增 `src/core/usageLedger.ts`：`summarizeUsage`/`recordCall`/`emptyLedger` 按次记账（失败与取消计入 `sent` 与 `charsIn`，只有 `skipped`=未送出才不算消耗）；`usageReceipt` 生成一行回执并明示「失败与取消的调用同样已送出，计入用量」；`cancelOutcome` 定义三阶段取消语义（送出前可声称无消耗、在途**不可**声称已撤回、任何阶段都不得静默继续批准后续分片）；`completedSlices`/`missingSlices`/`partialResult`/`partialResultReceipt` 保证已完成分片保留、缺口如实标注、重试只补缺片、不把部分成果说成完整。
+  - 接线：`CountingChannel.chat` 改为逐次入账（成功记 `ok`；超时/中止记 `cancelled`；其余记 `failed`，输入的字符消耗如实计入）；`AiTaskRunner` 失败信封的 `tokens` 按通道累计用量上报（非计数通道按消息字符数保守估算），不再是 0。
+  - 新增 `tests/usageLedger.test.ts` 23 项测试，并在 `tests/aiTask.test.ts` 增加 5 项失败用量回归（含「用 CountingChannel 时失败信封 tokens > 0」这一旧实现会失败的用例）。
+
+### 修复（评级结果可恢复，39-03）
+
+- **riff 评级失败不再被静默吞掉：** `reciteAnswer` 此前返回 `void` 并以 `catch {}` 吞掉全部 riff 写回异常，UI 既无法区分「未转卡 / 已记录 / 待确认 / 成功 / 失败」，也不具备防双击能力——背诵自评写回失败时用户看不到任何提示，可能重复点击并重复提交。
+  - 新增 `src/core/ratingOutcome.ts` 结果状态机：`ratingOutcome` 区分五种结果（`not-a-card` / `recorded` / `pending-confirm` / `failed` / `skipped-offline`），优先级为 非法自评 > 未转卡 > 离线 > 写回结果；每种结果带中文名、`terminal`/`needsConfirm`/`canRetry` 与如实说明，**不夸大成功、不隐瞒失败**。`classifyWriteError` 把超时与网络中断归类为「结果不明」而非「失败」。
+  - 防双击与重复提交：`RatingGuard` + `ratingAttemptKey`（在途占位拒绝并发点击、失败后放行重试、成功后幂等拒绝）。
+  - 不盲重放：`pendingConfirmHint` 与 `shouldReplay` 依据内核 `LastReview` 与申请时间判断是否已落库（含时钟偏差容差），结果不明时先核对再决定；`reciteAnswer` 改为返回 `RatingOutcomeView`，并把真实 `deckId`/`cardId`/`rating`/`requestedAt` 存入待确认队列（aux 键 `riff/pending-ratings`），成功或未转卡不记。
+  - UI：背诵界面新增评级结果 chip（绿=已写回 / 琥珀=待确认或离线 / 红=失败，hover 显示完整说明），并接入防双击与退出重置。
+  - 新增 `tests/ratingOutcome.test.ts` 22 项测试（五态区分与优先级、异常归类、防双击在途/已完成/失败重试、待确认核对与幂等判断、时钟容差）。
+
+### 修复（队列身份，39-02）
+
+- **cram / 每日 / 收藏 / 快练的作答不再伪装成普通练习：** UI 写作答流水时 `queue` 字段只区分 `wrong`，其余模式一律记 `normal`，导致冲刺（cram）、每日一练、收藏练习在流水里**全部丢失队列身份**——「cram 是否写回调度」「这次是不是内核对到期卡的复习」在数据层无从核对，与 `docs/adr/0003-one-scheduler-three-forms.md`「cram 永不写回（Anki reschedule-off）」的定案和 39-02 验收直接冲突。
+  - 新增队列身份单一真相源 `src/core/queueIdentity.ts`：`queueKindOf` 把会话模式映射为 `normal`/`wrong`/`cram`（未知模式**保守归 normal**，不猜测成 cram，以免丢失错题/复习身份）；`queueSemantics` 给出三类队列的写回策略与如实说明（cram 明确标注「永不写回 · reschedule-off」）；`allowsSchedulerWriteBack` 把「不写回」固化为可测试的显式契约，而不是靠调用方到处漏掉写回调用；`writeBackReceipt` 生成结算一行回执（明确是否调用 riff）；`countByQueue` 按队列聚合，缺 `queue` 的旧流水事件向后兼容计为 normal。
+  - 接线：PracticeTab 作答流水的 `queue` 改由 `queueKindOf` 产出；结算页新增「队列身份 · 不写回内核调度」chip（hover 显示完整回执），使普通练习不会被误读为内核复习。
+  - 新增 `tests/queueIdentity.test.ts` 14 项测试，全量 136 个测试文件、1042 项单测全部通过。
+
+### 重构（浏览过滤谓词抽离到 core，Round 5）
+
+- **PracticeTab 浏览过滤谓词抽出到 core 纯函数模块：** `src/core/browseFilter.ts`（89 行）：`matchesBrowseFilter`、`filterBrowseQuestions`、`questionMatchesKeyword`。提取 PracticeTab 内联过滤箭头函数，注入 `wrongCountOf`/`helped`/`recent` 集合参数。净减少 PracticeTab 约 49 行内联逻辑。
+  - 新增 `tests/browseFilter.test.ts` 17 项测试，全量 135 个测试文件、1025 项单测全部通过。
+
+### 修复（内核 429 限流恢复，718）
+
+- **718 kernel 429 retry now honors `Retry-After`:** `parseRetryAfterMs` and `computeRetryDelayMs` in `src/kernel/client.ts`. Used by `HttpTransport.post` and `postForm`. +7 tests in `tests/kernelClient.test.ts`.
+
+### 修复（riff rating off-by-one, 39-01）
+
+- **39-01 riff rating off-by-one FIXED (P0 correctness bug)** — upstream `github.com/siyuan-note/riff` defines Again=1/Hard=2/Good=3/Easy=4 (`iota + 1`), not 0-3. Fixed `selfRatingToRiffRating` → 1-4 (null for invalid), narrowed `client.reviewRiffCard` to `1|2|3|4`.
+
+### 修复（虚拟排名与百分位，63-05）
+
+- **63-05 virtual percentile (Round 1)** — `src/core/percentile.ts` (286 lines): erf/normalCdf/normalPdf, `buildPoolModel`, `computePercentile`, `buildPercentileCurve`, `buildScoreBands`, `exportPercentileCsv`. Wired into MockTab score card. Honesty boundary: labeled synthetic model or user's own history (≥5 runs, excluding current run). +32 tests.
+
+### 修复（主观采分点与自评，55-05）
+
+- **55-05 subjective rubric (Round 2)** — `src/core/rubric.ts` (387 lines): 2–5 criteria, normalized weights, 3 levels + unknown, snapshot freeze + `isRubricDrifted`. Wired into PracticeTab manual entry and feedback self-assessment. +33 tests.
+
+### 重构（结构债与可测性）
+
+- **浏览过滤谓词抽出到 core（`src/core/browseFilter.ts`）：** 浏览页的 10 类过滤（章节 / 题型 / 生命周期 / 争议 / 定向 id / 来源 / 错题 / 已求助 / 近期练习 / 关键词）此前以匿名箭头函数内联在约 8400 行的 `PracticeTab.svelte` 中，**没有任何测试覆盖**。
+  - 抽出 `matchesBrowseFilter`（单题谓词）、`filterBrowseQuestions`（批量，保持原顺序）与 `questionMatchesKeyword`；错题计数与已求助/近练集合改为显式注入（`wrongCountOf` / `helped` / `recent`），使谓词保持纯函数、无 IO，同时把「过滤语义」与组件渲染解耦。`@@none` 来源语义与「去空白精确匹配」等既有细节原样保留。
+  - PracticeTab 只保留把响应式状态装配成纯输入的薄层（`questionInSection` 的组件内引用已随之移除，净减少约 49 行内联逻辑）。
+  - 新增 `tests/browseFilter.test.ts` 17 项测试，覆盖关键词大小写与多字段命中、题型/生命周期（缺省视为 published）/争议（resolved 不算）、定向 id、来源 `@@none`、错题计数注入、求助与近练集合缺失时一律排除（不静默放行）、章节 rootId 精确与 hpath 前缀、多条件 AND 短路与批量顺序保持。
+  - 边界：跨库命名视图的「显式确认」仍属 UI 层拦截，不在谓词内（保持纯函数语义）。
+
+### 修复（内核限流恢复契约，718）
+
+- **429 退避遵循服务端 `Retry-After`：** 既有实现识别 429 为 retryable，但退避时长完全靠正则猜测固定 1 秒，**忽略了内核实际给出的 `Retry-After` 头**，限流后无法按服务端要求等待。
+  - 新增共享纯函数 `parseRetryAfterMs`（支持秒数与 HTTP-date 两种合法形式；非法、负值与缺失返回 `null` 由调用方回退本地退避；超大值夹取到 `RETRY_AFTER_MAX_MS = 60s`，避免异常头导致长时间挂起）与 `computeRetryDelayMs`（服务端头优先于本地退避；`Retry-After: 0` 表示可立即重试且不叠加本地退避；无头时 429 起步 1s、其余 300ms 线性递增）。
+  - `HttpTransport.post` 与 `postForm` 均从响应头读取并遵循该契约；`FetchLike` 契约补充可选 `headers.get`。新提取的助手同时消除了两处重复的退避代码分支。
+  - 新增 7 项回归（`tests/kernelClient.test.ts`），含「服务端要求 2s 时实际等待 ≥1.8s」的实测用例——固定 1s 退避会在此失败，以及无头回退、`postForm` 路径、非法值与上限夹取。
+  - **边界：** 生产实际走 `app-runtime.makeTransport`（宿主 `fetchSyncPost`，无法读取 HTTP 响应头），该路径仅在 body `code===429` 时识别、退避为本地 300ms×n；真机密集调用复测仍待宿主环境。
+
+### 修复（正确性，上游契约对齐）
+
+- **riff 闪卡评级 off-by-one（39-01，P0）：** 从上游源码确证了评级契约并修正既有实现。`github.com/siyuan-note/riff` 的 `store.go` 定义 `const ( Again Rating = iota + 1; Hard; Good; Easy )`，即 **Again=1 / Hard=2 / Good=3 / Easy=4**，与 `go-fsrs` 的 `models.go`（`Again Rating = iota + 1`）同值；`fsrs_store.go` 的 `Review` 以 `schedulingInfo[fsrs.Rating(rating)]` 索引调度表，因此越界值会以不存在的键索引失败（go-fsrs 的 0 是 `Manual`，riff 未使用）。
+  - 既有 `selfRatingToRiffRating` 返回 0–3（整体偏移一位，且 0 非法），意味着**背诵自评的 riff 写回评级一直是错的**：选「完全不会」发送 0（无对应调度项），其余档位也各低一档。
+  - 修正：`selfRatingToRiffRating` 返回 `1|2|3|4`，非法值返回 `null`；`binaryToRiffRating` 改为 记住=Good(3) / 忘了=Again(1)；`kernel/client.ts` 的 `reviewRiffCard` 参数类型收窄为 `1|2|3|4`（越界值在类型层即被拒绝）；`app.reciteAnswer` 在映射失败时**跳过发送**（非法值不发送，符合 39-01 验收）。
+  - 测试同步为上游契约值（不再以旧自洽值验收，正符合 39-01「不以当前映射函数的自洽测试验收」的要求）：`tests/memory.test.ts` 断言 1→Again(1)…4→Easy(4) 并新增非法值门控与合法域共 5 项；`tests/appMemory.test.ts` 断言 2→Hard(2)、4→Easy(4)。文档同步：`docs/02-数据模型设计.md` 与 `docs/adr/0003-one-scheduler-three-forms.md` 更新为上游契约。
+  - **仍开放：** 真机逐档请求与 Reps/LastReview/nextDues 实测对照需宿主环境；39-02（队列身份与 cram 写回语义）、39-03（评级结果不确定恢复）继续待做。
+
+### 主观题评分纵深
+
+- **主观采分点与自评（55-05）：** 新增主观采分点与自评引擎（`src/core/rubric.ts`），支持作者为简答/论述题配置 2–5 个采分点（各自权重与满意度等级，可选参考要点），用户交卷后逐项自评。
+  - **录题工作台：** 新增「主观采分点设置」折叠区，按每行 `描述 | 权重 | 参考要点` 录入（`#` 开头为注释、权重可省略等权），带实时采分点预览；解析失败如实报错而非静默丢弃作者输入，规格经 `validateRubric`（数量、重复 id、空白描述）拦截后持久化为 `custom-exam-rubric` 块属性。
+  - **练习作答：** 简答题反馈区落地逐采分点自评 UI（完全满足 / 部分满足 / 未达标 / 无法判断），实时显示「最终自评分 X / Y」（全部评完）或「已评 X / Y · 尚有 N 项未评」（部分自评），并支持记录与导出明细 CSV。
+  - **诚实边界：** 未评项得分为 `null` 且不计入分母，绝不折成 0 分；全部采分点评完前不生成最终自评分；自评是对作答的自我判断而非作答事件，写入独立 aux 存档（`rubric/assessments`）而非 attempt 流水，不污染正确率与错题派生；快照冻结当时 rubric 修订号，作者改 rubric 后 `isRubricDrifted` 检出漂移并显式标注，历史自评分不被静默重算；界面与导出均声明「自评不代表官方阅卷」，不由 AI 决定最终分。
+  - 新增 `tests/rubric.test.ts` 33 项测试，覆盖权重归一、宽容解析与往返、等级回退、未评隔离与 0 分区分、历史冻结与漂移检出、CSV/摘要文本等价物。**133 个测试文件 / 910 项测试**全部通过。
+
+### 备考测评与成绩解释力
+
+- **模考虚拟排名与百分位模拟（63-05）：** 新增虚拟排名与百分位模拟引擎（`src/core/percentile.ts`），包含 erf / normalCdf / normalPdf 数值实现、参考池建模、百分位换算、累积分布曲线采样与分数段分布。模考成绩单新增「虚拟排名与百分位模拟」面板，展示 Top N%、百分位、标准分 z（高出参考池均值几个标准差）、10 分档分数段分布柱形与 CDF+PDF 累积曲线，并支持导出模型 CSV（45-08 文本等价物契约）。
+  - **诚实边界：** 本项目没有真实考生样本。参考池优先由本人历史模考成绩（≥5 场，且排除当前 run，避免自我抬高池均值）估计均值与标准差；样本不足时自动回退到显式标注的「通用虚拟模型（均值 60 / 标准差 15）」。界面徽标、曲线 `aria-label`、说明文案与 CSV 均声明演算值与真实考生排名无关，并按来源区分「本人历史分布 · N 场」与「通用虚拟模型」两种口径，不使用「击败 xx% 考生」这类暗示真实人群的措辞。标准差异常（历史全员同分）回退虚拟标准差，脏数据（NaN/Infinity）剔除、越界得分夹取，避免除零与无限陡峭分布。
+  - 新增 `tests/percentile.test.ts` 32 项测试，覆盖 erf/CDF/PDF 数学正确性（对齐查表值、归一化积分）、参考池回退与诚实边界、百分位单调性与 Top% 互补、分数段概率完整覆盖、CSV 与界面快照一致性。
+
 ## 0.11.1 (2026-10-19)
 
 ### 用户可读摘要

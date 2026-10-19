@@ -17,17 +17,31 @@ const qs = [
   makeQuestion({ type: "judge", stem: "J1", answer: "对", kp: "资料/增长率" }),
 ];
 
-describe("评级映射", () => {
-  it("四级 → riff 0-3", () => {
-    expect(selfRatingToRiffRating(1)).toBe(0);
-    expect(selfRatingToRiffRating(2)).toBe(1);
-    expect(selfRatingToRiffRating(3)).toBe(2);
-    expect(selfRatingToRiffRating(4)).toBe(3);
-    expect(selfRatingToRiffRating(99)).toBe(0);
+describe("39-01 评级映射（对齐上游 riff.Rating 契约：Again=1/Hard=2/Good=3/Easy=4）", () => {
+  it("四级自评 → 1/2/3/4（与 github.com/siyuan-note/riff 的 iota+1 常量同值，非 0-3 偏移）", () => {
+    expect(selfRatingToRiffRating(1)).toBe(1); // Again
+    expect(selfRatingToRiffRating(2)).toBe(2); // Hard
+    expect(selfRatingToRiffRating(3)).toBe(3); // Good
+    expect(selfRatingToRiffRating(4)).toBe(4); // Easy
   });
-  it("二元", () => {
-    expect(binaryToRiffRating(true)).toBe(2);
-    expect(binaryToRiffRating(false)).toBe(0);
+  it("非法自评值不映射（返回 null，由调用方跳过发送；不再静默回退成 0）", () => {
+    expect(selfRatingToRiffRating(0)).toBeNull();
+    expect(selfRatingToRiffRating(5)).toBeNull();
+    expect(selfRatingToRiffRating(99)).toBeNull();
+    expect(selfRatingToRiffRating(NaN)).toBeNull();
+    expect(selfRatingToRiffRating(-1)).toBeNull();
+  });
+  it("映射结果恒落在 riff 合法域 1-4（0 不是合法评级）", () => {
+    for (const r of [1, 2, 3, 4]) {
+      const v = selfRatingToRiffRating(r);
+      expect(v).not.toBeNull();
+      expect(v!).toBeGreaterThanOrEqual(1);
+      expect(v!).toBeLessThanOrEqual(4);
+    }
+  });
+  it("二元自评：记住=Good(3)、忘了=Again(1)", () => {
+    expect(binaryToRiffRating(true)).toBe(3);
+    expect(binaryToRiffRating(false)).toBe(1);
   });
   it("卡包命名空间", () => {
     expect(deckNameForBank("公考题库")).toBe("小驴考试/公考题库");

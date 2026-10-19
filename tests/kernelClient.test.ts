@@ -1,7 +1,7 @@
 // 内核客户端响应形状回归测试（2026-10-02 活内核 3.8.5 预检定案的形状锁定；
 // 内核再漂移时此处先红，避免静默失效）
 import { describe, it, expect } from "vitest";
-import { KernelApiClient, HttpTransport, type KernelTransport } from "../src/kernel/client";
+import { KernelApiClient, HttpTransport, parseRetryAfterMs, computeRetryDelayMs, RETRY_AFTER_MAX_MS, type KernelTransport } from "../src/kernel/client";
 
 type Call = { endpoint: string; payload: Record<string, unknown> };
 
@@ -321,5 +321,81 @@ describe("sqlPaged 分页取全（3.8.6 靶场实测：无 LIMIT 查询默认截
     expect(qs[249].id).toBe("q249");
     expect(qs[249].kp).toBe("考点249");
     expect(calls).toHaveLength(2);
+  });
+});
+
+describe("718 Retry-After 契约与退避（内核 429 限流恢复）", () => {
+  it("parseRetryAfterMs：秒数形式（含小数与前后空白）转为毫秒", () => {
+    expect(parseRetryAfterMs("30")).toBe(30_000);
+    expect(parseRetryAfterMs(" 1.5 ")).toBe(1_500);
+    expect(parseRetryAfterMs("0")).toBe(0);
+  });
+
+  it("parseRetryAfterMs：HTTP-date 形式按绝对时刻换算，已过期返回 0", () => {
+    const now = () => Date.parse("2026-10-19T00:00:00Z");
+    expect(parseRetryAfterMs("Sun, 19 Oct 2026 00:00:30 GMT", now)).toBe(30_000);
+    // 过期时间 → 立即重试，不产生负等待
+    expect(parseRetryAfterMs("Sun, 19 Oct 2026 00:00:00 GMT", now)).toBe(0);
+  });
+
+  it("parseRetryAfterMs：非法/缺失返回 null（调用方回退本地退避），超上限被夹取", () => {
+    expect(parseRetryAfterMs(null)).toBeNull();
+    expect(parseRetryAfterMs(undefined)).toBeNull();
+    expect(parseRetryAfterMs("")).toBeNull();
+    expect(parseRetryAfterMs("not-a-date")).toBeNull();
+    expect(parseRetryAfterMs("-5")).toBeNull();
+    // 异常大的值不得让插件长时间挂起
+    expect(parseRetryAfterMs("3600")).toBe(RETRY_AFTER_MAX_MS);
+  });
+
+  it("computeRetryDelayMs：服务端头优先于本地退避；无头时 429 起步 1s、其余 300ms 线性递增", () => {
+    expect(computeRetryDelayMs(0, { status: 429, headerMs: 7_000 })).toBe(7_000);
+    expect(computeRetryDelayMs(1, { status: 429, headerMs: 0 })).toBe(0); // 明示可立即重试
+    expect(computeRetryDelayMs(0, { status: 429 })).toBe(1_000);
+    expect(computeRetryDelayMs(1, { status: 429 })).toBe(2_000);
+    expect(computeRetryDelayMs(0, {})).toBe(300);
+    expect(computeRetryDelayMs(2, {})).toBe(900);
+  });
+
+  it("HttpTransport：429 带 Retry-After 时按服务端时间等待（不套用固定 1s）", async () => {
+    let calls = 0;
+    const waits: number[] = [];
+    const t = new HttpTransport("http://x", "tok", (async () => {
+      calls++;
+      return calls === 1
+        ? { ok: false, status: 429, headers: { get: () => "2" }, text: async () => "" }
+        : { ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify({ code: 0, msg: "", data: {} }) };
+    }) as never, 5_000, 1);
+    const t0 = Date.now();
+    await expect(t.post("/api/x", {})).resolves.toBeDefined();
+    waits.push(Date.now() - t0);
+    expect(calls).toBe(2);
+    // 服务端要求 2s，实际等待不得短于 1.8s（固定 1s 退避会在此失败）
+    expect(waits[0]).toBeGreaterThanOrEqual(1_800);
+    expect(waits[0]).toBeLessThan(4_000);
+  });
+
+  it("HttpTransport：429 无 Retry-After 头时回退本地 1s 退避（保持原有行为）", async () => {
+    let calls = 0;
+    const t = new HttpTransport("http://x", "tok", (async () => {
+      calls++;
+      return calls === 1
+        ? { ok: false, status: 429, text: async () => "" }
+        : { ok: true, status: 200, text: async () => JSON.stringify({ code: 0, msg: "", data: {} }) };
+    }) as never, 5_000, 1);
+    await expect(t.post("/api/x", {})).resolves.toBeDefined();
+    expect(calls).toBe(2);
+  });
+
+  it("HttpTransport.postForm：429 同样读取 Retry-After 并重试成功", async () => {
+    let calls = 0;
+    const t = new HttpTransport("http://x", "tok", (async () => {
+      calls++;
+      return calls === 1
+        ? { ok: false, status: 429, headers: { get: () => "0" }, text: async () => "" }
+        : { ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify({ code: 0, msg: "", data: null }) };
+    }) as never, 5_000, 1);
+    await expect(t.postForm("/api/import/importSY", new Blob(["zip"]), "b.sy.zip")).resolves.toMatchObject({ code: 0 });
+    expect(calls).toBe(2);
   });
 });

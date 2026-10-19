@@ -8,6 +8,7 @@
 import type { Question, QuestionType } from "./types";
 import { OPTION_LETTERS, normalizeAnswer, questionHash } from "./answer";
 import { inferAnswerSpec } from "./structuredAnswer";
+import { parseRubricAttr } from "./rubric";
 import { newQuestionId, newBatchId } from "./ids";
 
 export const QUESTION_TYPES: QuestionType[] = ["single", "multiple", "judge", "fill", "short", "material"];
@@ -47,6 +48,7 @@ export function ialOf(q: Question): string {
   if (q.analysis) attrs["exam-analysis"] = q.analysis;
   if (q.alt?.length) attrs["exam-alt"] = q.alt.join("|");
   if (q.answerSpec) attrs["exam-answer-spec"] = JSON.stringify(q.answerSpec);
+  if (q.rubric) attrs["exam-rubric"] = JSON.stringify(q.rubric);
   if (typeof q.confidence === "number") attrs["exam-confidence"] = q.confidence.toFixed(2);
   return Object.entries(attrs)
     .map(([k, v]) => `custom-${k}="${escapeAttr(v)}"`)
@@ -174,6 +176,8 @@ export function questionFromBlock(input: FromBlockInput): Question | null {
     fav: attrs["exam-fav"] === "1",
     /** 54-01：结构化作答规则（custom-exam-answer-spec JSON）；损坏/版本不符忽略，按旧口径判分 */
     answerSpec: parseAnswerSpecAttr(attrs["exam-answer-spec"]),
+    /** 55-05：主观采分点规格（custom-exam-rubric JSON）；损坏/版本不符忽略 = 无 rubric */
+    rubric: parseRubricRef(attrs["exam-rubric"]),
     hash: questionHash(stem, denseOptions),
   };
 }
@@ -201,6 +205,11 @@ function parseAnswerSpecAttr(raw: string | undefined): Question["answerSpec"] {
   } catch {
     return undefined;
   }
+}
+
+/** 55-05：块属性 JSON → rubric 规格（宽容解析；复用 rubric 模块的归一与过滤规则）。 */
+function parseRubricRef(raw: string | undefined): Question["rubric"] {
+  return parseRubricAttr(raw) as Question["rubric"];
 }
 
 /** 57-04：块属性 JSON → dispute（宽容解析） */
@@ -236,6 +245,8 @@ export function makeQuestion(p: {
   dispute?: Question["dispute"];
   /** 54 第三刀：显式指定结构化作答规则（缺省时填空题按答案自动识别：;;多空 / 纯数值±单位） */
   answerSpec?: Question["answerSpec"];
+  /** 55-05：主观采分点规格（简答/论述题自评依据） */
+  rubric?: Question["rubric"];
 }): Question {
   const options = p.options ?? [];
   const answer = p.type === "material" ? "" : (normalizeAnswer(p.type, p.answer) ?? p.answer);
@@ -261,6 +272,7 @@ export function makeQuestion(p: {
     dispute: p.dispute,
     alt: p.alt,
     ...(answerSpec ? { answerSpec } : {}),
+    ...(p.rubric ? { rubric: p.rubric } : {}),
     hash: questionHash(p.stem, options),
   };
 }

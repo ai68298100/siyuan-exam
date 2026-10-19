@@ -27,24 +27,48 @@ describe("masteryByKp 39-07 扩展（独立题/覆盖率/证据时间）", () =>
     expect(mast[0].evidenceAt).toBe(NOW - 1000);
   });
 
-  it("覆盖率 = 已练独立题 / 该考点全部题数；未练考点不出现在聚合中", () => {
-    const questions = qs("代数/方程", ["q1", "q2", "q3"]); // 考点共 3 题
-    const events = [ev(questions[0].id, "correct", NOW - 1000), ev(questions[1].id, "wrong", NOW - 500)];
+  it("同题重复 3 次不等于掌握（独立题 < 2 或库内题数 >1 且仅练单题）", () => {
+    const questions = qs("代数/方程", ["q1", "q2"]); // 考点共 2 题，但只练了 q1
+    const events = [
+      ev(questions[0].id, "correct", NOW - 3000),
+      ev(questions[0].id, "correct", NOW - 2000),
+      ev(questions[0].id, "correct", NOW - 1000),
+    ];
     const mast = masteryByKp(questions, new Map(), events, NOW);
-    expect(mast[0].uniqueQids).toBe(2);
-    expect(mast[0].coverage).toBeCloseTo(2 / 3);
+    expect(mast.length).toBe(1);
+    expect(mast[0].uniqueQids).toBe(1);
+    expect(mast[0].independentCorrect).toBe(1);
+    expect(mast[0].coverage).toBeCloseTo(1 / 2);
+    expect(mast[0].mastery).toBe(-1); // 样本不足：独立题只有 1 道，不宣称掌握
+    expect(mast[0].algorithm).toBe("insufficient-samples");
   });
 
-  it("最近一次判定 wrong 的题不计入 independentCorrect", () => {
-    const questions = qs("代数/方程", ["q1", "q2"]);
-    const events = [ev(questions[0].id, "correct", NOW - 2000), ev(questions[0].id, "wrong", NOW - 1000), ev(questions[1].id, "correct", NOW - 500)];
+  it("练单题不整体刷新考点记忆（effectiveEvidenceAt 为各题平均最后时刻）", () => {
+    const questions = qs("代数/方程", ["q1", "q2", "q3"]);
+    const events = [
+      ev(questions[0].id, "correct", NOW - 5000),
+      ev(questions[1].id, "wrong", NOW - 4000),
+      ev(questions[2].id, "correct", NOW - 3000),
+    ];
     const mast = masteryByKp(questions, new Map(), events, NOW);
-    expect(mast[0].uniqueQids).toBe(2);
-    expect(mast[0].independentCorrect).toBe(1); // q1 最近一次为 wrong
+    expect(mast.length).toBe(1);
+    expect(mast[0].uniqueQids).toBe(3);
+    // effectiveEvidenceAt = (NOW-5000 + NOW-4000 + NOW-3000)/3 = NOW - 4000
+    expect(mast[0].effectiveEvidenceAt).toBe(NOW - 4000);
+    expect(mast[0].evidenceAt).toBe(NOW - 3000); // evidenceAt 仍为最新单次作答时刻
   });
 
-  it("题库已删题目的残留作答不产生幻影考点（kpOf 无该 qid → 跳过）", () => {
-    const mast = masteryByKp([], new Map(), [ev("deleted-q", "correct", NOW - 1000)], NOW);
-    expect(mast).toHaveLength(0);
+  it("覆盖率计算正确：已练独立题 / 该考点全部题数", () => {
+    const questions = qs("民法", ["q1", "q2", "q3"]);
+    const events = [ev(questions[0].id, "correct", NOW - 1000)];
+    const mast = masteryByKp(questions, new Map(), events, NOW);
+    expect(mast[0].coverage).toBeCloseTo(1 / 3);
+  });
+
+  it("题库无该考点题时 coverage=-1（未知）", () => {
+    const questions: Question[] = [];
+    const events = [ev("external-q", "correct", NOW - 1000)];
+    const mast = masteryByKp(questions, new Map(), events, NOW);
+    expect(mast).toHaveLength(0); // 外部题目无 kpOf 映射，不产生幻影考点
   });
 });

@@ -117,6 +117,16 @@ export class AiTaskRunner {
     private readonly opts: TaskRunnerOpts = {},
   ) {}
 
+  /** 41-05：当包装通道是 CountingChannel 时取其已用字符总数（含失败/取消的输入）；
+   *  非计数通道返回 0，失败信封则按消息字符数保守估算。 */
+  private channelCharsUsed(): number {
+    const c = this.channel as unknown as { charsIn?: number; charsOut?: number };
+    if (typeof c?.charsIn === "number" && typeof c?.charsOut === "number") {
+      return c.charsIn + c.charsOut;
+    }
+    return 0;
+  }
+
   /** 执行一次讲解类任务：闸门 → 预算 → 通道 → 信封（任何失败都返回 failed 信封，不抛出） */
   async run(ctx: AiTaskContext, messages: AiMessage[]): Promise<AiTaskEnvelope> {
     const started = this.opts.now?.() ?? Date.now();
@@ -153,11 +163,16 @@ export class AiTaskRunner {
         durationMs: (this.opts.now?.() ?? Date.now()) - started,
       };
     } catch (e) {
+      // 41-05：失败的调用同样已送出（输入已消耗），tokens 不再恒为 0——按通道累计用量
+      // 如实上报（含本次失败的输入），使花费统计不漏失败调用。
+      const chars = messages.reduce((n, m) => n + m.content.length, 0);
+      const used = this.channelCharsUsed();
       return {
         ...base,
         status: "failed",
         summary: "任务执行失败",
         error: e instanceof Error ? e.message : String(e),
+        tokens: used > 0 ? Math.round(used / 4) : Math.round(chars / 4),
         durationMs: (this.opts.now?.() ?? Date.now()) - started,
       };
     }

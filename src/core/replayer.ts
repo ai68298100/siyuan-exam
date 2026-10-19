@@ -4,6 +4,7 @@
 // not_attempted 不改变任何状态；同 eid 只计一次（AttemptLog 已去重，此处双保险）
 // ============================================================
 import type { AttemptEvent, ReplayResult, WrongItem, DayStats } from "./types";
+import { reciteStreakEffect } from "./selfRating";
 
 export const ELIMINATE_STREAK = 2;
 /** 背诵连击毕业线：连续 ≥4 次"会"从背诵池出清（形态升级回选择题） */
@@ -62,8 +63,20 @@ export function replay(events: readonly AttemptEvent[]): ReplayResult {
       // 形态分离：只更新背诵连击（≥4 毕业出清背诵池），不碰错题本
       if (e.kind === "recite") {
         const s = reciteStreak.get(e.qid) ?? 0;
-        if (e.verdict === "correct") reciteStreak.set(e.qid, s + 1);
-        else if (e.verdict === "wrong") reciteStreak.set(e.qid, 0);
+        // 39-04：连击按**自评档位**判定，不再借道面向客观判分的 verdict——
+        // 旧实现把 Hard(2) 记为 verdict=wrong 并清零连击，等于把「费力但成功回忆」
+        // 当作「未回忆成功」。现按 reciteStreakEffect：Again 清零、Hard 保持、Good/Easy 递增。
+        const effect = e.selfRating != null
+          ? reciteStreakEffect(e.selfRating)
+          : // 旧流水缺 selfRating 时按 verdict 回退（向后兼容；不新造语义）
+            e.verdict === "correct"
+            ? { action: "increment" as const }
+            : e.verdict === "wrong"
+              ? { action: "reset" as const }
+              : { action: "hold" as const };
+        if (effect.action === "increment") reciteStreak.set(e.qid, s + 1);
+        else if (effect.action === "reset") reciteStreak.set(e.qid, 0);
+        // hold：不动连击（Hard 不清零，非法值不改动）
       }
       continue;
     }

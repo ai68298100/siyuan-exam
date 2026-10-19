@@ -14,6 +14,13 @@ import { inferAnswerSpec } from "./core/structuredAnswer";
 import { appendRevision, checkPublishGuard, diffQuestion, formatDiffSummary, getQuestionLifecycle, LIFECYCLE_LABELS, specChanged, validateLifecycleTransition, type QuestionLifecycleStatus, type QuestionRevision, type RevisionStore } from "./core/revision";
 import { interleaveGroups } from "./core/interleave";
 import { deckNameForBank, selfRatingToRiffRating, pickSameKp, cramQueue, dailySet, questionToFlashCardMarkdown } from "./core/memory";
+import { ratingOutcome, classifyWriteError, type RatingOutcomeView, type PendingRatingWrite } from "./core/ratingOutcome";
+import {
+  filterEffectiveActiveWrongs,
+  isWrongArchived as checkWrongArchived,
+  isWrongSnoozed as checkWrongSnoozed,
+  type WrongOverlayRecord,
+} from "./core/wrongState";
 import { SaveGate } from "./core/saveGate";
 import { normalizeAnswer, questionHash, sha1like } from "./core/answer";
 import { questionToMarkdown } from "./core/blockTemplate";
@@ -193,6 +200,8 @@ const MATERIAL_NOTES_KEY = "materials/notes";
 const MATERIAL_QREFS_KEY = "materials/qrefs";
 const MISDIAGNOSIS_KEY = "ai/misdiagnosis";
 const SYLLABUS_KEY = "syllabus/tree";
+/** 39-03：待确认评级队列（结果不明/失败保留，核对后再决定是否重写） */
+const PENDING_RATING_KEY = "riff/pending-ratings";
 
 /** 过期草稿（TODO 2.4）：7 天隐藏不再续做入口，30 天清理（流水保留） */
 const DRAFT_HIDE_MS = 7 * 86_400_000;
@@ -604,14 +613,19 @@ export class ExamApp {
       for (const q of pending) submittedIds.add(q.id);
       const writtenBlocks = pending.length ? await this.deps.client.appendQuestions(docId, pending) : [];
       // 54-01 lite：结构化作答规则随导入写入块属性（custom-exam-answer-spec）——往返不丢；失败不影响题目入库
+      // 55-05：主观采分点同理由（custom-exam-rubric），与 answerSpec 共用同一属性写入点
       for (const { qid, blockId } of writtenBlocks) {
         if (!blockId || !pending.some((q) => q.id === qid)) continue;
         writtenIds.add(qid);
         knownIds.add(qid);
         const spec = pending.find((q) => q.id === qid)?.answerSpec;
-        if (!spec) continue;
+        const rubric = pending.find((q) => q.id === qid)?.rubric;
+        if (!spec && !rubric) continue;
         try {
-          await this.deps.client.setExamAttrs(blockId, { "exam-answer-spec": JSON.stringify(spec) });
+          await this.deps.client.setExamAttrs(blockId, {
+            ...(spec ? { "exam-answer-spec": JSON.stringify(spec) } : {}),
+            ...(rubric ? { "exam-rubric": JSON.stringify(rubric) } : {}),
+          });
         } catch { /* spec 写失败不影响题目入库；读回时该题按旧口径判分（如实降级） */ }
       }
       processed += qs.length;
@@ -1038,44 +1052,33 @@ export class ExamApp {
   }
 
   wrongItems(): WrongItem[] {
-    const overlay = this.wrongOverlay;
     const now = this.deps.now?.() ?? Date.now();
-    const items = activeWrongItems(this.derived());
-    if (!overlay.size) return items;
-    // 手动处置覆盖层：按错次计数判断时效——处置后发生更新的错误（wrongCount 增长）自动清除覆盖；
-    // 暂缓（52-06 lite）：until 未到期在册隐藏，到期或期间再错自动回册；
-    // 归档（52-06）：archived 永久封存出刷题池，期间再错自动回册
-    return items.filter((w) => {
-      const o = overlay.get(w.qid);
-      if (!o) return true;
-      if (w.wrongCount > o.wrongCount) return true; // 处置后再错 → 覆盖失效
-      if (o.status === "snoozed") return (o.until ?? 0) <= now; // 暂缓：到期回册
-      if (o.status === "archived") return false; // 归档：在日常错题池中排除
-      return false; // mastered/removed 覆盖生效
-    });
+    // 39-05：手动处置覆盖层按时效契约判定——lastWrongAt 晚于处置时刻或错次递增时，覆盖失效自动回册
+    return filterEffectiveActiveWrongs(
+      activeWrongItems(this.derived()),
+      this.wrongOverlay as Map<string, WrongOverlayRecord>,
+      now,
+    );
   }
 
   /** 获取处于封存归档状态的错题清单（52-06 顽固题归档） */
   listArchivedWrongs(): WrongItem[] {
     const overlay = this.wrongOverlay;
     const all = [...this.derived().wrongbook.values()];
-    return all.filter((w) => {
-      const o = overlay.get(w.qid);
-      return !!o && o.status === "archived" && w.wrongCount <= o.wrongCount;
-    });
+    return all.filter((w) => checkWrongArchived(overlay.get(w.qid), w));
   }
 
   isWrongArchived(qid: string): boolean {
     const o = this.wrongOverlay.get(qid);
     const w = this.derived().wrongbook.get(qid);
-    return !!o && o.status === "archived" && (w ? w.wrongCount <= o.wrongCount : true);
+    return checkWrongArchived(o, w);
   }
 
   isWrongSnoozed(qid: string): boolean {
     const o = this.wrongOverlay.get(qid);
     const now = this.deps.now?.() ?? Date.now();
     const w = this.derived().wrongbook.get(qid);
-    return !!o && o.status === "snoozed" && (o.until ?? 0) > now && (w ? w.wrongCount <= o.wrongCount : true);
+    return checkWrongSnoozed(o, w, now);
   }
 
   /** 顽固题封存归档（52-06）：彻底移出刷题与模考回流，但历史与统计完整保留 */
@@ -1424,6 +1427,10 @@ export class ExamApp {
       };
       if (q.answerSpec) {
         attrs["exam-answer-spec"] = JSON.stringify(q.answerSpec);
+      }
+      // 55-05：主观采分点规格（简答题）同样写入属性表，读回不丢
+      if (q.rubric) {
+        attrs["exam-rubric"] = JSON.stringify(q.rubric);
       }
       try {
         await this.deps.client.setExamAttrs(blockId, attrs);
@@ -2345,36 +2352,89 @@ export class ExamApp {
     }
   }
 
-  /** 背诵/闪卡作答：写流水（kind=recite + selfRating）；若块已转卡则同步 riff 评级 */
+  /** 背诵/闪卡作答：写流水（kind=recite + selfRating）；若块已转卡则同步 riff 评级。
+   *  39-03：返回评级结果状态（未转卡/已写回/待确认/失败/离线未写回），不再静默吞掉失败；
+   *  结果不明（超时/网络）先记待确认队列，等核对内核状态后再决定是否重写，不盲重放。 */
   async reciteAnswer(
     bankName: string,
     q: Question & { blockId?: string },
     selfRating: 1 | 2 | 3 | 4,
     sessionId: string,
     timeMs = 0,
-  ): Promise<void> {
-    const remembered = selfRating >= 3;
+  ): Promise<RatingOutcomeView> {
+    // 39-04：recite 是自评场景，没有标准答案可比，不把自评伪装成客观对错。
+    // verdict 仅保留「是否发生过作答」（not_attempted=未作答），客观对错由 selfRating 独立承载；
+    // 连击语义由 replayer 按 selfRating 判定（Hard 不清零）。
     this.recordAttempt({
       qid: q.id,
       kind: "recite",
       mode: "recite",
-      verdict: remembered ? "correct" : "wrong",
+      verdict: "not_attempted",
       myAnswer: null,
       selfRating,
       sessionId,
       queue: "normal",
       timeMs,
     });
-    if (q.blockId && this.kernelOnline) {
+
+    const rating = selfRatingToRiffRating(selfRating);
+    let writeResult: "ok" | "timeout" | "network" | "fatal" | null = null;
+    let hasCard = false;
+    let cardId = "";
+    let deckId = "";
+    if (q.blockId && this.kernelOnline && rating != null) {
       try {
-        const deckId = await this.ensureDeck(bankName);
+        deckId = await this.ensureDeck(bankName);
         const ids = await this.deps.client.getCardIDsByBlockIDs([q.blockId], deckId);
-        const cardId = ids.get(q.blockId);
-        if (cardId) await this.deps.client.reviewRiffCard(cardId, deckId, selfRatingToRiffRating(selfRating));
-      } catch {
-        /* riff 失败不阻塞背诵流水（离线降级语义） */
+        cardId = ids.get(q.blockId) ?? "";
+        if (cardId) {
+          hasCard = true;
+          await this.deps.client.reviewRiffCard(cardId, deckId, rating);
+          writeResult = "ok";
+        }
+      } catch (e) {
+        writeResult = classifyWriteError(e);
+        // 39-03：结果不明/失败保留待确认记录（含真实 deck/card 身份），成功或不涉及卡则不记
+        if (cardId || deckId) {
+          await this.rememberPendingRating({
+            qid: q.id,
+            blockId: q.blockId,
+            deckId,
+            cardId,
+            rating,
+            sessionId,
+            requestedAt: this.deps.now?.() ?? Date.now(),
+          }).catch(() => undefined);
+        }
       }
     }
+
+    return ratingOutcome({
+      hasCard,
+      kernelOnline: this.kernelOnline,
+      ratingValid: rating != null,
+      writeResult,
+    });
+  }
+
+  // ---------- 39-03 待确认评级队列（不盲重放：先核对内核状态） ----------
+  /** 待确认项存档：结果不明或失败时保留，核对/重写成功后由 UI 清除 */
+  private async rememberPendingRating(p: PendingRatingWrite): Promise<void> {
+    const list = (await this.loadAux<PendingRatingWrite[]>(PENDING_RATING_KEY)) ?? [];
+    const rest = list.filter((x) => !(x.sessionId === p.sessionId && x.qid === p.qid));
+    rest.push(p);
+    await this.saveAux(PENDING_RATING_KEY, rest);
+  }
+
+  /** 读取待确认评级队列（供 UI 展示与核对） */
+  async listPendingRatings(): Promise<PendingRatingWrite[]> {
+    return (await this.loadAux<PendingRatingWrite[]>(PENDING_RATING_KEY)) ?? [];
+  }
+
+  /** 清除一条待确认（核对/重写完成后） */
+  async clearPendingRating(sessionId: string, qid: string): Promise<void> {
+    const list = (await this.loadAux<PendingRatingWrite[]>(PENDING_RATING_KEY)) ?? [];
+    await this.saveAux(PENDING_RATING_KEY, list.filter((x) => !(x.sessionId === sessionId && x.qid === qid)));
   }
 
   /** 查询圈题：执行思源 SQL，把结果块中属于本题库的题挑出来（TODO 26.1 增补） */

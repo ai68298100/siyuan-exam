@@ -65,6 +65,47 @@ function classify(e: unknown): ErrKind {
   return RETRIABLE_HOST.test(msg) ? "retryable" : "fatal";
 }
 
+/** 718：退避上限（防止内核给出异常大的 Retry-After 导致长时间挂起） */
+export const RETRY_AFTER_MAX_MS = 60_000;
+
+/**
+ * 718：解析 HTTP `Retry-After` 头。内核限流时应优先遵循服务端给出的等待时间，
+ * 而不是固定猜测。支持两种合法形式：秒数（`Retry-After: 30`）与 HTTP-date。
+ * 非法值返回 null，由调用方回退到本地退避。
+ */
+export function parseRetryAfterMs(headerValue: string | null | undefined, now: () => number = Date.now): number | null {
+  if (headerValue == null) return null;
+  const raw = String(headerValue).trim();
+  if (!raw) return null;
+  // 秒数形式（整数或小数；负值非法，直接拒绝）
+  if (/^-?\d+(\.\d+)?$/.test(raw)) {
+    const seconds = Number(raw);
+    if (!Number.isFinite(seconds) || seconds < 0) return null;
+    return Math.min(seconds * 1000, RETRY_AFTER_MAX_MS);
+  }
+  // HTTP-date 形式（RFC 7231）：解析为绝对时刻，与当前时间差即等待时长
+  const at = Date.parse(raw);
+  if (Number.isNaN(at)) return null;
+  const delta = at - now();
+  if (delta <= 0) return 0; // 已过期：立即重试，不再等待
+  return Math.min(delta, RETRY_AFTER_MAX_MS);
+}
+
+/**
+ * 718：计算第 `attempt` 次失败后的重试等待时长（毫秒）。
+ * 优先级：服务端 `Retry-After` > 本地线性退避（429 起步 1s，其余 300ms）。
+ * `headerMs` 为 0（服务端明示可立即重试）时按 0 处理，不叠加本地退避。
+ */
+export function computeRetryDelayMs(
+  attempt: number,
+  opts: { status?: number; headerMs?: number | null } = {},
+): number {
+  if (opts.headerMs != null) return Math.max(0, opts.headerMs);
+  const base = opts.status === 429 ? 1000 : 300;
+  return base * (attempt + 1);
+}
+
+
 const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
   if (signal?.aborted) return reject(new DOMException("Aborted", "AbortError"));
   const timer = setTimeout(done, ms);
@@ -92,7 +133,7 @@ export interface FetchLike {
   (
     url: string,
     init: { method: string; headers: Record<string, string>; body: string | FormData; signal?: AbortSignal },
-  ): Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
+  ): Promise<{ ok: boolean; status: number; text(): Promise<string>; headers?: { get(name: string): string | null } }>;
 }
 
 /** HTTP 传输：直连内核（renderer 环境带 token；测试注入 fetchLike） */
@@ -116,6 +157,8 @@ export class HttpTransport implements KernelTransport {
       options.signal?.addEventListener("abort", onAbort, { once: true });
       const timer = setTimeout(() => ctrl.abort(), timeoutMs);
       let retryDelay: number | undefined;
+      let failureStatus: number | undefined;
+      let failureHeaderMs: number | null | undefined;
       try {
         const res = await this.fetchImpl(this.baseUrl + endpoint, {
           method: "POST",
@@ -128,8 +171,12 @@ export class HttpTransport implements KernelTransport {
         });
         const text = await res.text();
         if (!res.ok) {
-          // 429 限流（3.8.6 真机发现）：归 retryable 走退避重试；Retry-After 提示带回
-          if (res.status === 429) throw new KernelError("retryable", endpoint, "HTTP 429 限流，稍后重试", undefined, res.status);
+          // 429 限流（3.8.6 真机发现）：归 retryable 走退避重试；优先遵循服务端 Retry-After
+          if (res.status === 429) {
+            failureStatus = res.status;
+            failureHeaderMs = parseRetryAfterMs(res.headers?.get("Retry-After"));
+            throw new KernelError("retryable", endpoint, "HTTP 429 限流，稍后重试", undefined, res.status);
+          }
           throw new KernelError("fatal", endpoint, `HTTP ${res.status}`, undefined, res.status);
         }
         let body: { code: number; msg: string; data: unknown };
@@ -155,8 +202,7 @@ export class HttpTransport implements KernelTransport {
             ? e
             : new KernelError(kind, endpoint, e instanceof Error ? e.message : String(e), e);
         }
-        const retryAfter = /429/.test(String(lastErr)) ? 1000 : 300;
-        retryDelay = retryAfter * (attempt + 1);
+        retryDelay = computeRetryDelayMs(attempt, { status: failureStatus, headerMs: failureHeaderMs });
       } finally {
         clearTimeout(timer);
         options.signal?.removeEventListener("abort", onAbort);
@@ -181,6 +227,8 @@ export class HttpTransport implements KernelTransport {
       options.signal?.addEventListener("abort", onAbort, { once: true });
       const timer = setTimeout(() => ctrl.abort(), timeoutMs);
       let retryDelay: number | undefined;
+      let failureStatus: number | undefined;
+      let failureHeaderMs: number | null | undefined;
       try {
         const res = await this.fetchImpl(this.baseUrl + endpoint, {
           method: "POST",
@@ -190,7 +238,11 @@ export class HttpTransport implements KernelTransport {
         });
         const text = await res.text();
         if (!res.ok) {
-          if (res.status === 429) throw new KernelError("retryable", endpoint, "HTTP 429 限流，稍后重试", undefined, res.status);
+          if (res.status === 429) {
+            failureStatus = res.status;
+            failureHeaderMs = parseRetryAfterMs(res.headers?.get("Retry-After"));
+            throw new KernelError("retryable", endpoint, "HTTP 429 限流，稍后重试", undefined, res.status);
+          }
           throw new KernelError("fatal", endpoint, `HTTP ${res.status}`, undefined, res.status);
         }
         let body: { code: number; msg: string; data: unknown };
@@ -209,8 +261,7 @@ export class HttpTransport implements KernelTransport {
             ? e
             : new KernelError(kind, endpoint, e instanceof Error ? e.message : String(e), e);
         }
-        const retryAfter = /429/.test(String(lastErr)) ? 1000 : 300;
-        retryDelay = retryAfter * (attempt + 1);
+        retryDelay = computeRetryDelayMs(attempt, { status: failureStatus, headerMs: failureHeaderMs });
       } finally {
         clearTimeout(timer);
         options.signal?.removeEventListener("abort", onAbort);
@@ -609,7 +660,9 @@ export class KernelApiClient {
     return map;
   }
 
-  async reviewRiffCard(cardId: string, deckId: string, rating: 0 | 1 | 2 | 3): Promise<void> {
+  /** 39-01：rating 取值与 github.com/siyuan-note/riff 的 Rating 常量对齐（Again=1…Easy=4）。
+   *  收窄为 1|2|3|4，使越界值在类型层即被拒绝，而不是发到内核再以不存在的键索引调度表。 */
+  async reviewRiffCard(cardId: string, deckId: string, rating: 1 | 2 | 3 | 4): Promise<void> {
     await this.writePost("/api/riff/reviewRiffCard", { cardID: cardId, deckID: deckId, rating, reviewedCards: [] });
   }
 }

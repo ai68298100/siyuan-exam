@@ -55,18 +55,34 @@ const qWithBlock = (id: string): Question & { blockId?: string } => ({
 });
 
 describe("应用层记忆/写入路径（应用编排层测试补盲）", () => {
-  it("reciteAnswer：自评落流水（≥3 记对，<3 记错）且已转卡题同步 riff 评级", async () => {
+  it("reciteAnswer：自评落流水（客观对错由 selfRating 承载）且已转卡题同步 riff 评级", async () => {
     const { client, calls } = stubClient({ decks: [{ id: "deck-1", name: "小驴考试/公考" }] });
     const app = mkApp(client);
     const q = qWithBlock("q1");
-    await app.reciteAnswer("公考", q, 2, "s1"); // 不会
-    await app.reciteAnswer("公考", q, 4, "s1"); // 熟知
+    await app.reciteAnswer("公考", q, 2, "s1"); // 有点难（Hard）
+    await app.reciteAnswer("公考", q, 4, "s1"); // 很容易（Easy）
     const events = app.attempts.all();
     expect(events).toHaveLength(2);
-    expect(events[0]).toMatchObject({ kind: "recite", verdict: "wrong", selfRating: 2 });
-    expect(events[1]).toMatchObject({ kind: "recite", verdict: "correct", selfRating: 4 });
+    // 39-04：recite 是自评场景，不再把自评伪装成客观对错——verdict 只表示「发生过作答」
+    expect(events[0]).toMatchObject({ kind: "recite", verdict: "not_attempted", selfRating: 2 });
+    expect(events[1]).toMatchObject({ kind: "recite", verdict: "not_attempted", selfRating: 4 });
     expect(calls.reviewRiffCard).toHaveLength(2);
-    expect(calls.reviewRiffCard[1].rating).toBe(3); // 4→Easy(3)
+    // 39-01：对齐上游 riff.Rating（Again=1/Hard=2/Good=3/Easy=4），非旧 0-3 偏移值
+    expect(calls.reviewRiffCard[0].rating).toBe(2); // 2模糊 → Hard(2)
+    expect(calls.reviewRiffCard[1].rating).toBe(4); // 4熟知 → Easy(4)
+  });
+
+  it("39-04：Hard 不清零背诵连击，Again 才清零（费力但成功回忆≠失败）", async () => {
+    const { client } = stubClient({ decks: [{ id: "deck-1", name: "小驴考试/公考" }] });
+    const app = mkApp(client);
+    const q = qWithBlock("q1");
+    // Good → 连击 1；Hard → 保持 1（旧实现会清零）；Good → 2；Again → 清零
+    await app.reciteAnswer("公考", q, 3, "s1");
+    await app.reciteAnswer("公考", q, 2, "s1");
+    await app.reciteAnswer("公考", q, 3, "s1");
+    expect(app.derived().reciteStreak.get(q.id)).toBe(2);
+    await app.reciteAnswer("公考", q, 1, "s1");
+    expect(app.derived().reciteStreak.get(q.id)).toBe(0);
   });
 
   it("convertToCards：只送有块 ID 的题；无块返回 0 不调内核", async () => {

@@ -35,8 +35,26 @@ export interface KpMastery {
   independentCorrect: number;
   /** 39-07：覆盖率 = 已练独立题 / 该考点全部题数（题库无该考点题时 -1=未知） */
   coverage: number;
-  /** 39-07：证据时间（最近一次作答 ts；0=无） */
+  /** 39-07：最新作答时间戳（毫秒） */
   evidenceAt: number;
+  /** 39-07：有效证据时间（已练独立题的平均最后作答时刻；练单题不整体刷新考点记忆） */
+  effectiveEvidenceAt?: number;
+  /** 39-07：算法口径说明（启发式衰减 vs 样本不足） */
+  algorithm?: "heuristic-decay" | "insufficient-samples";
+}
+
+/** 39-07：判断某考点掌握度估算是否有足够独立样本支持（非同题刷数） */
+export function isMasteryConfident(m: KpMastery): boolean {
+  return m.mastery >= 0 && (m.algorithm ?? "heuristic-decay") === "heuristic-decay";
+}
+
+/** 39-07：掌握度算法与证据声明（诚实边界：不把平均间隔称作真实卡片 S 或 R） */
+export function masteryAlgorithmNote(m: KpMastery): string {
+  if (!isMasteryConfident(m)) {
+    return `考点「${m.root}」样本不足（作答 ${m.total} 次 / 独立题 ${m.uniqueQids} 道），暂无充分证据估计掌握度。`;
+  }
+  const covText = m.coverage >= 0 ? ` · 考点覆盖率 ${Math.round(m.coverage * 100)}%` : "";
+  return `考点「${m.root}」掌握度由启发式艾宾浩斯遗忘模型估算（基于 ${m.uniqueQids} 道独立题${covText}）；非内核真实 FSRS 卡片稳定性指标。`;
 }
 
 const DECAY = -0.1542;
@@ -93,16 +111,35 @@ export function masteryByKp(
     // 覆盖率：已练独立题 / 该考点全部题数（题库无该考点题时 -1=未知）
     const rootTotalQ = rootTotals.get(root);
     const coverage = rootTotalQ && rootTotalQ > 0 ? Math.min(1, uniqueQids / rootTotalQ) : -1;
-    if (a.t < 3) {
+
+    // 39-07：独立题平均证据时刻（练单题不整体刷新考点记忆）
+    const qidLastTimes = [...set].map((qid) => lastTsByQ.get(qid)).filter((ts): ts is number => ts != null);
+    const effectiveEvidenceAt = qidLastTimes.length
+      ? Math.round(qidLastTimes.reduce((s, t) => s + t, 0) / qidLastTimes.length)
+      : a.last;
+
+    // 39-07：同题重复 3 次不等于 3 道独立题——考点若库内有多道题，仅练 1 道题不能宣称已掌握
+    const hasEnoughIndependent = uniqueQids >= 2 || (rootTotalQ != null && rootTotalQ <= 1);
+    if (a.t < 3 || !hasEnoughIndependent) {
       out.push({
-        root, total: a.t, accuracy: 0, retention: 0, mastery: -1,
-        uniqueQids, independentCorrect, coverage, evidenceAt: a.last,
+        root,
+        total: a.t,
+        accuracy: 0,
+        retention: 0,
+        mastery: -1,
+        uniqueQids,
+        independentCorrect,
+        coverage,
+        evidenceAt: a.last,
+        effectiveEvidenceAt,
+        algorithm: "insufficient-samples",
       });
       continue;
     }
     const accuracy = a.c / a.t;
     const avgGapDays = a.gaps.length ? a.gaps.reduce((x, y) => x + y, 0) / a.gaps.length : 7;
-    const daysSince = Math.max(0, (now - a.last) / 86_400_000);
+    // 39-07：衰减依据考点下各独立题的平均证据时间，而非仅最新单题做题时刻
+    const daysSince = Math.max(0, (now - effectiveEvidenceAt) / 86_400_000);
     const retention = Math.pow(1 + FACTOR * (daysSince / Math.max(1, avgGapDays)), DECAY);
     out.push({
       root,
@@ -114,6 +151,8 @@ export function masteryByKp(
       independentCorrect,
       coverage,
       evidenceAt: a.last,
+      effectiveEvidenceAt,
+      algorithm: "heuristic-decay",
     });
   }
   return out.sort((x, y) => y.mastery - x.mastery);
@@ -326,3 +365,14 @@ export function delayedRecall(events: readonly AttemptEvent[], now = Date.now())
     rate: pairs ? Math.round((independentRecall / pairs) * 100) : null,
   };
 }
+
+// 39-06 导出：未来到期负荷预测与建议量
+export {
+  forecastFutureLoad,
+  exportLoadForecastCsv,
+  estimateNextDueMs,
+  type DayForecast,
+  type LoadForecastResult,
+  type LoadForecastOptions,
+} from "./loadForecast";
+
