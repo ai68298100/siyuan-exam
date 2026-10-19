@@ -287,7 +287,7 @@ describe("checkPublishGuard（43-01 发布守卫）", () => {
 
     const res2 = checkPublishGuard({ stem: "题干", type: "single", options: ["A", "  "], answer: "A" });
     expect(res2.valid).toBe(false);
-    expect(res2.errors.some((e) => e.includes("选项不可存在空项"))).toBe(true);
+    expect(res2.errors.some((e) => e.includes("存在空选项"))).toBe(true);
   });
 
   it("单选题答案越界阻断发布", () => {

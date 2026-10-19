@@ -286,7 +286,7 @@ export function checkPublishGuard(
       errors.push("单选题至少需要 2 个有效选项");
     }
     if (opts.some((o) => !o)) {
-      errors.push("单选题选项不可存在空项");
+      errors.push("存在空选项");
     }
     const ans = (q.answer ?? "").trim().toUpperCase();
     if (!ans) {
@@ -303,7 +303,7 @@ export function checkPublishGuard(
       errors.push("多选题至少需要 2 个有效选项");
     }
     if (opts.some((o) => !o)) {
-      errors.push("多选题选项不可存在空项");
+      errors.push("存在空选项");
     }
     const ans = (q.answer ?? "").trim().toUpperCase();
     if (!ans || ans.length < 2) {
