@@ -15,6 +15,7 @@
     import Palette from "../shared/Palette.svelte";
     import type { PaletteCommand } from "../shared/Palette.svelte";
     import { heatmap, masteryByKp, weakTop, hourly, calibration, confidentWrongList, uncertainCorrectList, delayedRecall, exposureStats, type CalibrationReport } from "@/core/report";
+    import { extractRadarDimensions, buildRadarChartModel, exportRadarDimensionsCsv } from "@/core/radar";
     import { trendToCsv, heatmapToCsv, hourlyToCsv } from "@/core/exportMd";
     import type { ActionItem } from "@/core/actions";
     import SaveStatus from "../shared/SaveStatus.svelte";
@@ -57,6 +58,7 @@
       { group: t("palette.tabs"), icon: "clock", label: t("tab.mock"), keywords: "mock exam", run: () => plugin.openMock?.() },
     ];    let questions = $state<any[]>([]);
     const questionMap = $derived.by(() => {
+      // eslint-disable-next-line svelte/prefer-svelte-reactivity -- derived 内纯派生映射（重算即生成新引用）
       const map = new Map<string, any>();
       for (const q of questions) {
         if (q && q.id) map.set(q.id, q);
@@ -66,6 +68,22 @@
     let kpi = $state({ attempts: 0, accuracy: 0, eliminated: 0, streak: 0 });
     let heat = $state<{ date: string; count: number }[]>([]);
     let mastery = $state<ReturnType<typeof masteryByKp>>([]);
+    let masteryTab = $state<"radar" | "list">("radar");
+    const radarDimensions = $derived(extractRadarDimensions(mastery, 8));
+    const radarChart = $derived(buildRadarChartModel(radarDimensions, { size: 320, radius: 100 }));
+
+    function exportRadarCsv() {
+      if (!radarDimensions.length) return;
+      const csv = exportRadarDimensionsCsv(radarDimensions);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `radar-dimensions-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showMessage(t("report.exportRadarCsv") + " ✓", 3000, "info");
+    }
     let weak = $state<ReturnType<typeof weakTop>>([]);
     let hours = $state<number[]>(new Array(24).fill(0));
     let mockHistory = $state<any[]>([]);
@@ -1071,13 +1089,121 @@
     </div>
 
     <div class="lv-card lv-section" class:lv-report-section--hidden={reportSection !== "knowledge"}>
-      <b>{t("report.mastery")}</b>
+      <div class="lv-row" style="justify-content:space-between;align-items:center;margin-bottom:var(--lv-space-2)">
+        <b>{t("report.mastery")}</b>
+        {#if mastery.length >= 3}
+          <div class="lv-row" style="gap:var(--lv-space-1);align-items:center">
+            <button
+              type="button"
+              class="lv-chip sm"
+              class:acc={masteryTab === "radar"}
+              aria-pressed={masteryTab === "radar"}
+              onclick={() => masteryTab = "radar"}
+              title={t("report.radarTitle")}
+            >
+              <Icon name="sparkles" size={12} /> {t("report.asChart")}
+            </button>
+            <button
+              type="button"
+              class="lv-chip sm"
+              class:acc={masteryTab === "list"}
+              aria-pressed={masteryTab === "list"}
+              onclick={() => masteryTab = "list"}
+              title={t("report.asTable")}
+            >
+              <Icon name="table" size={12} /> {t("report.asTable")}
+            </button>
+            <button
+              type="button"
+              class="lv-chip sm"
+              onclick={exportRadarCsv}
+              title={t("report.exportRadarCsv")}
+            >
+              <Icon name="export" size={12} /> CSV
+            </button>
+          </div>
+        {/if}
+      </div>
       {#if mastery.length}
         <!-- 39-07：算法与口径标注（启发式估计；非真实 FSRS 卡片状态） -->
         <div class="lv-row lv-muted" style="font-size:var(--lv-font-size-label);margin:2px 0 6px">{t("report.masteryNote")}</div>
       {/if}
       {#if !mastery.length}
         <p class="lv-muted">{t("report.noData")}</p>
+      {:else if masteryTab === "radar"}
+        {#if radarChart}
+          <div class="lv-radar-container" style="display:flex;flex-direction:column;align-items:center;padding:var(--lv-space-3) 0">
+            <svg
+              viewBox="0 0 320 320"
+              style="width:100%;max-width:320px;height:auto;overflow:visible;"
+              role="img"
+              aria-label={t("report.radarTitle") + " - " + t("report.radarSubtitle")}
+            >
+              <!-- 1. 同心网格环 -->
+              {#each radarChart.rings as ring, ringIdx (ringIdx)}
+                <polygon
+                  points={ring.pointsString}
+                  fill="none"
+                  stroke="var(--lv-border)"
+                  stroke-width="1"
+                  stroke-dasharray="3,3"
+                />
+              {/each}
+
+              <!-- 2. 同心轴线与文字标签 -->
+              {#each radarChart.axes as axis, axisIdx (axisIdx)}
+                <line
+                  x1={axis.from.x}
+                  y1={axis.from.y}
+                  x2={axis.to.x}
+                  y2={axis.to.y}
+                  stroke="var(--lv-border)"
+                  stroke-width="1"
+                />
+                <text
+                  x={axis.labelPoint.x}
+                  y={axis.labelPoint.y}
+                  text-anchor={axis.anchor}
+                  font-size="11"
+                  fill="var(--lv-text)"
+                  font-weight="var(--lv-font-weight-medium)"
+                >
+                  {axis.label}
+                </text>
+              {/each}
+
+              <!-- 3. 能力多边形面积 -->
+              <polygon
+                points={radarChart.polygonPointsString}
+                fill="color-mix(in srgb, var(--lv-accent) 22%, transparent)"
+                stroke="var(--lv-accent)"
+                stroke-width="2"
+              />
+
+              <!-- 4. 顶点微圆点徽章 -->
+              {#each radarChart.points as pt, idx (idx)}
+                {@const dim = radarChart.dimensions[idx]}
+                <circle
+                  cx={pt.x}
+                  cy={pt.y}
+                  r="4"
+                  fill="var(--lv-surface)"
+                  stroke="var(--lv-accent)"
+                  stroke-width="2"
+                >
+                  <title>{dim ? `${dim.label}: ${dim.score}%` : ""}</title>
+                </circle>
+              {/each}
+            </svg>
+            <div class="lv-row lv-muted" style="font-size:var(--lv-font-size-xs);margin-top:var(--lv-space-2);justify-content:center">
+              <span>{t("report.radarSubtitle")}</span>
+            </div>
+          </div>
+        {:else}
+          <div class="lv-muted" style="padding:var(--lv-space-3) 0;font-size:var(--lv-font-size-sm)">
+            {t("report.radarNeedMore")}
+          </div>
+        {/if}
       {:else}
         {#each mastery.slice(0, 8) as m, _i (_i)}
           <!-- 栅格行：五列定宽对齐，窄屏末列折行到第二行（避免 flex-wrap 造成的悬挂碎片） -->

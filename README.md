@@ -10,23 +10,17 @@
 
 [![Release](https://img.shields.io/github/v/release/ai68298100/siyuan-exam?logo=github)](https://github.com/ai68298100/siyuan-exam/releases)
 [![CI](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml/badge.svg)](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml)
-[![Tests](https://img.shields.io/badge/tests-661%20passed-brightgreen)](#开发)
+[![Tests](https://img.shields.io/badge/tests-845%20passed-brightgreen)](#开发)
 [![SiYuan](https://img.shields.io/badge/SiYuan-%3E%3D%203.8.0-blue)](https://github.com/siyuan-note/siyuan)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 [English](README.en-US.md) · [当前状态](docs/STATUS.md) · [交付说明](docs/DELIVERY.md) · [组件清单](docs/UI-COMPONENTS.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md) · [下载发行包](https://github.com/ai68298100/siyuan-exam/releases) · [查看 R54 UI 原型](design/prototype-r54/index.html) · [反馈问题](https://github.com/ai68298100/siyuan-exam/issues) · [参与讨论](https://github.com/ai68298100/siyuan-exam/discussions)
 
-## 最新版本：v0.10.2（2026-10-16）
+## 最新版本：v0.11.1（2026-10-19）
 
-本轮全面落地 R54 原型高级交互（题库 Peek 抽屉、手工双栏实时题面预览、出题 Studio 任务子导航与资料出题闭环），全界面深度重塑微质感与物理动效（专注练习纸面、模考 CBT 答题卡双层雷达脉冲呼吸灯、全局 ⌘K 命令面板、移动端 Bottom Sheet 安全区）。
+本轮为备考测评与题库生命周期重大里程碑升级。全面实现题目作者生命周期（草稿/待审/发布/废弃）与发布前强校验守卫；历史作答流水与开考试卷严格锁定不可变题版指纹，改题不改历史成绩并可回溯版本漂移；大批量导入支持中断取消与精准断点续传；会话内错题重排精准标记延迟回忆并细分初答正确率；实现争议题处置单与孤儿题诊断，默认净化模考与日常刷题池；共用题干新增材料只读卡片与兄弟题微型导航药丸条；题库 Peek 抽屉支持选项选择率直方分析与 0% 死干扰项检出；支持顽固题阈值诊断、建议处置与错题在册/封存归档双 Tab 切换；模考蓝图引入版本化评分政策（标准/部分分/倒扣分）与 5 题对比样例验算；练习反馈新增三档时机策略（逐题即时/小组延迟批次/会话末复盘）；实现正文挖空出题、演算草稿纸、题库快速去重合并与核心考点能力雷达图。全套单测扩充至 131 个测试文件、845 项测试 100% 通过。
 
-- **题库浏览 Peek 抽屉：** 题目点击从行内展开升级为现代右侧滑入抽屉（桌面端）与底部 Sheet（移动窄屏），彻底保护列表滚动位置与筛选条件；列表行增加 `.active-peek` 微发光选中态，支持遮罩与 Esc 退出并归还焦点。
-- **手工录题双栏所见即所得：** 左侧字段录入、右侧即时渲染真实考场纸感题面（20px、行高 1.75）；支持单选/多选/判断微键帽选中高亮、填空题数值容差与多空逐空模拟、简答自评要点提示，并增加“换一道新题”草稿一键重置。
-- **出题工作台 Studio 子导航：** 在手工录题、学习资料、批量导入、AI 出题四大页面顶部落地统一微卡片式 Studio 子导航栏，支持一键平滑穿梭与触控横滑。
-- **资料与出题一键闭环：** 资料详情支持“带入录题”与“带入 AI 材料”，每条个人笔记卡片支持“用此笔记出题”，实现从资料阅读到题目生成的无缝串联。
-- **微质感与物理动效全面精修：** 模考 CBT 答题卡当前题增加双层雷达微脉冲呼吸动画与成绩单总分卡微发光晶体徽章；作答主纸面卡片注入微内高光与选项微浮雕键帽触压微弹性反馈；全局 ⌘K 命令面板重塑为深邃毛玻璃遮罩与选中微光条。
-
-## 上一版本：v0.10.1（2026-10-16）
+## 上一版本：v0.10.4（2026-10-17）
 
 修复首次创建示例题库时，题目已落盘但宿主写入回执不完整导致的失败提示；同时校准真实宿主数据审计与当前验收记录。
 

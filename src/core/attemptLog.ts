@@ -168,6 +168,37 @@ export class AttemptLog {
     return e;
   }
 
+  /** 44-09 撤销作答：安全回滚最近一条追加的作答事件（支持按 sessionId 与 qid 校验） */
+  popLatest(sessionId?: string, qid?: string): AttemptEvent | null {
+    if (!this.events.length) return null;
+    const last = this.events[this.events.length - 1];
+    if (sessionId && last.sessionId !== sessionId) return null;
+    if (qid && last.qid !== qid) return null;
+
+    this.events.pop();
+    this.seen.delete(last.eid);
+    this.generation++;
+    this.dirty = true;
+    return last;
+  }
+
+  /** 43-07 题目去重合并：将所有 fromQid 的历史作答事件迁移至 toQid，返回重定向事件数 */
+  remapQuestionId(fromQid: string, toQid: string): number {
+    if (fromQid === toQid) return 0;
+    let count = 0;
+    for (const e of this.events) {
+      if (e.qid === fromQid) {
+        e.qid = toQid;
+        count++;
+      }
+    }
+    if (count > 0) {
+      this.generation++;
+      this.dirty = true;
+    }
+    return count;
+  }
+
   /** 立即落盘（会话结束/面板切走时调用）。37-03 在途协调：
    * - 快照写入：保存的是触发时刻的事件副本，写入期间新增事件不受影响
    * - 串行化：已在途时直接返回（新增事件由代次检查触发在途完成后的补写）

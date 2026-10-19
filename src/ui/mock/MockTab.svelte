@@ -24,6 +24,7 @@
     import { renderInlineText } from "../../libs/sanitize";
     import { createQuestionVersionSnapshot } from "../../core/revision";
     import { simulateAllPolicySamples, SCORING_POLICY_LABELS, type ScoringPolicyKind } from "../../core/scoringPolicy";
+    import { getScratchpadText, updateScratchpadText, clearCurrentScratchpad, type ScratchpadStore, type ScratchpadMode } from "../../core/scratchpad";
     
     let { plugin, examApp }: { plugin: any; examApp?: ExamApp | null } = $props();
     let appOverride = $state<ExamApp | null>(null);
@@ -63,6 +64,43 @@
 
     let sampleVerifyOpen = $state(false);
     const policySimulations = $derived(simulateAllPolicySamples());
+
+    // ---------- 52-08 模考电子草稿纸（Scratchpad） ----------
+    let scratchpadOpen = $state(false);
+    let scratchpadStore = $state<ScratchpadStore>({});
+    let scratchpadShared = $state("");
+    let scratchpadMode = $state<ScratchpadMode>("per_question");
+
+    const currentScratchpadText = $derived.by(() => {
+      const qid = current;
+      if (!qid) return "";
+      return getScratchpadText(scratchpadStore, qid, scratchpadMode, scratchpadShared);
+    });
+
+    function onScratchpadInput(text: string) {
+      const qid = current;
+      if (!qid) return;
+      const res = updateScratchpadText(scratchpadStore, qid, text, scratchpadMode, scratchpadShared);
+      scratchpadStore = res.store;
+      scratchpadShared = res.sharedText;
+    }
+
+    function clearScratchpad() {
+      const qid = current;
+      if (!qid) return;
+      const res = clearCurrentScratchpad(scratchpadStore, qid, scratchpadMode, scratchpadShared);
+      scratchpadStore = res.store;
+      scratchpadShared = res.sharedText;
+    }
+
+    async function copyScratchpad() {
+      const text = currentScratchpadText.trim();
+      if (!text) return;
+      try {
+        await navigator.clipboard.writeText(text);
+        showMessage(t("scratchpad.copied"), 2000, "info");
+      } catch { /* 静默 */ }
+    }
 
     let session: MockSession | null = $state(null);
     let cursor = $state(0);
@@ -310,6 +348,7 @@
     });
 
     const questionMap = $derived.by(() => {
+      // eslint-disable-next-line svelte/prefer-svelte-reactivity -- derived 内纯派生映射（重算即生成新引用）
       const map = new Map<string, Question>();
       for (const q of questions) map.set(q.id, q);
       return map;
@@ -989,6 +1028,11 @@
       if (tgt && (tgt.tagName === "TEXTAREA" || tgt.tagName === "INPUT" || tgt.tagName === "SELECT" || tgt.isContentEditable)) return;
       if (e.isComposing || e.metaKey || e.ctrlKey || e.altKey) return;
       const key = e.key.toUpperCase();
+      if (e.shiftKey && key === "S") {
+        e.preventDefault();
+        scratchpadOpen = !scratchpadOpen;
+        return;
+      }
       if (key === "F" && current) {
         e.preventDefault();
         session.toggleFlag(current);
@@ -1282,6 +1326,7 @@
       <span class="lv-chip num">{cursor + 1}/{session.state.qids.length}</span>
       <span class="fn__flex-1"></span>
       <button class="lv-btn sm lv-flag-btn" class:lv-flag-btn--on={session.flags.has(current)} title={`${t("mock.flag")} (F)`} aria-label={`${t("mock.flag")} (F)`} aria-pressed={session.flags.has(current)} disabled={examLocked} onclick={() => { session?.toggleFlag(current); persistRun(); }}><Icon name="pin" size={14} /> <span class="lv-kbd sm">F</span></button>
+      <button class="lv-btn sm lv-flag-btn" class:acc={scratchpadOpen} title={t("scratchpad.tip")} aria-label={t("scratchpad.tip")} aria-pressed={scratchpadOpen} disabled={examLocked} onclick={() => scratchpadOpen = !scratchpadOpen}><Icon name="pencil" size={13} /></button>
       <button class="lv-btn sm" class:acc={isFullscreen} title={isFullscreen ? t("mock.exitFullscreen") : t("mock.fullscreen")} aria-label={isFullscreen ? t("mock.exitFullscreen") : t("mock.fullscreen")} disabled={examLocked} onclick={(e) => void toggleExamFullscreen(e.currentTarget)}><Icon name={isFullscreen ? "close" : "expand"} size={14} /></button>
       <button class="lv-btn lv-btn--primary sm" disabled={examLocked || handInConfirming} aria-busy={submitting || handInConfirming} onclick={() => finishExam(false)}>{submitting ? t("mock.savingScore", "正在保存成绩…") : handInConfirming ? t("mock.confirmingHandIn", "等待交卷确认…") : t("mock.handIn")}</button>
     </div>
@@ -1293,6 +1338,41 @@
     {/if}
     {#if restoreNote}<div class="lv-error">{restoreNote}</div>{/if}
     <div class="lv-card lv-question">
+      {#if scratchpadOpen}
+        <!-- 52-08 模考电子草稿纸浮层 -->
+        <div class="lv-card lv-pad-card" style="margin-bottom:12px;background:var(--lv-surface-2);border-left:3px solid var(--lv-accent);padding:10px 14px">
+          <div class="lv-row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
+            <div class="lv-row" style="margin:0;gap:6px">
+              <b><Icon name="pencil" size={13} /> {t("scratchpad.title")}</b>
+              <button type="button" class="lv-chip sm" class:acc={scratchpadMode === "per_question"} onclick={() => scratchpadMode = "per_question"}>
+                {t("scratchpad.modePerQ")}
+              </button>
+              <button type="button" class="lv-chip sm" class:acc={scratchpadMode === "shared"} onclick={() => scratchpadMode = "shared"}>
+                {t("scratchpad.modeShared")}
+              </button>
+            </div>
+            <div class="lv-row" style="margin:0;gap:4px">
+              <button type="button" class="lv-btn sm lv-btn--ghost" onclick={copyScratchpad} title={t("scratchpad.copy")}>
+                <Icon name="copy" size={11} /> {t("scratchpad.copy")}
+              </button>
+              <button type="button" class="lv-btn sm lv-btn--ghost" onclick={clearScratchpad} title={t("scratchpad.clear")}>
+                ✕ {t("scratchpad.clear")}
+              </button>
+              <button type="button" class="lv-btn sm lv-btn--ghost" onclick={() => scratchpadOpen = false}>
+                ▼
+              </button>
+            </div>
+          </div>
+          <textarea
+            class="lv-input lv-textarea num"
+            rows="3"
+            style="font-family:monospace;font-size:var(--lv-font-size-sm);line-height:1.4"
+            placeholder={t("scratchpad.placeholder")}
+            value={currentScratchpadText}
+            oninput={(e) => onScratchpadInput((e.target as HTMLTextAreaElement).value)}
+          ></textarea>
+        </div>
+      {/if}
       <span class="lv-chip lv-chip--acc">{t("qtype." + currentQ.type)}</span>
       <div class="lv-stem">{currentQ.stem}</div>
       <p class="lv-muted">{t("session.guide." + currentQ.type)}</p>

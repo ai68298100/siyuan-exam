@@ -18,6 +18,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     import { helpFromExposure } from "../../core/exposure";
     import { abandonedExposureInputs } from "../../core/exposure";
     import { randomSeedId } from "../../core/random";
+    import { newBatchId } from "../../core/ids";
     import { ELIMINATE_STREAK, localDate, streak, wrongReasonMix } from "../../core/replayer";
     import { recentlySeen } from "../../core/exposure";
     import { validate } from "../../importer/pipeline";
@@ -60,6 +61,8 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     import { answerChoices, isChoiceQuestion, removeChoiceOption, toggleChoice } from "@/core/answerChoices";
     import { isQuestionDisputed, type DisputeReason } from "@/core/dispute";
     import { isStubbornWrong, getStubbornRemediation } from "@/core/stubborn";
+    import { getScratchpadText, updateScratchpadText, clearCurrentScratchpad, type ScratchpadStore, type ScratchpadMode } from "@/core/scratchpad";
+    import { parseClozeText, clozeItemsToQuestions, type ParsedClozeItem } from "@/core/cloze";
     import { buildMaterialGroupContext, formatMaterialGroupHeader, type SiblingItem } from "@/core/materialContext";
     import { resolveFeedbackTimingMode, isGroupBatchBoundary, calculateGroupBatchSummary, type GroupBatchSummary, DEFAULT_GROUP_FEEDBACK_SIZE } from "@/core/feedbackTiming";
     import { analyzeQuestionUsage, exportItemAnalysisCsv, type ItemAnalysisReport } from "@/core/itemAnalysis";
@@ -104,6 +107,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     let questionLoadSeq = 0;
 
     const questionMap = $derived.by(() => {
+      // eslint-disable-next-line svelte/prefer-svelte-reactivity -- derived 内纯派生映射（重算即生成新引用）
       const map = new Map<string, Question & { blockId: string; rootId: string }>();
       for (const q of questions) {
         map.set(q.id, q);
@@ -112,6 +116,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     });
 
     const materialByGroup = $derived.by(() => {
+      // eslint-disable-next-line svelte/prefer-svelte-reactivity -- derived 内纯派生映射（重算即生成新引用）
       const map = new Map<string, Question & { blockId: string; rootId: string }>();
       for (const q of questions) {
         if (q.type === "material" && q.group) {
@@ -332,6 +337,46 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       a.download = `题库体检清单-${new Date().toISOString().slice(0, 10)}.csv`;
       a.click();
       URL.revokeObjectURL(url);
+    }
+
+    // ---------- 43-07 重复簇合并助手 ----------
+    let activeClusterIndex = $state(-1);
+    let mergeBusy = $state(false);
+
+    function toggleCluster(index: number) {
+      activeClusterIndex = activeClusterIndex === index ? -1 : index;
+    }
+
+    async function mergeClusterToTarget(targetQ: Question & { blockId: string }, clusterIds: string[]) {
+      if (!app || mergeBusy) return;
+      const others = clusterIds
+        .filter((id) => id !== targetQ.id)
+        .map((id) => questionMap.get(id))
+        .filter((q): q is Question & { blockId: string; rootId: string } => !!q && !!q.blockId);
+      if (!others.length) return;
+
+      const { confirmDialogSync } = await import("../../libs/dialog");
+      const confirmed = await confirmDialogSync({
+        title: t("health.mergeConfirmTitle"),
+        content: `${t("health.mergeConfirmBody")}\n\n保留题目：[${targetQ.id}] ${targetQ.stem.slice(0, 40)}\n合并并清理：${others.length} 道重复题。`,
+      });
+      if (!confirmed) return;
+
+      mergeBusy = true;
+      try {
+        let totalMergedAttempts = 0;
+        for (const other of others) {
+          const res = await app.mergeDuplicateQuestions(targetQ, other);
+          totalMergedAttempts += res.mergedEventsCount;
+        }
+        await refreshQuestionsAfterWrite(questions.length - others.length);
+        activeClusterIndex = -1;
+        showMessage(`${t("health.mergeSuccess")}（迁移 ${totalMergedAttempts} 条作答记录）`, 3200, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
+      } finally {
+        mergeBusy = false;
+      }
     }
 
     // 每题用时显示 + 超时提示（TODO 13 组 lite）：会话作答期 1s tick；超时阈值取设置（0=关）
@@ -3049,6 +3094,28 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       void runCheckinBridge().catch((e: unknown) => showMessage(String(e instanceof Error ? e.message : e), 4200, "error")); // 48-03 lite：结算自动同步打卡（幂等 externalRef，失败进待重试）
     }
 
+    /** 44-09 撤销作答：在反馈态下撤回刚才误触的提交，恢复原草稿并安全回滚作答流水 */
+    async function undoRecentSubmit() {
+      if (!session || !app) return;
+      const undone = session.undoLastSubmit();
+      if (!undone) return;
+      app.undoLastAttempt(session.id, undone.qid);
+      clearReciteSubmitTimer();
+      feedback = null;
+      const q = session.current;
+      if (q) {
+        if (isChoiceQuestion(q)) {
+          selected = undone.restoredAnswer ?? "";
+        } else {
+          draftLive = undone.restoredAnswer ?? "";
+        }
+        restoreQuestionControls();
+      }
+      sessionRev++;
+      await app.saveSession().catch(() => undefined);
+      showMessage(t("session.undoDone"), 2400, "info");
+    }
+
     /** 结算页错题批量转卡（LeetFlash 零成本化）：一次点击入 FSRS 队列（按块幂等，重复转卡自动跳过） */
     async function wrongsToCard() {
       if (!session || !activeBankId) return;
@@ -3111,6 +3178,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         await app.flush();
         session = null; feedback = null; selected = ""; draftLive = ""; confidenceSel = ""; sessionDone = null;
         groupBatchModal = null; groupBatchStart = 1;
+        scratchpadOpen = false; scratchpadStore = {}; scratchpadShared = "";
         view = "entry";
       } catch (e) {
         showMessage(offline ? t("state.offlineHint") : String(e instanceof Error ? e.message : e), 4200, "error");
@@ -4510,6 +4578,12 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         return;
       }
       if (!tabRoot?.getClientRects().length || e.defaultPrevented || paletteOpen || railOpen || document.querySelector('[role="dialog"]')) return;
+      // 44-09 快捷撤销作答（Ctrl+Z / Meta+Z）：仅在反馈态下优先响应
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && view === "session" && feedback) {
+        e.preventDefault();
+        void undoRecentSubmit();
+        return;
+      }
       if (e.key === "?" && !peekOpen) {
         e.preventDefault();
         hotkeysHelpOpen = !hotkeysHelpOpen;
@@ -4528,6 +4602,8 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         if (feedback) {
           if (e.key === "Enter" || e.key.toLowerCase() === "j") { e.preventDefault(); nextQuestion(); }
           else if (e.key.toLowerCase() === "k") { e.preventDefault(); previousQuestion(); }
+          else if (e.key.toLowerCase() === "u") { e.preventDefault(); void undoRecentSubmit(); }
+          else if (e.shiftKey && e.key.toUpperCase() === "S") { e.preventDefault(); scratchpadOpen = !scratchpadOpen; }
           else if (feedback.verdict === "wrong" && /^[1-3]$/.test(e.key)) {
             // 错因快捷键（docs/11：1-4 错因；1-3 对应三分类）
             const reasons = ["careless", "unknown", "trap"] as const;
@@ -4549,6 +4625,9 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         } else if (e.key.toLowerCase() === "e") {
           e.preventDefault();
           void toggleFavCurrent();
+        } else if (e.shiftKey && e.key.toUpperCase() === "S") {
+          e.preventDefault();
+          scratchpadOpen = !scratchpadOpen;
         } else if (e.key === "Enter") {
           if (!canSubmitAnswer) return;
           e.preventDefault();
@@ -4613,6 +4692,90 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
 
     /** 38-04 / U08：未完成导入任务的断点恢复对象 */
     let importCheckpoint = $state<import("../../importer/pipeline").ImportCheckpoint | null>(null);
+
+    // ---------- 52-08 演算草稿纸浮层（Scratchpad） ----------
+    let scratchpadOpen = $state(false);
+    let scratchpadStore = $state<ScratchpadStore>({});
+    let scratchpadShared = $state("");
+    let scratchpadMode = $state<ScratchpadMode>("per_question");
+
+    const currentScratchpadText = $derived.by(() => {
+      const q = session?.current;
+      if (!q) return "";
+      void sessionRev;
+      return getScratchpadText(scratchpadStore, q.id, scratchpadMode, scratchpadShared);
+    });
+
+    function onScratchpadInput(text: string) {
+      const q = session?.current;
+      if (!q) return;
+      const res = updateScratchpadText(scratchpadStore, q.id, text, scratchpadMode, scratchpadShared);
+      scratchpadStore = res.store;
+      scratchpadShared = res.sharedText;
+    }
+
+    function clearScratchpad() {
+      const q = session?.current;
+      if (!q) return;
+      const res = clearCurrentScratchpad(scratchpadStore, q.id, scratchpadMode, scratchpadShared);
+      scratchpadStore = res.store;
+      scratchpadShared = res.sharedText;
+    }
+
+    async function copyScratchpad() {
+      const text = currentScratchpadText.trim();
+      if (!text) return;
+      try {
+        await navigator.clipboard.writeText(text);
+        showMessage(t("scratchpad.copied"), 2000, "info");
+      } catch { /* 静默 */ }
+    }
+
+    // ---------- 52-09 正文划重点挖空出题（Cloze Generator） ----------
+    let importSubTab = $state<"standard" | "cloze">("standard");
+    let clozeInputText = $state("");
+    let clozeModes = $state<("highlight" | "curly" | "bracket")[]>(["highlight", "curly"]);
+    let clozeParsedItems = $state<ParsedClozeItem[]>([]);
+    let clozeImporting = $state(false);
+
+    function toggleClozeMode(mode: "highlight" | "curly" | "bracket") {
+      if (clozeModes.includes(mode)) {
+        if (clozeModes.length > 1) clozeModes = clozeModes.filter((m) => m !== mode);
+      } else {
+        clozeModes = [...clozeModes, mode];
+      }
+      if (clozeInputText.trim()) doParseCloze();
+    }
+
+    function doParseCloze() {
+      if (!clozeInputText.trim()) return;
+      clozeParsedItems = parseClozeText(clozeInputText, { modes: clozeModes });
+      if (!clozeParsedItems.length) {
+        showMessage(t("cloze.empty"), 3000, "info");
+      }
+    }
+
+    async function importClozeQuestions() {
+      if (!clozeParsedItems.length || !activeBankId || clozeImporting || committing) return;
+      clozeImporting = true;
+      try {
+        const qs = clozeItemsToQuestions(clozeParsedItems, { kp: "笔记挖空", source: "正文划重点" });
+        const report: import("../../importer/pipeline").ImportReport = {
+          ok: qs,
+          errors: [],
+          duplicates: 0,
+          batch: newBatchId() + "-cloze",
+        };
+        const ok = await runCommit(report);
+        if (ok) {
+          clozeInputText = "";
+          clozeParsedItems = [];
+          showMessage(t("cloze.importSuccess").replace("{n}", String(qs.length)), 3500, "info");
+        }
+      } finally {
+        clozeImporting = false;
+      }
+    }
 
     async function checkImportCheckpoint() {
       if (!app || !activeBankId) { importCheckpoint = null; return; }
@@ -5368,12 +5531,48 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
             {/if}
             <button class="lv-chip" title={ttsSupported() ? t("tts.read") : t("tts.unsupported", "当前前端不支持朗读")} aria-label={t("tts.read")} disabled={!ttsSupported()} onclick={() => ttsSpeak([q.stem, ...q.options].join(" "))}><Icon name="volume" size={13} /></button>
             <button class="lv-chip" class:acc={reciteToggle} title={t("session.reciteMode")} aria-pressed={reciteToggle} onclick={toggleRecite}><Icon name="eye" size={13} /> {t("session.reciteMode")}</button>
+            <button class="lv-chip" class:acc={scratchpadOpen} title={t("scratchpad.tip")} aria-pressed={scratchpadOpen} onclick={() => scratchpadOpen = !scratchpadOpen}><Icon name="pencil" size={13} /> {t("scratchpad.title")}</button>
             <button class="lv-chip" class:acc={soundEnabled} title={soundEnabled ? t("sound.disable") : t("sound.enable")} onclick={() => { soundEnabled = !soundEnabled; writeLocal("lv-exam/sound", soundEnabled ? "1" : "0"); }}><Icon name={soundEnabled ? "volume" : "volume-x"} size={13} /></button>
             <button class="lv-chip" class:acc={hotkeysHelpOpen} title={t("hotkeys.tip")} onclick={() => hotkeysHelpOpen = !hotkeysHelpOpen}><Icon name="activity" size={13} /> ?</button>
             <button class="lv-chip" class:acc={pureListen} title={t("tts.pureListen")} aria-label={t("tts.pureListen")} aria-pressed={pureListen} onclick={togglePureListen}><Icon name="eyeoff" size={13} /></button>
               <button class="lv-chip" class:acc={!!q.fav} title="E" aria-label={t("session.kbdFav")} aria-pressed={!!q.fav} aria-busy={favBusy} disabled={favBusy} onclick={() => toggleFavCurrent()}><Icon name="star" size={13} /></button>
           </div>
           <div class="lv-session-main">
+          {#if scratchpadOpen}
+            <!-- 52-08 演算草稿纸浮层 -->
+            <div class="lv-card lv-pad-card" style="margin-bottom:12px;background:var(--lv-surface-2);border-left:3px solid var(--lv-accent);padding:10px 14px">
+              <div class="lv-row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
+                <div class="lv-row" style="margin:0;gap:6px">
+                  <b><Icon name="pencil" size={13} /> {t("scratchpad.title")}</b>
+                  <button type="button" class="lv-chip sm" class:acc={scratchpadMode === "per_question"} onclick={() => scratchpadMode = "per_question"}>
+                    {t("scratchpad.modePerQ")}
+                  </button>
+                  <button type="button" class="lv-chip sm" class:acc={scratchpadMode === "shared"} onclick={() => scratchpadMode = "shared"}>
+                    {t("scratchpad.modeShared")}
+                  </button>
+                </div>
+                <div class="lv-row" style="margin:0;gap:4px">
+                  <button type="button" class="lv-btn sm lv-btn--ghost" onclick={copyScratchpad} title={t("scratchpad.copy")}>
+                    <Icon name="copy" size={11} /> {t("scratchpad.copy")}
+                  </button>
+                  <button type="button" class="lv-btn sm lv-btn--ghost" onclick={clearScratchpad} title={t("scratchpad.clear")}>
+                    ✕ {t("scratchpad.clear")}
+                  </button>
+                  <button type="button" class="lv-btn sm lv-btn--ghost" onclick={() => scratchpadOpen = false}>
+                    ▼
+                  </button>
+                </div>
+              </div>
+              <textarea
+                class="lv-input lv-textarea num"
+                rows="3"
+                style="font-family:monospace;font-size:var(--lv-font-size-sm);line-height:1.4"
+                placeholder={t("scratchpad.placeholder")}
+                value={currentScratchpadText}
+                oninput={(e) => onScratchpadInput((e.target as HTMLTextAreaElement).value)}
+              ></textarea>
+            </div>
+          {/if}
           {#if groupBatchModal}
             <!-- 44-01：小组延迟批次复盘小结卡 -->
             <div class="lv-card lv-pad-card" style="margin-bottom:12px;background:var(--lv-surface-2);border-left:3px solid var(--lv-accent);padding:14px 16px">
@@ -5518,7 +5717,11 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
                       <span class="lv-muted" style="margin-left:4px">（{t("session.myAnswer")}: <b class="num" style="color:var(--lv-red)">{feedback.myAnswer}</b>）</span>
                     {/if}
                   {/if}
-                  {#if confidenceSel}<span class="lv-chip num" style="margin-left:auto">{t("confidence.recorded")}{t("confidence." + confidenceSel)}</span>{/if}
+                  <!-- 44-09：撤销作答小胶囊（支持快捷键 Ctrl+Z 或 u） -->
+                  <button type="button" class="lv-btn sm lv-btn--ghost" style="margin-left:auto" onclick={undoRecentSubmit} title={t("session.undoTip")}>
+                    <Icon name="rotate" size={11} /> {t("session.undo")}
+                  </button>
+                  {#if confidenceSel}<span class="lv-chip num">{t("confidence.recorded")}{t("confidence." + confidenceSel)}</span>{/if}
                 </div>
               </div>
               {#if q.type === "short"}<div class="lv-analysis"><b>{t("session.referenceAnswer")}</b><div>{q.answer}</div></div>{/if}
@@ -6737,13 +6940,61 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
             <span class="lv-chip lv-chip--grn">✓ {t("health.clean")}</span>
           {:else}
             {#each health.clusters as cl, _i (_i)}
-              <span class="lv-chip num" class:lv-chip--red={cl.similarity === 1} title={cl.sampleStem}>
+              <button
+                type="button"
+                class="lv-chip num"
+                class:acc={activeClusterIndex === _i}
+                class:lv-chip--red={cl.similarity === 1}
+                title={t("health.clusterTip")}
+                onclick={() => toggleCluster(_i)}
+              >
                 ⧉ {cl.ids.length}× {Math.round(cl.similarity * 100)}%
-              </span>
+              </button>
             {/each}
             {#each health.missing as row, _i (_i)}
               <span class="lv-chip lv-chip--amb num" title={row.qids.slice(0, 10).join(" · ")}>{t("health.field." + row.field)} {row.count}</span>
             {/each}
+          {/if}
+          {#if activeClusterIndex >= 0 && health.clusters[activeClusterIndex]}
+            {@const cl = health.clusters[activeClusterIndex]}
+            <!-- 43-07：重复簇合并与差异比对面板 -->
+            <div class="lv-card lv-pad-card" style="margin:8px 0;background:var(--lv-surface-2);border-left:3px solid var(--lv-accent);padding:10px 14px">
+              <div class="lv-row" style="justify-content:space-between;align-items:center;margin-bottom:8px">
+                <b><Icon name="copy" size={13} /> {t("health.mergerTitle")}（{cl.ids.length} 题重复 · 相似度 {Math.round(cl.similarity * 100)}%）</b>
+                <button type="button" class="lv-btn sm lv-btn--ghost" onclick={() => activeClusterIndex = -1}>✕</button>
+              </div>
+              <div class="stack-sm">
+                {#each cl.ids as qid (qid)}
+                  {@const q = questionMap.get(qid)}
+                  {#if q}
+                    {@const attCount = app?.derived().byQuestion.get(qid)?.attempts ?? 0}
+                    <div class="lv-card" style="padding:8px 12px;background:var(--lv-surface-1)">
+                      <div class="lv-row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px">
+                        <div class="lv-row" style="margin:0;gap:6px">
+                          <span class="lv-chip num sm">{q.id}</span>
+                          <span class="lv-chip sm">{t("qtype." + q.type)}</span>
+                          {#if q.kp}<span class="lv-chip sm">{q.kp}</span>{/if}
+                          {#if q.source}<span class="lv-muted" style="font-size:11px">{q.source}</span>{/if}
+                          <span class="num lv-muted" style="font-size:11px">作答 {attCount} 次</span>
+                        </div>
+                        <button
+                          type="button"
+                          class="lv-btn sm lv-btn--primary"
+                          disabled={mergeBusy}
+                          onclick={() => mergeClusterToTarget(q, cl.ids)}
+                        >
+                          {mergeBusy ? "…" : t("health.mergeIntoThis")}
+                        </button>
+                      </div>
+                      <div style="font-size:var(--lv-font-size-sm);margin:6px 0;font-weight:600">{q.stem}</div>
+                      <div class="lv-muted num" style="font-size:var(--lv-font-size-caption)">
+                        答案: <b>{q.answer}</b>{#if q.analysis} · 解析: {q.analysis.slice(0, 80)}{/if}
+                      </div>
+                    </div>
+                  {/if}
+                {/each}
+              </div>
+            </div>
           {/if}
           {#if orphanDiag}
             <!-- 43-04：孤儿与缺陷队列（无母块子题/空材料母块/资料断链/缺答案/缺选项），点击直达过滤列表 -->
@@ -7333,6 +7584,52 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
           ondragleave={() => { importDragOver = false; }}
           ondrop={onImportFileDrop}
         >
+          <!-- 52-09 导入方式子分面切换：批量文件导入 vs 正文划重点挖空出题 -->
+          <div class="lv-row" style="margin-bottom:12px;gap:6px">
+            <button type="button" class="lv-chip" class:acc={importSubTab === "standard"} aria-pressed={importSubTab === "standard"} onclick={() => importSubTab = "standard"}>
+              <Icon name="import" size={12} /> {t("import.title")}（Excel / CSV / Aiken）
+            </button>
+            <button type="button" class="lv-chip" class:acc={importSubTab === "cloze"} aria-pressed={importSubTab === "cloze"} onclick={() => importSubTab = "cloze"}>
+              <Icon name="edit" size={12} /> {t("cloze.tab")}
+            </button>
+          </div>
+          {#if importSubTab === "cloze"}
+            <!-- 52-09 正文划重点挖空出题工作台 -->
+            <div class="lv-row" style="margin:4px 0 8px;gap:6px;align-items:center;flex-wrap:wrap">
+              <span class="lv-muted" style="font-size:var(--lv-font-size-caption)">识别语法：</span>
+              <button type="button" class="lv-chip sm" class:acc={clozeModes.includes("highlight")} onclick={() => toggleClozeMode("highlight")}>{t("cloze.modeHighlight")}</button>
+              <button type="button" class="lv-chip sm" class:acc={clozeModes.includes("curly")} onclick={() => toggleClozeMode("curly")}>{t("cloze.modeCurly")}</button>
+              <button type="button" class="lv-chip sm" class:acc={clozeModes.includes("bracket")} onclick={() => toggleClozeMode("bracket")}>{t("cloze.modeBracket")}</button>
+            </div>
+            <textarea class="lv-input lv-textarea" rows="6" placeholder={t("cloze.placeholder")} bind:value={clozeInputText} disabled={importBusy || clozeImporting}></textarea>
+            <div class="lv-row" style="margin:8px 0">
+              <button class="lv-btn lv-btn--primary" onclick={doParseCloze} disabled={importBusy || clozeImporting || !clozeInputText.trim()}>
+                <Icon name="sparkles" size={14} /> {t("cloze.parseBtn")}
+              </button>
+              {#if clozeParsedItems.length}
+                <button class="lv-btn lv-btn--primary" onclick={importClozeQuestions} disabled={importBusy || clozeImporting}>
+                  {clozeImporting ? "…" : t("cloze.importBtn").replace("{n}", String(clozeParsedItems.length))}
+                </button>
+                <span class="lv-chip lv-chip--grn num">{t("cloze.parsedCount").replace("{n}", String(clozeParsedItems.length))}</span>
+              {/if}
+            </div>
+            {#if clozeParsedItems.length}
+              <div class="stack-sm" style="margin-top:10px;max-height:300px;overflow:auto">
+                {#each clozeParsedItems as it, idx (idx)}
+                  <div class="lv-card" style="padding:8px 12px;background:var(--lv-surface-2)">
+                    <div class="lv-row" style="justify-content:space-between;margin:0 0 4px">
+                      <b class="num" style="color:var(--lv-accent)">#{idx + 1} 填空题</b>
+                      <span class="lv-chip num sm">{it.blankCount} 空</span>
+                    </div>
+                    <div style="font-size:var(--lv-font-size-sm);margin:4px 0">{it.stem}</div>
+                    <div class="lv-muted num" style="font-size:var(--lv-font-size-caption)">
+                      答案: <b style="color:var(--lv-accent)">{it.combinedAnswer}</b>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          {:else}
           <div class="lv-row">
             <button type="button" class="lv-btn" disabled={importBusy} onclick={() => importFileInput?.click()}><Icon name="folder" size={15} /> {t("import.pickExcel")}</button>
             <input bind:this={importFileInput} type="file" accept=".xlsx,.xls,.csv" hidden onchange={onExcelFile} disabled={importBusy} />
@@ -7541,6 +7838,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
               <button class="lv-btn lv-btn--primary" onclick={() => { view = "entry"; void loadQuestions(); }}>{t("import.goPractice")}</button>
               <button class="lv-btn" onclick={() => { view = "browse"; void loadQuestions(); }}>{t("import.goBrowse")}</button>
             </div>
+          {/if}
           {/if}
         </div>
       {/if}

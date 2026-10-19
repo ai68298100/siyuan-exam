@@ -226,6 +226,7 @@ export function makeQuestion(p: {
   analysis?: string;
   kp?: string;
   source?: string;
+  year?: string;
   difficulty?: number;
   alt?: string[];
   group?: string;
@@ -250,6 +251,7 @@ export function makeQuestion(p: {
     difficulty: p.difficulty,
     score: 1,
     source: p.source,
+    year: p.year,
     kp: p.kp,
     origin: "manual",
     group: p.group || undefined,

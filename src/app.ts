@@ -45,6 +45,7 @@ export {
   type StubbornRemediation,
 } from "./core/stubborn";
 import { buildImportCheckpoint, type ImportCheckpoint, type ImportReport } from "./importer/pipeline";
+import { planQuestionMerge } from "./core/duplicateMerger";
 import { sanitizeRichHtml } from "./libs/sanitize";
 import {
   canCopyIntoAssets,
@@ -977,6 +978,57 @@ export class ExamApp {
   recordAttempt(input: Parameters<AttemptLog["append"]>[0]): AttemptEvent {
     this.invalidate();
     return this.attempts.append(input);
+  }
+
+  /** 44-09 撤销会话最近一次提交的作答流水（支持按 sessionId 与 qid 校验） */
+  undoLastAttempt(sessionId: string, qid?: string): AttemptEvent | null {
+    const popped = this.attempts.popLatest(sessionId, qid);
+    if (popped) {
+      this.invalidate();
+    }
+    return popped;
+  }
+
+  /** 43-07 题库重复题合并：保留 targetQ，迁移 sourceQ 历史流水并从思源题库删除 sourceQ 块 */
+  async mergeDuplicateQuestions(
+    targetQ: Question & { blockId: string },
+    sourceQ: Question & { blockId: string },
+  ): Promise<{ mergedEventsCount: number; enrichedFields: string[] }> {
+    if (!this.kernelOnline) throw new Error("离线：合并题目需要内核可写");
+    if (targetQ.id === sourceQ.id) throw new Error("不能合并同一道题目");
+    if (!sourceQ.blockId) throw new Error("待合并题目缺少块 ID");
+
+    // 1. 制定合并计划（智能合入缺失字段）
+    const plan = planQuestionMerge(targetQ, sourceQ);
+
+    // 2. 如果目标题字段有丰富补充，更新目标题块
+    if (plan.enrichedFields.length > 0) {
+      await this.updateQuestionContent(targetQ, {
+        stem: plan.enrichedQuestion.stem,
+        options: plan.enrichedQuestion.options,
+        answer: plan.enrichedQuestion.answer,
+        analysis: plan.enrichedQuestion.analysis ?? "",
+        kp: plan.enrichedQuestion.kp ?? "",
+        difficulty: plan.enrichedQuestion.difficulty,
+        status: plan.enrichedQuestion.status,
+      });
+      Object.assign(targetQ, plan.enrichedQuestion);
+    }
+
+    // 3. 迁移作答流水
+    const mergedEventsCount = this.attempts.remapQuestionId(sourceQ.id, targetQ.id);
+
+    // 4. 从思源删除重复题块
+    await this.deps.client.removeBlock(sourceQ.blockId);
+
+    // 5. 立即持久化流水并使派生视图失效
+    await this.flush();
+    this.invalidate();
+
+    return {
+      mergedEventsCount,
+      enrichedFields: plan.enrichedFields,
+    };
   }
 
   /** 派生视图（缓存；写流水后失效） */

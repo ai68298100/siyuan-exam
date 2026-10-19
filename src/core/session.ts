@@ -119,6 +119,39 @@ export class PracticeSession {
     return { q, grade: g, attemptIndex, isDelayedReview };
   }
 
+  /** 44-09 撤销作答：回滚最近一次提交，从 answered 弹出，若有重排错题从队尾安全剔除，并恢复题面草稿与游标 */
+  undoLastSubmit(): { qid: string; restoredAnswer: string | null } | null {
+    if (!this.answered.length) return null;
+    const lastAnswer = this.answered.pop()!;
+    const lastStateAnswer = (this.state.answered ?? []).pop();
+    const qid = lastAnswer.qid;
+
+    // 若该题此前因为答错被追加到了队尾，且当前队尾最后一题确实是该 qid，安全撤销重排
+    if (this.requeued.has(qid)) {
+      const lastQid = this.state.qids[this.state.qids.length - 1];
+      if (lastQid === qid) {
+        this.state.qids.pop();
+        this.requeued.delete(qid);
+        if (this.state.requeued) {
+          const idx = this.state.requeued.lastIndexOf(qid);
+          if (idx >= 0) this.state.requeued.splice(idx, 1);
+        }
+      }
+    }
+
+    // 恢复游标到该题提交时的位置
+    if (lastStateAnswer) {
+      this.state.cursor = lastStateAnswer.pos;
+    }
+    const restoredAnswer = lastAnswer.grade.myAnswer;
+    if (restoredAnswer) {
+      this.state.drafts[qid] = restoredAnswer;
+    }
+
+    this.touch();
+    return { qid, restoredAnswer };
+  }
+
   /** 已作答的卷面位置集合（恢复推进用；重排队同 qid 多位置互不影响） */
   answeredPositions(): Set<number> {
     return new Set((this.state.answered ?? []).map((a) => a.pos));

@@ -549,6 +549,10 @@ export class KernelApiClient {
     await this.writePost("/api/block/deleteBlock", { id: blockId });
   }
 
+  async deleteBlock(blockId: string): Promise<void> {
+    await this.removeBlock(blockId);
+  }
+
   /** 整块替换（题目编辑 43-01 lite）：超级块 markdown 全量重写，exam-id IAL 不变即身份不变；
    *  写后读回核验由调用方（app.updateQuestionContent）负责 */
   async updateBlock(blockId: string, markdown: string): Promise<void> {
