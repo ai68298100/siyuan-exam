@@ -208,7 +208,11 @@ export class MockSession {
     for (const q of paper) {
       const secName = assembleInfo.sectionOf.get(q.id);
       const sec = bp.sections.find((s) => s.name === secName);
-      if (sec?.indefinite) this.indefinite.add(q.id);
+      if (sec?.indefinite || bp.scoringPolicy?.kind === "partial_indefinite" || bp.scoringPolicy?.kind === "partial_all") {
+        if (q.type === "multiple" || sec?.indefinite) {
+          this.indefinite.add(q.id);
+        }
+      }
     }
     if (bp.sectionTimed && paper[0]) {
       const first = this.sectionOf.get(paper[0].id);
@@ -219,6 +223,11 @@ export class MockSession {
 
   sectionOfQ(qid: string): string {
     return this.sectionOf.get(qid) ?? "";
+  }
+
+  /** 40-01：当前题是否作为不定项题型计分（支持少选部分分、错选得零分） */
+  isIndefinite(qid: string): boolean {
+    return this.indefinite.has(qid);
   }
 
   questionOf(qid: string): Question | undefined {
@@ -389,11 +398,22 @@ export class MockSession {
       if (a.verdict === "correct") {
         sec.correct++;
       }
-      // 55-04：版本化评分政策驱动计分（全对/部分分/倒扣分/保底）
-      const policy = this.bp.scoringPolicy ?? DEFAULT_SCORING_POLICY;
+      // 55-04 / 40-01：版本化评分政策与模块不定项驱动计分（全对/部分分/倒扣分/保底）
+      const defaultPolicy = this.bp.scoringPolicy ?? DEFAULT_SCORING_POLICY;
+      // 若该题属于不定项且当前为标准政策，则自动适配为多选少选部分分政策（40-01）
+      const policy =
+        this.indefinite.has(qid) && defaultPolicy.kind === "standard"
+          ? { ...defaultPolicy, kind: "partial_indefinite" as const }
+          : defaultPolicy;
       const scoreEach = this.scoreOf.get(qid) ?? 0;
+      const q = this.byId.get(qid);
       const itemScore = calculateItemScore(
-        { scoreEach, verdict: a.verdict, factor: a.verdict === "correct" ? 1 : a.factor },
+        {
+          scoreEach,
+          verdict: a.verdict,
+          factor: a.verdict === "correct" ? 1 : a.factor,
+          type: this.indefinite.has(qid) ? "multiple" : q?.type,
+        },
         policy,
       );
       sec.score += itemScore;
