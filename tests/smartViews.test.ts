@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { applyView, upsertView, viewBankMismatch, type SmartView } from "../src/core/smartViews";
+import {
+  applyView,
+  upsertView,
+  viewBankMismatch,
+  exportSmartViewsJson,
+  importSmartViewsJson,
+  type SmartView,
+} from "../src/core/smartViews";
 
 const view = (over: Partial<SmartView> = {}): SmartView => ({
   name: "测试视图",
@@ -52,5 +59,40 @@ describe("命名智能视图（43-05 lite，廿六批）", () => {
   it("跨库视图显式提示（viewBankMismatch）", () => {
     expect(viewBankMismatch(view({ bankId: "b1" }), "b2")).toBe(true);
     expect(viewBankMismatch(view({ bankId: "b1" }), "b1")).toBe(false);
+  });
+
+  it("43-05 强化：题型、考点前缀、错题与争议过滤叠加生效", () => {
+    const questions = [
+      { id: "q1", stem: "题1", options: ["A", "B"], type: "single" as const, kp: "资料/比重", sourceKind: "real" as const, dispute: { status: "pending" } },
+      { id: "q2", stem: "题2", options: ["A", "B"], type: "multiple" as const, kp: "资料/增长", sourceKind: "mock" as const },
+      { id: "q3", stem: "题3", options: [], type: "fill" as const, kp: "常识" },
+    ];
+
+    // 1. 题型与考点过滤
+    const v1 = view({ types: ["single"], kpPrefix: "资料" });
+    expect(applyView(v1, questions).map((q) => q.id)).toEqual(["q1"]);
+
+    // 2. 错题与争议过滤
+    const v2 = view({ onlyWrong: true });
+    expect(applyView(v2, questions, { wrongQids: new Set(["q2"]) }).map((q) => q.id)).toEqual(["q2"]);
+
+    const v3 = view({ onlyDisputed: true });
+    expect(applyView(v3, questions).map((q) => q.id)).toEqual(["q1"]);
+  });
+
+  it("65-07 导出与导入：跨工作区 JSON 导入导出与目标题库自动适配", () => {
+    const list = [view({ name: "视图A", kpPrefix: "常识", bankId: "old-bank" })];
+    const json = exportSmartViewsJson(list);
+    expect(json).toContain("视图A");
+
+    // 导入到新题库
+    const res = importSmartViewsJson(json, "new-bank");
+    expect(res.imported).toHaveLength(1);
+    expect(res.imported[0].name).toBe("视图A");
+    expect(res.imported[0].bankId).toBe("new-bank");
+    expect(res.imported[0].kpPrefix).toBe("常识");
+
+    // 损坏数据容错
+    expect(importSmartViewsJson("invalid-json").imported).toHaveLength(0);
   });
 });

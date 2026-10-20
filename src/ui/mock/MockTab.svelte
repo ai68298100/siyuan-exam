@@ -9,10 +9,10 @@
     import Rail from "../shared/Rail.svelte";
     import type { Question } from "../../core/types";
     import { showMessage } from "siyuan";
-    import { assemble, blueprintTotals, defaultMockSections, dedupeSectionNames, MockSession, validateBlueprint, type Blueprint, type BlueprintSection, type MockRunSnapshot, type MockScore } from "../../core/mock";
+    import { assemble, blueprintTotals, defaultMockSections, dedupeSectionNames, MockSession, validateBlueprint, type Blueprint, type BlueprintSection, type SectionSource, type MockRunSnapshot, type MockScore } from "../../core/mock";
     import { newRunId } from "../../core/ids";
     import { emitExamEvent, onExamEvent } from "../../core/bus";
-    import { openPracticeView } from "../../core/pluginTab";
+    import { openPracticeView, type ExamPluginLike } from "../../core/pluginTab";
     import { answerChoices, isChoiceQuestion, toggleChoice } from "../../core/answerChoices";
     import { specOf, splitBlanks, joinBlanks } from "../../core/structuredAnswer";
     import { estimateScore, normalizeEstimateInput } from "../../core/estimate";
@@ -26,8 +26,9 @@
     import { simulateAllPolicySamples, SCORING_POLICY_LABELS, type ScoringPolicyKind } from "../../core/scoringPolicy";
     import { buildPoolModel, computePercentile, buildScoreBands, buildPercentileCurve, historyPercents, exportPercentileCsv } from "../../core/percentile";
     import { getScratchpadText, updateScratchpadText, clearCurrentScratchpad, type ScratchpadStore, type ScratchpadMode } from "../../core/scratchpad";
+    import { resolveCbtKeyAction, computeSectionNavigation } from "../../core/cbtKeyboard";
     
-    let { plugin, examApp }: { plugin: any; examApp?: ExamApp | null } = $props();
+    let { plugin, examApp }: { plugin: ExamPluginLike; examApp?: ExamApp | null } = $props();
     let appOverride = $state<ExamApp | null>(null);
     const app = $derived<ExamApp | null>(appOverride ?? examApp ?? plugin?.examApp ?? null);
     const i18n = $derived(plugin?.i18n ?? {});
@@ -772,8 +773,10 @@
       try {
         await app.startSession(wrongs, "wrong", activeBankId);
         // 练习台已打开时同步到现有组件；未打开时由 pending 入口接管。
-        (plugin as any).pendingPractice = wrongs;
-        (plugin as any).pendingPracticeBankId = activeBankId;
+        if (plugin) {
+          plugin.pendingPractice = wrongs;
+          plugin.pendingPracticeBankId = activeBankId;
+        }
         emitExamEvent("open-practice-questions", { qids: wrongs.map((q) => q.id), bank: activeBankId });
       } catch (e) {
         showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
@@ -1039,60 +1042,107 @@
       }
     }
 
-    /** 40-06：模考键盘作答——A-J 选择/多选 toggle、←/→ 导航；
-     *  守卫 textarea/input/select/contenteditable 与 IME 组合期/修饰键 */
+    /** 40-06：模考键盘作答与 CBT 盲打引擎接线（委托纯函数 resolveCbtKeyAction） */
     function onExamKey(e: KeyboardEvent) {
       if (view !== "exam" || !session || !currentQ || examLocked) return;
       if (!tabRoot?.getClientRects().length) return;
       const tgt = e.target as HTMLElement | null;
       if (tgt && tgt !== document.body && !tabRoot.contains(tgt)) return;
-      if (tgt && (tgt.tagName === "TEXTAREA" || tgt.tagName === "INPUT" || tgt.tagName === "SELECT" || tgt.isContentEditable)) return;
-      if (e.isComposing || e.metaKey || e.ctrlKey || e.altKey) return;
-      const key = e.key.toUpperCase();
-      if (e.shiftKey && key === "S") {
+
+      const action = resolveCbtKeyAction(
+        {
+          key: e.key,
+          keyCode: e.keyCode,
+          shiftKey: e.shiftKey,
+          ctrlKey: e.ctrlKey,
+          altKey: e.altKey,
+          metaKey: e.metaKey,
+          isComposing: e.isComposing,
+          targetTagName: tgt?.tagName,
+          targetIsContentEditable: tgt?.isContentEditable,
+        },
+        {
+          questionType: currentQ.type,
+          optionCount: currentQ.options.length,
+          isLockout: bp.lockout,
+        },
+      );
+
+      if (action.type === "ignore") return;
+
+      if (action.type === "toggle_scratchpad") {
         e.preventDefault();
         scratchpadOpen = !scratchpadOpen;
         return;
       }
-      if (key === "F" && current) {
+
+      if (action.type === "toggle_flag" && current) {
         e.preventDefault();
         session.toggleFlag(current);
         persistRun();
         return;
       }
-      if (/^[A-J]$/.test(key)) {
-        const idx = key.charCodeAt(0) - 65;
-        const choice = isChoiceQuestion(currentQ) ? answerChoices(currentQ)[idx] : null;
+
+      if (action.type === "select_option" && typeof action.optionIndex === "number") {
+        const choice = isChoiceQuestion(currentQ) ? answerChoices(currentQ)[action.optionIndex] : null;
         if (choice) {
           e.preventDefault();
           pickOption(choice.value);
         }
         return;
       }
-      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-        const optionGroup = tgt?.closest<HTMLElement>('[role="radiogroup"], [role="group"]');
-        if (optionGroup) {
+
+      if ((action.type === "judge_true" || action.type === "judge_false") && typeof action.optionIndex === "number") {
+        const choice = answerChoices(currentQ)[action.optionIndex];
+        if (choice) {
           e.preventDefault();
-          const options = [...optionGroup.querySelectorAll<HTMLButtonElement>('[role="radio"], [role="checkbox"]')]
-            .filter((option) => !option.disabled);
-          if (!options.length) return;
-          const currentOption = options.indexOf(tgt as HTMLButtonElement);
-          const direction = e.key === "ArrowRight" ? 1 : -1;
-          const nextIndex = (currentOption + direction + options.length) % options.length;
-          options[nextIndex].focus();
-          if (options[nextIndex].getAttribute("role") === "radio") {
-            const choice = answerChoices(currentQ)[nextIndex];
-            if (choice) pickOption(choice.value);
-          }
-          return;
+          pickOption(choice.value);
         }
+        return;
       }
-      if (e.key === "ArrowRight") {
+
+      if (action.type === "confirm_multiple") {
         e.preventDefault();
         goto(Math.min(session.state.qids.length - 1, cursor + 1));
-      } else if (e.key === "ArrowLeft" && !bp.lockout) {
+        return;
+      }
+
+      if (action.type === "navigate_prev") {
         e.preventDefault();
         goto(Math.max(0, cursor - 1));
+        return;
+      }
+
+      if (action.type === "navigate_next") {
+        e.preventDefault();
+        goto(Math.min(session.state.qids.length - 1, cursor + 1));
+        return;
+      }
+
+      if (action.type === "navigate_first") {
+        e.preventDefault();
+        goto(0);
+        return;
+      }
+
+      if (action.type === "navigate_last") {
+        e.preventDefault();
+        goto(session.state.qids.length - 1);
+        return;
+      }
+
+      if (action.type === "navigate_section_prev") {
+        e.preventDefault();
+        const prevTarget = computeSectionNavigation(cursor, "prev", session.state.qids, (qid) => session.sectionOfQ(qid));
+        goto(prevTarget);
+        return;
+      }
+
+      if (action.type === "navigate_section_next") {
+        e.preventDefault();
+        const nextTarget = computeSectionNavigation(cursor, "next", session.state.qids, (qid) => session.sectionOfQ(qid));
+        goto(nextTarget);
+        return;
       }
     }
 </script>
@@ -1194,7 +1244,7 @@
           <input class="lv-input" bind:value={s.name} oninput={() => updateSection(i, { name: s.name })} aria-label={t("mock.sec")} />
           <input class="lv-input num" type="number" min="0" value={s.count} aria-label={t("mock.count")} oninput={(e) => updateSection(i, { count: Math.max(0, parseInt((e.target as HTMLInputElement).value) || 0) })} />
           <input class="lv-input num" type="number" min="0" step="0.1" value={s.scoreEach} aria-label={t("mock.each")} oninput={(e) => updateSection(i, { scoreEach: Math.max(0, parseFloat((e.target as HTMLInputElement).value) || 0) })} />
-          <select class="lv-select" value={s.source} aria-label={t("mock.source")} onchange={(e) => updateSection(i, { source: (e.target as HTMLSelectElement).value as any })}>
+          <select class="lv-select" value={s.source} aria-label={t("mock.source")} onchange={(e) => updateSection(i, { source: (e.target as HTMLSelectElement).value as SectionSource })}>
             <option value="mixed">{t("mock.sourceMixed", "不限来源")}</option><option value="real">{t("mock.sourceReal")}</option><option value="mock">{t("mock.sourceMock")}</option>
           </select>
           <!-- 55-02 lite：考点配额（前缀匹配；缺口显式计入短缺，不用其他考点补齐） -->

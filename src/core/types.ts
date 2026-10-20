@@ -39,6 +39,8 @@ export interface Question {
   sourceKind?: "real" | "mock";
   year?: string;
   kp?: string; // 考点（"资料分析/比重计算"，/ 分层）
+  /** 题目标签（可选，支持多维分类与筛选） */
+  tags?: string[];
   origin: "imported" | "ai" | "manual";
   batch?: string; // 导入批次
   review?: "pending" | "verified" | "edited" | "rejected";
@@ -70,7 +72,25 @@ export interface Question {
   confidence?: number; // AI 二遍核验置信度 0-1（ Quanta 范式：≥0.90 可信）
   fav?: boolean; // 收藏（exam-fav="1"，docs/02 §2.4）
   group?: string; // 共用题干组 ID（材料与子题共享，cbt 引擎）
+  /** 题族与变式关联（52-07 / 65-03，原题/近远迁移/正反向兄弟题） */
+  family?: QuestionFamilyRef;
   hash: string; // 去重指纹（stem+options）
+  /** 思源块 ID（从块属性读入或回写） */
+  blockId?: string;
+  /** 思源文档根块 ID（所属文档） */
+  rootId?: string;
+  /** 思源文档 hpath 人类可读路径 */
+  hpath?: string;
+}
+
+/** 题族与变式关联契约（52-07 / 65-03） */
+export interface QuestionFamilyRef {
+  /** 题族标识或父题目 ID */
+  parentId?: string;
+  /** 变式维度：数值变形/正反向/近迁移/远迁移/干扰项替换 */
+  variantKind?: "numeric" | "reverse" | "near_transfer" | "far_transfer" | "distractor_swap";
+  /** 是否经人工审定确认（未确认变式不当做有效迁移题） */
+  verified?: boolean;
 }
 
 /** 作答事件（append-only 流水；重算唯一输入） */

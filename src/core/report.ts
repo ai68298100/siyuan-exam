@@ -376,3 +376,15 @@ export {
   type LoadForecastOptions,
 } from "./loadForecast";
 
+// 51-01 导出：考点层级大纲树与掌握度穿透聚合
+export {
+  buildKpTree,
+  findKpSubtree,
+  flattenKpTree,
+  pruneKpTree,
+  normalizeKpPath,
+  type KpTreeNode,
+  type KpTreeOptions,
+} from "./kpTree";
+
+

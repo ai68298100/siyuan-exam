@@ -187,3 +187,15 @@ export function exportItemAnalysisCsv(report: ItemAnalysisReport): string {
 
   return "\uFEFF" + lines.join("\r\n");
 }
+
+// 43-08 题目难度与区分度引擎联动重导出
+export {
+  calculateItemDiscrimination,
+  auditBankDiscrimination,
+  exportDiscriminationCsv,
+  computeEmpiricalStars,
+  evaluateDiscriminationGrade,
+  type ItemDiscriminationResult,
+  type BankDiscriminationAudit,
+  type DiscriminationGrade,
+} from "./itemDiscrimination";

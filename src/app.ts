@@ -31,6 +31,40 @@ import { emitExamEvent } from "./core/bus";
 import type { CheckinEventInput } from "./core/checkinBridge";
 import type { MockRunSnapshot } from "./core/mock";
 import {
+  exportPaperMarkdown,
+  exportAnswerKeyMarkdown,
+  verifyPaperIntegrity,
+  type PaperSnapshot,
+} from "./core/paperSnapshot";
+import {
+  computeExamUrgency,
+  extractCramCandidates,
+  calculateCramBudget,
+  createCramSessionSpec,
+  type CramFilterOptions,
+  type CramSessionSpec,
+  type ExamUrgency,
+} from "./core/cramScheduler";
+import {
+  burySiblingsForPractice,
+  disperseSiblings,
+  type SiblingBuryOptions,
+  type SiblingBuryResult,
+} from "./core/siblingBury";
+import {
+  createDiagnosisEntry,
+  appendDiagnosisToDoc,
+  removeDiagnosisFromDoc,
+  getLatestDiagnosis as findLatestDiagnosis,
+  listDiagnosisHistory as findDiagnosisHistory,
+  exportDiagnosisMarkdown as formatDiagnosisMarkdown,
+  fromLegacyReflection,
+  EMPTY_DIAGNOSIS_DOC,
+  type RootCauseKind,
+  type SelfDiagnosisEntry,
+  type SelfDiagnosisHistoryDoc,
+} from "./core/selfDiagnosis";
+import {
   appendActions,
   completeAction,
   cancelAction,
@@ -372,6 +406,11 @@ export class ExamApp {
       await this.loadWrongReflections();
     } catch (e) {
       this.noteStorageReadError("wrongbook/reflections", e);
+    }
+    try {
+      await this.loadDiagnosisDoc();
+    } catch (e) {
+      this.noteStorageReadError("wrongbook/diagnosis", e);
     }
     this.invalidate();
     try {
@@ -1156,8 +1195,72 @@ export class ExamApp {
     emitExamEvent("wrongbook-changed", { qid, status: "snoozed" });
   }
 
-  // ---------- 错题自诊断（52-04 lite）：个人复盘短模板，与官方解析分离存储 ----------
-  /** 保存自诊断复盘（覆盖式：一次一份当前检查点；官方解析与作答流水不受影响） */
+  // ---------- 错题自诊断（52-04）：四要素个人复盘短模板与时间轴，与官方解析分离存储 ----------
+  private diagnosisDoc: SelfDiagnosisHistoryDoc = EMPTY_DIAGNOSIS_DOC;
+
+  private async loadDiagnosisDoc(): Promise<void> {
+    const v = await this.loadAux<SelfDiagnosisHistoryDoc>("wrongbook/diagnosis");
+    if (v && v.v === 1 && v.records) {
+      this.diagnosisDoc = v;
+    } else {
+      this.diagnosisDoc = { v: 1, records: {} };
+    }
+  }
+
+  /** 保存四要素自诊断复盘（支持历史版本化追加；官方解析与作答流水不受影响） */
+  async saveWrongDiagnosis(
+    qid: string,
+    input: {
+      thought?: string;
+      rootCause?: RootCauseKind;
+      rationale?: string;
+      checklist?: string;
+    },
+  ): Promise<SelfDiagnosisEntry> {
+    this.assertStorageWritable();
+    const entry = createDiagnosisEntry(qid, input, this.deps.now?.() ?? Date.now());
+    const key = "wrongbook/diagnosis";
+    await this.queueStorageWrite(key, async () => {
+      const current = (await this.loadAux<SelfDiagnosisHistoryDoc>(key)) ?? this.diagnosisDoc;
+      const updated = appendDiagnosisToDoc(current, entry);
+      await this.saves.runLatest(key, () => this.deps.storage.save(key, updated));
+      this.diagnosisDoc = updated;
+
+      // 同步兼容旧版 reflection 文本缓存
+      if (entry.thought) {
+        this.wrongReflections[qid] = { text: entry.thought, at: entry.at };
+      }
+    });
+    return entry;
+  }
+
+  /** 获取题目最新一次自诊断记录（52-04 验收：复习时回看上次检查点） */
+  async getLatestDiagnosis(qid: string): Promise<SelfDiagnosisEntry | null> {
+    const fromDoc = findLatestDiagnosis(this.diagnosisDoc, qid);
+    if (fromDoc) return fromDoc;
+    // 回退兼容旧版反思记录
+    const legacy = await this.loadWrongReflection(qid);
+    if (legacy) return fromLegacyReflection(qid, legacy);
+    return null;
+  }
+
+  /** 获取某题的完整诊断历史时间轴 */
+  async listDiagnosisHistory(qid: string): Promise<SelfDiagnosisEntry[]> {
+    const list = findDiagnosisHistory(this.diagnosisDoc, qid);
+    if (list.length) return list;
+    const legacy = await this.loadWrongReflection(qid);
+    if (legacy) return [fromLegacyReflection(qid, legacy)];
+    return [];
+  }
+
+  /** 导出题目最新自诊断 Markdown 卡片 */
+  async exportDiagnosisMarkdown(qid: string): Promise<string | null> {
+    const latest = await this.getLatestDiagnosis(qid);
+    if (!latest) return null;
+    return formatDiagnosisMarkdown(latest);
+  }
+
+  /** 保存自诊断复盘（兼容旧版纯文本接口，内部同步升级至四要素结构） */
   async saveWrongReflection(qid: string, text: string): Promise<void> {
     this.assertStorageWritable();
     const key = "wrongbook/reflections";
@@ -1166,8 +1269,17 @@ export class ExamApp {
       const previous = this.wrongReflections;
       const map = { ...(v ?? {}) };
       const trimmed = text.trim();
-      if (!trimmed) delete map[qid];
-      else map[qid] = { text: trimmed, at: this.deps.now?.() ?? Date.now() };
+      const at = this.deps.now?.() ?? Date.now();
+      if (!trimmed) {
+        delete map[qid];
+        delete this.wrongReflections[qid];
+        this.diagnosisDoc = removeDiagnosisFromDoc(this.diagnosisDoc, qid);
+      } else {
+        map[qid] = { text: trimmed, at };
+        this.wrongReflections[qid] = { text: trimmed, at };
+        const entry = createDiagnosisEntry(qid, { thought: trimmed }, at);
+        this.diagnosisDoc = appendDiagnosisToDoc(this.diagnosisDoc, entry);
+      }
       try {
         await this.saves.runLatest(key, () => this.deps.storage.save(key, map));
         this.wrongReflections = map;
@@ -1178,10 +1290,15 @@ export class ExamApp {
     });
   }
 
-  /** 读取自诊断复盘（52-04 验收：复习能回看上次检查点） */
+  /** 读取自诊断复盘（兼容旧版纯文本反思读取） */
   async loadWrongReflection(qid: string): Promise<{ text: string; at: number } | null> {
     const v = (this.wrongReflections[qid] ?? null) as { text: string; at: number } | null;
-    return v;
+    if (v) return v;
+    const latest = findLatestDiagnosis(this.diagnosisDoc, qid);
+    if (latest && latest.thought) {
+      return { text: latest.thought, at: latest.at };
+    }
+    return null;
   }
 
   private wrongReflections: Record<string, { text: string; at: number }> = {};
@@ -1588,6 +1705,10 @@ export class ExamApp {
 
   listMaterials(): MaterialDoc[] {
     return [...this.materialsRegistry.materials];
+  }
+
+  getMaterial(materialId: string): MaterialDoc | undefined {
+    return this.materialsRegistry.materials.find((m) => m.id === materialId);
   }
   /** 注册表版本比当前代码新（升级回滚场景）：UI 如实显示只读提示，写路径拒绝（不降级覆盖） */
   get materialsReadonly(): boolean {
@@ -2078,7 +2199,7 @@ export class ExamApp {
 
   async listEstimates(): Promise<(Record<string, unknown> & { percent: number })[]> {
     const v = await this.loadAux("estimate/history");
-    return Array.isArray(v) ? (v as any[]) : [];
+    return Array.isArray(v) ? (v as (Record<string, unknown> & { percent: number })[]) : [];
   }
 
   // ---------- 导出与模考历史（v0.5） ----------
@@ -2131,6 +2252,73 @@ export class ExamApp {
     const ymd = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
     const hms = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
     return this.deps.client.createDocWithMd(bankId, `/导出/模考成绩单 ${ymd}-${hms}`, md);
+  }
+
+  // ---------- 试卷固化与离线导出（55-07 / 68-01） ----------
+  /** 持久化试卷不可变快照，同时维护试卷索引 */
+  async savePaperSnapshot(snapshot: PaperSnapshot): Promise<void> {
+    this.assertStorageWritable();
+    const integrity = verifyPaperIntegrity(snapshot);
+    if (!integrity.valid) {
+      throw new Error(`[lv-exam] 试卷快照校验失败，拒绝写入: ${integrity.errors.join("; ")}`);
+    }
+    const paperKey = `mock/papers/${snapshot.paperId}`;
+    await this.queueStorageWrite(paperKey, () =>
+      this.saves.runLatest(paperKey, () => this.deps.storage.save(paperKey, snapshot)),
+    );
+
+    await this.queueStorageWrite("mock/papers/index", async () => {
+      const index = (await this.loadAux<Array<{ paperId: string; title: string; createdAt: number; questionCount: number; totalScore: number }>>("mock/papers/index")) ?? [];
+      const entry = {
+        paperId: snapshot.paperId,
+        title: snapshot.title,
+        createdAt: snapshot.createdAt,
+        questionCount: snapshot.questionCount,
+        totalScore: snapshot.totalScore,
+      };
+      const filtered = index.filter((x) => x.paperId !== snapshot.paperId);
+      const next = [entry, ...filtered].slice(0, 50);
+      await this.saves.runLatest("mock/papers/index", () => this.deps.storage.save("mock/papers/index", next));
+    });
+  }
+
+  async loadPaperSnapshot(paperId: string): Promise<PaperSnapshot | null> {
+    try {
+      const v = await this.loadAux<PaperSnapshot | null>(`mock/papers/${paperId}`);
+      if (!v || !Array.isArray(v.items)) return null;
+      return v;
+    } catch (error) {
+      this.noteStorageReadError(`mock/papers/${paperId}`, error);
+      return null;
+    }
+  }
+
+  async listPaperSnapshots(): Promise<Array<{ paperId: string; title: string; createdAt: number; questionCount: number; totalScore: number }>> {
+    const list = await this.loadAux<Array<{ paperId: string; title: string; createdAt: number; questionCount: number; totalScore: number }>>("mock/papers/index");
+    return Array.isArray(list) ? list : [];
+  }
+
+  async deletePaperSnapshot(paperId: string): Promise<void> {
+    this.assertStorageWritable();
+    const paperKey = `mock/papers/${paperId}`;
+    await this.queueStorageWrite(paperKey, () =>
+      this.saves.runLatest(paperKey, () => this.deps.storage.save(paperKey, null)),
+    );
+    await this.queueStorageWrite("mock/papers/index", async () => {
+      const index = (await this.loadAux<Array<{ paperId: string; title: string; createdAt: number; questionCount: number; totalScore: number }>>("mock/papers/index")) ?? [];
+      const next = index.filter((x) => x.paperId !== paperId);
+      await this.saves.runLatest("mock/papers/index", () => this.deps.storage.save("mock/papers/index", next));
+    });
+  }
+
+  async exportPaper(paperId: string, options: { note?: string } = {}): Promise<{ paperMd: string; answerKeyMd: string }> {
+    const snap = await this.loadPaperSnapshot(paperId);
+    if (!snap) {
+      throw new Error(`[lv-exam] 未找到试卷快照: ${paperId}`);
+    }
+    const paperMd = exportPaperMarkdown(snap, { note: options.note });
+    const answerKeyMd = exportAnswerKeyMarkdown(snap, { note: options.note });
+    return { paperMd, answerKeyMd };
   }
 
   /** 错题册导出：生成 Markdown 并写入题库笔记本"导出"文档，返回文档 id
@@ -2527,6 +2715,64 @@ export class ExamApp {
     return cramQueue(questions, counts, minWrong, limit);
   }
 
+  /** 53-04 考前急救冲刺：结合考期紧急度、顽固题、错因加权与容量配额提取冲刺规格（ADR 0003 永不写回） */
+  emergencyCramDrill(
+    questions: Question[],
+    options: {
+      examDate?: string;
+      filter?: CramFilterOptions;
+      targetMinutes?: number;
+      avgSeconds?: number;
+    } = {},
+  ): CramSessionSpec {
+    const wrongItems = this.wrongItems();
+    const wrongReasons = this.wrongReasonMap();
+    const archivedQids = new Set(this.listArchivedWrongs().map((w) => w.qid));
+    const nowMs = this.deps.now?.() ?? Date.now();
+    const urgency = computeExamUrgency(options.examDate, nowMs);
+
+    const candidates = extractCramCandidates({
+      allQuestions: questions,
+      wrongItems,
+      wrongReasons,
+      archivedQids,
+      filter: options.filter,
+      daysLeft: urgency.daysLeft,
+    });
+
+    const budget = calculateCramBudget({
+      targetMinutes: options.targetMinutes,
+      avgSecondsPerQuestion: options.avgSeconds,
+      candidateCount: candidates.length,
+      urgencyLevel: urgency.level,
+      minFloor: 5,
+      maxCap: 50,
+    });
+
+    const slicedCandidates = candidates.slice(0, budget.recommendedCount);
+
+    return createCramSessionSpec({
+      examDate: options.examDate,
+      candidates: slicedCandidates,
+      budget,
+      nowMs,
+    });
+  }
+
+  getExamUrgency(examDate?: string): ExamUrgency {
+    return computeExamUrgency(examDate, this.deps.now?.() ?? Date.now());
+  }
+
+  /** 65-03 同源兄弟题防答案泄露暂缓：按题族与材料组暂缓后置兄弟题至后续练习（模考豁免，不改长期调度） */
+  burySiblings(questions: Question[], options?: SiblingBuryOptions): SiblingBuryResult {
+    return burySiblingsForPractice(questions, options);
+  }
+
+  /** 65-03 会话内兄弟题打散：重排队列拉大同族变式题距，同时保护材料组连续作答 */
+  disperseSiblings(questions: Question[], options?: SiblingBuryOptions): Question[] {
+    return disperseSiblings(questions, options);
+  }
+
   /** 每日一练：到期优先（FSRS 层 v0.2+ 当前传空）→ 高频错题 → 随机补足 */
   dailyDrill(questions: Question[], dueFirst: Question[], n: number): Question[] {
     const counts = new Map<string, number>();
@@ -2542,6 +2788,324 @@ export class ExamApp {
   wrongDrill(questions: Question[]): Question[] {
     const active = new Set(this.wrongItems().map((w) => w.qid));
     return questions.filter((q) => active.has(q.id));
+  }
+
+  /** 51-01 获取题库多级考点大纲树与多级穿透掌握度聚合（纯函数领域模型） */
+  async getKpTree(bankId?: string, options?: import("./core/kpTree").KpTreeOptions): Promise<import("./core/kpTree").KpTreeNode[]> {
+    const targetBank = bankId ?? this.listBanks()[0]?.id;
+    if (!targetBank) return [];
+    const questions = await this.listQuestions(targetBank);
+    const events = this.attempts.all();
+    const { buildKpTree } = await import("./core/kpTree");
+    return buildKpTree(questions, events, options);
+  }
+
+  /** 43-08 全库试题实测难度与区分度自动校准（支持小样本保护与异常题预警） */
+  async auditBankDiscrimination(
+    bankId?: string,
+    options?: { minSample?: number; kelleyRatio?: number },
+  ): Promise<import("./core/itemDiscrimination").BankDiscriminationAudit> {
+    const targetBank = bankId ?? this.listBanks()[0]?.id;
+    if (!targetBank) {
+      return {
+        totalQuestions: 0,
+        analyzedCount: 0,
+        confidentCount: 0,
+        averageP: 0,
+        averageD: 0,
+        gradeCounts: { excellent: 0, good: 0, marginal: 0, poor: 0, negative: 0 },
+        anomalies: [],
+        items: [],
+      };
+    }
+    const questions = await this.listQuestions(targetBank);
+    const allEvents = this.attempts.all();
+    const { auditBankDiscrimination } = await import("./core/itemDiscrimination");
+    return auditBankDiscrimination(questions, allEvents, options);
+  }
+
+  /** 43-08 获取单题实测难度与区分度报告 */
+  async getItemDiscrimination(
+    qid: string,
+    bankId?: string,
+  ): Promise<import("./core/itemDiscrimination").ItemDiscriminationResult | null> {
+    const targetBank = bankId ?? this.listBanks()[0]?.id;
+    if (!targetBank) return null;
+    const questions = await this.listQuestions(targetBank);
+    const q = questions.find((x) => x.id === qid);
+    if (!q) return null;
+    const allEvents = this.attempts.all();
+    const qEvents = allEvents.filter((e) => e.qid === qid);
+    const { calculateItemDiscrimination } = await import("./core/itemDiscrimination");
+    return calculateItemDiscrimination(q, qEvents, allEvents);
+  }
+
+  /** 43-08 导出题库难度与区分度报告 CSV */
+  async exportBankDiscriminationCsv(bankId?: string): Promise<string> {
+    const audit = await this.auditBankDiscrimination(bankId);
+    const { exportDiscriminationCsv } = await import("./core/itemDiscrimination");
+    return exportDiscriminationCsv(audit);
+  }
+
+  // ---------- 54-06 主观题机考字数与答题纸网格 ----------
+  /** 测算主观题文本字数指标与达标状态 */
+  async measureSubjectiveAnswer(
+    text: string,
+    options?: import("./core/wordCount").WordLimitOptions,
+  ): Promise<{
+    metrics: import("./core/wordCount").WordCountMetrics;
+    limitStatus: import("./core/wordCount").WordLimitStatus;
+  }> {
+    const { countWordsAndCharacters, evaluateWordCountStatus } = await import("./core/wordCount");
+    const metrics = countWordsAndCharacters(text);
+    const limitStatus = evaluateWordCountStatus(metrics.examWords, options);
+    return { metrics, limitStatus };
+  }
+
+  /** 生成主观题 25×N 机考答题方格纸模型（带百字标尺与段落缩进） */
+  async generateSubjectivePaperGrid(
+    text: string,
+    options?: import("./core/wordCount").GridOptions,
+  ): Promise<import("./core/wordCount").PaperGridModel> {
+    const { generatePaperGrid } = await import("./core/wordCount");
+    return generatePaperGrid(text, options);
+  }
+
+  // ---------- 65-08 靶向弱项自适应攻坚专题 ----------
+  /** 组装靶向弱项自适应攻坚专题（基于考点层级树自动甄别薄弱点并混合变式抽题） */
+  async createAdaptiveTargetSession(
+    bankId?: string,
+    options?: import("./core/adaptiveTarget").AdaptiveTargetOptions,
+  ): Promise<import("./core/adaptiveTarget").AdaptiveTargetSession> {
+    const targetBank = bankId ?? this.listBanks()[0]?.id;
+    if (!targetBank) {
+      return {
+        sessionId: "",
+        title: "自适应攻坚专题（无题库）",
+        targetKps: [],
+        questions: [],
+        composition: { wrongs: 0, variants: 0, unattempted: 0 },
+        receipt: "未指定有效题库。",
+      };
+    }
+    const questions = await this.listQuestions(targetBank);
+    const kpRoots = await this.getKpTree(targetBank);
+    const wrongItems = this.wrongItems();
+    const archivedQids = new Set(this.listArchivedWrongs().map((w) => w.qid));
+    const { assembleAdaptiveTargetSession } = await import("./core/adaptiveTarget");
+    return assembleAdaptiveTargetSession({
+      allQuestions: questions,
+      kpRoots,
+      wrongItems,
+      archivedQids,
+      options,
+    });
+  }
+
+  // ---------- 68-04 A4 双栏紧凑打印与作答卷脱敏 ----------
+  async buildCompactQuestionSheet(
+    title: string,
+    bankId?: string,
+    options?: import("./core/printPro").PrintProOptions,
+  ): Promise<string> {
+    const targetBank = bankId ?? this.listBanks()[0]?.id;
+    const questions = targetBank ? await this.listQuestions(targetBank) : [];
+    const { buildCompactQuestionSheetPro } = await import("./core/printPro");
+    return buildCompactQuestionSheetPro(title, questions, options);
+  }
+
+  async buildCompactAnswerSheet(
+    title: string,
+    bankId?: string,
+    options?: import("./core/printPro").PrintProOptions,
+  ): Promise<string> {
+    const targetBank = bankId ?? this.listBanks()[0]?.id;
+    const questions = targetBank ? await this.listQuestions(targetBank) : [];
+    const { buildCompactAnswerSheetPro } = await import("./core/printPro");
+    return buildCompactAnswerSheetPro(title, questions, options);
+  }
+
+  // ---------- 65-04 可重建临时练习集声明与管理 ----------
+  async savePracticeSetSpec(spec: import("./core/rebuildableSet").PracticeSetSpec): Promise<void> {
+    this.assertStorageWritable();
+    const key = `practice/sets/${spec.id}`;
+    await this.queueStorageWrite(key, () => this.saves.runLatest(key, () => this.deps.storage.save(key, spec)));
+    await this.queueStorageWrite("practice/sets/index", async () => {
+      const idx = (await this.loadAux<Array<{ id: string; name: string; bankId: string; createdAt: number; count: number }>>("practice/sets/index")) ?? [];
+      const entry = { id: spec.id, name: spec.name, bankId: spec.bankId, createdAt: spec.createdAt, count: spec.snapshot.length };
+      const next = [entry, ...idx.filter((x) => x.id !== spec.id)].slice(0, 30);
+      await this.saves.runLatest("practice/sets/index", () => this.deps.storage.save("practice/sets/index", next));
+    });
+  }
+
+  async loadPracticeSetSpec(id: string): Promise<import("./core/rebuildableSet").PracticeSetSpec | null> {
+    try {
+      const v = await this.loadAux<import("./core/rebuildableSet").PracticeSetSpec | null>(`practice/sets/${id}`);
+      return v && v.v === 1 && Array.isArray(v.snapshot) ? v : null;
+    } catch (e) {
+      this.noteStorageReadError(`practice/sets/${id}`, e);
+      return null;
+    }
+  }
+
+  async listPracticeSetSpecs(): Promise<Array<{ id: string; name: string; bankId: string; createdAt: number; count: number }>> {
+    const list = await this.loadAux<Array<{ id: string; name: string; bankId: string; createdAt: number; count: number }>>("practice/sets/index");
+    return Array.isArray(list) ? list : [];
+  }
+
+  async deletePracticeSetSpec(id: string): Promise<void> {
+    this.assertStorageWritable();
+    const key = `practice/sets/${id}`;
+    await this.queueStorageWrite(key, () => this.saves.runLatest(key, () => this.deps.storage.save(key, null)));
+    await this.queueStorageWrite("practice/sets/index", async () => {
+      const idx = (await this.loadAux<Array<{ id: string; name: string; bankId: string; createdAt: number; count: number }>>("practice/sets/index")) ?? [];
+      const next = idx.filter((x) => x.id !== id);
+      await this.saves.runLatest("practice/sets/index", () => this.deps.storage.save("practice/sets/index", next));
+    });
+  }
+
+  async rebuildPracticeSet(id: string): Promise<import("./core/rebuildableSet").RebuildResult> {
+    const spec = await this.loadPracticeSetSpec(id);
+    if (!spec) throw new Error(`未找到练习集声明: ${id}`);
+    const liveQuestions = await this.listQuestions(spec.bankId);
+    const wrongQids = new Set(this.wrongItems().map((w) => w.qid));
+    const { rebuildPracticeSet } = await import("./core/rebuildableSet");
+    return rebuildPracticeSet({ spec, liveQuestions, wrongQids });
+  }
+
+  // ---------- 45-12 数据完整性审计与自检 ----------
+  async auditIntegrity(bankId?: string): Promise<import("./core/dataIntegrity").IntegrityReport> {
+    const targetBank = bankId ?? this.listBanks()[0]?.id;
+    const questions = targetBank ? await this.listQuestions(targetBank) : [];
+    const events = this.attempts.all();
+    const wrongItems = this.wrongItems();
+    const { auditDataIntegrity } = await import("./core/dataIntegrity");
+    return auditDataIntegrity({
+      events,
+      questions,
+      wrongItems,
+      nowMs: this.deps.now?.() ?? Date.now(),
+    });
+  }
+
+  async exportIntegrityCsv(bankId?: string): Promise<string> {
+    const report = await this.auditIntegrity(bankId);
+    const { exportIntegrityCsv } = await import("./core/dataIntegrity");
+    return exportIntegrityCsv(report);
+  }
+
+  // ---------- 51-07 考纲换版影响评估与差异迁移 ----------
+  async assessSyllabusChange(
+    newSyllabusDoc: import("./core/syllabus").SyllabusDoc | readonly import("./core/syllabus").SyllabusNode[],
+    bankId?: string,
+    options?: {
+      oldSyllabusDoc?: import("./core/syllabus").SyllabusDoc | readonly import("./core/syllabus").SyllabusNode[];
+    },
+  ): Promise<import("./core/syllabusDiff").SyllabusChangeImpact> {
+    const targetBank = bankId ?? this.listBanks()[0]?.id;
+    const questions = targetBank ? await this.listQuestions(targetBank) : [];
+    const oldDoc = options?.oldSyllabusDoc ?? (await this.loadAux<import("./core/syllabus").SyllabusDoc>("syllabus/tree"));
+    const { diffSyllabusTrees, assessSyllabusImpact } = await import("./core/syllabusDiff");
+    const diff = diffSyllabusTrees(oldDoc ?? [], newSyllabusDoc);
+    const bp = await this.loadAux<import("./core/mock").Blueprint>("mock/blueprint");
+    return assessSyllabusImpact({
+      diff,
+      questions,
+      blueprints: bp ? [bp] : [],
+    });
+  }
+
+  async exportSyllabusDiffMarkdown(
+    newSyllabusDoc: import("./core/syllabus").SyllabusDoc | readonly import("./core/syllabus").SyllabusNode[],
+    bankId?: string,
+    options?: {
+      oldSyllabusDoc?: import("./core/syllabus").SyllabusDoc | readonly import("./core/syllabus").SyllabusNode[];
+    },
+  ): Promise<string> {
+    const impact = await this.assessSyllabusChange(newSyllabusDoc, bankId, options);
+    const { exportSyllabusDiffMarkdown } = await import("./core/syllabusDiff");
+    return exportSyllabusDiffMarkdown(impact);
+  }
+
+  // ---------- 52-05 选项干扰项误概念对照与认知诊断 ----------
+  async diagnoseQuestionMisconceptions(
+    qid: string,
+    misconceptions: readonly import("./core/misconception").OptionMisconception[],
+    bankId?: string,
+  ): Promise<import("./core/misconception").MisconceptionDiagnosisResult | null> {
+    const targetBank = bankId ?? this.listBanks()[0]?.id;
+    if (!targetBank) return null;
+    const questions = await this.listQuestions(targetBank);
+    const q = questions.find((x) => x.id === qid);
+    if (!q) return null;
+    const allEvents = this.attempts.all();
+    const { diagnoseMisconceptions } = await import("./core/misconception");
+    return diagnoseMisconceptions({
+      question: q,
+      events: allEvents,
+      misconceptions,
+    });
+  }
+
+  async exportQuestionMisconceptionMarkdown(
+    qid: string,
+    misconceptions: readonly import("./core/misconception").OptionMisconception[],
+    bankId?: string,
+  ): Promise<string> {
+    const diag = await this.diagnoseQuestionMisconceptions(qid, misconceptions, bankId);
+    if (!diag) return "";
+    const { exportMisconceptionMarkdown } = await import("./core/misconception");
+    return exportMisconceptionMarkdown(diag);
+  }
+
+  // ---------- 120-04 原文切片与阅读笔记渐进式制卡出题 ----------
+  async extractCardsFromExcerpt(
+    source: import("./core/excerptCard").ExcerptSource,
+    options?: import("./core/excerptCard").ExcerptExtractOptions,
+  ): Promise<import("./core/excerptCard").CardExtractionResult> {
+    const { extractCardsFromExcerpt } = await import("./core/excerptCard");
+    return extractCardsFromExcerpt(source, options);
+  }
+
+  async extractCardsFromNotes(
+    materialId: string,
+    options?: import("./core/excerptCard").ExcerptExtractOptions,
+  ): Promise<import("./core/excerptCard").CardExtractionResult> {
+    let material = this.getMaterial(materialId);
+    if (!material) {
+      const notes = this.listMaterialNotes(materialId);
+      if (notes.length === 0) {
+        throw new Error(`未找到指定材料: ${materialId}`);
+      }
+      material = {
+        id: materialId,
+        title: "渐进式笔记制卡",
+        revision: 1,
+        created: Date.now(),
+        updated: Date.now(),
+      } as any;
+    }
+    const notes = this.listMaterialNotes(materialId);
+    const { extractCardsFromMaterialNotes } = await import("./core/excerptCard");
+    return extractCardsFromMaterialNotes(
+      notes,
+      { id: material.id, title: material.title, revision: material.revision },
+      options,
+    );
+  }
+
+  async exportCardsMarkdown(
+    result: import("./core/excerptCard").CardExtractionResult,
+  ): Promise<string> {
+    const { exportCardsMarkdown } = await import("./core/excerptCard");
+    return exportCardsMarkdown(result);
+  }
+
+  async exportCardsCsv(
+    result: import("./core/excerptCard").CardExtractionResult,
+  ): Promise<string> {
+    const { exportCardsCsv } = await import("./core/excerptCard");
+    return exportCardsCsv(result);
   }
 
   /** 43-01 题目作者生命周期流转（draft ↔ review ↔ published ↔ deprecated） */

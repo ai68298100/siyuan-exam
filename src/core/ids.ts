@@ -35,6 +35,12 @@ export const newDeviceId = () => `d-${rand(6)}`;
 /** 模考运行 ID：r-时间戳-随机（与蓝图 id 分离，同蓝图多次考试互不覆盖） */
 export const newRunId = () => `r-${Date.now().toString(36)}-${rand(6)}`;
 
+/** 固化试卷 ID：paper-时间戳-随机（55-07 不可变试卷快照身份） */
+export const newPaperId = () => `paper-${Date.now().toString(36)}-${rand(6)}`;
+
+/** 错题自诊断记录 ID：diag-时间戳-随机（52-04 错题复盘备忘） */
+export const newDiagnosisId = () => `diag-${Date.now().toString(36)}-${rand(6)}`;
+
 /** 导入批次 ID：b-yyyyMMdd-xxxx */
 export const newBatchId = () => {
   const d = new Date();

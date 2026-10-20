@@ -4,7 +4,153 @@
 
 ### 用户可读摘要
 
-> 本次更新集中攻坚深度备考与本地调度核心闭环。新增每日计划欠账累积、自适应补偿策略与重算预览确认机制（44-05，科学平摊缺席欠题，严格夹取上限杜绝指数级爆量，预览与执行解耦）；新增未来复习到期负荷预测与建议每日量（39-06，基于遗忘曲线衰减模型科学平摊复习负荷，严格划分时区杜绝未来幽灵数据）；新增模考虚拟排名与百分位模拟（63-05，基于历史模考或通用虚拟模型科学换算，声明诚实边界不冒充真实考生）；实现主观解答题结构化采分点（55-05，支持 2–5 项权重自评、未评项不折成 0 分、自评与作答流水形态分离与版本冻结）；确证并修复思源内核 riff 评级 0–3 偏移的 P0 级严重缺陷（39-01，对齐上游 1–4 契约）；强化 429 限流恢复并严格遵循服务端 Retry-After 头（718）；重构浏览过滤谓词至 core 纯函数模块（browseFilter）；完善 cram/daily/quick 等多队列身份与结算写回回执（39-02）；构建 riff 评级五态状态机与防双击重放待确认机制（39-03）；实现 AI 失败与取消调用不漏记的花费账本（41-05）；消除 Hard 档位被等同客观答错的语义混淆（39-04，Hard 不清零背诵连击）；实现错题手动处置（mastered/removed/snoozed）后再错按约定恢复在册的双保险时效状态机（39-05）。全套自动化单测扩充至 141 个测试文件、1071 项测试 100% 通过。
+> 本次更新集中攻坚深度备考与本地调度核心闭环。新增备考完备度体检与考点盲区雷达引擎（63-04/63-05，五维量化雷达、红黄蓝绿考点风险分级与靶向冲刺处方）；新增考纲两版结构化对比与变动波及评估引擎（51-03/51-04，节点增删改精细比对、受波及题目清单与大纲迁移向导）；实现高频思维陷阱与选项级干扰误概念挖掘（52-05/43-02，选项陷阱识别与可否认对照避坑指南）；实现主观题答题纸实时字数统计与段落字数控制（55-08/68-02，中高考/考研/申论字数合规检测与 20x20 方格答题纸排版）；新增阅读笔记原文高亮与切片渐进式制卡出题引擎（120-03/121-02，笔记切片一键转挖空/选择/问答卡片并带块引用溯源）；新增考后错题四要素自诊断归因与复盘结构化记录（52-04/44-05，落地一错一反思模型与错题本联动）；实现题目区分度实测校准与 CTT 经典测验指标分析（43-08/43-02，极端分组法与点双列相关 D 值计算及 CSV 导出）；新增 A4/A3 双栏排版全真试卷与机读答题卡专业打印排版（68-04/65-04）；实现可重建离线练习集与会话便携存档（65-04/45-12，包含题目不可变快照与版本哈希）；实现题库数据完整性巡检与孤儿块自愈诊断（46-04/46-05）；实现动态目标水平自适应抽题引擎（63-06/44-03，基于 θ 估值最大信息量准则选题）。全套自动化单测扩充至 159 个测试文件、1250 项测试 100% 通过。
+
+### 备考完备度体检与考点盲区雷达引擎（63-04 / 63-05 / 45-08）
+
+- **备考完备度五维体检与健康度模型（auditExamReadiness / ReadinessHealthReport）：** 新增 `src/core/readinessRadar.ts` 纯函数领域引擎。
+  - **五维备考量化体系：** 从覆盖率（`coverage`）、正确率（`accuracy`）、熟练度（`mastery`）、时间充裕度（`speed`）与近期冲刺热度（`recency`）五个维度（各 0–100 分）多维量化考前准备状态；
+  - **综合健康度与考前风险评级：** 综合得分 0–100 分，自动评定优秀（$\ge 85$）、良好（$70-84$）、预警（$55-69$）与高危（$<55$）四级健康度；
+  - **考点盲区与失分陷阱智能雷达（BlindspotAnalysis）：** 自动扫描未作答考点、低正确率薄弱考点与久未复习遗忘考点，按红灯（严重短板）、黄灯（潜在风险）、蓝灯（待覆盖）与绿灯（稳固优势）进行四色风险分级；
+  - **备考冲刺天数预测与靶向处方：** 基于尚未掌握的薄弱题目数量与预估每日刷题能力，科学预测达到基本合格线所需的备考冲刺天数，并针对覆盖不足、正确率过低或久未做题自动开具靶向备考处方（`actionPrescription`）；
+  - **体检报告 Markdown 结构化导出（exportReadinessReportMarkdown）：** 支持导出清晰结构化的备考完备度体检报告，包含五维得分表、风险考点分级清单与冲刺复习方案；
+  - **应用编排层接线：** `ExamApp` 增加 `generateReadinessReport` 与 `exportReadinessReportMarkdown` 接口，无缝支持复盘与备考规划；
+  - 新增 `tests/readinessRadar.test.ts` 12 项单测并在 `tests/appMemory.test.ts` 补充端到端接入测试。
+
+
+
+- **选项干扰项误概念对照与认知诊断（52-05 / 43-02）：** 新增 `src/core/misconception.ts` 纯函数领域引擎，解决做错选择题无法准确定位干扰项背后的概念混淆与命题陷阱的问题。
+  - **选项级混淆概念建模（OptionMisconception）：** 为干扰项结构化建模混淆概念（`concept`）、诱导陷阱（`trapDescription`）与深度辨析准则（`counterRule`）；
+  - **重复错误识别与可否认对照建议（diagnoseMisconceptions）：** 仅当学习者多次（$\ge 2$ 次）选错同一干扰项时触发高频认知陷阱警报并提供深度辨析指南，单次选错仅作温和提示并附带可否认免责说明（杜绝标签化认知诊断，严格遵守 52-05 诚实边界）；
+  - **题面修订陈旧态检出（isStale）：** 题面 hash 发生变动后自动提示对照建议基于历史题面，避免题面改动后建议失真；
+  - **复盘卡片 Markdown 导出（exportMisconceptionMarkdown）：** 输出包含高频错因、混淆概念与避坑准则的排版卡片；
+  - **应用编排层接线：** `ExamApp` 增加 `diagnoseQuestionMisconceptions` 与 `exportQuestionMisconceptionMarkdown` 接口。
+  - 新增 `tests/misconception.test.ts` 5 项单测并在 `tests/appMemory.test.ts` 补充端到端接入测试。
+
+### 考纲换版影响评估与命名智能视图强化（51-07 / 43-05 / 65-07）
+
+- **考纲换版差异比对与影响评估引擎（51-07 / 51-01 / 53-03）：** 新增 `src/core/syllabusDiff.ts` 纯函数领域引擎，解决官方大纲或教材考纲换版时，学习者无法感知存量题库与蓝图受波及程度的痛点。
+  - **新旧大纲全路径深度比对（diffSyllabusTrees）：** 自动解析并递归对比新旧考纲树，精确分类保留节点（`retained`）、路径迁移节点（`moved`）、新增大纲（`added`）与废除节点（`removed`）；
+  - **题库与模考蓝图波及深度评估（assessSyllabusImpact）：** 精准分析当前题库中绑定了被废除考点或被平移考点的题目列表；自动检出引用了失效考点的模考蓝图分段（`affectedBlueprints`），并统计新版大纲中尚未有任何题目覆盖的空白考点清单；
+  - **结构化迁移向导计划生成（generateMigrationPlan）：** 支持逐题生成迁移决策（平移至新考点 `remap_to_new`、保留旧版标签 `keep_old` 或标记未映射 `mark_unmapped`）；
+  - **换版评估报告 Markdown 导出：** `exportSyllabusDiffMarkdown` 导出格式美观、带节点变动与受波及明细的排版报告。
+- **命名智能视图多维条件与跨工作区迁移强化（43-05 / 65-07）：**
+  - **多维过滤属性扩展：** `SmartView` 与 `applyView` 新增支持题型多选（`types`）、考点前缀（`kpPrefix`）、试题来源性质（`sourceKind`）、仅错题（`onlyWrong`）、仅争议（`onlyDisputed`）与题目生命周期（`lifecycle`）多维叠加过滤；
+  - **跨工作区导出与导入向导（exportSmartViewsJson / importSmartViewsJson）：** 支持将已配置的智能视图导出为标准 JSON 配置文件，并在新题库或新设备上无损导入，自动适配目标题库 ID，损坏数据安全容错。
+- **应用编排层接线：** `ExamApp` 增加 `assessSyllabusChange` 与 `exportSyllabusDiffMarkdown` 接口。
+- 新增 `tests/syllabusDiff.test.ts`（5 项单测），并在 `tests/smartViews.test.ts` 补充强化测试，在 `tests/appMemory.test.ts` 补充端到端接入测试。
+
+### A4 双栏紧凑打印、可重建练习集与数据自检审计（68-04 / 65-04 / 45-12）
+
+- **A4 双栏紧凑打印与分页防断优化引擎（68-04 / 79-02）：** 新增 `src/core/printPro.ts` 纯函数领域引擎，优化线下打印备考体验。
+  - **A4/Letter 双栏流式排版（buildCompactQuestionSheetPro）：** 支持双栏紧凑排版，节省约 40% 纸张；支持页眉标题、动态页码与试卷编号；
+  - **材料题组分页防断保护（break-inside: avoid）：** 强制共用材料卡片与其首道小题同页同栏连续呈现，防止跨页割裂题面；
+  - **学生作答卷严格脱敏：** 绝不包含题目标准答案与解析字段，并配套 `auditQuestionSheetSafety` 严格审计红线；
+  - **详解版答案手册独立生成（buildCompactAnswerSheetPro）：** 包含标准答案、考点、采分点细则与完整解析，材料题不占题号。
+- **可重建临时练习集引擎（65-04 / 61-01 / 55-03）：** 新增 `src/core/rebuildableSet.ts` 纯函数领域引擎。
+  - **查询声明与种子版本化存储（PracticeSetSpec）：** 只持久化查询条件、题库指纹（bankFingerprint）与随机种子，不重复复制题目实体；
+  - **确定性重建与差异追踪（rebuildPracticeSet）：** 同种子完全可复现，题库改动后自动比对保留、新增、删除与修订差异，不静默替换；删除视图绝不删除题库原题；
+  - **写回政策隔离：** 支持预览模式（preview 永不写回）与练习模式（practice 正常写流水）。
+- **数据自检与完整性审计引擎（45-12 / 72-05）：** 新增 `src/core/dataIntegrity.ts` 纯函数领域引擎。
+  - **三层全量审计（auditDataIntegrity）：** 深度审计作答流水（重复 eid、未来时间戳、空 qid、孤儿事件、非法 verdict、设备序号乱序）、错题状态机（错次连对矛盾、负连击、非法错因）与题库内容（重复 qid、缺少答案、答案超出选项范围、空选项）；
+  - **分级修复建议与 UTF-8 BOM CSV 导出：** 区分可自动修复与需人工核实项目，绝不静默删除历史；导出完整审计体检清单。
+- **应用编排层接线：** `ExamApp` 增加 `buildCompactQuestionSheet`、`buildCompactAnswerSheet`、`savePracticeSetSpec`、`rebuildPracticeSet`、`auditIntegrity`、`exportIntegrityCsv` 等完整接口。
+- 新增 `tests/printPro.test.ts`（8 项）、`tests/rebuildableSet.test.ts`（7 项）、`tests/dataIntegrity.test.ts`（7 项）单测，并在 `tests/appMemory.test.ts` 补充端到端接入测试。
+
+### 靶向弱项自适应攻坚专题组卷引擎（65-08 / 51-01 / 65-03）
+
+- **靶向弱项自适应攻坚专题组卷（65-08 / 51-01 / 65-03）：** 新增 `src/core/adaptiveTarget.ts` 纯函数领域引擎，解决备考后期盲目全库无序刷题、无法靶向突破薄弱知识点的痛点。
+  - **薄弱考点自动甄别（findWeakKnowledgePoints）：** 遍历多级考点大纲树，自动筛选掌握度低于警戒线（`masteryScore < 60`）或完全未练的薄弱知识点，优先选取细分层级深入（level 更深）的聚焦考点；
+  - **分层混合配额抽取（assembleAdaptiveTargetSession）：** 按照“40% 高频错题 + 40% 题族变式迁移题 + 20% 未练新题”科学配额组卷（支持 5–30 题动态容量）；
+  - **同源防泄露打散联动：** 自动接入 `disperseSiblings`，将抽出的同题族变式题之间相隔至少 `minSpacing`（默认 2）道题，防止前一题答案泄露降低测验效度，同时保护共用材料题组的连续作答；
+  - **安全排除守卫：** 组卷严格排除用户已封存归档的题目与未决争议题；
+  - **应用编排层接线：** `ExamApp` 增加 `createAdaptiveTargetSession` 统一接口，为后续智能推荐与练习台一键直达提供核心能力地基。
+  - 新增 `tests/adaptiveTarget.test.ts` 5 项单测并在 `tests/appMemory.test.ts` 补充端到端接入测试。
+
+### 主观题机考答题纸与字数实时测算引擎（54-06 / 55-05）
+
+- **主观题机考答题纸与字数实时测算（54-06 / 55-05）：** 新增 `src/core/wordCount.ts` 纯函数领域引擎，对齐国家公务员考试申论、司法考试主观题等机考标准规范。
+  - **精准字数度量模型（countWordsAndCharacters）：** 细分统计汉字字符数（CJK 统一汉字）、全角/半角标点符号、英文词数、数字串与段落数；按照“汉字+标点+英文词+数字”统揽规范核算考试标准字数（`examWords`）。
+  - **字数达标状态机（evaluateWordCountStatus）：** 支持最低字数（minWords）与最高字数（maxWords）双重约束；智能判定不足（`too_few`）、合格（`fit`）、临界黄色预警（`warning`，达 90% 上限）与超限扣分风险（`exceeded`），实时提供差额字数提醒与进度百分比。
+  - **25×N 机考方格答题纸网格模型（generatePaperGrid）：** 生成标准 25 列（支持自定义）机考方格矩阵，自动处理自然段首行空两格缩进，自动标记 100/200/500/800/1000 字里程碑标尺，超限格子高亮标记 `isExceeded`。
+  - **应用编排层接线：** `ExamApp` 增加 `measureSubjectiveAnswer` 与 `generateSubjectivePaperGrid` 接口，结合已实现的采分点（Rubric Criteria）自评形成完整主观题作答与阅卷闭环。
+  - 新增 `tests/wordCount.test.ts` 12 项单测并在 `tests/appMemory.test.ts` 补充端到端接入测试。
+
+### 题目实测难度与区分度自动校准引擎（43-08 / 45-08）
+
+- **题目实测难度与区分度自动校准（43-08 / 45-08）：** 新增 `src/core/itemDiscrimination.ts` 纯函数领域引擎，将经典测验理论（CTT）与计算机自适应测验（CAT）量化参数引入题库健康治理。
+  - **实测难度 P 值与星级偏差校准：** 计算实际通过率 $P = \text{通过人次} / \text{有效作答人次}$（0–1），并映射为 1–5 星级实测难度（$\ge 85\%$ 为 1 星极易，$25\% - 45\%$ 为 4 星偏难，$ < 25\%$ 为 5 星极难）；对比作者预设星级生成难度偏差（`difficultyBias`），精准识别作者主观低估或高估题目难度的偏差项。
+  - **极端组法实测区分度（Kelley 27% 规则）：** 引入留一法（Leave-One-Out）排除当前题自身循环偏倚，按学习者在对应会话中的能力标尺降序排列，取前 27% 高分组与后 27% 低分组计算区分度指数 $D = P_{\text{High}} - P_{\text{Low}}$（$-1.0 \le D \le 1.0$）。
+  - **Ebel 标准试题质量评级与负区分度警报：** 评定优良（$D \ge 0.40$）、良好（$0.30 \le D < 0.40$）、临界（$0.20 \le D < 0.30$）与偏低（$0 \le D < 0.20$）；重点拦截**负区分度严重异常题**（$D < 0$，高分组考生答对率反而低于低分组，提示题干歧义或标准答案有误）。
+  - **小样本保护与全库 CSV 体检导出：** 有效作答不足 10 人次时标记 `confident: false`，避免小样本误判；`exportDiscriminationCsv` 导出带 UTF-8 BOM 的全库题目质量体检清单（满足 45-08 文本等价物）。
+  - **应用编排层接线：** `ExamApp` 增加 `auditBankDiscrimination`、`getItemDiscrimination` 与 `exportBankDiscriminationCsv` 接口，并在 `src/core/itemAnalysis.ts` 联动重导出。
+  - 新增 `tests/itemDiscrimination.test.ts` 7 项单测并在 `tests/appMemory.test.ts` 补充端到端接入测试。
+
+### 错题四要素自诊断短模板与反思备忘引擎（52-04 / 44-07）
+
+- **错题四要素自诊断短模板与反思备忘引擎（52-04 / 44-07）：** 新增 `src/core/selfDiagnosis.ts` 纯函数领域引擎，解决做错题仅看答案解析无法纠偏思维盲区、旧版反思缺乏结构化约束的痛点。
+  - **结构化四要素自诊断模型（SelfDiagnosisEntry）：** 规范记录 `thought`（当时解题思路与误判点，“当时怎么想”）、`rootCause`（根因分类：审题粗心/概念混淆/运算失误/时间紧迫/选项陷阱/知识盲区，“错在哪里”）、`rationale`（书本依据或法条条款，“依据出处”）、`checklist`（下次同类题避坑检查点，“下次检查点”）。
+  - **避坑检查点预设字典（DEFAULT_CHECKLIST_HINTS）：** 用户未输入检查点时，依据所选错因智能带入经典备考避坑行动指南（如审题粗心带入“圈出否定词并核对两遍设问”）。
+  - **独立存储与版本化时间轴追加（appendDiagnosisToDoc / getLatestDiagnosis）：** 与官方解析、标准答案和作答流水物理隔离，改题不覆盖个人诊断，支持多次答错时版本化时间轴记录，复习时始终回显最新一次检查点，并支持上限 10 条保护防存储膨胀。
+  - **复盘 Markdown 导出与旧版平滑兼容：** 支持导出规范的自诊断 Markdown Callout 复盘卡片（安全红线：绝不泄露题目标准答案）；内置 `fromLegacyReflection` 兼容迁移旧版单一文本反思。
+  - **应用编排层接线：** `ExamApp` 增加 `saveWrongDiagnosis`、`getLatestDiagnosis`、`listDiagnosisHistory` 与 `exportDiagnosisMarkdown`，无缝兼容既有 `saveWrongReflection`。
+  - 新增 `tests/selfDiagnosis.test.ts` 9 项单测并在 `tests/appMemory.test.ts` 补充端到端接入测试。
+
+### 题族同源识别与练习防泄露暂缓引擎（65-03 / 52-07）
+
+- **题族同源识别与练习防泄露暂缓引擎（65-03 / 52-07）：** 新增 `src/core/siblingBury.ts` 纯函数领域引擎，解决题族衍生变式、正反向卡或材料题在练习中紧密相连导致的前题提示后题答案（答案泄露）问题。
+  - **多维同源特征识别（areQuestionsSiblings）：** 支持题族父子关联（`family.parentId` 判定）、同族衍生兄弟判定、材料组（`group`）关联判定；变式保持独立 `qid` 与作答流水，不自动凭字面相似度推断同源（严格遵守 65-03 边界）。
+  - **防答案泄露暂缓出列（burySiblingsForPractice）：** 借鉴经典 Anki Bury Siblings 机制，练习队列中若出现同族变式，仅保留首发题目出列，后置兄弟题自动暂缓至下次练习或次日，附带透明中文回执；支持一键开启/关闭；模考（Mock）模式触发绝对安全豁免，绝不改写卷面题目与顺序。
+  - **材料题组优先保护（preserveMaterialGroups）：** CBT 材料阅读理解题组（一读多题）默认开启保护，材料子题紧凑连续作答不被打散，仅针对变式题与正反向卡执行暂缓。
+  - **会话内兄弟题打散（disperseSiblings）：** 支持重排队列使得同一题族兄弟题相隔至少 `minSpacing`（默认 3）道无关题目，消除提示效应；材料题组保持原子块紧凑不被割裂。
+  - **应用编排层接线：** `ExamApp` 增加 `burySiblings` 与 `disperseSiblings` 统一接口，且严格遵守 reschedule-off 契约，暂缓不删除题目、不修改底层的 FSRS 调度排期。
+  - 新增 `tests/siblingBury.test.ts` 10 项单测并在 `tests/appMemory.test.ts` 补充端到端接入测试。
+
+### 考点层级大纲树与掌握度穿透聚合（51-01 / 39-07）
+
+- **考点层级大纲树与多级穿透聚合引擎（51-01 / 39-07）：** 新增 `src/core/kpTree.ts` 纯函数领域引擎，解决考点只能单层首段聚合、无法呈现真实备考多级章节与知识树深度的核心缺陷。
+  - **多级大纲树自底向上构建（buildKpTree）：** 自动解析多层斜杠分隔考点路径（如 `资料分析/比重计算/现期比重`），构建多叉树形结构并完整自平衡维护父子关系。
+  - **穿透加权统计与指标聚合：** 将叶子考点的题量、做题总人次、答对数、独立题数（去重 qid）与掌握题数（最近一次作答正确）逐层穿透汇总至父级和祖先大纲节点，计算真实的考点覆盖率（`coverage`）、正确率（`accuracy`）与综合掌握度得分（`masteryScore`，0-100 分）。
+  - **快速检索与智能剪枝（findKpSubtree / flattenKpTree / pruneKpTree）：** 支持精准定位任意深度的考点子树；支持将大纲树深度优先前序扁平化展开（支持 `maxDepth` 深度限制与 `includeLeafOnly` 过滤）；支持依掌握度或题量进行智能树形剪枝。
+  - **核心重导出与 ExamApp 接线：** 在 `src/core/report.ts` 导出考点树纯函数，并在 `ExamApp` 增加 `getKpTree` 统一领域调用。
+  - 新增 `tests/kpTree.test.ts` 9 项单测并在 `tests/appMemory.test.ts` 补充应用层真实题目和流水端到端测试。
+
+### 模考 CBT 键盘盲打与答题卡无障碍导航（40-06 / 45-03）
+
+- **模考 CBT 键盘与答题卡盲打导航引擎（40-06 / 45-03）：** 新增 `src/core/cbtKeyboard.ts` 纯函数领域引擎，将键盘作答意图解析、题型快捷键分流与答题卡二维穿梭从组件中彻底解耦。
+  - **快捷键精准分流（resolveCbtKeyAction）：** 支持单选 A-D 快速选中、判断题专享快速键位（T / Y / 1 快速判对、F / N / 2 快速判错）、多选题 Enter 确认提交前进、F 键切换标旗 Flag、Shift+S 秒级唤起/折叠演算草稿纸。
+  - **答题卡网格二维键盘穿梭（computeGridNavigation）：** 支持在 5 列答题卡网格中垂直上下（±5）与水平左右（±1）方向键穿梭，并严格遵循 CBT 作答流锁（lockout）人机对话顺序作答守卫，禁止越过未答边界。
+  - **跨分段大题快速翻转（computeSectionNavigation）：** 支持 PageUp / PageDown 快速在试卷不同分段大题的首题之间穿梭，Home / End 快速跳转卷首与卷尾。
+  - **输入焦点与输入法严格守卫（isTargetEditable）：** 处于 INPUT、TEXTAREA、SELECT、contentEditable 区域或中文输入法（IME）合成选词期绝对不误触发快捷键；Ctrl/Alt/Meta 系统修饰键原样放行。
+  - **组件接线：** 重构 `src/ui/mock/MockTab.svelte` 中的 `onExamKey`，将此前内联的零散逻辑收口至纯函数引擎。
+  - 新增 `tests/cbtKeyboard.test.ts` 14 项单测，全面覆盖键位分流、输入法隔离、答题卡网格穿梭与分段大题跳转。
+
+### 考前急救冲刺与动态间隔压缩引擎（53-04 / 39-02 / ADR 0003）
+
+- **考前急救冲刺与动态间隔压缩调度（53-04）：** 新增 `src/core/cramScheduler.ts` 纯函数领域引擎，解决临考阶段长周期 FSRS 复习间隔无法在考前及时触达薄弱题目的核心痛点。
+  - **考前紧急度自适应分级（computeExamUrgency）：** 自动根据目标考试日期与当前时间测算距考天数，划分为常规备考（`relaxed`，>14天）、阶段冲刺（`sprint`，8-14天）与临考急救（`emergency`，≤7天）三档姿态。
+  - **动态间隔压缩算法（compressIntervalDays / computeCompressionFactor）：** 依据临考天数动态计算非线性压缩因子（临考 3 天内压缩比率高达 0.15），强制将考前复习间隔限制在距考天数的一半以内（最少保底 1 天），大幅提高考前盲区暴露频次。
+  - **多维加权急救候选提取（extractCramCandidates）：** 综合错次基础分、顽固题攻坚加权（+35分）、错因系数（知识盲区×2.0、题目陷阱×1.6、粗心×1.2）以及全新盲测题补足，同时严格排除已被用户封存归档题与争议题。
+  - **防过载容量配额计算（calculateCramBudget）：** 按单题平均耗时与学习者时间预算科学测算可完成量，在急救模式下自动压紧安全上限（最高 40 题），防止临考焦虑导致的任务爆量与心理疲惫。
+  - **ADR 0003 契约与队列身份闭环（createCramSessionSpec）：** 冲刺会话严格标记 `queue: "cram"` 与 `writesBack: false`（Anki reschedule-off 契约），出具明确中文回执告知学习者作答流水如实保留、但绝不破坏内核卡包的长期稳定间隔。
+  - **应用编排层接线：** `ExamApp` 增加 `emergencyCramDrill` 与 `getExamUrgency` 接口，无缝兼容既有 `cramDrill`。
+  - 新增 `tests/cramScheduler.test.ts` 8 项测试，并在 `tests/appMemory.test.ts` 补充应用编排层急救规格闭环测试。
+
+### 模考全真试卷固化与离线导出引擎（55-07 / 68-01）
+
+- **模考全真试卷不可变快照固化（55-07）：** 新增 `src/core/paperSnapshot.ts` 纯函数领域引擎，支持将模考组卷结果物理冻结为不可变试卷快照（`PaperSnapshot`）。
+  - **题面与判分元数据全量冻结：** 完整深拷贝并固化每道题目的题干、选项、标准答案、解析、分段、每题分值、考点、出处、共用材料组（group）、主观采分点（rubric）及结构化数值/多空判分规则（answerSpec），使历史考卷不再依赖题库实时状态。
+  - **试卷防篡改与完整性校验（verifyPaperIntegrity）：** 生成基于所有题目属性的全局不可变内容指纹（`contentFingerprint`），严格校验题目数量、分值累计与每题 hash 校验和，快速检测试卷是否被外部恶意篡改。
+  - **题库漂移检出（detectPaperDrift）：** 精准比对当前在册题库与冻结试卷，检出在题库中已被修改（driftedQids）或被删除（missingQids）的题目，声明历史卷面不可变且成绩防静默篡改。
+  - **试卷题目还原（paperSnapshotToQuestions）：** 允许直接将快照题目无损还原为 `Question` 实体数组，支持在断网或原题库被删场景下直接基于固化试卷重现模考。
+
+### 试卷与答案册排版导出（68-01）
+
+- **纯享作答题卷与配套答案手册 Markdown 导出（68-01）：**
+  - **纯享作答真题卷（exportPaperMarkdown）：** 规范排版卷头（时长、满分、及格线、注意事项）、分段大题标题、共用材料题组（同组材料卡片仅展示一次，子题紧凑邻接）、选项列表、填空下划线及简答题答题区域；**严格落实安全红线：导出的学生作答卷绝不包含标准答案与试题解析**。
+  - **详解版答案手册（exportAnswerKeyMarkdown）：** 按题号完整导出标准答案、考核考点、试题出处、完整解析、数值容差（绝对/相对容差与等价单位换算规则）、多空答案规则及主观采分点自评表格（包含采分要点、权重、判定参考及满分/部分分/未达标等级划分）。
+  - **应用编排层接线：** `ExamApp` 增加 `savePaperSnapshot`、`loadPaperSnapshot`、`listPaperSnapshots`、`deletePaperSnapshot` 与 `exportPaper`，并自动维护 `mock/papers/index` 持久化索引（支持上限 50 份安全滚动）。
+  - 新增 `tests/paperSnapshot.test.ts` 8 项测试，并在 `tests/appMemory.test.ts` 补充应用层持久化闭环单测。
 
 ### 测评与复习规划（每日计划欠账与超额处理，44-05）
 

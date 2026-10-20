@@ -20,13 +20,13 @@
     import type { ActionItem } from "@/core/actions";
     import SaveStatus from "../shared/SaveStatus.svelte";
     import { emitExamEvent, onExamEvent } from "@/core/bus";
-    import { openPracticeView } from "@/core/pluginTab";
-    import type { AttemptEvent } from "@/core/types";
+    import { openPracticeView, type ExamPluginLike } from "@/core/pluginTab";
+    import type { AttemptEvent, Question } from "@/core/types";
     import { reportWindowStart, reportDateKey } from "@/core/reportWindow";
 
-    let { plugin, examApp }: { plugin: any; examApp?: ExamApp | null } = $props();
+    let { plugin, examApp }: { plugin: ExamPluginLike; examApp?: ExamApp | null } = $props();
     let appOverride = $state<ExamApp | null>(null);
-    const app = $derived<ExamApp | null>(appOverride ?? examApp ?? plugin?.examApp ?? null);
+    const app = $derived<ExamApp | null>(appOverride ?? examApp ?? (plugin?.examApp as ExamApp | undefined) ?? null);
     const i18n = $derived(plugin?.i18n ?? {});
     const t = (k: string, fb = "") => i18n[k] ?? fb;
     const writeLocal = (key: string, value: string | null) => {
@@ -221,7 +221,7 @@
         const model = String(plugin?.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
         const ch = endpoint && key
           ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
-          : new SiyuanAiChannel((app as any).deps.client);
+          : new SiyuanAiChannel(app.deps.client);
         const cutoff = reportWindowStart(rangeDays);
         const events = reportEvents;
         let attempts = 0, correct = 0;
@@ -289,15 +289,15 @@
         const model = String(plugin?.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
         const ch = endpoint && key
           ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
-          : new SiyuanAiChannel((app as any).deps.client);
+          : new SiyuanAiChannel(app.deps.client);
         // 容量口径：错题重练队列前 10 题（53-01 估算；入口页今日计划不在此上下文，如实标注口径）
         const wrongItems = app.wrongItems();
-        let redoQueue: any[] = [];
+        let redoQueue: Question[] = [];
         const scopeBank = bankId || app.listBanks()[0]?.id || "";
         if (wrongItems.length && scopeBank) {
           const qs = await app.listQuestions(scopeBank);
-          const byId = new Map(qs.map((q: any) => [q.id, q]));
-          redoQueue = wrongItems.map((w) => byId.get(w.qid)).filter(Boolean).slice(0, 10) as any[];
+          const byId = new Map(qs.map((q: Question) => [q.id, q]));
+          redoQueue = wrongItems.map((w) => byId.get(w.qid)).filter((q): q is Question => Boolean(q)).slice(0, 10);
         }
         const typeOf = new Map(redoQueue.map((q) => [q.id, q.type] as const));
         const est = redoQueue.length
@@ -480,8 +480,10 @@
       if (!app || !bankId) return;
       const picked = questions.filter((q) => q.type !== "material" && q.kp?.split("/")[0] === root);
       if (!picked.length) { showMessage(t("state.emptyBank"), 3000, "error"); return; }
-      (plugin as any).pendingPractice = picked;
-      (plugin as any).pendingPracticeBankId = bankId;
+      if (plugin) {
+        plugin.pendingPractice = picked;
+        plugin.pendingPracticeBankId = bankId;
+      }
       emitExamEvent("open-practice-questions", { qids: picked.map((q) => q.id), bank: bankId });
       plugin.openPractice?.();
     }
@@ -538,8 +540,10 @@
       if (!q) { showMessage(t("action.redoMissing"), 3400, "info"); return; }
         await app.startSession([q], "wrong", targetBankId || undefined);
         // 练习台已挂载时通过总线同步其本地会话引用；未挂载时 pending 字段由首次挂载消费。
-        (plugin as any).pendingPractice = [q];
-        (plugin as any).pendingPracticeBankId = targetBankId;
+        if (plugin) {
+          plugin.pendingPractice = [q];
+          plugin.pendingPracticeBankId = targetBankId;
+        }
         emitExamEvent("open-practice-questions", { qids: [q.id], bank: targetBankId });
         plugin.openPractice?.();
         showMessage(t("action.redoStarted", "已进入重练。完成作答后回到报告确认完成；仅打开题目不会结清行动。"), 3600, "info");

@@ -1,4 +1,7 @@
 import { emitExamEvent } from "./bus";
+import type { Question } from "./types";
+import type { ExamApp } from "../app";
+import type { AiKeyHost } from "../ai/secrets";
 
 export type PracticeViewTarget = "wrongbook" | "entry" | "browse" | "manual" | "import" | "ai" | "materials" | "recite";
 export interface PracticeViewRequest {
@@ -13,11 +16,39 @@ export interface PracticeViewRequest {
   sourceTruncated?: boolean;
 }
 
-type PracticeViewPlugin = {
+export type PracticeViewPlugin = {
   pendingPracticeView?: PracticeViewRequest;
   practiceViewRequestId?: string;
   openPractice?: () => boolean | void;
 };
+
+export interface ExamPluginLike extends PracticeViewPlugin, AiKeyHost {
+  app?: unknown;
+  i18n?: Record<string, string>;
+  settingUtils?: {
+    get?<T = unknown>(key: string): T;
+    set?<T = unknown>(key: string, val: T): void | Promise<void>;
+  };
+  getSecret?: (name: string) => unknown;
+  lastPublicStats?: Record<string, unknown> | null;
+  pendingPractice?: Question[];
+  pendingPracticeBankId?: string;
+  pendingEditQid?: string;
+  pendingEditBank?: string;
+  pendingBrowseQid?: string;
+  pendingBrowseBank?: string;
+  pendingInitialView?: string;
+  pendingQuestionId?: string;
+  examApp?: ExamApp | null;
+  openPracticeTab?(data?: { bankId?: string; qid?: string }): Promise<void> | void;
+  openMockTab?(): Promise<void> | void;
+  openReportTab?(): Promise<void> | void;
+  openPractice?(): boolean | void;
+  openMock?(): boolean | void;
+  openReport?(): boolean | void;
+  openWrongbook?(): Promise<void> | void;
+  showMessage?(message: string, timeout?: number, type?: "info" | "error"): void;
+}
 
 let practiceViewSeq = 0;
 

@@ -1,4 +1,4 @@
-import { Plugin, openTab, showMessage, getFrontend, adaptHotkey } from "siyuan";
+import { Plugin, openTab, showMessage, getFrontend, adaptHotkey, type Menu } from "siyuan";
 import "./index.scss";
 
 import { SettingUtils } from "./libs/setting-utils";
@@ -11,11 +11,12 @@ import { createExamApp } from "./app-runtime";
 import type { ExamApp } from "./app";
 import { streak } from "./core/replayer";
 import { emitExamEvent } from "./core/bus";
-import { createExamTabDescriptor, findExamTabHeader, findOpenedExamTab, focusExamTab, observeTabOpen, openPracticeView } from "./core/pluginTab";
+import { createExamTabDescriptor, findExamTabHeader, findOpenedExamTab, focusExamTab, observeTabOpen, openPracticeView, type ExamPluginLike, type PracticeViewRequest } from "./core/pluginTab";
 import { combineBlockSources } from "./core/blockSource";
 import { registerExamDailySummary } from "./ecosystem/speedSwitch";
 import { TabAppRegistry } from "./core/tabAppRegistry";
 import { mountLvExamBridge } from "./core/examBridge";
+import type { Question } from "./core/types";
 
 const TAB_PRACTICE = "exam-practice";
 const TAB_MOCK = "exam-mock";
@@ -34,16 +35,27 @@ function rememberOpenTab(type: string) {
   }
 }
 
-export default class LvExamPlugin extends Plugin {
+export default class LvExamPlugin extends Plugin implements ExamPluginLike {
   /** siyuan 1.2.9 将基类 i18n 宽化为 Record<string, JSONValue>；本项目 i18n 文件为平铺
    *  string→string（scripts/check-i18n.mjs 强制非空字符串），此处收窄回字符串字典 */
   declare i18n: Record<string, string>;
+  lastPublicStats: Record<string, unknown> | null = null;
+  pendingPractice?: Question[];
+  pendingPracticeBankId?: string;
+  pendingEditQid?: string;
+  pendingEditBank?: string;
+  pendingBrowseQid?: string;
+  pendingBrowseBank?: string;
+  pendingInitialView?: string;
+  pendingQuestionId?: string;
+  pendingPracticeView?: PracticeViewRequest;
+  practiceViewRequestId?: string;
   private isMobile: boolean;
-  private settingUtils: SettingUtils;
+  settingUtils: SettingUtils;
   /** 每个宿主 Custom 模型独立持有实例；同 type 不是唯一页签身份。 */
   private tabApps = new TabAppRegistry();
   /** 应用组装层（与基类 Plugin.app: App 无关，刻意改名避免遮蔽） */
-  private examApp: ExamApp | null = null;
+  examApp: ExamApp | null = null;
   private appInitializing = true;
   private queuedTab: { type: string; icon: string; title: string } | null = null;
   private openingTabs = new Set<string>();
@@ -267,7 +279,7 @@ export default class LvExamPlugin extends Plugin {
         t: (k, fb) => this.i18n[k] ?? fb ?? k,
         open: () => this.openPractice(),
         dailyGoal: () => Math.max(1, Number(this.settingUtils?.get?.("dailyGoal") ?? 10) || 10),
-        findPlugin: (name) => (this.app as any)?.plugins?.find?.((p: { name: string }) => p.name === name),
+        findPlugin: (name) => (this.app as unknown as { plugins?: Array<{ name: string }> })?.plugins?.find?.((p) => p.name === name),
       });
     }
     // 47-04/48-06/Epoch 6：挂载考试服务桥公开 API（多别名 + 稳定命令入口 + 按需脱敏统计快照 + 概览）
@@ -279,7 +291,7 @@ export default class LvExamPlugin extends Plugin {
       openReport: () => this.openReport(),
       getStats: () => {
         if (!this.examApp) return null;
-        return (this as any).lastPublicStats ?? null;
+        return this.lastPublicStats ?? null;
       },
       statsRead: async (): Promise<unknown> => {
         if (!this.examApp) return null;
@@ -325,7 +337,7 @@ export default class LvExamPlugin extends Plugin {
           string,
           unknown
         >;
-        (this as any).lastPublicStats = snapshot; // window.siyuanExam.stats() 的同步缓存
+        this.lastPublicStats = snapshot; // window.siyuanExam.stats() 的同步缓存
         // 48-02 lite：总线形态（信封 v1，新消费者推荐）；legacy 裸 detail 同时保留（旧消费者兼容）
         emitExamEvent("stats", snapshot);
         window.dispatchEvent(
@@ -353,7 +365,7 @@ export default class LvExamPlugin extends Plugin {
       this.disposeLvExamBridge();
       this.disposeLvExamBridge = undefined;
     } else {
-      delete (window as any).siyuanExam;
+      delete (window as Window & { siyuanExam?: unknown }).siyuanExam;
     }
     // 37-02 卸载顺序：先最终落盘（此时 dirty 仍在），再 dispose 清定时器——
     // 反过来 dispose 先清 dirty 会让随后的 flush 变成空操作，未落盘事件全部丢失
@@ -488,7 +500,7 @@ export default class LvExamPlugin extends Plugin {
     // Layout restoration may expose getOpenedTab under either the short tab
     // type or the persisted custom id. Search both forms before opening a new
     // tab; otherwise every plugin restart can append another practice tab.
-    const existing = findOpenedExamTab(this.getOpenedTab(), this.name, type) as any;
+    const existing = findOpenedExamTab(this.getOpenedTab(), this.name, type);
     if (existing && focusExamTab(existing)) {
       rememberOpenTab(type);
       return true;
@@ -508,7 +520,7 @@ export default class LvExamPlugin extends Plugin {
     this.openingTabs.add(type);
     observeTabOpen(
       () => openTab({
-        app: this.app as any,
+        app: this.app,
         // 宿主以 plugin.name + type 为键查找页签工厂；descriptor 只含可持久化字段。
         custom: createExamTabDescriptor(this.name, type, icon, title),
       }),
@@ -530,7 +542,7 @@ export default class LvExamPlugin extends Plugin {
     return false;
   }
 
-  private onBlockIconClick({ detail }: any) {
+  private onBlockIconClick({ detail }: { detail?: { menu?: Menu; blockElements?: HTMLElement[] } }) {
     if (!detail?.menu) {
       return;
     }
@@ -565,8 +577,8 @@ export default class LvExamPlugin extends Plugin {
               showMessage(this.i18n["query.empty"], 3600, "info");
               return;
             }
-            (this as any).pendingPractice = qs;
-            (this as any).pendingPracticeBankId = bank.id;
+            this.pendingPractice = qs;
+            this.pendingPracticeBankId = bank.id;
             emitExamEvent("open-practice-questions", { qids: qs.map((q) => q.id), bank: bank.id });
             this.openPractice();
           } catch (e) {
@@ -634,8 +646,8 @@ export default class LvExamPlugin extends Plugin {
               );
               return;
             }
-            (this as any).pendingPractice = [hit.q];
-            (this as any).pendingPracticeBankId = hit.bank.id;
+            this.pendingPractice = [hit.q];
+            this.pendingPracticeBankId = hit.bank.id;
             emitExamEvent("open-practice-questions", { qids: [hit.q.id], bank: hit.bank.id });
             this.openPractice();
           } catch (e) {
@@ -717,8 +729,8 @@ export default class LvExamPlugin extends Plugin {
             );
             return;
           }
-          (this as any).pendingEditQid = hit.q.id;
-          (this as any).pendingEditBank = hit.bank.id;
+          this.pendingEditQid = hit.q.id;
+          this.pendingEditBank = hit.bank.id;
           emitExamEvent("edit-question", { qid: hit.q.id, bank: hit.bank.id });
           this.openPractice();
         },
@@ -736,8 +748,8 @@ export default class LvExamPlugin extends Plugin {
             );
             return;
           }
-          (this as any).pendingBrowseQid = hit.q.id;
-          (this as any).pendingBrowseBank = hit.bank.id;
+          this.pendingBrowseQid = hit.q.id;
+          this.pendingBrowseBank = hit.bank.id;
           emitExamEvent("open-in-browse", { qid: hit.q.id, bank: hit.bank.id });
           this.openPractice();
         },
@@ -758,7 +770,7 @@ export default class LvExamPlugin extends Plugin {
   openPractice(): boolean {
     return this.openTabByType(TAB_PRACTICE, "iconExam", this.i18n["tab.practice"]);
   }
-  private openWrongbook() {
+  openWrongbook(): void {
     openPracticeView(this, "wrongbook");
   }
   openMock() {

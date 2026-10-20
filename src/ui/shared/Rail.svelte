@@ -5,7 +5,7 @@
   // 打开聚焦关闭钮，Tab 焦点循环锁在 rail 内，关闭后由父级归还焦点。
   import { tick } from "svelte";
   import Icon from "./Icon.svelte";
-  import { openPracticeView } from "../../core/pluginTab";
+  import { openPracticeView, type ExamPluginLike } from "../../core/pluginTab";
 
   type TaskTarget = "today" | "bank" | "create" | "mock" | "report";
 
@@ -23,7 +23,7 @@
     onquickcreate,
   }: {
     active: "practice" | "mock" | "report";
-    plugin: any;
+    plugin: ExamPluginLike;
     /** Tab 内上下文导航项（如练习台的浏览/错题本/导入/录题…） */
     items?: { icon: string; name: string; on: boolean; badge?: string; onclick: () => void }[];
     /** R54 五项任务导航的当前项及宿主接管。 */
@@ -40,7 +40,7 @@
     onquickcreate?: () => void;
   } = $props();
 
-  const t = (k: string, fb = "") => ((plugin?.i18n as Record<string, string>) ?? {})[k] ?? fb;
+  const t = (k: string, fb = "") => (plugin?.i18n ?? {})[k] ?? fb;
 
   let asideEl: HTMLElement | null = $state(null);
   let closeBtn: HTMLButtonElement | null = null;

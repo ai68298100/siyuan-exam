@@ -79,10 +79,12 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     import { consumePendingPracticeView, isCurrentPracticeViewRequest } from "@/core/pluginTab";
     import { dailyTrend } from "@/core/weekly";
     import { playSuccessChime, playCelebrationChord } from "@/libs/sound";
+    import type { ExamPluginLike } from "@/core/pluginTab";
+    import type { PracticeSession } from "@/core/session";
 
-    let { plugin, examApp }: { plugin: any; examApp?: ExamApp | null } = $props();
+    let { plugin, examApp }: { plugin: ExamPluginLike; examApp?: ExamApp | null } = $props();
     let appOverride = $state<ExamApp | null>(null);
-    const app = $derived<ExamApp | null>(appOverride ?? examApp ?? plugin?.examApp ?? null);
+    const app = $derived<ExamApp | null>(appOverride ?? examApp ?? (plugin?.examApp as ExamApp | undefined) ?? null);
     const i18n = $derived(plugin?.i18n ?? {});
     const t = (k: string, fb = "") => i18n[k] ?? fb;
 
@@ -151,7 +153,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     const reciteGuard = new RatingGuard();
 
     // 会话态
-    let session = $state<any>(null);
+    let session = $state<PracticeSession | null>(null);
     let feedback = $state<null | { verdict: string; myAnswer: string | null }>(null);
     let selected = $state<string>("");
     let answerStart = $state(0);
@@ -269,8 +271,8 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     let savedReason = $state<string | undefined>(undefined);
     $effect(() => {
       const q = session?.current;
-      if (feedback?.verdict === "wrong" && q) {
-        void (app as any).loadWrongReason(q.id).then((r: string | undefined) => { savedReason = r; });
+      if (feedback?.verdict === "wrong" && q && app) {
+        void app.loadWrongReason(q.id).then((r: string | undefined) => { savedReason = r; });
       } else {
         savedReason = undefined;
       }
@@ -1167,10 +1169,10 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         banks = app.listBanks();
         // 记忆上次使用的题库：重载后回落 banks[0] 会静默切换库（真机走查发现）
         const rememberedBank = readLocal(BANK_PREF_KEY);
-        const pendingPracticeView = (plugin as any).pendingPracticeView as import("@/core/pluginTab").PracticeViewRequest | undefined;
-        const pendingPracticeViewIsCurrent = pendingPracticeView?.id === (plugin as any).practiceViewRequestId;
+        const pendingPracticeView = plugin?.pendingPracticeView;
+        const pendingPracticeViewIsCurrent = pendingPracticeView?.id === plugin?.practiceViewRequestId;
         const pendingViewBankId = pendingPracticeViewIsCurrent ? pendingPracticeView?.bankId : undefined;
-        const pendingPracticeBankId = (plugin as any).pendingPracticeBankId as string | undefined;
+        const pendingPracticeBankId = plugin?.pendingPracticeBankId;
         if (pendingViewBankId && banks.some((b) => b.id === pendingViewBankId)) activeBankId = pendingViewBankId;
         else if (pendingPracticeBankId && banks.some((b) => b.id === pendingPracticeBankId)) activeBankId = pendingPracticeBankId;
         else if (rememberedBank && banks.some((b) => b.id === rememberedBank)) activeBankId = rememberedBank;
@@ -1233,11 +1235,13 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       const onEditQ = (env: import("@/core/bus").BusEvent<{ qid: string; bank?: string }>) =>
         void focusInBrowse(env.payload.qid, true, env.payload.bank);
       const onOpenPracticeQuestions = (env: import("@/core/bus").BusEvent<{ qids: string[]; bank: string }>) => {
-        const pending = (plugin as any).pendingPractice as Question[] | undefined;
+        const pending = plugin?.pendingPractice;
         const samePending = pending?.length === env.payload.qids.length && pending.every((q, i) => q.id === env.payload.qids[i]);
-        if (samePending && (plugin as any).pendingPracticeBankId === env.payload.bank) {
-          (plugin as any).pendingPractice = undefined;
-          (plugin as any).pendingPracticeBankId = undefined;
+        if (samePending && plugin?.pendingPracticeBankId === env.payload.bank) {
+          if (plugin) {
+            plugin.pendingPractice = undefined;
+            plugin.pendingPracticeBankId = undefined;
+          }
         }
         void startExternalPractice(env.payload.qids, env.payload.bank);
       };
@@ -1308,9 +1312,9 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       ];
       onMountCleanup = () => offs.forEach((off) => off());
       const pendingView = consumePendingPracticeView(plugin);
-      const initialView = pendingView?.view ?? (plugin as any).pendingInitialView as string | undefined;
+      const initialView = pendingView?.view ?? plugin?.pendingInitialView;
       if (["wrongbook", "entry", "browse", "manual", "import", "ai", "materials", "recite"].includes(initialView ?? "")) {
-        (plugin as any).pendingInitialView = undefined;
+        if (plugin) plugin.pendingInitialView = undefined;
         if (pendingView) appliedPracticeViewRequestId = pendingView.id;
         applyMaterialRequest(pendingView);
         loading = false;
@@ -1323,32 +1327,36 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         return;
       }
       // 错题本信号优先：按 qid 直达单题
-      const pid = (plugin as any).pendingQuestionId as string | undefined;
+      const pid = plugin?.pendingQuestionId;
       if (pid) {
-        (plugin as any).pendingQuestionId = undefined;
+        if (plugin) plugin.pendingQuestionId = undefined;
         loading = false;
         void startSingleById(pid);
         return;
       }
 
     // 查询圈题待处理集（块菜单发起，优先于恢复）
-      const pending = (plugin as any).pendingPractice as Question[] | undefined;
+      const pending = plugin?.pendingPractice;
       if (pending?.length) {
-        (plugin as any).pendingPractice = undefined;
-        const pendingBankId = (plugin as any).pendingPracticeBankId as string | undefined;
-        (plugin as any).pendingPracticeBankId = undefined;
+        const pendingBankId = plugin?.pendingPracticeBankId;
+        if (plugin) {
+          plugin.pendingPractice = undefined;
+          plugin.pendingPracticeBankId = undefined;
+        }
         void startExternalPractice(pending.map((q) => q.id), pendingBankId);
         return;
       }
       // 块菜单「在练习台打开 / 编辑」→ 浏览视图聚焦（优先于会话恢复）
-      const pBrowse = (plugin as any).pendingBrowseQid as string | undefined;
-      const pEdit = (plugin as any).pendingEditQid as string | undefined;
+      const pBrowse = plugin?.pendingBrowseQid;
+      const pEdit = plugin?.pendingEditQid;
       if (pBrowse || pEdit) {
-        (plugin as any).pendingBrowseQid = undefined;
-        (plugin as any).pendingEditQid = undefined;
-        const bank = ((plugin as any).pendingBrowseBank ?? (plugin as any).pendingEditBank) as string | undefined;
-        (plugin as any).pendingBrowseBank = undefined;
-        (plugin as any).pendingEditBank = undefined;
+        const bank = plugin?.pendingBrowseBank ?? plugin?.pendingEditBank;
+        if (plugin) {
+          plugin.pendingBrowseQid = undefined;
+          plugin.pendingEditQid = undefined;
+          plugin.pendingBrowseBank = undefined;
+          plugin.pendingEditBank = undefined;
+        }
         void focusInBrowse((pBrowse ?? pEdit)!, pEdit != null, bank);
         return;
       }
@@ -1505,7 +1513,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         const model = String(plugin.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
         const ch = endpoint && key2
           ? new OpenAiChannel({ endpoint, apiKey: key2, model }, (u, i) => fetch(u, i))
-          : new SiyuanAiChannel((app as any).deps.client);
+          : new SiyuanAiChannel(app.deps.client);
         const messages = buildMisdiagnosisMessages(q, {
           myAnswer: e.myAnswer ?? null,
           confidence: e.confidence,
@@ -1565,7 +1573,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         const model = String(plugin.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
         const ch = endpoint && key
           ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
-          : new SiyuanAiChannel((app as any).deps.client);
+          : new SiyuanAiChannel(app.deps.client);
         const reflection = (await app.loadWrongReflection(q.id))?.text;
         const messages = buildFlashCandidateMessages(q, { reflection });
         const reqCtx: import("@/ai/task").AiTaskContext = {
@@ -2228,7 +2236,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         sprintDays: Number.isFinite(sprintDays) && sprintDays > 0 ? sprintDays : 14,
         dailyGoal: Number.isFinite(goal) && goal > 0 ? goal : 10,
         all: questions, wrongCounts, activeWrongIds,
-        wrongReasons: (app as any).wrongReasonMap?.() ?? undefined,
+        wrongReasons: app.wrongReasonMap() ?? undefined,
         dueFirst: dueFirst ?? [],
       });
       // 今日计划与作答流水合并：完成后重算入口时自动显示剩余题目。
@@ -2264,7 +2272,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       if (!qs.length) { errorMsg = t("state.emptyBank"); showMessage(t("state.emptyBank"), 2800, "info"); return; }
       // FSRS 到期优先（docs/11 S8：dueFirst 供给；离线/无卡自然为空）
       let due: Question[];
-      try { due = await (app as any).dueQuestions(bankName, qs); } catch { due = []; }
+      try { due = await app.dueQuestions(bankName, qs); } catch { due = []; }
       rebuildPlan(due);
       const queue = todayQueueFor(qs, plan?.queue ?? []);
       await safeStart(queue, plan?.mode === "sprint" ? "cram" : "daily", () => {
@@ -2279,7 +2287,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       const q = reciteQueue[reciteCursor] as Question & { blockId?: string; rootId?: string };
       if (!q?.blockId || !q?.rootId) return;
       void import("siyuan").then(({ openTab }) => {
-        openTab({ app: (plugin as any).app ?? plugin, doc: { id: q.rootId, zoomIn: q.blockId } } as any);
+        openTab({ app: ((plugin.app ?? plugin) as import("siyuan").App), doc: { id: q.rootId, zoomIn: Boolean(q.blockId) } });
       });
     }
     async function startRecite() { void 0; // 背诵朗读按钮在视图内直接调用 ttsSpeak
@@ -2385,7 +2393,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       try {
         const docId = await app.exportWrongbook(activeBankId, bankName, {
           kpRoot: expKp || undefined,
-          reason: (expReason || undefined) as any,
+          reason: expReason || undefined,
           sinceDays: expDays || undefined,
         });
         void docId;
@@ -2614,7 +2622,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         const model = String(plugin.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
         const ch = endpoint && key
           ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
-          : new SiyuanAiChannel((app as any).deps.client);
+          : new SiyuanAiChannel(app.deps.client);
         const messages = buildExplainMessages(q, feedback.myAnswer, mode);
         const env = await new AiTaskRunner(ch).run(reqCtx, messages);
         void logAiTask({ templateId: env.templateId, qid: reqCtx.qid, status: env.status, tokens: env.tokens, messages });
@@ -2693,7 +2701,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         const model = String(plugin.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
         const ch = endpoint && key
           ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
-          : new SiyuanAiChannel((app as any).deps.client);
+          : new SiyuanAiChannel(app.deps.client);
         const shownTexts = hintTexts.get(q.id) ?? [];
         const messages = buildHintMessages(q, reqCtx.learnerAnswer, step.level, shownTexts);
         const env = await new AiTaskRunner(ch).run(reqCtx, messages);
@@ -2764,7 +2772,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         const model = String(plugin.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
         const ch = endpoint && key
           ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
-          : new SiyuanAiChannel((app as any).deps.client);
+          : new SiyuanAiChannel(app.deps.client);
         const messages = continueExplainMessages(history, explainFollowUp.trim());
         const env = await new AiTaskRunner(ch).run(reqCtx, messages);
         void logAiTask({ templateId: env.templateId, qid: reqCtx.qid, status: env.status, tokens: env.tokens, messages });
@@ -2837,7 +2845,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       explainSaveBusy = true;
       explainSaveError = ""; explainSaveErrorQid = qid;
       try {
-        await (app as any).appendQuestionNote(q.id, q.blockId, body, "ai-explain");
+        if (app) await app.appendQuestionNote(q.id, q.blockId, body, "ai-explain");
         explainSavedQid = qid;
         explainSaveErrorQid = "";
         showMessage(t("explain.saved"), 2400, "info");
@@ -2861,7 +2869,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
 
     // ---------- 举一反三 ----------
     async function sameKpSession() {
-      const wrongs = session?.answered?.filter((a: any) => a.grade.verdict === "wrong") ?? [];
+      const wrongs = session?.answered?.filter((a) => a.grade.verdict === "wrong") ?? [];
       const all = await loadQuestions();
       const exclude = new Set<string>(session?.state?.qids ?? []);
       const seed = all.find((q) => q.id === wrongs[0]?.qid) ?? session?.current ?? all[0];
@@ -3011,7 +3019,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         const model = String(plugin.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
         const ch = endpoint && key
           ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
-          : new SiyuanAiChannel((app as any).deps.client);
+          : new SiyuanAiChannel(app.deps.client);
         const meta = attemptMeta(a.qid);
         const messages = buildMisdiagnosisMessages(q, {
           myAnswer: a.grade.myAnswer ?? null,
@@ -3691,7 +3699,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         const ed = sApp?.ui?.currentEditor ?? sApp?.ui?.lastEditor ?? null;
         const rootId: string | undefined = ed?.protyle?.block?.rootID;
         if (!rootId) { showMessage(t("ai.noCurrentDoc"), 3600, "error"); return; }
-        const { title, content } = await (app as any).deps.client.exportDocMarkdown(rootId);
+        const { title, content } = await app.deps.client.exportDocMarkdown(rootId);
         if (!content) { showMessage(t("ai.noCurrentDoc"), 3600, "error"); return; }
         aiSource = content;
         aiSourceOrigin = `${t("ai.sourceFromDocument").replace("{title}", title || rootId.slice(0, 8))}`;
@@ -3710,7 +3718,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       const model = String(plugin.settingUtils?.get?.("aiModel") ?? "gpt-4o-mini");
       return endpoint && key
         ? new OpenAiChannel({ endpoint, apiKey: key, model }, (u, i) => fetch(u, i))
-        : new SiyuanAiChannel((app as any).deps.client);
+        : new SiyuanAiChannel(app.deps.client);
     }
 
     /** 拒绝项重试（AI Inbox 范式"重试"腿）：带否决原因让 AI 修复 → 复检 → 合入待审核 */
@@ -4376,7 +4384,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
 
       let helped: Set<string> | null = null;
       let recent: Set<string> | null = null;
-      let wb: Map<string, { wrongCount: number }> | null = null;
+      let wb: ReadonlyMap<string, { wrongCount: number }> | null = null;
 
       if (filterWrong || filterHelp || filterDays) {
         const events = app.attempts.all();
@@ -4390,7 +4398,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
           if (!cutoff || e.ts >= cutoff) recent.add(e.qid);
         }
         if (filterWrong) {
-          wb = app.derived().wrongbook as any;
+          wb = app.derived().wrongbook;
         }
       }
 
@@ -4655,7 +4663,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       backlinkBusyFor = blockId;
       backlinkError = { ...backlinkError, [blockId]: "" };
       try {
-        const links = await (app as any).deps.client.backlinks(blockId);
+        const links = await app.deps.client.backlinks(blockId);
         // 写时复制更新 $state Map（惯用法），不转 SvelteMap
         // eslint-disable-next-line svelte/prefer-svelte-reactivity
         const next = new Map(backlinkCache);
@@ -4669,7 +4677,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     function openInSiYuan(rootId: string) {
       if (!rootId) { showMessage(t("browse.docUnavailable"), 2600, "error"); return; }
       void import("siyuan").then(({ openTab }) => {
-        openTab({ app: (plugin as any).app ?? (plugin as any), doc: { id: rootId } } as any);
+        openTab({ app: ((plugin.app ?? plugin) as import("siyuan").App), doc: { id: rootId } });
       }).catch((e) => showMessage(String(e instanceof Error ? e.message : e), 4200, "error"));
     }
 
@@ -6056,7 +6064,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         <button class="lv-btn lv-btn--ghost" onclick={exitRecite}>← {t("recite.exit")}</button>
         <span class="lv-chip num">{reciteCursor + 1}/{reciteQueue.length}</span>
         <span class="lv-chip">{t("recite.mode")}</span>
-        {#if (reciteQueue[reciteCursor] as any)?.blockId && (reciteQueue[reciteCursor] as any)?.rootId}
+        {#if reciteQueue[reciteCursor]?.blockId && reciteQueue[reciteCursor]?.rootId}
           <button class="lv-chip" title={t("recite.jumpSource")} onclick={jumpToSource}><Icon name="pin" size={12} /> {t("recite.jumpSource")}</button>
         {/if}
         {#if reciteQueue[reciteCursor]?.group}
@@ -6553,14 +6561,14 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
             <button class="lv-chip" class:acc={aiCount === n} onclick={() => aiCount = n}>{n}</button>
           {/each}
           <span class="lv-chip">{t("ai.difficulty")}</span>
-          {#each ["easy", "medium", "hard", "mixed"] as d, _i (_i)}
-            <button class="lv-chip" class:acc={aiDifficulty === d} onclick={() => aiDifficulty = d as any}>{t("ai.diff." + d)}</button>
+          {#each (["easy", "medium", "hard", "mixed"] as const) as d, _i (_i)}
+            <button class="lv-chip" class:acc={aiDifficulty === d} onclick={() => aiDifficulty = d}>{t("ai.diff." + d)}</button>
           {/each}
         </div>
         <div class="lv-row">
           <span class="lv-chip">{t("ai.preset")}</span>
-          {#each ["default", "gongkao", "kaoyan", "yixue", "jiakao"] as p, _i (_i)}
-            <button class="lv-chip" class:acc={aiPreset === p} onclick={() => aiPreset = p as any}>{p === "default" ? t("ai.preset.default") : { gongkao: t("ai.preset.gongkao"), kaoyan: t("ai.preset.kaoyan"), yixue: t("ai.preset.yixue"), jiakao: t("ai.preset.jiakao") }[p as string]}</button>
+          {#each ["default", "medical", "legal", "exam_cn"] as p, _i (_i)}
+            <button class="lv-chip" class:acc={aiPreset === p} onclick={() => aiPreset = p}>{t("ai.preset." + p)}</button>
           {/each}
         </div>
         <div class="lv-row">
@@ -7378,9 +7386,9 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
                 <button class="lv-btn sm lv-btn--ghost" class:lv-chip--amb={!!q.fav} title={`${t("session.kbdFav")} (E)`} aria-label={t("session.kbdFav")} aria-pressed={!!q.fav} disabled={favBusy} onclick={() => void toggleFavQuestion(q)}>
                   <Icon name="star" size={13} />
                 </button>
-                <button class="lv-btn sm lv-btn--ghost" title={t("browse.openDoc")} aria-label={t("browse.openDoc")} onclick={() => openInSiYuan((q as any).rootId)} disabled={!(q as any).rootId}>
-                  <Icon name="pin" size={13} />
-                </button>
+                  <button class="lv-btn sm lv-btn--ghost" title={t("browse.openDoc")} aria-label={t("browse.openDoc")} onclick={() => openInSiYuan(q.rootId)} disabled={!q.rootId}>
+                    <Icon name="pin" size={13} />
+                  </button>
                 <button class="lv-btn sm lv-btn--ghost lv-peek-close" title={t("dialog.close", "关闭")} aria-label={t("dialog.close", "关闭")} onclick={closePeekDrawer}>
                   ✕
                 </button>
@@ -7602,7 +7610,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
                         {t("lifecycle.toDraft")}
                       </button>
                     {/if}
-                    <button class="lv-btn sm" onclick={() => openInSiYuan((q as any).rootId)} disabled={!(q as any).rootId} title={!(q as any).rootId ? t("browse.docUnavailable") : t("browse.openDoc")}><Icon name="pin" size={13} /> {t("browse.openDoc")}</button>
+                    <button class="lv-btn sm" onclick={() => openInSiYuan(q.rootId)} disabled={!q.rootId} title={!q.rootId ? t("browse.docUnavailable") : t("browse.openDoc")}><Icon name="pin" size={13} /> {t("browse.openDoc")}</button>
                     <button class="lv-btn sm" onclick={() => void loadBacklinks(q.blockId)} disabled={!app.kernelOnline || !!backlinkBusyFor} aria-busy={backlinkBusyFor === q.blockId} title={!app.kernelOnline ? t("state.offlineHint") : t("browse.backlinks")}><Icon name="link" size={13} /> {backlinkBusyFor === q.blockId ? t("browse.backlinkLoading") : t("browse.backlinks")}</button>
                     {#if links}
                       {#if links.length === 0}<span class="lv-muted">{t("browse.noBacklinks")}</span>

@@ -88,7 +88,7 @@
   function rememberActiveTab(e: Event) {
     const ownerRoot = ownerEl?.closest<HTMLElement>(".lv-exam-tab");
     const target = e.target instanceof Element ? e.target.closest<HTMLElement>(".lv-exam-tab") : null;
-    if (ownerRoot && target === ownerRoot) (window as any)[ACTIVE_TAB_KEY] = ownerRoot;
+    if (ownerRoot && target === ownerRoot) (window as unknown as Record<string, HTMLElement | undefined>)[ACTIVE_TAB_KEY] = ownerRoot;
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -105,7 +105,7 @@
       // When focus is outside the tab content (for example, body focus), a
       // recently focused plugin tab remains the best target. A single visible
       // tab is an unambiguous fallback; with split tabs, avoid guessing.
-      const rememberedRoot = (window as any)[ACTIVE_TAB_KEY] as HTMLElement | undefined;
+      const rememberedRoot = (window as unknown as Record<string, HTMLElement | undefined>)[ACTIVE_TAB_KEY];
       const activeRoot = eventRoot
         ? (eventRoot.getClientRects().length > 0 ? eventRoot : null)
         : rememberedRoot?.isConnected && visibleRoots.includes(rememberedRoot)
