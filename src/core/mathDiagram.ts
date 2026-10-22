@@ -21,6 +21,205 @@ export interface GeometryOptions {
   title?: string;
 }
 
+export interface StatsChartItem {
+  label: string;
+  value: number;
+}
+
+/**
+ * 绘制数理统计柱状图 SVG
+ */
+export function renderBarChartSvg(
+  items: readonly StatsChartItem[],
+  options: { width?: number; height?: number; title?: string } = {},
+): string {
+  const w = options.width ?? 320;
+  const h = options.height ?? 200;
+  const padLeft = 36;
+  const padRight = 16;
+  const padTop = 32;
+  const padBottom = 28;
+
+  if (!items.length) return "";
+
+  const maxVal = Math.max(...items.map((it) => it.value), 1);
+  const plotW = w - padLeft - padRight;
+  const plotH = h - padTop - padBottom;
+
+  const barCount = items.length;
+  const gap = 12;
+  const totalGaps = (barCount + 1) * gap;
+  const barW = Math.max(8, Math.min(48, (plotW - totalGaps) / barCount));
+
+  const parts: string[] = [];
+  parts.push(`<svg class="lv-math-diagram lv-math-bar" viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px;height:auto;display:block;margin:8px auto;background:var(--lv-surface);border:1px solid var(--lv-border);border-radius:6px" role="img" aria-label="柱状统计图: ${options.title || "数据统计"}">`);
+
+  // 标题
+  if (options.title) {
+    parts.push(`<text x="${padLeft}" y="18" font-size="11" font-weight="bold" fill="currentColor" opacity="0.9">${options.title}</text>`);
+  }
+
+  // 坐标轴
+  const axisY = h - padBottom;
+  parts.push(`<line x1="${padLeft}" y1="${padTop - 6}" x2="${padLeft}" y2="${axisY}" stroke="currentColor" stroke-width="1.2" opacity="0.8" />`);
+  parts.push(`<line x1="${padLeft}" y1="${axisY}" x2="${w - padRight + 4}" y2="${axisY}" stroke="currentColor" stroke-width="1.2" opacity="0.8" />`);
+
+  // 柱体与标签
+  const colors = [
+    "var(--b3-theme-primary, #5e59cb)",
+    "color-mix(in srgb, var(--b3-theme-primary, #5e59cb) 80%, #00bcd4)",
+    "color-mix(in srgb, var(--b3-theme-primary, #5e59cb) 65%, #4caf50)",
+    "color-mix(in srgb, var(--b3-theme-primary, #5e59cb) 50%, #ff9800)",
+  ];
+
+  items.forEach((it, idx) => {
+    const curX = padLeft + gap + idx * (barW + gap);
+    const curH = (it.value / maxVal) * plotH;
+    const curY = axisY - curH;
+    const c = colors[idx % colors.length];
+
+    // 柱形
+    parts.push(`<rect x="${curX.toFixed(1)}" y="${curY.toFixed(1)}" width="${barW.toFixed(1)}" height="${curH.toFixed(1)}" rx="3" fill="${c}" opacity="0.9" />`);
+    // 柱上数值
+    parts.push(`<text x="${(curX + barW / 2).toFixed(1)}" y="${(curY - 4).toFixed(1)}" font-size="10" font-family="serif" text-anchor="middle" fill="currentColor">${it.value}</text>`);
+    // 柱下类目标签
+    parts.push(`<text x="${(curX + barW / 2).toFixed(1)}" y="${(axisY + 14).toFixed(1)}" font-size="10" text-anchor="middle" fill="currentColor" opacity="0.85">${it.label}</text>`);
+  });
+
+  parts.push(`</svg>`);
+  return parts.join("\n");
+}
+
+/**
+ * 绘制数理统计扇形饼图 SVG
+ */
+export function renderPieChartSvg(
+  items: readonly StatsChartItem[],
+  options: { width?: number; height?: number; title?: string } = {},
+): string {
+  const w = options.width ?? 320;
+  const h = options.height ?? 200;
+  const cx = 95;
+  const cy = 105;
+  const r = 65;
+
+  const total = items.reduce((sum, it) => sum + Math.max(0, it.value), 0);
+  if (total <= 0) return "";
+
+  const parts: string[] = [];
+  parts.push(`<svg class="lv-math-diagram lv-math-pie" viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px;height:auto;display:block;margin:8px auto;background:var(--lv-surface);border:1px solid var(--lv-border);border-radius:6px" role="img" aria-label="扇形统计图: ${options.title || "占比分布"}">`);
+
+  if (options.title) {
+    parts.push(`<text x="14" y="20" font-size="11" font-weight="bold" fill="currentColor" opacity="0.9">${options.title}</text>`);
+  }
+
+  const colors = [
+    "var(--b3-theme-primary, #5e59cb)",
+    "#26a69a",
+    "#ffa726",
+    "#ef5350",
+    "#ab47bc",
+    "#29b6f6",
+  ];
+
+  let currentAngle = -Math.PI / 2; // 从 12 点钟方向开始
+
+  items.forEach((it, i) => {
+    const fraction = it.value / total;
+    const sliceAngle = fraction * 2 * Math.PI;
+    const endAngle = currentAngle + sliceAngle;
+
+    const x1 = cx + r * Math.cos(currentAngle);
+    const y1 = cy + r * Math.sin(currentAngle);
+    const x2 = cx + r * Math.cos(endAngle);
+    const y2 = cy + r * Math.sin(endAngle);
+
+    const largeArcFlag = sliceAngle > Math.PI ? 1 : 0;
+    const color = colors[i % colors.length];
+
+    // 扇区路径
+    const d = `M ${cx} ${cy} L ${x1.toFixed(1)} ${y1.toFixed(1)} A ${r} ${r} 0 ${largeArcFlag} 1 ${x2.toFixed(1)} ${y2.toFixed(1)} Z`;
+    parts.push(`<path d="${d}" fill="${color}" stroke="var(--lv-surface)" stroke-width="1.5" opacity="0.9" />`);
+
+    // 右侧图例
+    const legY = 45 + i * 22;
+    if (legY < h - 10) {
+      const pct = (fraction * 100).toFixed(0);
+      parts.push(`<rect x="180" y="${legY - 9}" width="12" height="12" rx="2" fill="${color}" />`);
+      parts.push(`<text x="198" y="${legY + 1}" font-size="10" fill="currentColor">${it.label}: ${pct}%</text>`);
+    }
+
+    currentAngle = endAngle;
+  });
+
+  parts.push(`</svg>`);
+  return parts.join("\n");
+}
+
+/**
+ * 绘制实数轴与不等式解集区间图 SVG
+ */
+export function renderNumberLineSvg(options: {
+  range?: [number, number];
+  interval?: [number, number];
+  intervalOpen?: [boolean, boolean]; // [左端点是否开区间, 右端点是否开区间]
+  title?: string;
+  width?: number;
+  height?: number;
+}): string {
+  const w = options.width ?? 320;
+  const h = options.height ?? 80;
+  const min = options.range?.[0] ?? -5;
+  const max = options.range?.[1] ?? 5;
+  const pad = 24;
+  const lineY = h / 2 + 4;
+  const axisW = w - pad * 2;
+
+  const toX = (val: number) => pad + ((val - min) / (max - min)) * axisW;
+
+  const parts: string[] = [];
+  parts.push(`<svg class="lv-math-diagram lv-math-numberline" viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px;height:auto;display:block;margin:8px auto;background:var(--lv-surface);border:1px solid var(--lv-border);border-radius:6px" role="img" aria-label="数轴区间图: ${options.title || "数轴"}">`);
+
+  if (options.title) {
+    parts.push(`<text x="14" y="16" font-size="10" font-weight="bold" fill="currentColor" opacity="0.85">${options.title}</text>`);
+  }
+
+  // 数轴横线与两端箭头
+  parts.push(`<line x1="${pad - 8}" y1="${lineY}" x2="${w - pad + 8}" y2="${lineY}" stroke="currentColor" stroke-width="1.4" />`);
+  parts.push(`<polygon points="${w - pad + 10},${lineY} ${w - pad + 4},${lineY - 3} ${w - pad + 4},${lineY + 3}" fill="currentColor" />`);
+
+  // 刻度线与整数值
+  const step = Math.max(1, Math.round((max - min) / 10));
+  for (let val = Math.ceil(min); val <= Math.floor(max); val += step) {
+    const x = toX(val);
+    parts.push(`<line x1="${x.toFixed(1)}" y1="${lineY - 4}" x2="${x.toFixed(1)}" y2="${lineY + 4}" stroke="currentColor" stroke-width="1" opacity="0.7" />`);
+    parts.push(`<text x="${x.toFixed(1)}" y="${lineY + 16}" font-size="10" font-family="serif" text-anchor="middle" fill="currentColor" opacity="0.8">${val}</text>`);
+  }
+
+  // 不等式解集区间高亮带
+  if (options.interval) {
+    const [ivMin, ivMax] = options.interval;
+    const xLeft = Math.max(pad, toX(ivMin));
+    const xRight = Math.min(w - pad, toX(ivMax));
+    const isLeftOpen = options.intervalOpen?.[0] ?? false;
+    const isRightOpen = options.intervalOpen?.[1] ?? false;
+
+    // 区间高亮线
+    parts.push(`<line x1="${xLeft.toFixed(1)}" y1="${lineY}" x2="${xRight.toFixed(1)}" y2="${lineY}" stroke="var(--b3-theme-primary, #5e59cb)" stroke-width="3" stroke-linecap="round" />`);
+
+    // 左端点
+    const fillLeft = isLeftOpen ? "var(--lv-surface)" : "var(--b3-theme-primary, #5e59cb)";
+    parts.push(`<circle cx="${xLeft.toFixed(1)}" cy="${lineY}" r="4" fill="${fillLeft}" stroke="var(--b3-theme-primary, #5e59cb)" stroke-width="1.8" />`);
+
+    // 右端点
+    const fillRight = isRightOpen ? "var(--lv-surface)" : "var(--b3-theme-primary, #5e59cb)";
+    parts.push(`<circle cx="${xRight.toFixed(1)}" cy="${lineY}" r="4" fill="${fillRight}" stroke="var(--b3-theme-primary, #5e59cb)" stroke-width="1.8" />`);
+  }
+
+  parts.push(`</svg>`);
+  return parts.join("\n");
+}
+
 /**
  * 安全计算单变量实函数 y = f(x)
  */
@@ -180,11 +379,17 @@ export function renderTriangleSvg(
 
 /**
  * 文本内数学图表代码块解析与转换
- * 支持 ```math-plot 与 ```math-diagram 语法
+ * 支持 ```math-plot、```math-diagram、```math-bar、```math-pie 与 ```math-numberline 语法
  */
 export function renderMathDiagramsInText(text: string): string {
   if (!text) return "";
-  if (!text.includes("```math-plot") && !text.includes("```math-diagram")) {
+  if (
+    !text.includes("```math-plot") &&
+    !text.includes("```math-diagram") &&
+    !text.includes("```math-bar") &&
+    !text.includes("```math-pie") &&
+    !text.includes("```math-numberline")
+  ) {
     return text;
   }
 
@@ -227,6 +432,76 @@ export function renderMathDiagramsInText(text: string): string {
       return renderTriangleSvg([p1, p2, p3], { title: "几何参考示意图" });
     }
     return `<div class="lv-math-diagram-raw">${raw}</div>`;
+  });
+
+  // 3. 匹配 ```math-bar ... ``` （柱状图）
+  s = s.replace(/```math-bar([\s\S]*?)```/g, (_m, body: string) => {
+    const raw = body.trim();
+    const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean);
+    const items: StatsChartItem[] = [];
+    let title: string | undefined;
+
+    for (const l of lines) {
+      if (l.startsWith("title:")) {
+        title = l.replace(/^title:\s*/, "").trim();
+        continue;
+      }
+      // 匹配 key: val 或 ("key", val) 或 [key, val]
+      const pairMatch = l.match(/["']?([^"',:]+)["']?\s*[:,\t]\s*(\d+(?:\.\d+)?)/);
+      if (pairMatch) {
+        items.push({ label: pairMatch[1].trim(), value: parseFloat(pairMatch[2]) });
+      }
+    }
+    return renderBarChartSvg(items, { title });
+  });
+
+  // 4. 匹配 ```math-pie ... ``` （饼图）
+  s = s.replace(/```math-pie([\s\S]*?)```/g, (_m, body: string) => {
+    const raw = body.trim();
+    const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean);
+    const items: StatsChartItem[] = [];
+    let title: string | undefined;
+
+    for (const l of lines) {
+      if (l.startsWith("title:")) {
+        title = l.replace(/^title:\s*/, "").trim();
+        continue;
+      }
+      const pairMatch = l.match(/["']?([^"',:]+)["']?\s*[:,\t]\s*(\d+(?:\.\d+)?)/);
+      if (pairMatch) {
+        items.push({ label: pairMatch[1].trim(), value: parseFloat(pairMatch[2]) });
+      }
+    }
+    return renderPieChartSvg(items, { title });
+  });
+
+  // 5. 匹配 ```math-numberline ... ``` （数轴与不等式区间图）
+  s = s.replace(/```math-numberline([\s\S]*?)```/g, (_m, body: string) => {
+    const raw = body.trim();
+    const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean);
+    let range: [number, number] | undefined;
+    let interval: [number, number] | undefined;
+    let intervalOpen: [boolean, boolean] | undefined;
+    let title: string | undefined;
+
+    for (const l of lines) {
+      if (l.startsWith("title:")) {
+        title = l.replace(/^title:\s*/, "").trim();
+        continue;
+      }
+      const rangeMatch = l.match(/range\s*:\s*\[\s*(-?\d+)\s*,\s*(-?\d+)\s*\]/);
+      if (rangeMatch) {
+        range = [parseInt(rangeMatch[1], 10), parseInt(rangeMatch[2], 10)];
+        continue;
+      }
+      const ivMatch = l.match(/interval\s*:\s*([([\]])\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*([)\]])/);
+      if (ivMatch) {
+        interval = [parseFloat(ivMatch[2]), parseFloat(ivMatch[3])];
+        intervalOpen = [ivMatch[1] === "(", ivMatch[4] === ")"];
+      }
+    }
+
+    return renderNumberLineSvg({ range, interval, intervalOpen, title });
   });
 
   return s;

@@ -165,6 +165,25 @@ export function renderSemanticLatex(latex: string, displayMode = false): string 
   // 0.2 解析向量：\vec{x}
   s = s.replace(/\\vec\{([^{}]+)\}/g, '<span class="lv-math-vec"><span class="lv-math-arrow">→</span>$1</span>');
 
+  // 0.3 解析化学方程式与化学式：\ce{...}
+  s = s.replace(/\\ce\{([^{}]+)\}/g, (_m, chem: string) => {
+    const c = chem
+      .replace(/-&gt;|->|→/g, " → ")
+      .replace(/&lt;=&gt;|<=|=>|<=>/g, " ⇌ ")
+      .replace(/\^/g, "↑")
+      .replace(/\s+v\b/g, " ↓")
+      .replace(/\^{([^{}]+)}/g, '<sup class="lv-math-sup">$1</sup>')
+      .replace(/\^([0-9+-]+)/g, '<sup class="lv-math-sup">$1</sup>')
+      .replace(/([A-Za-z)\]])(\d+)/g, '$1<sub class="lv-math-sub">$2</sub>');
+    return `<span class="lv-math-chem">${c}</span>`;
+  });
+
+  // 0.4 解析极限：\lim_{x \to a}
+  s = s.replace(
+    /\\lim_\{([^}]+)\}/g,
+    '<span class="lv-math-lim"><span class="lv-math-lim-op">lim</span><sub class="lv-math-lim-sub">$1</sub></span>',
+  );
+
   // 1. 解析分式 \frac{A}{B}
   s = s.replace(
     /\\frac\{([^{}]+)\}\{([^{}]+)\}/g,
@@ -416,6 +435,28 @@ export function getMathPrintStyles(): string {
 .lv-math-arrow {
   font-size: 0.7em;
   line-height: 0.7;
+}
+.lv-math-chem {
+  display: inline;
+  font-family: inherit;
+  font-style: normal;
+}
+.lv-math-lim {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  vertical-align: middle;
+  line-height: 1;
+  margin: 0 2px;
+}
+.lv-math-lim-op {
+  font-style: normal;
+  font-family: serif;
+}
+.lv-math-lim-sub {
+  font-size: 0.7em;
+  line-height: 1;
+  vertical-align: baseline;
 }
 `;
 }

@@ -6769,8 +6769,35 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         <span class="lv-chip">{t("manual.title")}</span>
         <button class="lv-btn sm" onclick={openOcrModal} title="粘贴试题识别文本一键智能提取填入表单"><Icon name="camera" size={13} /> {t("manual.ocrFastFill")}</button>
         <button class="lv-btn sm" onclick={normalizeManualFormulas} title="清洗题干与选项中公式的空格与语法"><Icon name="sparkles" size={13} /> {t("manual.formulaNormalize")}</button>
-        <button class="lv-btn sm" onclick={() => { const plotTpl = `\n\n\`\`\`math-plot\ny = x^2 - 2\nx: [-3, 3]\ny: [-3, 5]\ntitle: 函数图像 y = x² - 2\n\`\`\`\n`; mStem = (mStem ? mStem.trim() : "") + plotTpl; showMessage("已在题干插入函数图像模板", 2500, "info"); }} title="在题干快速插入直角坐标系函数图像绘制模板"><Icon name="chart" size={13} /> {t("manual.insertPlot")}</button>
-        <button class="lv-btn sm" onclick={() => { const diagTpl = `\n\n\`\`\`math-diagram\ntriangle: A(140, 20), B(40, 160), C(240, 160)\n\`\`\`\n`; mStem = (mStem ? mStem.trim() : "") + diagTpl; showMessage("已在题干插入几何图形模板", 2500, "info"); }} title="在题干快速插入几何三角形矢量图模板"><Icon name="activity" size={13} /> {t("manual.insertDiagram")}</button>
+        <select class="lv-select" style="max-width:135px" onchange={(e) => {
+          const val = (e.target as HTMLSelectElement).value;
+          if (!val) return;
+          if (val === "plot") {
+            const plotTpl = `\n\n\`\`\`math-plot\ny = x^2 - 2\nx: [-3, 3]\ny: [-3, 5]\ntitle: 函数图像 y = x² - 2\n\`\`\`\n`;
+            mStem = (mStem ? mStem.trim() : "") + plotTpl;
+          } else if (val === "diagram") {
+            const diagTpl = `\n\n\`\`\`math-diagram\ntriangle: A(140, 20), B(40, 160), C(240, 160)\n\`\`\`\n`;
+            mStem = (mStem ? mStem.trim() : "") + diagTpl;
+          } else if (val === "bar") {
+            const barTpl = `\n\n\`\`\`math-bar\ntitle: 统计柱状图\n"一季度": 35\n"二季度": 58\n"三季度": 82\n"四季度": 95\n\`\`\`\n`;
+            mStem = (mStem ? mStem.trim() : "") + barTpl;
+          } else if (val === "pie") {
+            const pieTpl = `\n\n\`\`\`math-pie\ntitle: 成绩占比扇形图\n"优秀": 25\n"良好": 45\n"及格": 20\n"待提高": 10\n\`\`\`\n`;
+            mStem = (mStem ? mStem.trim() : "") + pieTpl;
+          } else if (val === "numberline") {
+            const nlTpl = `\n\n\`\`\`math-numberline\ntitle: 不等式解集区间\nrange: [-4, 6]\ninterval: [-1, 3)\n\`\`\`\n`;
+            mStem = (mStem ? mStem.trim() : "") + nlTpl;
+          }
+          (e.target as HTMLSelectElement).value = "";
+          showMessage("已在题干插入图表模板", 2500, "info");
+        }}>
+          <option value="">➕ 插入数学图表…</option>
+          <option value="plot">📈 {t("manual.insertPlot")}</option>
+          <option value="diagram">📐 {t("manual.insertDiagram")}</option>
+          <option value="bar">📊 {t("manual.insertBar")}</option>
+          <option value="pie">🥧 {t("manual.insertPie")}</option>
+          <option value="numberline">📏 {t("manual.insertNumberLine")}</option>
+        </select>
         {#if draftRestored}<span class="lv-chip lv-chip--amb">{t("manual.draftRestored")}</span>{/if}
         {#if mSaved}<span class="lv-chip lv-chip--grn num">✓ {mSaved}</span>{/if}
       </div>

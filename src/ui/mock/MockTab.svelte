@@ -469,6 +469,25 @@
     let printBusy = $state(false);
     let abBusy = $state(false);
     let presetOptions = $state<import("@/core/examPresets").ExamBlueprintPreset[]>([]);
+    let userRole = $state<"student" | "teacher">(
+      typeof localStorage !== "undefined" && localStorage.getItem("lv-exam/role") === "teacher"
+        ? "teacher"
+        : "student",
+    );
+
+    function switchRole(role: "student" | "teacher") {
+      userRole = role;
+      try {
+        localStorage.setItem("lv-exam/role", role);
+      } catch { /* 容错 */ }
+      showMessage(
+        role === "teacher"
+          ? "已切换至【👨‍🏫 教师教研模式】：考卷管理、A/B 卷分化与讲义排版工具已就绪"
+          : "已切换至【👨‍🎓 备考学员模式】：全真限时模考、自适应冲刺密卷与自评已就绪",
+        2500,
+        "info",
+      );
+    }
 
     async function loadPresets() {
       if (!app) return;
@@ -1293,6 +1312,32 @@
       <span class="lv-crumb-current">{t("tab.mock")}</span>
     </div>
     {#if app}<SaveStatus gate={app.saves} {t} />{/if}
+    <div class="lv-role-segmented lv-focus-context" role="radiogroup" aria-label="身份模式切换">
+      <button
+        type="button"
+        class="lv-role-pill"
+        class:active={userRole === "student"}
+        class:active-student={userRole === "student"}
+        role="radio"
+        aria-checked={userRole === "student"}
+        onclick={() => switchRole("student")}
+        title={t("role.student")}
+      >
+        <span>👨‍🎓</span> <b>{t("role.student")}</b>
+      </button>
+      <button
+        type="button"
+        class="lv-role-pill"
+        class:active={userRole === "teacher"}
+        class:active-teacher={userRole === "teacher"}
+        role="radio"
+        aria-checked={userRole === "teacher"}
+        onclick={() => switchRole("teacher")}
+        title={t("role.teacher")}
+      >
+        <span>👨‍🏫</span> <b>{t("role.teacher")}</b>
+      </button>
+    </div>
     <span class="fn__flex-1"></span>
     <button class="lv-btn lv-btn--ghost sm lv-palette-btn" onclick={() => paletteOpen = true} title="Ctrl / ⌘ K">
       <Icon name="search" size={13} /> <span class="lv-palette-label">{t("palette.open")}</span> <span class="lv-kbd">⌘K</span>
@@ -1311,7 +1356,7 @@
       </button>
     {/if}
   </div>
-<div class="fn__flex-1 lv-shell" class:lv-shell-focus={view === "exam" || view === "report"}>
+<div class="fn__flex-1 lv-shell" data-exam-role={userRole} class:lv-shell-focus={view === "exam" || view === "report"}>
   <Rail active="mock" taskactive="mock" tasknavhidden={view === "exam" || view === "report"} ontasknavigate={onTaskNav} {plugin} open={railOpen} onclose={closeRail}
     project={{ name: railBankName || t("guard.title"), kicker: t("rail.projectKicker") }} onproject={() => plugin.openPractice?.()} />
   <div class="lv-main">

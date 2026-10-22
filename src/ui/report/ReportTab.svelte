@@ -125,6 +125,25 @@
       }
     }
     let badgeWallBusy = $state(false);
+    let userRole = $state<"student" | "teacher">(
+      typeof localStorage !== "undefined" && localStorage.getItem("lv-exam/role") === "teacher"
+        ? "teacher"
+        : "student",
+    );
+
+    function switchRole(role: "student" | "teacher") {
+      userRole = role;
+      try {
+        localStorage.setItem("lv-exam/role", role);
+      } catch { /* 容错 */ }
+      showMessage(
+        role === "teacher"
+          ? "已切换至【👨‍🏫 教师教研模式】：全库质量诊断、试题区分度与大纲缺口审计已就绪"
+          : "已切换至【👨‍🎓 备考学员模式】：备考完备度体检、考点雷达与成长手账已就绪",
+        2500,
+        "info",
+      );
+    }
     async function exportBadgeWall() {
       if (badgeWallBusy || !app) return;
       badgeWallBusy = true;
@@ -834,6 +853,32 @@
       </select>
       <span class="lv-muted" style="font-size:var(--lv-font-size-caption)">{t("report.scopeHint")}</span>
     {/if}
+    <div class="lv-role-segmented lv-focus-context" role="radiogroup" aria-label="身份模式切换">
+      <button
+        type="button"
+        class="lv-role-pill"
+        class:active={userRole === "student"}
+        class:active-student={userRole === "student"}
+        role="radio"
+        aria-checked={userRole === "student"}
+        onclick={() => switchRole("student")}
+        title={t("role.student")}
+      >
+        <span>👨‍🎓</span> <b>{t("role.student")}</b>
+      </button>
+      <button
+        type="button"
+        class="lv-role-pill"
+        class:active={userRole === "teacher"}
+        class:active-teacher={userRole === "teacher"}
+        role="radio"
+        aria-checked={userRole === "teacher"}
+        onclick={() => switchRole("teacher")}
+        title={t("role.teacher")}
+      >
+        <span>👨‍🏫</span> <b>{t("role.teacher")}</b>
+      </button>
+    </div>
     <span class="fn__flex-1"></span>
     <!-- 117-01 T11 / 117-02：AI 解读与 AI 下一行动（按当前统计范围；只解释/建议，不重算不虚构） -->
     <button class="lv-btn sm" onclick={() => void runReportExplain()} disabled={!app || loading || reportRefreshing || scopeLoading || explainBusy} aria-busy={explainBusy}>
@@ -844,7 +889,7 @@
     </button>
     <span class="lv-chip">{t("report.dataFromLog")}</span>
   </div>
-<div class="fn__flex-1 lv-shell">
+<div class="fn__flex-1 lv-shell" data-exam-role={userRole}>
   <Rail active="report" taskactive="report" ontasknavigate={onTaskNav} {plugin} open={railOpen} onclose={closeRail}
     project={{ name: railBankName || t("guard.title"), kicker: t("rail.projectKicker") }} onproject={() => plugin.openPractice?.()} />
   <div class="lv-main">

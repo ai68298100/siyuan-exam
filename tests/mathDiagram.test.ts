@@ -2,6 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   renderFunctionPlotSvg,
   renderTriangleSvg,
+  renderBarChartSvg,
+  renderPieChartSvg,
+  renderNumberLineSvg,
   renderMathDiagramsInText,
 } from "../src/core/mathDiagram";
 import { renderSemanticLatex } from "../src/core/math";
@@ -31,7 +34,7 @@ describe("数学矢量图表与高阶公式引擎 (mathDiagram & math)", () => {
     });
   });
 
-  describe("2. 几何矢量图形绘制 (renderTriangleSvg)", () => {
+  describe("2. 几何与统计矢量图形直接绘制 (renderTriangleSvg / renderBarChartSvg / renderPieChartSvg / renderNumberLineSvg)", () => {
     it("绘制几何三角形并标注顶点字母", () => {
       const svg = renderTriangleSvg([
         { name: "A", x: 140, y: 30 },
@@ -45,6 +48,36 @@ describe("数学矢量图表与高阶公式引擎 (mathDiagram & math)", () => {
       expect(svg).toContain(">B</text>");
       expect(svg).toContain(">C</text>");
       expect(svg).toContain("参考几何图");
+    });
+
+    it("直接调用 renderBarChartSvg 绘制柱状图", () => {
+      const svg = renderBarChartSvg([
+        { label: "A", value: 10 },
+        { label: "B", value: 20 },
+      ], { title: "直接柱图" });
+      expect(svg).toContain("lv-math-bar");
+      expect(svg).toContain("直接柱图");
+      expect(svg).toContain("10");
+    });
+
+    it("直接调用 renderPieChartSvg 绘制扇形饼图", () => {
+      const svg = renderPieChartSvg([
+        { label: "及格", value: 80 },
+        { label: "不及格", value: 20 },
+      ], { title: "直接饼图" });
+      expect(svg).toContain("lv-math-pie");
+      expect(svg).toContain("及格: 80%");
+    });
+
+    it("直接调用 renderNumberLineSvg 绘制数轴", () => {
+      const svg = renderNumberLineSvg({
+        range: [-3, 3],
+        interval: [-1, 2],
+        intervalOpen: [true, false],
+        title: "直接数轴",
+      });
+      expect(svg).toContain("lv-math-numberline");
+      expect(svg).toContain("直接数轴");
     });
   });
 
@@ -81,9 +114,67 @@ triangle: A(140, 20), B(40, 160), C(240, 160)
       expect(rendered).toContain("<svg");
       expect(rendered).toContain("lv-math-geometry");
     });
+
+    it("自动识别 ```math-bar 统计柱状图代码块并替换为矢量 SVG", () => {
+      const md = `
+下表为近四年营业收入情况：
+\`\`\`math-bar
+title: 四年营收统计
+"2021": 45
+"2022": 68
+"2023": 92
+"2024": 120
+\`\`\`
+问复合增长率是多少？
+      `;
+
+      const rendered = renderMathDiagramsInText(md);
+      expect(rendered).not.toContain("```math-bar");
+      expect(rendered).toContain("<svg");
+      expect(rendered).toContain("lv-math-bar");
+      expect(rendered).toContain("四年营收统计");
+      expect(rendered).toContain("2024");
+    });
+
+    it("自动识别 ```math-pie 扇形占比图代码块并替换为矢量 SVG", () => {
+      const md = `
+某次统考成绩分档占比统计如下：
+\`\`\`math-pie
+title: 成绩分布
+"优秀": 30
+"良好": 40
+"及格": 20
+"待提高": 10
+\`\`\`
+      `;
+
+      const rendered = renderMathDiagramsInText(md);
+      expect(rendered).not.toContain("```math-pie");
+      expect(rendered).toContain("<svg");
+      expect(rendered).toContain("lv-math-pie");
+      expect(rendered).toContain("成绩分布");
+      expect(rendered).toContain("优秀");
+    });
+
+    it("自动识别 ```math-numberline 数轴区间代码块并替换为矢量 SVG", () => {
+      const md = `
+已知不等式组的解集为：
+\`\`\`math-numberline
+title: 解集数轴示意
+range: [-4, 6]
+interval: [-1, 3)
+\`\`\`
+      `;
+
+      const rendered = renderMathDiagramsInText(md);
+      expect(rendered).not.toContain("```math-numberline");
+      expect(rendered).toContain("<svg");
+      expect(rendered).toContain("lv-math-numberline");
+      expect(rendered).toContain("解集数轴示意");
+    });
   });
 
-  describe("4. 高阶 LaTeX 语法强化 (矩阵 pmatrix、分段 cases 与向量 vec)", () => {
+  describe("4. 高阶 LaTeX 语法强化 (矩阵 pmatrix、分段 cases、向量与化学方程式)", () => {
     it("渲染圆括号矩阵 \\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}", () => {
       const latex = "\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}";
       const html = renderSemanticLatex(latex);
@@ -105,6 +196,22 @@ triangle: A(140, 20), B(40, 160), C(240, 160)
       const html = renderSemanticLatex(latex);
       expect(html).toContain('class="lv-math-vec"');
       expect(html).toContain("→");
+    });
+
+    it("渲染化学方程式 \\ce{2H2 + O2 -> 2H2O}", () => {
+      const latex = "\\ce{2H2 + O2 -> 2H2O}";
+      const html = renderSemanticLatex(latex);
+      expect(html).toContain('class="lv-math-chem"');
+      expect(html).toContain("2H<sub");
+      expect(html).toContain("→");
+    });
+
+    it("渲染微积分极限 \\lim_{x \\to 0}", () => {
+      const latex = "\\lim_{x \\to 0} \\frac{\\sin x}{x} = 1";
+      const html = renderSemanticLatex(latex);
+      expect(html).toContain('class="lv-math-lim"');
+      expect(html).toContain("lim");
+      expect(html).toContain("lv-math-lim-sub");
     });
   });
 });
