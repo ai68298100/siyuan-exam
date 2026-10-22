@@ -326,6 +326,7 @@
     onMount(() => {
       const initMock = () => {
         if (!app) return;
+        void loadPresets();
         void loadMockData();
         void loadEstimateHistory();
       };
@@ -466,6 +467,48 @@
 
     let sprintBusy = $state(false);
     let printBusy = $state(false);
+    let abBusy = $state(false);
+    let presetOptions = $state<import("@/core/examPresets").ExamBlueprintPreset[]>([]);
+
+    async function loadPresets() {
+      if (!app) return;
+      try {
+        presetOptions = await app.listExamBlueprintPresets();
+      } catch { /* 忽略 */ }
+    }
+
+    async function onPresetSelected(presetId: string) {
+      if (!presetId || !app) return;
+      try {
+        bp = await app.applyBlueprintPreset(presetId, activeBankId);
+        showMessage("已成功套用标准化考试蓝图！", 2500, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 3000, "error");
+      }
+    }
+
+    async function generateABMockPapers() {
+      if (abBusy || !activeBankId || !questions.length) return;
+      abBusy = true;
+      try {
+        const res = await app.generateABExamPapers(activeBankId);
+        const { buildCompactQuestionSheetPro } = await import("@/core/printPro");
+        const htmlA = buildCompactQuestionSheetPro(`${bp.name || "全真模拟试卷"}（A卷）`, res.paperA, { headerTitle: "A 卷 · 标准题序", columns: "double" });
+        const htmlB = buildCompactQuestionSheetPro(`${bp.name || "全真模拟试卷"}（B卷）`, res.paperB, { headerTitle: "B 卷 · 选项乱序防作弊", columns: "double" });
+
+        const blobA = new Blob([htmlA], { type: "text/html;charset=utf-8" });
+        downloadBlob(blobA, `${bp.name || "试卷"}-A卷.html`);
+
+        const blobB = new Blob([htmlB], { type: "text/html;charset=utf-8" });
+        downloadBlob(blobB, `${bp.name || "试卷"}-B卷.html`);
+
+        showMessage(`⚡ ${res.diffSummary} 已开始下载 A/B 双卷！`, 3500, "info");
+      } catch (e) {
+        showMessage(`生成 A/B 卷失败：${String(e instanceof Error ? e.message : e)}`, 4000, "error");
+      } finally {
+        abBusy = false;
+      }
+    }
 
     async function generateAdaptiveSprint() {
       if (sprintBusy || !activeBankId || !questions.length) return;
@@ -1399,11 +1442,18 @@
     {#if !bp.sections.length}<div class="lv-empty">{t("mock.needSec")}</div>{/if}
     <div class="lv-row">
       <button class="lv-btn lv-btn--primary" onclick={startExam} disabled={!canStartExam} title={!canStartExam ? startDisabledReason : ""}><Icon name="play" size={16} /> {starting ? "…" : t("mock.start")}</button>
+      <select class="lv-select" style="max-width:160px" onchange={(e) => void onPresetSelected((e.target as HTMLSelectElement).value)}>
+        <option value="">{t("mock.pickPreset")}</option>
+        {#each presetOptions as opt (opt.id)}
+          <option value={opt.id}>{opt.title}</option>
+        {/each}
+      </select>
       <button class="lv-btn sm" onclick={saveBlueprint} disabled={blueprintBusy || starting || resumeBusy || discardBusy} aria-busy={blueprintBusy}><Icon name="save" size={14} /> {blueprintBusy ? "…" : t("mock.bpSave")}</button>
       <button class="lv-btn sm" onclick={restoreBlueprint} disabled={blueprintBusy || starting || resumeBusy || discardBusy} aria-busy={blueprintBusy}><Icon name="folder" size={14} /> {blueprintBusy ? "…" : t("mock.bpRestore")}</button>
       <button class="lv-btn sm" onclick={generateAdaptiveSprint} disabled={sprintBusy || !questions.length || starting} aria-busy={sprintBusy} title="基于考点盲区与高频错题自适应装配全真密卷"><Icon name="sparkles" size={14} /> {sprintBusy ? "…" : t("mock.sprintPaper")}</button>
       <button class="lv-btn sm" onclick={printCompactPaper} disabled={printBusy || !questions.length} aria-busy={printBusy} title="导出标准 A4/A3 双栏试卷与答题卡"><Icon name="file" size={14} /> {printBusy ? "…" : t("mock.printCompact")}</button>
       <button class="lv-btn sm" onclick={printTeacherLecturePaper} disabled={printBusy || !questions.length} aria-busy={printBusy} title="导出包含题目、答案、考点、难度、采分点与破题教学点拨的教师讲义卷"><Icon name="book" size={14} /> {printBusy ? "…" : t("mock.printTeacher")}</button>
+      <button class="lv-btn sm" onclick={generateABMockPapers} disabled={abBusy || !questions.length} aria-busy={abBusy} title="一键生成同考点但单选/多选选项智能洗牌防作弊的 A 卷与 B 卷"><Icon name="shuffle" size={14} /> {abBusy ? "…" : t("mock.generateAB")}</button>
     </div>
     {#if !canStartExam && startDisabledReason}<p class="lv-muted" role="status" style="margin:4px 0">{startDisabledReason}</p>{/if}
     <!-- 考后估分 -->

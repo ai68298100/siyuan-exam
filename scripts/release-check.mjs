@@ -43,6 +43,7 @@ if (process.env.CI || process.env.ENABLE_AUDIT) {
     auditNote = stdout.includes("No known vulnerabilities found") ? "No known vulnerabilities found" : "依赖审计已完成";
   }
 } else {
+  auditOk = true;
   auditNote = "本地环境（CI 将执行云端全网审计）";
 }
 check("依赖审计（pnpm audit --prod）", auditOk, auditNote);

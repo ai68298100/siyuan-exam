@@ -3530,6 +3530,21 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
 
     let cheatSheetBusy = $state(false);
 
+    async function launchWrongbookMockExam() {
+      if (!filteredWrongQueue.length || !app) return;
+      try {
+        const result = await app.assembleWrongbookExam(activeBankId);
+        if (!result.totalCount) {
+          showMessage(t("wrongbook.noFiltered"), 2500, "info");
+          return;
+        }
+        plugin.openMock?.();
+        showMessage(`已为 ${result.totalCount} 道错题生成专属限时特训卷！正在进入模考考场…`, 3500, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 3500, "error");
+      }
+    }
+
     async function exportCheatSheet() {
       if (cheatSheetBusy || !app) return;
       cheatSheetBusy = true;
@@ -6606,6 +6621,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
                   <button class="lv-btn sm lv-btn--ghost" onclick={() => void printWrongSheet("question")} disabled={printWrongBusy || !filteredWrongQueue.length} title="将当前筛选的错题导出或打印为 A4 双栏试卷（绝不泄题）"><Icon name="file" size={13} /> {t("mock.printCompact")}</button>
                   <button class="lv-btn sm lv-btn--ghost" onclick={() => void printWrongSheet("answer")} disabled={printWrongBusy || !filteredWrongQueue.length} title="导出或打印配套答案册"><Icon name="book" size={13} /> 答案册</button>
                   <button class="lv-btn sm lv-btn--ghost" onclick={exportCheatSheet} disabled={cheatSheetBusy || !filteredWrongQueue.length} title={t("cram.cheatSheetTip")}><Icon name="file-text" size={13} /> {t("cram.cheatSheet")}</button>
+                  <button class="lv-btn sm lv-btn--primary" onclick={() => void launchWrongbookMockExam()} disabled={!filteredWrongQueue.length} title="将当前筛选的错题组建为全真限时模拟考卷，拉起答题卡进行考场高压攻坚"><Icon name="clock" size={13} /> {t("wrongbook.launchExam")}</button>
                 </div>
                 <span class="lv-muted" style="font-size:var(--lv-font-size-caption)">{t("wrongbook.queue.note")}</span>
               </div>

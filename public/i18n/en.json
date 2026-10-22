@@ -491,6 +491,8 @@
     "mock.printAnswerSheet": "Compact Answer Sheet",
     "mock.printTeacher": "Teacher Lecture Sheet",
     "mock.generateAB": "Generate A/B Exam Papers",
+    "mock.pickPreset": "Pick Exam Preset…",
+    "wrongbook.launchExam": "Create Wrong Exam",
     "cram.cheatSheet": "Cheat Sheet",
     "cram.cheatSheetTip": "Export cram summary sheet of active wrongs and key topics",
     "health.itemQualityAudit": "Item Quality CTT Audit",

@@ -3563,6 +3563,33 @@ export class ExamApp {
     return exportSyllabusAuditMarkdown(report);
   }
 
+  // ---------- 教师与学生：经典组卷蓝图模板库与错题全真模考卷 ----------
+  async listExamBlueprintPresets(): Promise<import("./core/examPresets").ExamBlueprintPreset[]> {
+    const { listExamBlueprintPresets } = await import("./core/examPresets");
+    return listExamBlueprintPresets();
+  }
+
+  async applyBlueprintPreset(
+    presetId: string,
+    bankId?: string,
+  ): Promise<import("./core/mock").Blueprint> {
+    const targetBank = bankId ?? this.listBanks()[0]?.id;
+    const questions = targetBank ? await this.listQuestions(targetBank) : [];
+    const { adaptPresetToBlueprint } = await import("./core/examPresets");
+    return adaptPresetToBlueprint(presetId, questions);
+  }
+
+  async assembleWrongbookExam(
+    bankId?: string,
+    options?: { name?: string; durationMinutes?: number },
+  ): Promise<{ blueprint: import("./core/mock").Blueprint; targetQuestions: Question[]; totalCount: number }> {
+    const targetBank = bankId ?? this.listBanks()[0]?.id;
+    const questions = targetBank ? await this.listQuestions(targetBank) : [];
+    const wrongItems = this.wrongItems();
+    const { convertWrongbookToMockBlueprint } = await import("./core/examPresets");
+    return convertWrongbookToMockBlueprint(wrongItems, questions, options);
+  }
+
   dailySet(questions: Question[], dueFirst: Question[], n: number): Question[] {
     const seen = new Set<string>();
     const out: Question[] = [];

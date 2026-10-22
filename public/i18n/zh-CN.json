@@ -518,6 +518,8 @@
     "mock.printAnswerSheet": "双栏答案册",
     "mock.printTeacher": "教师讲义卷",
     "mock.generateAB": "生成 A/B 考卷",
+    "mock.pickPreset": "选择标准化蓝图…",
+    "wrongbook.launchExam": "组建错题限时卷",
     "cram.cheatSheet": "急救小抄",
     "cram.cheatSheetTip": "导出考前核心错题与考点速记小抄",
     "health.itemQualityAudit": "试题质量 CTT 诊断",
