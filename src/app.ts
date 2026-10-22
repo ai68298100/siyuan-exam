@@ -3592,6 +3592,44 @@ export class ExamApp {
     return convertWrongbookToMockBlueprint(wrongItems, questions, options);
   }
 
+  // ---------- 教师端：试卷预估难度与大纲分值契合度体检 ----------
+  async predictPaperDifficulty(bankId?: string): Promise<import("./core/paperAudit").PaperDifficultyPrediction> {
+    const targetBank = bankId ?? this.listBanks()[0]?.id;
+    const questions = targetBank ? await this.listQuestions(targetBank) : [];
+    const attempts = this.attempts.all();
+    const { predictPaperDifficulty } = await import("./core/paperAudit");
+    return predictPaperDifficulty(questions, attempts);
+  }
+
+  async auditPaperSyllabusBalance(bankId?: string): Promise<import("./core/paperAudit").PaperBalanceReport> {
+    const targetBank = bankId ?? this.listBanks()[0]?.id;
+    const questions = targetBank ? await this.listQuestions(targetBank) : [];
+    const syllabusDoc = this.syllabusDoc();
+    const { auditPaperSyllabusBalance } = await import("./core/paperAudit");
+    return auditPaperSyllabusBalance(questions, syllabusDoc.roots);
+  }
+
+  async exportPaperAuditMarkdown(bankId?: string): Promise<string> {
+    const targetBank = bankId ?? this.listBanks()[0]?.id;
+    const questions = targetBank ? await this.listQuestions(targetBank) : [];
+    const attempts = this.attempts.all();
+    const syllabusDoc = this.syllabusDoc();
+    const { predictPaperDifficulty, auditPaperSyllabusBalance, exportPaperAuditMarkdown } = await import("./core/paperAudit");
+    const pred = predictPaperDifficulty(questions, attempts);
+    const balance = auditPaperSyllabusBalance(questions, syllabusDoc.roots);
+    const bankName = this.listBanks().find((b) => b.id === targetBank)?.name || "试卷";
+    return exportPaperAuditMarkdown(pred, balance, `${bankName} · 预估难度与考纲契合度体检`);
+  }
+
+  // ---------- 学生端：错题考点母题穿透与基石题目溯源 ----------
+  async findFoundationMotherQuestion(target: Question): Promise<{ motherQuestion: Question | null; reason: string }> {
+    const targetBank = target.rootId ? this.listBanks().find((b) => b.id === target.rootId)?.id : this.listBanks()[0]?.id;
+    const all = targetBank ? await this.listQuestions(targetBank) : [];
+    const attempts = this.attempts.all();
+    const { findFoundationMotherQuestion } = await import("./core/cramScheduler");
+    return findFoundationMotherQuestion(all, target, attempts);
+  }
+
   dailySet(questions: Question[], dueFirst: Question[], n: number): Question[] {
     const seen = new Set<string>();
     const out: Question[] = [];

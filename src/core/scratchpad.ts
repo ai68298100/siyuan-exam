@@ -87,3 +87,65 @@ export function formatScratchpadSummary(
   }
   return lines.join("\n");
 }
+
+export interface FormulaCheatItem {
+  name: string;
+  latex: string;
+  note?: string;
+}
+
+export interface FormulaCheatCategory {
+  id: string;
+  title: string;
+  items: FormulaCheatItem[];
+}
+
+/** 52-08 内置常用理科与数理公式速查卡 */
+export const FORMULA_CHEAT_SHEETS: FormulaCheatCategory[] = [
+  {
+    id: "derivatives",
+    title: "导数与微分基础表",
+    items: [
+      { name: "幂函数导数", latex: "(x^n)' = n x^{n-1}" },
+      { name: "指数函数导数", latex: "(e^x)' = e^x, \\quad (a^x)' = a^x \\ln a" },
+      { name: "对数函数导数", latex: "(\\ln x)' = \\frac{1}{x}, \\quad (\\log_a x)' = \\frac{1}{x \\ln a}" },
+      { name: "正余弦导数", latex: "(\\sin x)' = \\cos x, \\quad (\\cos x)' = -\\sin x" },
+      { name: "乘除法则", latex: "(uv)' = u'v + uv', \\quad \\left(\\frac{u}{v}\\right)' = \\frac{u'v - uv'}{v^2}" },
+    ],
+  },
+  {
+    id: "trigonometry",
+    title: "三角函数与恒等变换",
+    items: [
+      { name: "同角平方和", latex: "\\sin^2\\alpha + \\cos^2\\alpha = 1" },
+      { name: "正弦二倍角", latex: "\\sin(2\\alpha) = 2\\sin\\alpha\\cos\\alpha" },
+      { name: "余弦二倍角", latex: "\\cos(2\\alpha) = \\cos^2\\alpha - \\sin^2\\alpha = 2\\cos^2\\alpha - 1" },
+      { name: "正切二倍角", latex: "\\tan(2\\alpha) = \\frac{2\\tan\\alpha}{1 - \\tan^2\\alpha}" },
+    ],
+  },
+  {
+    id: "physics_constants",
+    title: "常用物理与化学常数",
+    items: [
+      { name: "真空中光速 c", latex: "c = 3.00 \\times 10^8 \\text{ m/s}" },
+      { name: "万有引力常数 G", latex: "G = 6.674 \\times 10^{-11} \\text{ N}\\cdot\\text{m}^2/\\text{kg}^2" },
+      { name: "阿伏伽德罗常数 NA", latex: "N_A = 6.022 \\times 10^{23} \\text{ mol}^{-1}" },
+      { name: "元电荷 e", latex: "e = 1.602 \\times 10^{-19} \\text{ C}" },
+      { name: "普朗克常数 h", latex: "h = 6.626 \\times 10^{-34} \\text{ J}\\cdot\\text{s}" },
+    ],
+  },
+  {
+    id: "geometry",
+    title: "立体几何常用体积与面积",
+    items: [
+      { name: "圆面积与周长", latex: "S = \\pi r^2, \\quad C = 2\\pi r" },
+      { name: "球体积与表面积", latex: "V = \\frac{4}{3}\\pi r^3, \\quad S = 4\\pi r^2" },
+      { name: "圆锥体积", latex: "V = \\frac{1}{3}\\pi r^2 h" },
+    ],
+  },
+];
+
+/** 获取所有速查类别 */
+export function listFormulaCheatCategories(): FormulaCheatCategory[] {
+  return FORMULA_CHEAT_SHEETS;
+}

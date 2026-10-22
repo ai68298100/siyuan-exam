@@ -3683,6 +3683,26 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       }
     }
 
+    async function traceMotherQuestion(target: Question) {
+      if (!target || !app) return;
+      try {
+        const res = await app.findFoundationMotherQuestion(target);
+        if (!res.motherQuestion) {
+          showMessage(res.reason, 3000, "info");
+          return;
+        }
+        const mq = res.motherQuestion;
+        showMessage(`🌱 ${res.reason}`, 4000, "info");
+        await safeStart([mq], "quick", () => {
+          feedback = null; selected = ""; confidenceSel = ""; sessionDone = null;
+          view = "session";
+          restoreQuestionControls();
+        });
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 3500, "error");
+      }
+    }
+
     async function printWrongSheet(type: "question" | "answer") {
       if (printWrongBusy || !activeBankId || !filteredWrongQueue.length) return;
       printWrongBusy = true;
@@ -6169,6 +6189,17 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
                 value={currentScratchpadText}
                 oninput={(e) => onScratchpadInput((e.target as HTMLTextAreaElement).value)}
               ></textarea>
+              <details style="margin-top:6px;font-size:var(--lv-font-size-caption)">
+                <summary style="cursor:pointer;opacity:0.8;font-weight:600">📐 {t("scratchpad.formulaSheet")}</summary>
+                <div class="lv-card" style="margin-top:4px;padding:8px;background:var(--lv-surface);max-height:160px;overflow-y:auto">
+                  <div style="display:flex;flex-direction:column;gap:4px">
+                    <div><b>导数表：</b><code>(xⁿ)' = n·xⁿ⁻¹</code> · <code>(eˣ)' = eˣ</code> · <code>(ln x)' = 1/x</code> · <code>(sin x)' = cos x</code> · <code>(cos x)' = -sin x</code></div>
+                    <div><b>三角恒等：</b><code>sin²α + cos²α = 1</code> · <code>sin(2α) = 2sinα·cosα</code> · <code>cos(2α) = 2cos²α - 1</code></div>
+                    <div><b>物理常数：</b><code>c = 3.0×10⁸ m/s</code> · <code>G = 6.67×10⁻¹¹</code> · <code>NA = 6.02×10²³</code> · <code>e = 1.60×10⁻¹⁹ C</code> · <code>h = 6.63×10⁻³⁴ J·s</code></div>
+                    <div><b>立体几何：</b><code>S_圆 = πr²</code> · <code>V_球 = 4/3·πr³</code> · <code>V_锥 = 1/3·πr²h</code></div>
+                  </div>
+                </div>
+              </details>
             </div>
           {/if}
           {#if groupBatchModal}
@@ -6460,6 +6491,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
                 <button class="lv-btn lv-btn--primary" onclick={nextQuestion}>{t("session.next")} →</button>
                 {#if feedback.verdict === "wrong"}
                   <button class="lv-btn" onclick={() => void drillVariantFor(q)} title={t("session.drillVariantTip")}><Icon name="layers" size={15} /> {t("session.drillVariant")}</button>
+                  <button class="lv-btn" onclick={() => void traceMotherQuestion(q)} title="寻找同考点下最基础的原理母题从头筑基"><Icon name="compass" size={15} /> {t("wrongbook.traceMother")}</button>
                   <button class="lv-btn" onclick={toCard}><Icon name="layers" size={16} /> {t("memory.toCard")}</button>
                   {#if cardResult}<span class="lv-muted">{cardResult}</span>{/if}
                   <button class="lv-btn" onclick={() => explainCurrent("explain")} disabled={explainBusy}><Icon name="sparkles" size={16} /> {explainBusy ? "…" : t("explain.ask")}</button>
@@ -6724,6 +6756,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
                       </div>
                     </div>
                     <button class="lv-btn sm" onclick={() => void startWrongFor(w.qid)}><Icon name="play" size={13} /> {t("wrongbook.retry")}</button>
+                    <button class="lv-btn sm lv-btn--ghost" title={t("wrongbook.traceMother")} onclick={() => { const q = qOf(w.qid); if (q) void traceMotherQuestion(q); }}><Icon name="compass" size={13} /> {t("wrongbook.traceMother")}</button>
                     <button class="lv-btn sm lv-btn--ghost" title={t("session.drillVariantTip")} onclick={() => { const q = qOf(w.qid); if (q) void drillVariantFor(q); }}><Icon name="layers" size={13} /> {t("session.drillVariant")}</button>
                     <button class="lv-btn sm lv-btn--ghost" title={t("wrongbook.snooze7")} onclick={() => void snoozeWrong(w.qid, 7)}><Icon name="clock" size={12} /> {t("wrongbook.snooze7")}</button>
                     <button class="lv-btn sm lv-btn--ghost" title={t("wrongbook.archiveTip")} onclick={() => void archiveWrong(w.qid)}><Icon name="folder" size={12} /> {t("wrongbook.archive")}</button>

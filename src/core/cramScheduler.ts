@@ -9,7 +9,7 @@
 // 规则：严格无外部宿主依赖（禁 import "siyuan"），严禁类型强转。
 // ============================================================
 
-import type { Question, QuestionType, WrongItem } from "./types";
+import type { Question, QuestionType, WrongItem, AttemptEvent } from "./types";
 import { queueSemantics, type QueueSemantics } from "./queueIdentity";
 import { isStubbornWrong } from "./stubborn";
 import { isQuestionDisputed } from "./dispute";
@@ -418,4 +418,81 @@ export function generateCramCheatSheetMarkdown(
   });
 
   return lines.join("\n");
+}
+
+/**
+ * 错题考点基石母题溯源：
+ * 针对学生做错的高难题或多次做错题，从题库中寻找最适合夯实基础概念的“基石母题（Foundation Question）”
+ * 查找策略：
+ * 1. 显式父题族母题（family.parentId 对应的题目）；
+ * 2. 同精确考点（kp）中：难度星级最低、历史正确率最高、非争议的基础概念题；
+ * 3. 同大纲章节（根考点）中难度最低的典型基础题。
+ */
+export function findFoundationMotherQuestion(
+  allQuestions: readonly Question[],
+  target: Question,
+  attempts: readonly AttemptEvent[] = [],
+): { motherQuestion: Question | null; reason: string } {
+  const pool = allQuestions.filter((q) => q.id !== target.id && q.status !== "deprecated");
+
+  // 1. 题族母题直寻
+  if (target.family?.parentId) {
+    const parentQ = pool.find((q) => q.id === target.family!.parentId);
+    if (parentQ) {
+      return {
+        motherQuestion: parentQ,
+        reason: `找到题族母题【${parentQ.id}】，本题为其派生变式题，建议优先掌握母题原型。`,
+      };
+    }
+  }
+
+  // 2. 同考点基础基石题
+  const sameKpPool = target.kp ? pool.filter((q) => q.kp === target.kp && q.type !== "material") : [];
+  if (sameKpPool.length > 0) {
+    // 统计正确率
+    const stats = new Map<string, { correct: number; total: number }>();
+    for (const e of attempts) {
+      if (e.verdict === "not_attempted") continue;
+      const c = stats.get(e.qid) ?? { correct: 0, total: 0 };
+      c.total++;
+      if (e.verdict === "correct") c.correct++;
+      stats.set(e.qid, c);
+    }
+
+    // 排序：难度星级升序优先（越简单越基础），其次正确率降序
+    const scored = sameKpPool.map((q) => {
+      const diff = q.difficulty ?? 3;
+      const st = stats.get(q.id);
+      const acc = st && st.total > 0 ? st.correct / st.total : 0.6;
+      return { q, score: diff * 2 - acc };
+    });
+
+    scored.sort((a, b) => a.score - b.score);
+    const foundation = scored[0]?.q;
+
+    if (foundation) {
+      return {
+        motherQuestion: foundation,
+        reason: `找到考点【${target.kp}】的基础基石概念题（难度 ★${foundation.difficulty || 1}），建议先打牢基石原理。`,
+      };
+    }
+  }
+
+  // 3. 根考点兜底
+  const rootKp = target.kp ? target.kp.split("/")[0] : "";
+  if (rootKp) {
+    const rootPool = pool.filter((q) => q.kp && q.kp.split("/")[0] === rootKp && q.type !== "material");
+    const foundation = rootPool.find((q) => (q.difficulty ?? 3) <= 2) || rootPool[0];
+    if (foundation) {
+      return {
+        motherQuestion: foundation,
+        reason: `找到章节【${rootKp}】的基础原理题，可用于搭桥筑基。`,
+      };
+    }
+  }
+
+  return {
+    motherQuestion: null,
+    reason: "未在当前题库中找到更基础的母题或同考点基石题。",
+  };
 }

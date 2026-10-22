@@ -8,6 +8,7 @@ import {
   extractCramCandidates,
   calculateCramBudget,
   createCramSessionSpec,
+  findFoundationMotherQuestion,
 } from "../src/core/cramScheduler";
 
 function createMockQuestion(id: string, overrides: Partial<Question> = {}): Question {
@@ -220,6 +221,29 @@ describe("CramScheduler 考前急救冲刺与动态间隔压缩引擎 (53-04 / 3
       expect(spec.receipt).toContain("Anki reschedule-off");
       expect(spec.receipt).toContain("不影响内核卡包长期复习排期");
       expect(spec.questions).toHaveLength(1);
+    });
+  });
+
+  describe("findFoundationMotherQuestion (错题考点母题穿透与基石溯源)", () => {
+    it("优先定位题族显式母题，其次寻找同考点难度最低、正确率最高的基础基石题", () => {
+      const qMother = createMockQuestion("q-mother", { kp: "常识/宪法", difficulty: 1 });
+      const qHardVariant = createMockQuestion("q-hard-var", {
+        kp: "常识/宪法",
+        difficulty: 4,
+        family: { parentId: "q-mother" },
+      });
+      const qOtherKp = createMockQuestion("q-other", { kp: "常识/地理", difficulty: 2 });
+
+      // 1. 测试直接识别题族母题
+      const res1 = findFoundationMotherQuestion([qMother, qHardVariant, qOtherKp], qHardVariant);
+      expect(res1.motherQuestion?.id).toBe("q-mother");
+      expect(res1.reason).toContain("题族母题");
+
+      // 2. 测试无显式题族时，按考点最低星级与最高正确率定位基石题
+      const qHardNoFamily = createMockQuestion("q-hard-2", { kp: "常识/宪法", difficulty: 5 });
+      const res2 = findFoundationMotherQuestion([qMother, qHardNoFamily, qOtherKp], qHardNoFamily);
+      expect(res2.motherQuestion?.id).toBe("q-mother");
+      expect(res2.reason).toContain("基础基石概念题");
     });
   });
 });

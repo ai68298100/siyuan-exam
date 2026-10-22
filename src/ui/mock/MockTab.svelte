@@ -514,6 +514,18 @@
       showMessage("考场配时复盘报告已导出 ✓", 3000, "info");
     }
 
+    async function exportPaperAuditReport() {
+      if (!activeBankId || !app) return;
+      try {
+        const md = await app.exportPaperAuditMarkdown(activeBankId);
+        const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+        downloadBlob(blob, `${bp.name || "试卷"}-难度与大纲体检报告.md`);
+        showMessage("试卷预估难度与大纲体检报告已导出 ✓", 3000, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4000, "error");
+      }
+    }
+
     async function loadPresets() {
       if (!app) return;
       try {
@@ -1539,6 +1551,7 @@
       <button class="lv-btn sm" onclick={printCompactPaper} disabled={printBusy || !questions.length} aria-busy={printBusy} title="导出标准 A4/A3 双栏试卷与答题卡"><Icon name="file" size={14} /> {printBusy ? "…" : t("mock.printCompact")}</button>
       <button class="lv-btn sm" onclick={printTeacherLecturePaper} disabled={printBusy || !questions.length} aria-busy={printBusy} title="导出包含题目、答案、考点、难度、采分点与破题教学点拨的教师讲义卷"><Icon name="book" size={14} /> {printBusy ? "…" : t("mock.printTeacher")}</button>
       <button class="lv-btn sm" onclick={generateABMockPapers} disabled={abBusy || !questions.length} aria-busy={abBusy} title="一键生成同考点但单选/多选选项智能洗牌防作弊的 A 卷与 B 卷"><Icon name="shuffle" size={14} /> {abBusy ? "…" : t("mock.generateAB")}</button>
+      <button class="lv-btn sm" onclick={exportPaperAuditReport} disabled={!questions.length} title="基于全题库实测P值预测整卷难度系数，检出大纲空白考点与偏科考点"><Icon name="chart" size={14} /> {t("mock.paperAudit")}</button>
     </div>
     {#if !canStartExam && startDisabledReason}<p class="lv-muted" role="status" style="margin:4px 0">{startDisabledReason}</p>{/if}
     <!-- 考后估分 -->
