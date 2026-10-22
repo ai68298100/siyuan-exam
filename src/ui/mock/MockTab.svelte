@@ -7,7 +7,7 @@
     function onBlur() { if (view === "exam" && session && !session.submitted) session.screenSwitches++; }
     import type { ExamApp } from "../../app";
     import Rail from "../shared/Rail.svelte";
-    import type { Question } from "../../core/types";
+    import type { Question, QuestionType } from "../../core/types";
     import { showMessage } from "siyuan";
     import { assemble, blueprintTotals, defaultMockSections, dedupeSectionNames, MockSession, validateBlueprint, type Blueprint, type BlueprintSection, type SectionSource, type MockRunSnapshot, type MockScore } from "../../core/mock";
     import { newRunId } from "../../core/ids";
@@ -358,6 +358,25 @@
     });
 
     let sheetFilter = $state<"all" | "unanswered" | "flagged">("all");
+    let sheetDisplayMode = $state<"grid" | "bubble">("grid");
+
+    function onBubbleFill(qid: string, letter: string, qType?: QuestionType) {
+      if (examLocked || !session || session.submitted) return;
+      const curAns = answeredMap[qid] || "";
+      let newAns: string;
+      if (qType === "multiple") {
+        const letters = curAns.split("").filter(Boolean);
+        const idx = letters.indexOf(letter);
+        if (idx >= 0) letters.splice(idx, 1);
+        else letters.push(letter);
+        newAns = letters.sort().join("");
+      } else {
+        newAns = curAns === letter ? "" : letter;
+      }
+      session.setAnswer(qid, newAns, Date.now());
+      answeredMap = { ...answeredMap, [qid]: newAns };
+      persistRun();
+    }
     const unansweredIndices = $derived.by(() => {
       if (!session) return [];
       const res: number[] = [];
@@ -1779,23 +1798,81 @@
           <Icon name="star" size={11} /> {t("mock.filterFlagged")} ({flaggedIndices.length})
         </button>
       </div>
-      {#if unansweredIndices.length > 0}
-        <button class="lv-btn sm lv-btn--ghost" onclick={gotoNextUnanswered} title={t("mock.jumpNextUnanswered")}>
-          {t("mock.jumpNextUnanswered")} →
+      <div class="lv-row" style="margin:0;gap:4px">
+        <button class="lv-chip sm" class:acc={sheetDisplayMode === "grid"} onclick={() => sheetDisplayMode = "grid"}>
+          <Icon name="table" size={11} /> {t("mock.gridMode")}
         </button>
-      {/if}
+        <button class="lv-chip sm" class:acc={sheetDisplayMode === "bubble"} onclick={() => sheetDisplayMode = "bubble"}>
+          <Icon name="edit" size={11} /> {t("mock.bubbleMode")}
+        </button>
+        {#if unansweredIndices.length > 0}
+          <button class="lv-btn sm lv-btn--ghost" onclick={gotoNextUnanswered} title={t("mock.jumpNextUnanswered")}>
+            {t("mock.jumpNextUnanswered")} →
+          </button>
+        {/if}
+      </div>
     </div>
-    <div class="lv-sheet">
-      {#each session.state.qids as qid, i (i)}
-        {@const answered = Boolean(answeredMap[qid]?.trim())}
-        {@const flagged = session.flags.has(qid)}
-        {@const dimmed = sheetFilter === "unanswered" ? answered : sheetFilter === "flagged" ? !flagged : false}
-        <button class="lv-cell" class:done={answered} class:flag={flagged} class:dimmed={dimmed} disabled={examLocked}
-          class:cur={i === cursor} aria-current={i === cursor ? "step" : undefined}
-          aria-label={`${t("mock.questionN", "第 {n} 题").replace("{n}", String(i + 1))}，${answered ? t("mock.legend.done") : t("mock.unanswered", "未答")}，${flagged ? t("mock.legend.flag") : t("mock.unflagged", "未标记")}${i === cursor ? `，${t("mock.legend.cur")}` : ""}`}
-          onclick={() => goto(i)}>{i + 1}</button>
-      {/each}
-    </div>
+    {#if sheetDisplayMode === "grid"}
+      <div class="lv-sheet">
+        {#each session.state.qids as qid, i (i)}
+          {@const answered = Boolean(answeredMap[qid]?.trim())}
+          {@const flagged = session.flags.has(qid)}
+          {@const dimmed = sheetFilter === "unanswered" ? answered : sheetFilter === "flagged" ? !flagged : false}
+          <button class="lv-cell" class:done={answered} class:flag={flagged} class:dimmed={dimmed} disabled={examLocked}
+            class:cur={i === cursor} aria-current={i === cursor ? "step" : undefined}
+            aria-label={`${t("mock.questionN", "第 {n} 题").replace("{n}", String(i + 1))}，${answered ? t("mock.legend.done") : t("mock.unanswered", "未答")}，${flagged ? t("mock.legend.flag") : t("mock.unflagged", "未标记")}${i === cursor ? `，${t("mock.legend.cur")}` : ""}`}
+            onclick={() => goto(i)}>{i + 1}</button>
+        {/each}
+      </div>
+    {:else}
+      <!-- 机读答题卡涂卡流 -->
+      <div class="stack-sm" style="max-height:260px;overflow-y:auto;padding:8px;background:var(--lv-surface-2);border-radius:var(--lv-r-2);border:1px solid var(--lv-border)">
+        {#each session.state.qids as qid, i (i)}
+          {@const q = questions.find((item) => item.id === qid)}
+          {@const curAns = answeredMap[qid] || ""}
+          {@const isChoice = q && (q.type === "single" || q.type === "multiple" || q.type === "judge")}
+          <div class="lv-row" style="justify-content:space-between;align-items:center;padding:4px 8px;border-bottom:1px solid var(--lv-border-subtle);background:var(--lv-surface);border-radius:4px">
+            <div style="display:flex;align-items:center;gap:6px">
+              <button type="button" class="lv-chip sm" class:cur={i === cursor} onclick={() => goto(i)} style="cursor:pointer">
+                第 {i + 1} 题
+              </button>
+              <span class="lv-muted" style="font-size:11px">【{q ? (q.type === "single" ? "单选" : q.type === "multiple" ? "多选" : q.type === "judge" ? "判断" : "主观") : ""}】</span>
+            </div>
+            {#if isChoice}
+              <div class="lv-row" style="margin:0;gap:4px">
+                {#each (q && q.type === "judge" ? ["T", "F"] : ["A", "B", "C", "D"]) as b (b)}
+                  {@const active = curAns.includes(b)}
+                  <button
+                    type="button"
+                    class="lv-chip sm"
+                    class:lv-chip--acc={active}
+                    style="min-width:28px;text-align:center;font-weight:700;cursor:pointer"
+                    disabled={examLocked}
+                    onclick={() => onBubbleFill(qid, b, q?.type)}
+                  >
+                    {b}
+                  </button>
+                {/each}
+              </div>
+            {:else}
+              <input
+                class="lv-input num sm"
+                style="max-width:140px;height:26px"
+                placeholder="输入答案…"
+                value={curAns}
+                disabled={examLocked}
+                oninput={(e) => {
+                  const val = (e.target as HTMLInputElement).value;
+                  session?.setAnswer(qid, val, Date.now());
+                  answeredMap = { ...answeredMap, [qid]: val };
+                  persistRun();
+                }}
+              />
+            {/if}
+          </div>
+        {/each}
+      </div>
+    {/if}
     <!-- 三态图例：新用户无需猜测紫底/琥珀框/实心的含义 -->
     <div class="lv-row lv-muted" style="margin:0;font-size:var(--lv-font-size-label);gap:var(--lv-space-loose)">
       <span class="lv-legend"><i class="dot" style="background:var(--lv-accent-soft)"></i>{t("mock.legend.done")}</span>

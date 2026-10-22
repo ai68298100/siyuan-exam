@@ -2167,6 +2167,21 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       });
     }
 
+    async function startFilteredFocusDrill() {
+      if (!shownQuestions.length) return;
+      const qs = shownQuestions.filter((q) => q.type !== "material");
+      if (!qs.length) {
+        showMessage("当前筛选题目中无可用练习题", 2500, "info");
+        return;
+      }
+      await safeStart(groupAdjacent(qs), "quick", () => {
+        feedback = null; selected = ""; confidenceSel = ""; sessionDone = null;
+        view = "session";
+        restoreQuestionControls();
+        showMessage(`⚡ 已开启当前筛选专项目标特训（共 ${qs.length} 题）`, 3000, "info");
+      });
+    }
+
     async function startFilteredWrongDrill() {
       if (!filteredWrongQueue.length) { showMessage(t("wrongbook.noFiltered"), 2600, "info"); return; }
       const qids = filteredWrongQueue.map((w) => w.qid);
@@ -7504,6 +7519,11 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       <div class="lv-row" style="margin:0 0 10px;gap:var(--lv-space-2) 8px">
         <button class="lv-btn lv-btn--ghost lv-mobile-back" onclick={() => view = "entry"}>← {t("mode.practice")}</button>
         <span class="lv-chip num">{shownQuestions.length}/{questions.length} {t("browse.count")}</span>
+        {#if shownQuestions.length > 0}
+          <button class="lv-btn sm lv-btn--primary" onclick={startFilteredFocusDrill} title="将当前筛选出的这批题目直接发起专注特训">
+            <Icon name="play" size={13} /> {t("browse.drillFiltered").replace("{n}", String(shownQuestions.length))}
+          </button>
+        {/if}
         <button class="lv-chip" class:acc={sectionOpen} onclick={() => void toggleSectionTree()}><Icon name="file-text" size={13} /> {t("browse.sectionTree")}</button>
         <button class="lv-chip" class:acc={batchMode} onclick={() => { batchMode = !batchMode; if (!batchMode) selectedIds = {}; }}>{t("batch.mode")}</button>
         <div class="lv-more" bind:this={moreRoot}>

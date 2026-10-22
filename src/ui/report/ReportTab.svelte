@@ -163,6 +163,35 @@
         badgeWallBusy = false;
       }
     }
+    import { auditForgettingRisks, exportForgettingRiskMarkdown } from "@/core/forgettingRisk";
+
+    const forgettingReport = $derived.by(() => {
+      if (!questions.length) return null;
+      return auditForgettingRisks(questions, reportEvents);
+    });
+
+    async function exportForgettingReport() {
+      if (!forgettingReport) return;
+      const md = exportForgettingRiskMarkdown(forgettingReport);
+      const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `艾宾浩斯遗忘风险预警报告-${new Date().toISOString().slice(0, 10)}.md`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showMessage("遗忘风险预警报告已导出 ✓", 3000, "info");
+    }
+
+    function rescueForgettingKps() {
+      if (!forgettingReport?.urgentRescueKps.length) return;
+      const allQids = forgettingReport.urgentRescueKps.flatMap((k) => k.candidateQids);
+      const rescueQs = questions.filter((q) => allQids.includes(q.id));
+      if (!rescueQs.length) return;
+      plugin.openPractice?.();
+      showMessage(`⚡ 已筛选出 ${rescueQs.length} 道临界遗忘考点题目，正在前往练习台抢救…`, 3500, "info");
+    }
+
     let weak = $state<ReturnType<typeof weakTop>>([]);
     let hours = $state<number[]>(new Array(24).fill(0));
     let mockHistory = $state<any[]>([]);
@@ -992,6 +1021,25 @@
       <div class="lv-card lv-kpi"><div class="l"><span>{t("report.eliminated")}</span><Icon name="xcircle" size={15} /></div><div class="v num">{kpi.eliminated}</div></div>
       <div class="lv-card lv-kpi"><div class="l"><span>{t("report.streak")}</span><Icon name="flame" size={15} /></div><div class="v num">{kpi.streak} {t("entry.days")}</div></div>
     </div>
+    {#if reportSection === "overview" && forgettingReport && forgettingReport.criticalCount > 0}
+      <div class="lv-card" style="margin:10px 0;padding:12px 16px;background:var(--lv-surface-2);border-left:3.5px solid var(--lv-amber)">
+        <div class="lv-row" style="justify-content:space-between;align-items:center;margin:0 0 6px;flex-wrap:wrap">
+          <b style="font-size:var(--lv-font-size-body-compact)"><Icon name="alert-triangle" size={13} /> {t("report.forgettingAlert")}（{forgettingReport.criticalCount} 个临界考点）</b>
+          <div class="lv-row" style="margin:0;gap:4px">
+            <button class="lv-btn sm lv-btn--primary" onclick={rescueForgettingKps}><Icon name="play" size={12} /> {t("report.rescueNow")}</button>
+            <button class="lv-btn sm lv-btn--ghost" onclick={exportForgettingReport}><Icon name="export" size={12} /> {t("report.exportForgetting")}</button>
+          </div>
+        </div>
+        <p class="lv-muted" style="font-size:var(--lv-font-size-caption);margin:0 0 8px">{forgettingReport.summary}</p>
+        <div class="lv-row" style="gap:var(--lv-space-2);flex-wrap:wrap">
+          {#each forgettingReport.urgentRescueKps as it (it.kp)}
+            <span class="lv-chip num lv-chip--amb" title={`${it.daysSinceLast}天未复习，预估记忆保留 ${it.estimatedRetentionPct}%`}>
+              {it.kp}: {it.estimatedRetentionPct}% 留存
+            </span>
+          {/each}
+        </div>
+      </div>
+    {/if}
     {#if reportSection === "overview" && (weak.length || weekCmp)}
       <div class="lv-report-overview-grid" class:has-both={weak.length > 0 && Boolean(weekCmp)}>
       {#if weak.length}
