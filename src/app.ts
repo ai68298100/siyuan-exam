@@ -3630,6 +3630,78 @@ export class ExamApp {
     return findFoundationMotherQuestion(all, target, attempts);
   }
 
+  // ---------- 思源笔记原生文档联动与离线永存 ----------
+  async searchSiyuanDocs(query: string): Promise<Array<{ id: string; title: string; hpath: string; box: string }>> {
+    if (!this.kernelOnline) return [];
+    const clean = query.trim().replace(/'/g, "''");
+    const sql = clean
+      ? `SELECT id, content, hpath, box FROM blocks WHERE type='d' AND (content LIKE '%${clean}%' OR hpath LIKE '%${clean}%') ORDER BY updated DESC LIMIT 30`
+      : `SELECT id, content, hpath, box FROM blocks WHERE type='d' ORDER BY updated DESC LIMIT 30`;
+    try {
+      const rows = await this.deps.client.sql<Record<string, string>>(sql);
+      return rows.map((r) => ({
+        id: String(r.id ?? ""),
+        title: String(r.content ?? "").trim() || "未命名文档",
+        hpath: String(r.hpath ?? ""),
+        box: String(r.box ?? ""),
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  async importFromSiyuanDoc(docId: string): Promise<import("./importer/pipeline").ImportReport> {
+    const docRes = await this.deps.client.exportDocMarkdown(docId);
+    const rawMd = docRes.content || "";
+    let title = docRes.title || "思源文档";
+    let hpath = "";
+    try {
+      const rows = await this.deps.client.sql<Record<string, string>>(
+        `SELECT content, hpath FROM blocks WHERE id='${docId.replace(/'/g, "''")}' LIMIT 1`,
+      );
+      if (rows[0]) {
+        title = String(rows[0].content ?? "").trim() || title;
+        hpath = String(rows[0].hpath ?? "");
+      }
+    } catch { /* 容错 */ }
+
+    const { parseQuestionsFromSiyuanDoc } = await import("./core/siyuanDocImporter");
+    return parseQuestionsFromSiyuanDoc(rawMd, { docId, title, hpath });
+  }
+
+  async syncBankToSiyuanDoc(bankId?: string): Promise<{ docId: string; title: string; hpath: string }> {
+    const targetBank = bankId ?? this.listBanks()[0]?.id;
+    if (!targetBank) throw new Error("请先选择或创建一个题库");
+    const questions = await this.listQuestions(targetBank);
+    const bankName = this.listBanks().find((b) => b.id === targetBank)?.name || "题库";
+    const title = `${bankName} · 完整题册（共${questions.length}题）`;
+
+    const { buildSiyuanExamDocMarkdown } = await import("./core/siyuanSyncDoc");
+    const markdown = buildSiyuanExamDocMarkdown(title, questions, { isMockPaper: false });
+    const hpath = `/小驴考试/${title}`;
+    const docId = await this.deps.client.createDocWithMd(targetBank, hpath, markdown);
+    return { docId, title, hpath };
+  }
+
+  async saveQuestionsToSiyuanDoc(
+    title: string,
+    questions: Question[],
+    options: { bankId?: string; isMock?: boolean; durationMinutes?: number; passLine?: number } = {},
+  ): Promise<{ docId: string; title: string; hpath: string }> {
+    const targetBank = options.bankId ?? this.listBanks()[0]?.id;
+    if (!targetBank) throw new Error("请先选择或创建一个题库");
+
+    const { buildSiyuanExamDocMarkdown } = await import("./core/siyuanSyncDoc");
+    const markdown = buildSiyuanExamDocMarkdown(title, questions, {
+      isMockPaper: options.isMock,
+      durationMinutes: options.durationMinutes,
+      passLine: options.passLine,
+    });
+    const hpath = `/小驴考试/试卷与复盘/${title}`;
+    const docId = await this.deps.client.createDocWithMd(targetBank, hpath, markdown);
+    return { docId, title, hpath };
+  }
+
   dailySet(questions: Question[], dueFirst: Question[], n: number): Question[] {
     const seen = new Set<string>();
     const out: Question[] = [];

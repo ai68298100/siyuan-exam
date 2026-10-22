@@ -103,7 +103,7 @@ export function parseOcrQuestionText(
     }
 
     // 检查答案标签
-    const ansMatch = line.match(/(?:【(?:参考)?答案】|^(?:参考)?答案\s*[:：])\s*(.*)$/i);
+    const ansMatch = line.match(/(?:【(?:参考)?答案】|^(?:参考)?答案\s*[:：]|^ANSWER\s*[:：])\s*(.*)$/i);
     if (ansMatch) {
       extractedAnswer = ansMatch[1].trim();
       currentSection = "answer";

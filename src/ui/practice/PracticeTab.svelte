@@ -155,6 +155,38 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     let questionsLoaded = $state(false);
     let questionLoadSeq = 0;
 
+    // 题库管理画廊 Hub 状态
+    let bankHubOpen = $state(false);
+    let bankFilterKeyword = $state("");
+    const filteredBanks = $derived(
+      banks.filter((b) => !bankFilterKeyword.trim() || String(b.name || "").toLowerCase().includes(bankFilterKeyword.trim().toLowerCase())),
+    );
+
+    async function syncBankToDoc(bId: string) {
+      if (!app) return;
+      try {
+        const res = await app.syncBankToSiyuanDoc(bId);
+        showMessage(`已同步为思源笔记文档：《${res.title}》✓`, 3500, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4000, "error");
+      }
+    }
+
+    async function saveWrongbookAsDoc() {
+      if (!app || !filteredWrongQueue.length) return;
+      try {
+        const qs = questions.filter((q) => filteredWrongQueue.some((w) => w.qid === q.id));
+        const res = await app.saveQuestionsToSiyuanDoc(
+          `${bankName || "小驴题库"} · 错题攻坚手册（${qs.length}题）`,
+          qs,
+          { bankId: activeBankId, isMock: false },
+        );
+        showMessage(`已在思源中生成错题集文档：《${res.title}》✓`, 3500, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4000, "error");
+      }
+    }
+
     const questionMap = $derived.by(() => {
       // eslint-disable-next-line svelte/prefer-svelte-reactivity -- derived 内纯派生映射（重算即生成新引用）
       const map = new Map<string, Question & { blockId: string; rootId: string }>();
@@ -5276,11 +5308,48 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     }
 
     // ---------- 52-09 正文划重点挖空出题（Cloze Generator） ----------
-    let importSubTab = $state<"standard" | "cloze">("standard");
+    let importSubTab = $state<"standard" | "cloze" | "siyuan">("standard");
     let clozeInputText = $state("");
     let clozeModes = $state<("highlight" | "curly" | "bracket")[]>(["highlight", "curly"]);
     let clozeParsedItems = $state<ParsedClozeItem[]>([]);
     let clozeImporting = $state(false);
+
+    // 思源文档导入状态
+    let docSearchQuery = $state("");
+    let siyuanDocCandidates = $state<Array<{ id: string; title: string; hpath: string; box: string }>>([]);
+    let siyuanDocBusy = $state(false);
+
+    async function doSearchDocs(q: string) {
+      if (!app) return;
+      siyuanDocBusy = true;
+      try {
+        siyuanDocCandidates = await app.searchSiyuanDocs(q);
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 3000, "error");
+      } finally {
+        siyuanDocBusy = false;
+      }
+    }
+
+    async function pickAndImportSiyuanDoc(docId: string, title: string) {
+      if (!app) return;
+      siyuanDocBusy = true;
+      try {
+        const report = await app.importFromSiyuanDoc(docId);
+        if (!report.ok.length) {
+          showMessage(report.errors[0]?.reason || "文档内未检索到题目格式内容", 3500, "info");
+          return;
+        }
+        importReport = report;
+        importText = "";
+        importSubTab = "standard";
+        showMessage(`从《${title}》成功提取 ${report.ok.length} 道试题，请在下方预览并确认入库！`, 4000, "info");
+      } catch (e) {
+        showMessage(`提取失败：${String(e instanceof Error ? e.message : e)}`, 4000, "error");
+      } finally {
+        siyuanDocBusy = false;
+      }
+    }
 
     function toggleClozeMode(mode: "highlight" | "curly" | "bracket") {
       if (clozeModes.includes(mode)) {
@@ -5605,6 +5674,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         <span class="lv-chip lv-focus-context">{t("bank.label")} {bankName}</span>
       {/if}
       {#if hasBank}<button class="lv-chip lv-focus-context" title={t("bank.removeTitle")} aria-label={t("bank.removeTitle")} onclick={removeActiveBank} disabled={importBusy || mSaving || aiMutationBusy}>✕</button>{/if}
+      <button class="lv-chip lv-focus-context" style="cursor:pointer" onclick={() => { bankHubOpen = true; }} title={t("bank.hubTitle")}><Icon name="folder" size={13} /> {t("bank.hubTitle")}</button>
       <div class="lv-role-segmented lv-focus-context" role="radiogroup" aria-label="身份模式切换">
         <button
           type="button"
@@ -6708,6 +6778,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
                   <button class="lv-btn sm lv-btn--ghost" onclick={() => void printWrongSheet("question")} disabled={printWrongBusy || !filteredWrongQueue.length} title="将当前筛选的错题导出或打印为 A4 双栏试卷（绝不泄题）"><Icon name="file" size={13} /> {t("mock.printCompact")}</button>
                   <button class="lv-btn sm lv-btn--ghost" onclick={() => void printWrongSheet("answer")} disabled={printWrongBusy || !filteredWrongQueue.length} title="导出或打印配套答案册"><Icon name="book" size={13} /> 答案册</button>
                   <button class="lv-btn sm lv-btn--ghost" onclick={exportCheatSheet} disabled={cheatSheetBusy || !filteredWrongQueue.length} title={t("cram.cheatSheetTip")}><Icon name="file-text" size={13} /> {t("cram.cheatSheet")}</button>
+                  <button class="lv-btn sm lv-btn--ghost" onclick={saveWrongbookAsDoc} disabled={!filteredWrongQueue.length} title="将当前筛选的错题组建排版为思源笔记文档，折叠答案，卸载插件永久保留"><Icon name="file" size={13} /> {t("wrongbook.saveAsSiyuanDoc")}</button>
                   <button class="lv-btn sm lv-btn--primary" onclick={() => void launchWrongbookMockExam()} disabled={!filteredWrongQueue.length} title="将当前筛选的错题组建为全真限时模拟考卷，拉起答题卡进行考场高压攻坚"><Icon name="clock" size={13} /> {t("wrongbook.launchExam")}</button>
                 </div>
                 <span class="lv-muted" style="font-size:var(--lv-font-size-caption)">{t("wrongbook.queue.note")}</span>
@@ -8415,15 +8486,44 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
           ondragleave={() => { importDragOver = false; }}
           ondrop={onImportFileDrop}
         >
-          <!-- 52-09 导入方式子分面切换：批量文件导入 vs 正文划重点挖空出题 -->
+          <!-- 52-09 导入方式子分面切换：批量文件导入 vs 思源笔记文档直接导入 vs 正文划重点挖空出题 -->
           <div class="lv-row" style="margin-bottom:12px;gap:6px">
             <button type="button" class="lv-chip" class:acc={importSubTab === "standard"} aria-pressed={importSubTab === "standard"} onclick={() => importSubTab = "standard"}>
               <Icon name="import" size={12} /> {t("import.title")}（Excel / CSV / Aiken）
+            </button>
+            <button type="button" class="lv-chip" class:acc={importSubTab === "siyuan"} aria-pressed={importSubTab === "siyuan"} onclick={() => { importSubTab = "siyuan"; void doSearchDocs(""); }}>
+              <Icon name="book" size={12} /> {t("import.fromSiyuanDoc")}
             </button>
             <button type="button" class="lv-chip" class:acc={importSubTab === "cloze"} aria-pressed={importSubTab === "cloze"} onclick={() => importSubTab = "cloze"}>
               <Icon name="edit" size={12} /> {t("cloze.tab")}
             </button>
           </div>
+          {#if importSubTab === "siyuan"}
+            <!-- 从思源笔记原生文档直接提取题目导入 -->
+            <div class="stack-sm" style="margin-top:6px">
+              <div class="lv-row" style="margin:0">
+                <input class="lv-input" style="flex:1" placeholder={t("import.searchDocPlaceholder")} bind:value={docSearchQuery} oninput={(e) => void doSearchDocs((e.target as HTMLInputElement).value)} />
+                <button class="lv-btn sm" onclick={() => void doSearchDocs(docSearchQuery)} disabled={siyuanDocBusy}><Icon name="search" size={13} /> {siyuanDocBusy ? "…" : "搜索"}</button>
+              </div>
+              <div class="stack-sm" style="max-height:220px;overflow-y:auto;border:1px solid var(--lv-border);border-radius:6px;padding:6px;background:var(--lv-surface)">
+                {#if siyuanDocCandidates.length === 0}
+                  <div class="lv-muted" style="padding:10px;text-align:center">{siyuanDocBusy ? "正在搜索思源文档…" : "输入文档标题或路径开始查找"}</div>
+                {:else}
+                  {#each siyuanDocCandidates as doc (doc.id)}
+                    <div class="lv-row" style="justify-content:space-between;align-items:center;padding:6px 8px;border-bottom:1px solid var(--lv-border-subtle)">
+                      <div style="flex:1;min-width:0;margin-right:10px">
+                        <b style="font-size:var(--lv-font-size-sm)">{doc.title}</b>
+                        <div class="lv-muted" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{doc.hpath}</div>
+                      </div>
+                      <button class="lv-btn sm lv-btn--primary" disabled={siyuanDocBusy} onclick={() => void pickAndImportSiyuanDoc(doc.id, doc.title)}>
+                        <Icon name="import" size={12} /> 提取此文档题目
+                      </button>
+                    </div>
+                  {/each}
+                {/if}
+              </div>
+            </div>
+          {/if}
           {#if importSubTab === "cloze"}
             <!-- 52-09 正文划重点挖空出题工作台 -->
             <div class="lv-row" style="margin:4px 0 8px;gap:6px;align-items:center;flex-wrap:wrap">
@@ -8677,6 +8777,43 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
   {/if}
     </div>
     <Palette commands={paletteCommands} bind:open={paletteOpen} {t} />
+    {#if bankHubOpen}
+      <button type="button" class="lv-hotkeys-backdrop" aria-label="关闭" onclick={() => bankHubOpen = false}></button>
+      <div class="lv-hotkeys-wrap">
+        <div class="lv-card" role="dialog" aria-modal="true" tabindex="-1" aria-label={t("bank.hubTitle")} style="width:min(640px, 100%);max-height:85vh;overflow-y:auto;pointer-events:auto;padding:20px;border-radius:var(--lv-r-3);box-shadow:var(--lv-sh-pop)">
+          <div class="lv-row" style="justify-content:space-between;margin:0 0 12px">
+            <b style="font-size:16px"><Icon name="folder" size={16} /> {t("bank.hubTitle")}（共 {banks.length} 个题库）</b>
+            <button class="lv-btn sm lv-btn--ghost" onclick={() => bankHubOpen = false}>✕</button>
+          </div>
+          <div class="lv-row" style="margin:0 0 12px">
+            <input class="lv-input" style="flex:1" placeholder="按题库名称快速过滤…" bind:value={bankFilterKeyword} />
+          </div>
+          <div class="stack-sm" style="max-height:450px;overflow-y:auto">
+            {#each filteredBanks as b (b.id)}
+              <div class="lv-card" style="padding:12px;margin-bottom:6px;border-left:3px solid {b.id === activeBankId ? 'var(--lv-accent)' : 'transparent'};background:var(--lv-surface-2)">
+                <div class="lv-row" style="justify-content:space-between;align-items:center;margin:0 0 6px">
+                  <div style="flex:1;min-width:0">
+                    <b style="font-size:var(--lv-font-size-body)">{b.name}</b>
+                    {#if b.id === activeBankId}<span class="lv-chip sm lv-chip--acc" style="margin-left:6px">当前激活</span>{/if}
+                    <div class="lv-muted" style="font-size:11px;margin-top:2px">ID: {b.id} · 创建于 {new Date(b.createdAt || Date.now()).toLocaleDateString()}</div>
+                  </div>
+                  <div class="lv-row" style="margin:0;gap:4px">
+                    {#if b.id !== activeBankId}
+                      <button class="lv-btn sm lv-btn--primary" onclick={() => { activeBankId = b.id; onBankSwitch(); bankHubOpen = false; }}>
+                        激活开练
+                      </button>
+                    {/if}
+                    <button class="lv-btn sm lv-btn--ghost" onclick={() => void syncBankToDoc(b.id)} title="将整套题库题册格式化同步为思源原生文档，折叠答案，卸载插件依然永久保留">
+                      <Icon name="file" size={12} /> {t("bank.syncToDoc")}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            {/each}
+          </div>
+        </div>
+      </div>
+    {/if}
     {#if hotkeysHelpOpen}
       <button type="button" class="lv-hotkeys-backdrop" aria-label={t("dialog.close", "关闭")} onclick={() => hotkeysHelpOpen = false}></button>
       <div class="lv-hotkeys-wrap">

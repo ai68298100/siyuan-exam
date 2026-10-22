@@ -526,6 +526,22 @@
       }
     }
 
+    async function saveMockExamAsDoc() {
+      if (!activeBankId || !app || !questions.length) return;
+      try {
+        const title = `${bp.name || "全真模拟试卷"}-${new Date().toISOString().slice(0, 10)}`;
+        const res = await app.saveQuestionsToSiyuanDoc(title, questions, {
+          bankId: activeBankId,
+          isMock: true,
+          durationMinutes: Math.round(bp.durationS / 60),
+          passLine: bp.passLine,
+        });
+        showMessage(`全套考卷已存为思源笔记文档：《${res.title}》✓`, 3500, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4000, "error");
+      }
+    }
+
     async function loadPresets() {
       if (!app) return;
       try {
@@ -1552,6 +1568,7 @@
       <button class="lv-btn sm" onclick={printTeacherLecturePaper} disabled={printBusy || !questions.length} aria-busy={printBusy} title="导出包含题目、答案、考点、难度、采分点与破题教学点拨的教师讲义卷"><Icon name="book" size={14} /> {printBusy ? "…" : t("mock.printTeacher")}</button>
       <button class="lv-btn sm" onclick={generateABMockPapers} disabled={abBusy || !questions.length} aria-busy={abBusy} title="一键生成同考点但单选/多选选项智能洗牌防作弊的 A 卷与 B 卷"><Icon name="shuffle" size={14} /> {abBusy ? "…" : t("mock.generateAB")}</button>
       <button class="lv-btn sm" onclick={exportPaperAuditReport} disabled={!questions.length} title="基于全题库实测P值预测整卷难度系数，检出大纲空白考点与偏科考点"><Icon name="chart" size={14} /> {t("mock.paperAudit")}</button>
+      <button class="lv-btn sm lv-btn--ghost" onclick={saveMockExamAsDoc} disabled={!questions.length} title="将当前模考试卷整套排版存为思源笔记原生文档，折叠答案与解析，即使卸载插件考卷与作答永久保留"><Icon name="file" size={14} /> {t("mock.saveAsSiyuanDoc")}</button>
     </div>
     {#if !canStartExam && startDisabledReason}<p class="lv-muted" role="status" style="margin:4px 0">{startDisabledReason}</p>{/if}
     <!-- 考后估分 -->
