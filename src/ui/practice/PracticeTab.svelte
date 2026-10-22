@@ -103,6 +103,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     type View = "entry" | "session" | "browse" | "import" | "recite" | "manual" | "ai" | "materials" | "wrongbook";
     let view: View = $state("entry");
     let soundEnabled = $state(readLocal("lv-exam/sound") !== "0");
+    let speedDrillEnabled = $state(readLocal("lv-exam/speed-drill") === "1");
     let hotkeysHelpOpen = $state(false);
     let loading = $state(true);
     let appliedPracticeViewRequestId = "";
@@ -2797,6 +2798,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     let reciteToggle = $state(readLocal("lv-exam/reciteMode") === "1");
     let reciteSubmitTimer: ReturnType<typeof setTimeout> | null = null;
     function clearReciteSubmitTimer() {
+      if (speedTimer) { clearTimeout(speedTimer); speedTimer = null; }
       if (reciteSubmitTimer) clearTimeout(reciteSubmitTimer);
       reciteSubmitTimer = null;
     }
@@ -3094,12 +3096,37 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     const hintTexts = new Map<string, string[]>();
     /** 114-01 泄露守卫拦截的待决提示（提交前）：用户明确揭示才展示（G6） */
     let leakPending = $state<{ level: 1 | 2 | 3; text: string; reasons: string } | null>(null);
+    let speedTimer: ReturnType<typeof setTimeout> | null = null;
     function pickPracticeChoice(value: string) {
       const q = session?.current;
       if (!q || feedback) return;
       selected = toggleChoice(q.type, selected, value);
       session.setDraft(q.id, selected);
       trailInput(q.id, selected);
+
+      // 极速刷题手感模式：单选或判断题即选即提交，答对顿歇 320ms 自动切题，答错暂停展示解析
+      if (speedDrillEnabled && (q.type === "single" || q.type === "judge") && selected) {
+        submitAnswer();
+        if (feedback?.verdict === "correct") {
+          if (speedTimer) clearTimeout(speedTimer);
+          speedTimer = setTimeout(() => {
+            speedTimer = null;
+            nextQuestion();
+          }, 320);
+        }
+      }
+    }
+
+    async function toggleUserTag(tag: string) {
+      const q = session?.current;
+      if (!q || !q.blockId) return;
+      try {
+        const updated = await app.tagQuestion(q as Question & { blockId: string }, tag);
+        q.userTags = updated.userTags;
+        sessionRev++;
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 3000, "error");
+      }
     }
 
     function restoreQuestionControls() {
@@ -3384,6 +3411,93 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       ocrModalOpen = false;
       clearManualValidation();
       showMessage(t("manual.ocrDone"), 3000, "info");
+    }
+
+    let ocrUploadBusy = $state(false);
+
+    async function handleOcrImageFile(file: File | Blob) {
+      if (ocrUploadBusy || !app) return;
+      ocrUploadBusy = true;
+      try {
+        showMessage(t("manual.ocrUploading"), 3500, "info");
+        const q = await app.uploadAndOcrQuestion(file, (file as File).name || "pasted-question.png");
+        mType = q.type === "material" ? "single" : q.type;
+        mStem = q.stem;
+        mOptions = q.options.length >= 2 ? q.options : ["", ""];
+        mAnswer = q.answer;
+        if (q.analysis) mAnalysis = q.analysis;
+        if (q.kp) mKp = q.kp;
+        ocrModalOpen = false;
+        clearManualValidation();
+        showMessage(t("manual.ocrDone"), 3000, "info");
+      } catch (e) {
+        showMessage(`图片 OCR 识别失败：${String(e instanceof Error ? e.message : e)}`, 4000, "error");
+      } finally {
+        ocrUploadBusy = false;
+      }
+    }
+
+    function onFileInputChange(e: Event) {
+      const input = e.target as HTMLInputElement;
+      const file = input.files?.[0];
+      if (file) {
+        void handleOcrImageFile(file);
+      }
+      input.value = "";
+    }
+
+    function onManualPaste(e: ClipboardEvent) {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of Array.from(items)) {
+        if (item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (file) {
+            e.preventDefault();
+            void handleOcrImageFile(file);
+            break;
+          }
+        }
+      }
+    }
+
+    let printWrongBusy = $state(false);
+
+    async function printWrongSheet(type: "question" | "answer") {
+      if (printWrongBusy || !activeBankId || !filteredWrongQueue.length) return;
+      printWrongBusy = true;
+      try {
+        const qids = filteredWrongQueue.map((w) => w.qid);
+        const qs = questions.filter((q) => qids.includes(q.id));
+        if (!qs.length) {
+          showMessage("当前筛选条件下无可用题目", 3000, "info");
+          return;
+        }
+        const title = `${bankName || "小驴考试"} · 错题攻坚特训卷（共${qs.length}题）`;
+        const { buildCompactQuestionSheetPro, buildCompactAnswerSheetPro } = await import("../../core/printPro");
+        const html = type === "question"
+          ? buildCompactQuestionSheetPro(title, qs, { headerTitle: "错题攻坚特训卷 · A4双栏", columns: "double" })
+          : buildCompactAnswerSheetPro(title, qs, { headerTitle: "错题攻坚详解答案册", columns: "double" });
+        const win = window.open("", "_blank");
+        if (win) {
+          win.document.write(html);
+          win.document.close();
+          win.focus();
+        } else {
+          const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `${title}-${type === "question" ? "试卷" : "答案册"}.html`;
+          a.click();
+          URL.revokeObjectURL(url);
+          showMessage("已生成双栏排版文件", 3000, "info");
+        }
+      } catch (e) {
+        showMessage(`打印生成失败：${String(e instanceof Error ? e.message : e)}`, 4000, "error");
+      } finally {
+        printWrongBusy = false;
+      }
     }
 
     async function normalizeManualFormulas() {
@@ -5735,11 +5849,18 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
             {/if}
             <button class="lv-chip" title={ttsSupported() ? t("tts.read") : t("tts.unsupported", "当前前端不支持朗读")} aria-label={t("tts.read")} disabled={!ttsSupported()} onclick={() => ttsSpeak([q.stem, ...q.options].join(" "))}><Icon name="volume" size={13} /></button>
             <button class="lv-chip" class:acc={reciteToggle} title={t("session.reciteMode")} aria-pressed={reciteToggle} onclick={toggleRecite}><Icon name="eye" size={13} /> {t("session.reciteMode")}</button>
+            <button class="lv-chip" class:acc={speedDrillEnabled} title={t("session.speedDrillTip")} aria-pressed={speedDrillEnabled} onclick={() => { speedDrillEnabled = !speedDrillEnabled; writeLocal("lv-exam/speed-drill", speedDrillEnabled ? "1" : "0"); }}><Icon name="zap" size={13} /> {t("session.speedDrill")}</button>
             <button class="lv-chip" class:acc={scratchpadOpen} title={t("scratchpad.tip")} aria-pressed={scratchpadOpen} onclick={() => scratchpadOpen = !scratchpadOpen}><Icon name="pencil" size={13} /> {t("scratchpad.title")}</button>
             <button class="lv-chip" class:acc={soundEnabled} title={soundEnabled ? t("sound.disable") : t("sound.enable")} onclick={() => { soundEnabled = !soundEnabled; writeLocal("lv-exam/sound", soundEnabled ? "1" : "0"); }}><Icon name={soundEnabled ? "volume" : "volume-x"} size={13} /></button>
             <button class="lv-chip" class:acc={hotkeysHelpOpen} title={t("hotkeys.tip")} onclick={() => hotkeysHelpOpen = !hotkeysHelpOpen}><Icon name="activity" size={13} /> ?</button>
             <button class="lv-chip" class:acc={pureListen} title={t("tts.pureListen")} aria-label={t("tts.pureListen")} aria-pressed={pureListen} onclick={togglePureListen}><Icon name="eyeoff" size={13} /></button>
-              <button class="lv-chip" class:acc={!!q.fav} title="E" aria-label={t("session.kbdFav")} aria-pressed={!!q.fav} aria-busy={favBusy} disabled={favBusy} onclick={() => toggleFavCurrent()}><Icon name="star" size={13} /></button>
+            <button class="lv-chip" class:acc={!!q.fav} title="E" aria-label={t("session.kbdFav")} aria-pressed={!!q.fav} aria-busy={favBusy} disabled={favBusy} onclick={() => toggleFavCurrent()}><Icon name="star" size={13} /></button>
+            <span class="lv-chip" style="gap:3px;padding:2px 5px">
+              <button class="lv-btn sm lv-btn--ghost" style="padding:1px 3px;font-size:11px" class:acc={(q.userTags || []).includes("star")} title={t("session.tagStar")} onclick={() => void toggleUserTag("star")}>⭐️</button>
+              <button class="lv-btn sm lv-btn--ghost" style="padding:1px 3px;font-size:11px" class:acc={(q.userTags || []).includes("trap")} title={t("session.tagTrap")} onclick={() => void toggleUserTag("trap")}>⚠️</button>
+              <button class="lv-btn sm lv-btn--ghost" style="padding:1px 3px;font-size:11px" class:acc={(q.userTags || []).includes("doubt")} title={t("session.tagDoubt")} onclick={() => void toggleUserTag("doubt")}>❓</button>
+              <button class="lv-btn sm lv-btn--ghost" style="padding:1px 3px;font-size:11px" class:acc={(q.userTags || []).includes("key")} title={t("session.tagKey")} onclick={() => void toggleUserTag("key")}>💡</button>
+            </span>
           </div>
           <div class="lv-session-main">
           {#if scratchpadOpen}
@@ -6233,6 +6354,8 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
                   <button type="button" class="lv-chip sm" class:acc={wbTab === "archived"} onclick={() => wbTab = "archived"}>
                     {t("wrongbook.tabArchived")} ({archivedWrongList.length})
                   </button>
+                  <button class="lv-btn sm lv-btn--ghost" onclick={() => void printWrongSheet("question")} disabled={printWrongBusy || !filteredWrongQueue.length} title="将当前筛选的错题导出或打印为 A4 双栏试卷（绝不泄题）"><Icon name="file" size={13} /> {t("mock.printCompact")}</button>
+                  <button class="lv-btn sm lv-btn--ghost" onclick={() => void printWrongSheet("answer")} disabled={printWrongBusy || !filteredWrongQueue.length} title="导出或打印配套答案册"><Icon name="book" size={13} /> 答案册</button>
                 </div>
                 <span class="lv-muted" style="font-size:var(--lv-font-size-caption)">{t("wrongbook.queue.note")}</span>
               </div>
@@ -6340,7 +6463,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     </div>
   {:else if view === "manual"}
     <!-- ===== S10 手工录题表单 ===== -->
-    <div class="lv-pad">
+    <div class="lv-pad" onpaste={onManualPaste}>
       <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.manual.eyebrow")}</span><h1 class="lv-h1">{t("head.manual.title")}</h1><p>{t("head.manual.desc")}</p></div>
       {@render studioNav()}
       <div class="lv-row">
@@ -6359,7 +6482,12 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
           </label>
           <div class="lv-row" style="margin-top:8px">
             <button class="lv-btn lv-btn--primary sm" onclick={applyOcrFill} disabled={!ocrInputText.trim()}>{t("manual.ocrFastFill")}</button>
-            <button class="lv-btn lv-btn--ghost sm" onclick={() => (ocrModalOpen = false)}>取消</button>
+            <label class="lv-btn sm lv-btn--ghost" style="cursor:pointer">
+              <Icon name="file" size={13} /> {ocrUploadBusy ? t("manual.ocrUploading") : t("manual.ocrUploadImage")}
+              <input type="file" accept="image/*" style="display:none" onchange={onFileInputChange} disabled={ocrUploadBusy} />
+            </label>
+            <span class="lv-muted" style="font-size:var(--lv-font-size-caption)">{t("manual.ocrPasteTip")}</span>
+            <button class="lv-btn lv-btn--ghost sm" style="margin-left:auto" onclick={() => (ocrModalOpen = false)}>取消</button>
           </div>
         </div>
       {/if}

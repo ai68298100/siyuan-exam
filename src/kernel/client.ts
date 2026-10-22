@@ -10,7 +10,7 @@ import { questionToMarkdown, questionFromBlock } from "../core/blockTemplate";
 export interface KernelTransport {
   post(endpoint: string, payload: unknown, options?: RequestOptions): Promise<{ code: number; msg: string; data: unknown }>;
   /** multipart 文件上传（importSY 等；38-05 实测：JSON path 形态返回 -1）。可选：测试桩可不实现 */
-  postForm?(endpoint: string, file: Blob, filename: string, options?: RequestOptions): Promise<{ code: number; msg: string; data: unknown }>;
+  postForm?(endpoint: string, file: Blob | FormData, filename?: string, options?: RequestOptions): Promise<{ code: number; msg: string; data: unknown }>;
 }
 
 /** 请求策略由服务层统一传递给传输层。
@@ -214,9 +214,14 @@ export class HttpTransport implements KernelTransport {
 
   /** multipart 文件上传（importSY 契约，38-05 真机实测：JSON path 形态返回 -1）。
    *  浏览器 FormData 自动带 boundary，不可手工设 Content-Type */
-  async postForm(endpoint: string, file: Blob, filename: string, options: RequestOptions = {}) {
-    const fd = new FormData();
-    fd.append("file", file, filename);
+  async postForm(endpoint: string, fileOrForm: Blob | FormData, filename = "file.bin", options: RequestOptions = {}) {
+    let fd: FormData;
+    if (typeof FormData !== "undefined" && fileOrForm instanceof FormData) {
+      fd = fileOrForm;
+    } else {
+      fd = new FormData();
+      fd.append("file", fileOrForm as Blob, filename);
+    }
     let lastErr: unknown;
     const retries = options.retryable === false ? 0 : Math.min(3, Math.max(0, options.retries ?? this.retries));
     const timeoutMs = Math.max(1, options.timeoutMs ?? this.timeoutMs);
@@ -685,6 +690,21 @@ export class KernelApiClient {
   /** 更新保存图片的 OCR 文本缓存（/api/asset/setImageOCRText） */
   async setImageOcrText(path: string, text: string): Promise<void> {
     await this.writePost("/api/asset/setImageOCRText", { path, text });
+  }
+
+  /** 上传文件至思源 assets 目录（/api/asset/upload） */
+  async uploadAsset(file: Blob, filename = "question.png"): Promise<string> {
+    if (!this.t.postForm) throw new KernelError("fatal", "/api/asset/upload", "当前 transport 不支持文件上传");
+    const fd = new FormData();
+    fd.append("assetsDirPath", "/assets/");
+    fd.append("file[]", file, filename);
+    const r = await this.t.postForm("/api/asset/upload", fd, filename);
+    const succMap = (r.data as { succMap?: Record<string, string> })?.succMap ?? {};
+    const assetPath = Object.values(succMap)[0];
+    if (!assetPath) {
+      throw new Error((r as { msg?: string }).msg || "上传文件到思源 assets 失败");
+    }
+    return assetPath;
   }
 }
 

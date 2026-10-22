@@ -3264,6 +3264,36 @@ export class ExamApp {
     return q;
   }
 
+  /** 用户题目速记标签标记（如 star:好题, trap:陷阱, doubt:存疑, key:重点） */
+  async tagQuestion(
+    q: Question & { blockId: string },
+    tag: string,
+    action: "add" | "remove" | "toggle" = "toggle",
+  ): Promise<Question & { blockId: string }> {
+    if (!this.kernelOnline) throw new Error("离线：设置标签需要内核可写");
+    const cleanTag = tag.trim();
+    if (!cleanTag) return q;
+
+    const currentTags = new Set(q.userTags ?? []);
+    if (action === "add") {
+      currentTags.add(cleanTag);
+    } else if (action === "remove") {
+      currentTags.delete(cleanTag);
+    } else {
+      if (currentTags.has(cleanTag)) currentTags.delete(cleanTag);
+      else currentTags.add(cleanTag);
+    }
+
+    const nextList = Array.from(currentTags);
+    q.userTags = nextList.length > 0 ? nextList : undefined;
+
+    await this.deps.client.setExamAttrs(q.blockId, {
+      "exam-tags": nextList.join(","),
+    });
+    this.invalidate();
+    return q;
+  }
+
   // ---------- 备考完备度体检与考点盲区雷达 ----------
   async generateReadinessReport(
     bankId?: string,
@@ -3345,7 +3375,7 @@ export class ExamApp {
   ): Promise<Question> {
     const { parseOcrQuestionText, ocrResultToQuestion } = await import("./core/ocr");
     const parsed = parseOcrQuestionText(rawText, options);
-    return ocrResultToQuestion(parsed);
+    return ocrResultToQuestion(parsed, { source: options?.fallbackSource });
   }
 
   async ocrAndParseQuestion(
@@ -3360,6 +3390,18 @@ export class ExamApp {
       fallbackSource: assetPath,
       ...options,
     });
+  }
+
+  async uploadAndOcrQuestion(
+    file: Blob,
+    filename = "question.png",
+    options?: import("./core/ocr").OcrParseOptions,
+  ): Promise<Question> {
+    if (!this.kernelOnline) {
+      throw new Error("思源内核离线，无法上传图片或执行 OCR 识别。");
+    }
+    const assetPath = await this.deps.client.uploadAsset(file, filename);
+    return this.ocrAndParseQuestion(assetPath, options);
   }
 
   // ---------- 数学公式语法清洗与文本渲染 ----------

@@ -47,6 +47,7 @@ export function ialOf(q: Question): string {
   if (q.dispute) attrs["exam-dispute"] = JSON.stringify(q.dispute);
   if (q.analysis) attrs["exam-analysis"] = q.analysis;
   if (q.alt?.length) attrs["exam-alt"] = q.alt.join("|");
+  if (q.userTags?.length) attrs["exam-tags"] = q.userTags.join(",");
   if (q.answerSpec) attrs["exam-answer-spec"] = JSON.stringify(q.answerSpec);
   if (q.rubric) attrs["exam-rubric"] = JSON.stringify(q.rubric);
   if (typeof q.confidence === "number") attrs["exam-confidence"] = q.confidence.toFixed(2);
@@ -173,6 +174,7 @@ export function questionFromBlock(input: FromBlockInput): Question | null {
     status: (attrs["exam-status"] as Question["status"]) || undefined,
     dispute: parseDisputeAttr(attrs["exam-dispute"]),
     alt: attrs["exam-alt"] ? attrs["exam-alt"].split("|") : undefined,
+    userTags: attrs["exam-tags"] ? attrs["exam-tags"].split(",").map((s) => s.trim()).filter(Boolean) : undefined,
     fav: attrs["exam-fav"] === "1",
     /** 54-01：结构化作答规则（custom-exam-answer-spec JSON）；损坏/版本不符忽略，按旧口径判分 */
     answerSpec: parseAnswerSpecAttr(attrs["exam-answer-spec"]),
@@ -238,6 +240,7 @@ export function makeQuestion(p: {
   year?: string;
   difficulty?: number;
   alt?: string[];
+  userTags?: string[];
   group?: string;
   /** 43-01：题目作者生命周期状态 */
   status?: Question["status"];
@@ -271,6 +274,7 @@ export function makeQuestion(p: {
     status: p.status ?? "published",
     dispute: p.dispute,
     alt: p.alt,
+    userTags: p.userTags,
     ...(answerSpec ? { answerSpec } : {}),
     ...(p.rubric ? { rubric: p.rubric } : {}),
     hash: questionHash(p.stem, options),

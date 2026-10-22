@@ -71,6 +71,8 @@ export interface Question {
   };
   confidence?: number; // AI 二遍核验置信度 0-1（ Quanta 范式：≥0.90 可信）
   fav?: boolean; // 收藏（exam-fav="1"，docs/02 §2.4）
+  /** 用户速记标签（如 star:好题, trap:陷阱, doubt:存疑, key:重点） */
+  userTags?: string[];
   group?: string; // 共用题干组 ID（材料与子题共享，cbt 引擎）
   /** 题族与变式关联（52-07 / 65-03，原题/近远迁移/正反向兄弟题） */
   family?: QuestionFamilyRef;

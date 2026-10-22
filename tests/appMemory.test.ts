@@ -611,7 +611,30 @@ describe("应用层记忆/写入路径（应用编排层测试补盲）", () => 
     expect(q2.answer).toBe("B");
     expect(q2.analysis).toContain("$f(2) = 2^2 = 4$");
 
-    // 3. 数学公式规范化与渲染
+    // 3. 模拟图片上传 + OCR 端到端调用
+    client.uploadAsset = async (_file: Blob, _filename?: string) => "assets/uploaded-1.png";
+    const q3 = await app.uploadAndOcrQuestion(new Blob(["mock-image"]), "photo.png");
+    expect(q3.stem).toContain("$f(x) = x^2$");
+    expect(q3.source).toBe("assets/uploaded-1.png");
+
+    // 4. 用户题目速记标签标记（⭐️ 好题、⚠️ 陷阱）
+    let lastSetAttrs: Record<string, string> | null = null;
+    client.setExamAttrs = async (blockId: string, attrs: Record<string, string>) => {
+      expect(blockId).toBe("b-tag-1");
+      lastSetAttrs = attrs;
+    };
+
+    const qWithB = { ...q1, blockId: "b-tag-1" };
+    const tagged = await app.tagQuestion(qWithB, "star", "add");
+    expect(tagged.userTags).toEqual(["star"]);
+    expect(lastSetAttrs?.["exam-tags"]).toBe("star");
+
+    // 切换 tag
+    const toggled = await app.tagQuestion(qWithB, "star", "toggle");
+    expect(toggled.userTags).toBeUndefined();
+    expect(lastSetAttrs?.["exam-tags"]).toBe("");
+
+    // 5. 数学公式规范化与渲染
     const norm = await app.normalizeFormula("\\( \\ frac { 1 } { 2 } \\)");
     expect(norm).toBe("$\\frac{1}{2}$");
 

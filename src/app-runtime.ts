@@ -99,11 +99,16 @@ function makeTransport(onConnectionChange?: (ok: boolean, error?: KernelError) =
     async post(endpoint, payload, options = {}) {
       return run(endpoint, payload ?? {}, options);
     },
-    async postForm(endpoint, file, filename, options = {}) {
+    async postForm(endpoint, fileOrForm, filename = "file.bin", options = {}) {
       // fetchSyncPost 对 FormData 原生使用 multipart/form-data；不要传普通对象，
       // 否则会按 JSON 序列化。也不要手工设置 Content-Type，让宿主补 boundary。
-      const form = new FormData();
-      form.append("file", file, filename);
+      let form: FormData;
+      if (typeof FormData !== "undefined" && fileOrForm instanceof FormData) {
+        form = fileOrForm;
+      } else {
+        form = new FormData();
+        form.append("file", fileOrForm as Blob, filename);
+      }
       return run(endpoint, form, options);
     },
   };

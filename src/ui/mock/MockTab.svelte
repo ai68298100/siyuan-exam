@@ -511,6 +511,28 @@
       }
     }
 
+    async function printCompactAnswerSheet() {
+      if (printBusy || !activeBankId || !questions.length) return;
+      printBusy = true;
+      try {
+        const html = await app.buildCompactAnswerSheet(bp.name || "全真模拟试卷", activeBankId);
+        const win = window.open("", "_blank");
+        if (win) {
+          win.document.write(html);
+          win.document.close();
+          win.focus();
+        } else {
+          const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+          downloadBlob(blob, `${bp.name || "试卷"}-双栏答案册.html`);
+          showMessage("已生成双栏排版答案册文件", 3000, "info");
+        }
+      } catch (e) {
+        showMessage(`打印答案册生成失败：${String(e instanceof Error ? e.message : e)}`, 4200, "error");
+      } finally {
+        printBusy = false;
+      }
+    }
+
     async function startExam() {
       if (starting || loading || resumeBusy || discardBusy || blueprintBusy) return;
       starting = true;
@@ -1841,6 +1863,7 @@
     {/if}
     <div class="lv-row">
       <button class="lv-btn lv-btn--ghost sm" onclick={exportScoreMd} disabled={scoreExportBusy}><Icon name="table" size={13} /> {scoreExportBusy ? "…" : t("mock.exportScore")}</button>
+      <button class="lv-btn lv-btn--ghost sm" onclick={printCompactAnswerSheet} disabled={printBusy} title="生成带答案与详细解析的双栏出版级打印册"><Icon name="file" size={13} /> {t("mock.printAnswerSheet")}</button>
       {#if activeBankId}
         <button class="lv-btn lv-btn--ghost sm" onclick={writeScoreDoc} disabled={scoreWriteBusy} aria-busy={scoreWriteBusy}><Icon name="book" size={14} /> {scoreWriteBusy ? t("mock.scoreWriting", "正在写入成绩单…") : scoreWriteError ? t("mock.scoreWriteRetry", "重试写入成绩单") : t("mock.exportToDoc")}</button>
       {/if}
