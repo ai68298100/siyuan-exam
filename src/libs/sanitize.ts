@@ -6,6 +6,7 @@
 // 题干来自导入（CSV/GIFT/Aiken 等不可信源），"内核=可信源"的旧假设不成立——
 // 因此富文本一律过 DOMPurify 白名单后才允许进入 DOM。
 import DOMPurify from "dompurify";
+import { renderMathInText } from "../core/math";
 
 const ESC_MAP: Record<string, string> = {
   "&": "&amp;",
@@ -40,6 +41,7 @@ const RICH_ALLOWED_TAGS = [
 const RICH_ALLOWED_ATTR = [
   "class", "style", "id", "href", "src", "alt", "title",
   "colspan", "rowspan", "start", "type", "checked", "disabled",
+  "data-latex",
 ];
 
 // CSS 属性值可以影响插件壳的布局和交互，即使没有执行脚本也可能把题面
@@ -113,8 +115,9 @@ export function sanitizeRichHtml(html: string): string {
  */
 export function renderInlineText(text: string): string {
   if (!text) return "";
-  if (!/[*`~^<>]/.test(text) && !/_[0-9a-zA-Z]/.test(text)) return escapeHtml(text);
-  let s = escapeHtml(text);
+  const hasFormula = /\$|\\\(|\\\[/.test(text);
+  if (!hasFormula && !/[*`~^<>]/.test(text) && !/_[0-9a-zA-Z]/.test(text)) return escapeHtml(text);
+  let s = hasFormula ? renderMathInText(text) : escapeHtml(text);
   s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   s = s.replace(/\*([^*]+)\*/g, "<em>$1</em>");
   s = s.replace(/`([^`]+)`/g, '<code class="lv-inline-code">$1</code>');

@@ -585,4 +585,37 @@ describe("应用层记忆/写入路径（应用编排层测试补盲）", () => 
     expect(csv).toContain("考点名称");
     expect(csv).toContain("风险等级");
   });
+
+  it("121-05：ExamApp OCR 试题解析与数学公式清洗呈现闭环", async () => {
+    const client = {
+      sql: async () => [],
+      listQuestions: async () => [],
+      assetOcr: async (_path: string) => ({
+        text: `1. 设函数 \\( f(x) = x^2 \\)，求 $f(2)$。\nA. 2\nB. 4\n【答案】B\n【解析】$f(2) = 2^2 = 4$。`,
+        ocrJSON: null,
+      }),
+    } as unknown as KernelApiClient;
+
+    const app = mkApp(client);
+
+    // 1. 本地纯文本 OCR 结构化解析
+    const q1 = await app.parseOcrTextToQuestion("1. 测试题干\nA. 甲\nB. 乙\n【答案】A");
+    expect(q1.stem).toBe("测试题干");
+    expect(q1.options).toEqual(["甲", "乙"]);
+    expect(q1.answer).toBe("A");
+
+    // 2. 模拟内核 assetOcr 链路调用
+    const q2 = await app.ocrAndParseQuestion("assets/photo-q.png");
+    expect(q2.stem).toContain("$f(x) = x^2$");
+    expect(q2.options).toEqual(["2", "4"]);
+    expect(q2.answer).toBe("B");
+    expect(q2.analysis).toContain("$f(2) = 2^2 = 4$");
+
+    // 3. 数学公式规范化与渲染
+    const norm = await app.normalizeFormula("\\( \\ frac { 1 } { 2 } \\)");
+    expect(norm).toBe("$\\frac{1}{2}$");
+
+    const html = await app.renderFormula("计算 $x^2$");
+    expect(html).toContain('class="lv-math-expr lv-math-inline"');
+  });
 });

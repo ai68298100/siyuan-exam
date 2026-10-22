@@ -111,6 +111,20 @@ export {
   type AdaptiveSprintPaperComposition,
   type AdaptiveSprintPaper,
 } from "./core/adaptiveMockAssembler";
+export {
+  parseOcrQuestionText,
+  ocrResultToQuestion,
+  buildVisionOcrPrompt,
+  type OcrParseOptions,
+  type ParsedOcrQuestion,
+} from "./core/ocr";
+export {
+  normalizeLatexFormula,
+  renderLatex,
+  renderSemanticLatex,
+  renderMathInText,
+  getMathPrintStyles,
+} from "./core/math";
 import { buildImportCheckpoint, type ImportCheckpoint, type ImportReport } from "./importer/pipeline";
 import { planQuestionMerge } from "./core/duplicateMerger";
 import { sanitizeRichHtml } from "./libs/sanitize";
@@ -3322,6 +3336,41 @@ export class ExamApp {
     const paper = await this.assembleAdaptiveSprintPaper(bankId, options);
     const { exportSprintPaperCsv } = await import("./core/adaptiveMockAssembler");
     return exportSprintPaperCsv(paper);
+  }
+
+  // ---------- OCR 识别与试题智能解析提取 ----------
+  async parseOcrTextToQuestion(
+    rawText: string,
+    options?: import("./core/ocr").OcrParseOptions,
+  ): Promise<Question> {
+    const { parseOcrQuestionText, ocrResultToQuestion } = await import("./core/ocr");
+    const parsed = parseOcrQuestionText(rawText, options);
+    return ocrResultToQuestion(parsed);
+  }
+
+  async ocrAndParseQuestion(
+    assetPath: string,
+    options?: import("./core/ocr").OcrParseOptions,
+  ): Promise<Question> {
+    if (!this.kernelOnline) {
+      throw new Error("思源内核离线，无法执行 OCR 识别。");
+    }
+    const ocrData = await this.deps.client.assetOcr(assetPath);
+    return this.parseOcrTextToQuestion(ocrData.text, {
+      fallbackSource: assetPath,
+      ...options,
+    });
+  }
+
+  // ---------- 数学公式语法清洗与文本渲染 ----------
+  async normalizeFormula(text: string): Promise<string> {
+    const { normalizeLatexFormula } = await import("./core/math");
+    return normalizeLatexFormula(text);
+  }
+
+  async renderFormula(text: string): Promise<string> {
+    const { renderMathInText } = await import("./core/math");
+    return renderMathInText(text);
   }
 
   dailySet(questions: Question[], dueFirst: Question[], n: number): Question[] {

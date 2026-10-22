@@ -665,6 +665,27 @@ export class KernelApiClient {
   async reviewRiffCard(cardId: string, deckId: string, rating: 1 | 2 | 3 | 4): Promise<void> {
     await this.writePost("/api/riff/reviewRiffCard", { cardID: cardId, deckID: deckId, rating, reviewedCards: [] });
   }
+
+  /** 思源原生图片 OCR（/api/asset/ocr） */
+  async assetOcr(path: string): Promise<{ text: string; ocrJSON: Array<Record<string, string> | null> | null }> {
+    const r = await this.readPost("/api/asset/ocr", { path });
+    const data = (r.data as { text?: string; ocrJSON?: Array<Record<string, string> | null> }) ?? {};
+    return {
+      text: data.text ?? "",
+      ocrJSON: data.ocrJSON ?? null,
+    };
+  }
+
+  /** 获取思源已缓存的图片 OCR 文本（/api/asset/getImageOCRText） */
+  async getImageOcrText(path: string): Promise<string> {
+    const r = await this.readPost("/api/asset/getImageOCRText", { path });
+    return String((r.data as { text?: string })?.text ?? "");
+  }
+
+  /** 更新保存图片的 OCR 文本缓存（/api/asset/setImageOCRText） */
+  async setImageOcrText(path: string, text: string): Promise<void> {
+    await this.writePost("/api/asset/setImageOCRText", { path, text });
+  }
 }
 
 const escapeSql = (s: string) => s.replace(/'/g, "''");

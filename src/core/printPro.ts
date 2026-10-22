@@ -9,6 +9,7 @@
 // ============================================================
 
 import type { Question } from "./types";
+import { renderMathInText, getMathPrintStyles } from "./math";
 
 export type PaperSize = "A4" | "Letter";
 export type ColumnLayout = "single" | "double";
@@ -108,6 +109,7 @@ export function buildPrintProCss(options: PrintProOptions = {}): string {
       body { margin: 0; }
       footer.sheet-footer { position: fixed; }
     }
+    ${getMathPrintStyles()}
   `;
 }
 
@@ -146,7 +148,7 @@ export function buildCompactQuestionSheetPro(
     if (q.group && !printedGroups.has(q.group)) {
       const carrier = questions.find((m) => m.group === q.group && m.type === "material" && m.analysis);
       if (carrier?.analysis) {
-        materialHtml = `<div class="material-block q-group-head">${escapeHtml(carrier.analysis)}</div>`;
+        materialHtml = `<div class="material-block q-group-head">${renderMathInText(carrier.analysis)}</div>`;
         printedGroups.add(q.group);
       }
     }
@@ -159,7 +161,7 @@ export function buildCompactQuestionSheetPro(
       }
       // 无组材料题：解析字段承载材料，属题面
       if (q.analysis) {
-        parts.push(`<div class="q">${materialHtml}<div class="material-block">${escapeHtml(q.analysis)}</div></div>`);
+        parts.push(`<div class="q">${materialHtml}<div class="material-block">${renderMathInText(q.analysis)}</div></div>`);
       }
       return;
     }
@@ -168,9 +170,9 @@ export function buildCompactQuestionSheetPro(
     if (materialHtml) parts.push(materialHtml);
     const scoreHtml = showScore ? `<span class="q-score">${q.score} 分</span>` : "";
     parts.push(`<div class="q-head"><span class="q-type">${escapeHtml(TYPE_NAMES[q.type] ?? q.type)}</span>${no}.${scoreHtml}</div>`);
-    parts.push(`<div class="q-stem">${escapeHtml(q.stem)}</div>`);
+    parts.push(`<div class="q-stem">${renderMathInText(q.stem)}</div>`);
     q.options.forEach((o, oi) => {
-      parts.push(`<div class="opt">${String.fromCharCode(65 + oi)}. ${escapeHtml(o)}</div>`);
+      parts.push(`<div class="opt">${String.fromCharCode(65 + oi)}. ${renderMathInText(o)}</div>`);
     });
     if (showArea && (q.type === "fill" || q.type === "short")) {
       parts.push(`<div class="answer-area"></div>`);
@@ -207,7 +209,7 @@ export function buildCompactAnswerSheetPro(
       const rubricText = q.rubric.criteria.map((c) => `${c.label}(${Math.round(c.weight * 100)}%)`).join(" · ");
       parts.push(`<div class="ans-analysis">采分点：${escapeHtml(rubricText)}</div>`);
     }
-    if (q.analysis) parts.push(`<div class="ans-analysis">${escapeHtml(q.analysis)}</div>`);
+    if (q.analysis) parts.push(`<div class="ans-analysis">${renderMathInText(q.analysis)}</div>`);
     parts.push(`</div>`);
   }
 

@@ -3363,6 +3363,37 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         : L;
     }
 
+    let ocrModalOpen = $state(false);
+    let ocrInputText = $state("");
+
+    function openOcrModal() {
+      ocrInputText = "";
+      ocrModalOpen = true;
+    }
+
+    async function applyOcrFill() {
+      if (!ocrInputText.trim()) return;
+      const { parseOcrQuestionText } = await import("../../core/ocr");
+      const parsed = parseOcrQuestionText(ocrInputText);
+      mType = parsed.type === "material" ? "single" : parsed.type;
+      mStem = parsed.stem;
+      mOptions = parsed.options.length >= 2 ? parsed.options : ["", ""];
+      mAnswer = parsed.answer;
+      if (parsed.analysis) mAnalysis = parsed.analysis;
+      if (parsed.kp) mKp = parsed.kp;
+      ocrModalOpen = false;
+      clearManualValidation();
+      showMessage(t("manual.ocrDone"), 3000, "info");
+    }
+
+    async function normalizeManualFormulas() {
+      const { normalizeLatexFormula } = await import("../../core/math");
+      if (mStem) mStem = normalizeLatexFormula(mStem);
+      if (mOptions.length) mOptions = mOptions.map((o) => normalizeLatexFormula(o));
+      if (mAnalysis) mAnalysis = normalizeLatexFormula(mAnalysis);
+      showMessage(t("manual.formulaDone"), 2500, "info");
+    }
+
     async function switchManualType(nextType: typeof mType) {
       if (nextType === mType) return;
       if (mStem.trim() || mAnswer.trim() || mAnalysis.trim() || mOptions.some((option) => option.trim())) {
@@ -6315,9 +6346,23 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       <div class="lv-row">
         <button class="lv-btn lv-btn--ghost lv-mobile-back" onclick={() => view = "entry"}>← {t("mode.practice")}</button>
         <span class="lv-chip">{t("manual.title")}</span>
+        <button class="lv-btn sm" onclick={openOcrModal} title="粘贴试题识别文本一键智能提取填入表单"><Icon name="camera" size={13} /> {t("manual.ocrFastFill")}</button>
+        <button class="lv-btn sm" onclick={normalizeManualFormulas} title="清洗题干与选项中公式的空格与语法"><Icon name="sparkles" size={13} /> {t("manual.formulaNormalize")}</button>
         {#if draftRestored}<span class="lv-chip lv-chip--amb">{t("manual.draftRestored")}</span>{/if}
         {#if mSaved}<span class="lv-chip lv-chip--grn num">✓ {mSaved}</span>{/if}
       </div>
+      {#if ocrModalOpen}
+        <div class="lv-card" style="margin:10px 0;background:var(--lv-surface-2);border-color:var(--b3-theme-primary)">
+          <label class="lv-field">
+            <span style="font-weight:var(--lv-font-weight-semibold)">{t("manual.ocrPrompt")}</span>
+            <textarea class="lv-input lv-textarea" style="min-height:90px;margin-top:6px" bind:value={ocrInputText} placeholder="粘贴整段试题识别文本（支持题干、A. B. C. D. 选项、答案、解析），点击解析填单即可自动分类填入下方表单"></textarea>
+          </label>
+          <div class="lv-row" style="margin-top:8px">
+            <button class="lv-btn lv-btn--primary sm" onclick={applyOcrFill} disabled={!ocrInputText.trim()}>{t("manual.ocrFastFill")}</button>
+            <button class="lv-btn lv-btn--ghost sm" onclick={() => (ocrModalOpen = false)}>取消</button>
+          </div>
+        </div>
+      {/if}
       <div class="lv-studio-grid lv-studio-grid--manual">
       <div class="lv-card lv-pad-card lv-studio-form" data-manual-form>
         <div class="lv-row" role="group" aria-label={t("manual.type", "题型")}>
