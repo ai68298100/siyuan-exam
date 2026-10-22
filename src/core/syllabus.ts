@@ -187,3 +187,134 @@ export function parseSyllabusDoc(raw: unknown): { doc: SyllabusDoc; versionTooNe
     versionTooNew: false,
   };
 }
+
+export interface SyllabusAuditItem {
+  kpPath: string;
+  title: string;
+  questionCount: number;
+  minRequired: number;
+  status: "uncovered" | "insufficient" | "balanced" | "crowded";
+  suggestedAction: string;
+}
+
+export interface SyllabusAuditReport {
+  totalNodes: number;
+  coveredNodes: number;
+  uncoveredNodes: number;
+  insufficientNodes: number;
+  coverageRatio: number;
+  items: SyllabusAuditItem[];
+}
+
+/**
+ * 教师教研端：考纲知识点题量配比与出题缺口深度体检
+ */
+export function auditSyllabusCoverage(
+  roots: SyllabusNode[],
+  questions: readonly import("./types").Question[],
+  options: { minQuestionsPerKp?: number } = {},
+): SyllabusAuditReport {
+  const minRequired = Math.max(1, options.minQuestionsPerKp ?? 3);
+  const items: SyllabusAuditItem[] = [];
+
+  // 1. 建立考点题目计数
+  const qCountByKp = new Map<string, number>();
+  for (const q of questions) {
+    if (q.type === "material") continue;
+    const kp = (q.kp ?? "").trim();
+    if (kp) {
+      qCountByKp.set(kp, (qCountByKp.get(kp) ?? 0) + 1);
+    }
+  }
+
+  // 2. 递归遍历考纲节点
+  let coveredNodes = 0;
+  let uncoveredNodes = 0;
+  let insufficientNodes = 0;
+
+  const traverse = (node: SyllabusNode, path: string) => {
+    const currentPath = path ? `${path} / ${node.title}` : node.title;
+
+    // 叶子节点或具备独立前缀的节点进行核算
+    if (node.children.length === 0 || node.kpPrefix) {
+      // 聚合命中该前缀的题目（支持完整前缀、末级考点包含对齐与单节点标题对齐）
+      let count = 0;
+      for (const [kp, c] of qCountByKp) {
+        if (
+          kp === node.kpPrefix ||
+          kp.startsWith(node.kpPrefix + "/") ||
+          node.kpPrefix.endsWith("/" + kp) ||
+          kp === node.title ||
+          kp.endsWith("/" + node.title)
+        ) {
+          count += c;
+        }
+      }
+
+      let status: SyllabusAuditItem["status"] = "balanced";
+      let suggestedAction = "出题量充沛均衡";
+
+      if (count === 0) {
+        status = "uncovered";
+        uncoveredNodes++;
+        suggestedAction = `🚨 零题覆盖盲区：建议优先补充至少 ${minRequired} 道基础题与核心题。`;
+      } else if (count < minRequired) {
+        status = "insufficient";
+        insufficientNodes++;
+        suggestedAction = `⚠️ 题量不足（现仅 ${count} 题）：建议增补 ${minRequired - count} 道变形题以增强训练深度。`;
+      } else if (count >= minRequired * 4) {
+        status = "crowded";
+        coveredNodes++;
+        suggestedAction = `📦 题量较为密集（已有 ${count} 题）：建议关注题目去重与变式打散。`;
+      } else {
+        coveredNodes++;
+      }
+
+      items.push({
+        kpPath: currentPath,
+        title: node.title,
+        questionCount: count,
+        minRequired,
+        status,
+        suggestedAction,
+      });
+    }
+
+    for (const child of node.children) {
+      traverse(child, currentPath);
+    }
+  };
+
+  for (const root of roots) {
+    traverse(root, "");
+  }
+
+  const totalNodes = items.length;
+  const coverageRatio = totalNodes > 0 ? Math.round((coveredNodes / totalNodes) * 100) : 0;
+
+  return {
+    totalNodes,
+    coveredNodes,
+    uncoveredNodes,
+    insufficientNodes,
+    coverageRatio,
+    items,
+  };
+}
+
+export function exportSyllabusAuditMarkdown(report: SyllabusAuditReport): string {
+  const lines: string[] = [];
+  lines.push(`# 📋 考纲出题完备度与知识点覆盖缺口体检报告`);
+  lines.push(`> 考纲考点总计：**${report.totalNodes}** 个 | 覆盖率：**${report.coverageRatio}%** | 零题盲区：**${report.uncoveredNodes}** 个 | 题量不足：**${report.insufficientNodes}** 个\n`);
+
+  lines.push(`## 📌 教师补充出题建议清单`);
+  lines.push(`| 考纲节点路径 | 当前题量 | 状态 | 教研出题建议 |`);
+  lines.push(`|---|---|---|---|`);
+
+  for (const it of report.items) {
+    const statusLabel = it.status === "uncovered" ? "🔴 零题盲区" : it.status === "insufficient" ? "🟡 题量不足" : it.status === "crowded" ? "🔵 题量密集" : "🟢 均衡";
+    lines.push(`| ${it.kpPath} | ${it.questionCount} / ${it.minRequired} | ${statusLabel} | ${it.suggestedAction} |`);
+  }
+
+  return lines.join("\n");
+}

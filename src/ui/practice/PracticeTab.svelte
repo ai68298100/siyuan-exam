@@ -3567,6 +3567,70 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       }
     }
 
+    async function exportGiftFormat() {
+      if (!activeBankId || !app) return;
+      try {
+        const text = await app.exportQuestionsToGift(activeBankId);
+        const blob = new Blob([text], { type: "text/plain;charset=utf-8;" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `${bankName || "题库"}.gift.txt`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        showMessage("已导出为 GIFT 格式 ✓", 3000, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4000, "error");
+      }
+    }
+
+    async function exportAnkiFormat() {
+      if (!activeBankId || !app) return;
+      try {
+        const text = await app.exportQuestionsToAnkiTsv(activeBankId);
+        const blob = new Blob([text], { type: "text/tab-separated-values;charset=utf-8;" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `${bankName || "题库"}.anki.tsv`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        showMessage("已导出为 Anki 卡包 TSV ✓", 3000, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4000, "error");
+      }
+    }
+
+    async function exportMdDocFormat() {
+      if (!activeBankId || !app) return;
+      try {
+        const text = await app.exportQuestionsToExamDocMarkdown(activeBankId);
+        const blob = new Blob([text], { type: "text/markdown;charset=utf-8;" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `${bankName || "题库"}-试题精选手册.md`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        showMessage("已导出为 Markdown 题册 ✓", 3000, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4000, "error");
+      }
+    }
+
+    async function exportSyllabusAudit() {
+      if (!activeBankId || !app) return;
+      try {
+        const md = await app.exportSyllabusAuditMarkdown(activeBankId);
+        const blob = new Blob([md], { type: "text/markdown;charset=utf-8;" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `考纲知识点出题缺口体检报告-${new Date().toISOString().slice(0, 10)}.md`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        showMessage("考纲出题缺口报告已导出 ✓", 3000, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4000, "error");
+      }
+    }
+
     async function drillVariantFor(q: Question) {
       if (!q) return;
       try {
@@ -7257,6 +7321,10 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
               <button role="menuitem" title={t("print.cardTip")} onclick={() => { printAnswerCard(); moreOpen = false; }}><Icon name="printer" size={14} /> {t("print.card")}</button>
               <button role="menuitem" title="导出包含题目、答案、考点、难度、采分点与破题教学点拨的教师讲义卷" onclick={() => { void printTeacherLectureSheet(); moreOpen = false; }}><Icon name="book" size={14} /> {t("mock.printTeacher")}</button>
               <button role="menuitem" title="导出全库试题实测难度、区分度与死干扰项诊断报告" onclick={() => { void exportItemQualityReport(); moreOpen = false; }}><Icon name="chart" size={14} /> {t("health.itemQualityAudit")}</button>
+              <div class="lv-more-sep" role="separator"></div>
+              <button role="menuitem" title="导出为 Moodle/学习通标准试题格式" onclick={() => { void exportGiftFormat(); moreOpen = false; }}><Icon name="export" size={14} /> {t("format.exportGift")}</button>
+              <button role="menuitem" title="导出为 Anki / FSRS 问答闪卡卡包" onclick={() => { void exportAnkiFormat(); moreOpen = false; }}><Icon name="layers" size={14} /> {t("format.exportAnki")}</button>
+              <button role="menuitem" title="导出为标准排版 Markdown 试题手册" onclick={() => { void exportMdDocFormat(); moreOpen = false; }}><Icon name="file-text" size={14} /> {t("format.exportMdDoc")}</button>
             </div>
           {/if}
         </div>
@@ -7372,6 +7440,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
                   </button>
                 {/each}
                 <button class="lv-btn sm lv-btn--ghost" onclick={downloadSyllabusGaps}><Icon name="export" size={13} /> {t("syl.exportGaps")}</button>
+                <button class="lv-btn sm lv-btn--ghost" onclick={exportSyllabusAudit} title="深度体检考纲零题覆盖盲区与题量不足考点"><Icon name="chart" size={13} /> {t("syl.auditCoverage")}</button>
               </div>
             {/if}
             {#if !sylDoc.roots.length || sylPreviewRoots}

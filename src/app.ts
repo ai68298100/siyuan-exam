@@ -3496,6 +3496,73 @@ export class ExamApp {
     return generateABExamPapers(questions, options);
   }
 
+  // ---------- 学生向：备考里程碑与荣誉成长体系 ----------
+  async getMilestoneOverview(bankId?: string): Promise<import("./core/milestones").MilestoneOverview> {
+    const targetBank = bankId ?? this.listBanks()[0]?.id;
+    const questions = targetBank ? await this.listQuestions(targetBank) : [];
+    const events = this.attempts.all();
+    const wrongItems = this.wrongItems();
+    const d = this.derived();
+    const { streak } = await import("./core/replayer");
+    const streakDays = streak(d);
+    const mockRuns = await this.listMockResults();
+    const { calculateMilestones } = await import("./core/milestones");
+    const eliminatedCount = Array.from(d.wrongbook.values()).filter((w) => w.status === "eliminated").length;
+
+    return calculateMilestones({
+      events,
+      questions,
+      wrongItems,
+      eliminatedCount,
+      streakDays,
+      mockRunCount: mockRuns.length,
+    });
+  }
+
+  async exportMilestoneBadgeWallMarkdown(bankId?: string): Promise<string> {
+    const overview = await this.getMilestoneOverview(bankId);
+    const { exportMilestoneBadgeWallMarkdown } = await import("./core/milestones");
+    return exportMilestoneBadgeWallMarkdown(overview);
+  }
+
+  // ---------- 教师向：多平台试题格式转换导出 (GIFT / Anki TSV / Markdown) ----------
+  async exportQuestionsToGift(bankId?: string): Promise<string> {
+    const targetBank = bankId ?? this.listBanks()[0]?.id;
+    const questions = targetBank ? await this.listQuestions(targetBank) : [];
+    const { exportQuestionsToGift } = await import("./core/formatExporter");
+    return exportQuestionsToGift(questions);
+  }
+
+  async exportQuestionsToAnkiTsv(bankId?: string): Promise<string> {
+    const targetBank = bankId ?? this.listBanks()[0]?.id;
+    const questions = targetBank ? await this.listQuestions(targetBank) : [];
+    const { exportQuestionsToAnkiTsv } = await import("./core/formatExporter");
+    return exportQuestionsToAnkiTsv(questions);
+  }
+
+  async exportQuestionsToExamDocMarkdown(bankId?: string, title?: string): Promise<string> {
+    const targetBank = bankId ?? this.listBanks()[0]?.id;
+    const questions = targetBank ? await this.listQuestions(targetBank) : [];
+    const bankName = this.listBanks().find((b) => b.id === targetBank)?.name || "试题册";
+    const { exportQuestionsToExamDocMarkdown } = await import("./core/formatExporter");
+    return exportQuestionsToExamDocMarkdown(questions, { title: title || `${bankName} · 精选试题手册` });
+  }
+
+  // ---------- 教师向：考纲知识点出题缺口与题量配比深度体检 ----------
+  async auditSyllabusCoverage(bankId?: string): Promise<import("./core/syllabus").SyllabusAuditReport> {
+    const targetBank = bankId ?? this.listBanks()[0]?.id;
+    const questions = targetBank ? await this.listQuestions(targetBank) : [];
+    const syllabusDoc = this.syllabusDoc();
+    const { auditSyllabusCoverage } = await import("./core/syllabus");
+    return auditSyllabusCoverage(syllabusDoc.roots, questions);
+  }
+
+  async exportSyllabusAuditMarkdown(bankId?: string): Promise<string> {
+    const report = await this.auditSyllabusCoverage(bankId);
+    const { exportSyllabusAuditMarkdown } = await import("./core/syllabus");
+    return exportSyllabusAuditMarkdown(report);
+  }
+
   dailySet(questions: Question[], dueFirst: Question[], n: number): Question[] {
     const seen = new Set<string>();
     const out: Question[] = [];

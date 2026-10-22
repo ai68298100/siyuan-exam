@@ -124,6 +124,26 @@
         graphGuideBusy = false;
       }
     }
+    let badgeWallBusy = $state(false);
+    async function exportBadgeWall() {
+      if (badgeWallBusy || !app) return;
+      badgeWallBusy = true;
+      try {
+        const md = await app.exportMilestoneBadgeWallMarkdown(bankId || undefined);
+        const blob = new Blob([md], { type: "text/markdown;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `备考个人荣誉勋章墙-${new Date().toISOString().slice(0, 10)}.md`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showMessage("荣誉勋章墙已导出 ✓", 3000, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
+      } finally {
+        badgeWallBusy = false;
+      }
+    }
     let weak = $state<ReturnType<typeof weakTop>>([]);
     let hours = $state<number[]>(new Array(24).fill(0));
     let mockHistory = $state<any[]>([]);
@@ -1182,6 +1202,15 @@
               title="导出考点拓扑图谱与阶段通关路径导学案"
             >
               <Icon name="book" size={12} /> {graphGuideBusy ? "…" : t("report.graphGuide")}
+            </button>
+            <button
+              type="button"
+              class="lv-chip sm"
+              onclick={exportBadgeWall}
+              disabled={badgeWallBusy}
+              title="导出个人备考荣誉勋章与成长里程碑手账"
+            >
+              <Icon name="activity" size={12} /> {badgeWallBusy ? "…" : t("milestone.badgeWall")}
             </button>
           </div>
         {/if}
