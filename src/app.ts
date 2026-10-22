@@ -85,6 +85,32 @@ export {
   filterStubbornWrongs,
   type StubbornRemediation,
 } from "./core/stubborn";
+export {
+  identifyBlindspots,
+  calculateReadinessDimensions,
+  generateReadinessReport,
+  exportReadinessReportMarkdown,
+  exportReadinessReportCsv,
+  type ReadinessDimensionKey,
+  type DimensionHealthStatus,
+  type ReadinessDimensionScore,
+  type BlindspotRiskLevel,
+  type BlindspotItem,
+  type ReadinessGrade,
+  type ReadinessHealthReport,
+  type ReadinessRadarOptions,
+} from "./core/readinessRadar";
+export {
+  assembleAdaptiveSprintPaper,
+  convertSprintPaperToBlueprint,
+  exportSprintPaperMarkdown,
+  exportSprintPaperCsv,
+  type SprintQuestionTier,
+  type SprintQuestionMeta,
+  type AdaptiveSprintPaperOptions,
+  type AdaptiveSprintPaperComposition,
+  type AdaptiveSprintPaper,
+} from "./core/adaptiveMockAssembler";
 import { buildImportCheckpoint, type ImportCheckpoint, type ImportReport } from "./importer/pipeline";
 import { planQuestionMerge } from "./core/duplicateMerger";
 import { sanitizeRichHtml } from "./libs/sanitize";
@@ -3222,6 +3248,80 @@ export class ExamApp {
     });
     this.invalidate();
     return q;
+  }
+
+  // ---------- 备考完备度体检与考点盲区雷达 ----------
+  async generateReadinessReport(
+    bankId?: string,
+    options?: import("./core/readinessRadar").ReadinessRadarOptions,
+  ): Promise<import("./core/readinessRadar").ReadinessHealthReport> {
+    const targetBank = bankId ?? this.listBanks()[0]?.id;
+    const questions = targetBank ? await this.listQuestions(targetBank) : [];
+    const events = this.attempts.all();
+    const replayRes = replay(events);
+    const { masteryByKp } = await import("./core/report");
+    const masteryList = masteryByKp(questions, replayRes.byQuestion, events, this.deps.now?.() ?? Date.now());
+    const { generateReadinessReport } = await import("./core/readinessRadar");
+    return generateReadinessReport(questions, masteryList, events, {
+      now: this.deps.now?.() ?? Date.now(),
+      ...options,
+    });
+  }
+
+  async exportReadinessReportMarkdown(
+    bankId?: string,
+    options?: import("./core/readinessRadar").ReadinessRadarOptions,
+  ): Promise<string> {
+    const report = await this.generateReadinessReport(bankId, options);
+    const { exportReadinessReportMarkdown } = await import("./core/readinessRadar");
+    return exportReadinessReportMarkdown(report);
+  }
+
+  async exportReadinessReportCsv(
+    bankId?: string,
+    options?: import("./core/readinessRadar").ReadinessRadarOptions,
+  ): Promise<string> {
+    const report = await this.generateReadinessReport(bankId, options);
+    const { exportReadinessReportCsv } = await import("./core/readinessRadar");
+    return exportReadinessReportCsv(report);
+  }
+
+  // ---------- 考前冲刺自适应密卷装配与导出 ----------
+  async assembleAdaptiveSprintPaper(
+    bankId?: string,
+    options?: import("./core/adaptiveMockAssembler").AdaptiveSprintPaperOptions,
+  ): Promise<import("./core/adaptiveMockAssembler").AdaptiveSprintPaper> {
+    const targetBank = bankId ?? this.listBanks()[0]?.id;
+    const questions = targetBank ? await this.listQuestions(targetBank) : [];
+    const events = this.attempts.all();
+    const wrongItems = this.wrongItems();
+    const radarReport = await this.generateReadinessReport(targetBank);
+    const { assembleAdaptiveSprintPaper } = await import("./core/adaptiveMockAssembler");
+    return assembleAdaptiveSprintPaper(
+      questions,
+      radarReport.blindspots,
+      wrongItems,
+      events,
+      options,
+    );
+  }
+
+  async exportSprintPaperMarkdown(
+    bankId?: string,
+    options?: import("./core/adaptiveMockAssembler").AdaptiveSprintPaperOptions & { showAnswers?: boolean },
+  ): Promise<string> {
+    const paper = await this.assembleAdaptiveSprintPaper(bankId, options);
+    const { exportSprintPaperMarkdown } = await import("./core/adaptiveMockAssembler");
+    return exportSprintPaperMarkdown(paper, { showAnswers: options?.showAnswers });
+  }
+
+  async exportSprintPaperCsv(
+    bankId?: string,
+    options?: import("./core/adaptiveMockAssembler").AdaptiveSprintPaperOptions,
+  ): Promise<string> {
+    const paper = await this.assembleAdaptiveSprintPaper(bankId, options);
+    const { exportSprintPaperCsv } = await import("./core/adaptiveMockAssembler");
+    return exportSprintPaperCsv(paper);
   }
 
   dailySet(questions: Question[], dueFirst: Question[], n: number): Question[] {

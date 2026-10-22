@@ -147,7 +147,7 @@ function extractClozeCards(
 
     // 先做一次粗替换：将 **...** 在没有 == 时也转换为高亮格式，方便 cloze 解析
     // 同时去除显式的“挖空：”或“填空：”提示前缀
-    let normalizedLine = line.replace(/^(?:(?:[【\[]?挖空[】\]]?|[【\[]?填空[】\]]?)\s*[:：]\s*)/i, "");
+    let normalizedLine = line.replace(/^(?:(?:[【[]?挖空[】\]]?|[【[]?填空[】\]]?)\s*[:：]\s*)/i, "");
     if (!/==[^=\n\r]+==/.test(normalizedLine)) {
       normalizedLine = normalizedLine.replace(/\*\*([^*\n\r]{2,30})\*\*/g, "==$1==");
     }

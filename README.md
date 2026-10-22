@@ -10,15 +10,15 @@
 
 [![Release](https://img.shields.io/github/v/release/ai68298100/siyuan-exam?logo=github)](https://github.com/ai68298100/siyuan-exam/releases)
 [![CI](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml/badge.svg)](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml)
-[![Tests](https://img.shields.io/badge/tests-845%20passed-brightgreen)](#开发)
+[![Tests](https://img.shields.io/badge/tests-1267%20passed-brightgreen)](#开发)
 [![SiYuan](https://img.shields.io/badge/SiYuan-%3E%3D%203.8.0-blue)](https://github.com/siyuan-note/siyuan)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 [English](README.en-US.md) · [当前状态](docs/STATUS.md) · [交付说明](docs/DELIVERY.md) · [组件清单](docs/UI-COMPONENTS.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md) · [下载发行包](https://github.com/ai68298100/siyuan-exam/releases) · [查看 R54 UI 原型](design/prototype-r54/index.html) · [反馈问题](https://github.com/ai68298100/siyuan-exam/issues) · [参与讨论](https://github.com/ai68298100/siyuan-exam/discussions)
 
-## 最新版本：v0.11.1（2026-10-19）
+## 最新版本：v0.11.1（2026-10-21）
 
-本轮为备考测评与题库生命周期重大里程碑升级。全面实现题目作者生命周期（草稿/待审/发布/废弃）与发布前强校验守卫；历史作答流水与开考试卷严格锁定不可变题版指纹，改题不改历史成绩并可回溯版本漂移；大批量导入支持中断取消与精准断点续传；会话内错题重排精准标记延迟回忆并细分初答正确率；实现争议题处置单与孤儿题诊断，默认净化模考与日常刷题池；共用题干新增材料只读卡片与兄弟题微型导航药丸条；题库 Peek 抽屉支持选项选择率直方分析与 0% 死干扰项检出；支持顽固题阈值诊断、建议处置与错题在册/封存归档双 Tab 切换；模考蓝图引入版本化评分政策（标准/部分分/倒扣分）与 5 题对比样例验算；练习反馈新增三档时机策略（逐题即时/小组延迟批次/会话末复盘）；实现正文挖空出题、演算草稿纸、题库快速去重合并与核心考点能力雷达图。全套单测扩充至 131 个测试文件、845 项测试 100% 通过。
+本轮为备考测评与题库生命周期重大里程碑升级。全面实现题目作者生命周期（草稿/待审/发布/废弃）与发布前强校验守卫；历史作答流水与开考试卷严格锁定不可变题版指纹，改题不改历史成绩并可回溯版本漂移；大批量导入支持中断取消与精准断点续传；会话内错题重排精准标记延迟回忆并细分初答正确率；实现争议题处置单与孤儿题诊断，默认净化模考与日常刷题池；共用题干新增材料只读卡片与兄弟题微型导航药丸条；题库 Peek 抽屉支持选项选择率直方分析与 0% 死干扰项检出；支持顽固题阈值诊断、建议处置与错题在册/封存归档双 Tab 切换；模考蓝图引入版本化评分政策（标准/部分分/倒扣分）与 5 题对比样例验算；练习反馈新增三档时机策略（逐题即时/小组延迟批次/会话末复盘）；实现正文挖空出题、演算草稿纸、题库快速去重合并；**高阶评测引擎全面闭环：五维备考完备度雷达与盲区清单体检、自适应冲刺密卷装配、经典测验理论（CTT）区分度与难度校准、考纲结构对比、主观题 20×20 答题纸字数实时控制、A4/A3 双栏全真排版打印与可重建离线练习集**。全套单测扩充至 161 个测试文件、1267 项测试 100% 通过。
 
 ## 上一版本：v0.10.4（2026-10-17）
 

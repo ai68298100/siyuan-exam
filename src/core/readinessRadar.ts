@@ -169,10 +169,10 @@ export function identifyBlindspots(
     // 计算距离上次复习过去的天数
     const daysSinceReview = lastReviewedAt ? Math.max(0, (now - lastReviewedAt) / (24 * 3600 * 1000)) : 999;
 
-    let risk: BlindspotRiskLevel = "watch";
-    let urgencyReason = "";
-    let prescription = "";
-    let recommendedQuestions = 0;
+    let risk: BlindspotRiskLevel;
+    let urgencyReason: string;
+    let prescription: string;
+    let recommendedQuestions: number;
 
     if (practicedCount === 0) {
       // 从未练习过
@@ -349,7 +349,7 @@ export function calculateReadinessDimensions(
   coverageScore = Math.max(0, Math.min(100, coverageScore));
 
   // 3. 记忆新鲜度 (Recency)
-  let recencyScore = 0;
+  let recencyScore: number;
   if (masteryList.length > 0) {
     const retentions = masteryList.map((m) => {
       if (m.evidenceAt) {
@@ -367,7 +367,7 @@ export function calculateReadinessDimensions(
   recencyScore = Math.max(0, Math.min(100, recencyScore));
 
   // 4. 盲区清零度 (Blindspot Clearance)
-  let clearanceScore = 0;
+  let clearanceScore: number;
   if (blindspots.length > 0) {
     let penalty = 0;
     for (const b of blindspots) {
@@ -383,7 +383,7 @@ export function calculateReadinessDimensions(
   clearanceScore = Math.max(0, Math.min(100, clearanceScore));
 
   // 5. 刷题自律度 (Stamina / Consistency)
-  let staminaScore = 0;
+  let staminaScore: number;
   if (attemptEvents.length > 0) {
     // 统计过去 14 天活跃作答天数
     const activeDays = new Set<string>();
@@ -659,7 +659,7 @@ export function exportReadinessReportCsv(report: ReadinessHealthReport): string 
     ].map(escapeCsv).join(","));
   }
 
-  return rows.join("\n");
+  return "\uFEFF" + rows.join("\n");
 }
 
 function escapeCsv(field: string): string {

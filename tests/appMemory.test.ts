@@ -549,4 +549,40 @@ describe("应用层记忆/写入路径（应用编排层测试补盲）", () => 
     expect(cardsCsv.startsWith("\uFEFF")).toBe(true);
     expect(cardsCsv).toContain("人民代表大会制度");
   });
+
+  it("121-04：ExamApp 备考完备度多维体检与考点盲区雷达闭环", async () => {
+    const q1 = { ...qWithBlock("q-ready-1"), kp: "刑法/总则/犯罪构成" };
+    const q2 = { ...qWithBlock("q-ready-2"), kp: "民法/物权/所有权" };
+    const client = {
+      sql: async () => [],
+      listQuestions: async () => [q1, q2],
+      getRiffDecks: async () => [],
+    } as unknown as KernelApiClient;
+
+    const app = mkApp(client);
+    app["banks"] = [{ id: "bank-ready", name: "备考完备度测试库", createdAt: 1 }] as never;
+
+    await app.attempts.load("d-ready");
+    app.attempts.append({ qid: "q-ready-1", kind: "practice", mode: "single", verdict: "correct", sessionId: "s1" });
+    app.attempts.append({ qid: "q-ready-2", kind: "practice", mode: "single", verdict: "wrong", sessionId: "s1" });
+
+    // 生成完备度报告
+    const report = await app.generateReadinessReport("bank-ready");
+    expect(Object.keys(report.dimensions).length).toBe(5);
+    expect(report.overallScore).toBeGreaterThan(0);
+    expect(["S", "A", "B", "C", "D"]).toContain(report.grade);
+    expect(report.blindspots.length).toBeGreaterThan(0);
+
+    // 导出 Markdown
+    const md = await app.exportReadinessReportMarkdown("bank-ready");
+    expect(md).toContain("# 🎯 备考完备度体检与考点盲区诊断报告");
+    expect(md).toContain("五维体检雷达指标");
+    expect(md).toContain("考点盲区扫描清单");
+
+    // 导出 CSV
+    const csv = await app.exportReadinessReportCsv("bank-ready");
+    expect(csv.startsWith("\uFEFF")).toBe(true);
+    expect(csv).toContain("考点名称");
+    expect(csv).toContain("风险等级");
+  });
 });

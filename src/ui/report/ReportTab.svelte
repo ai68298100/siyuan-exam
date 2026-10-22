@@ -84,6 +84,26 @@
       URL.revokeObjectURL(url);
       showMessage(t("report.exportRadarCsv") + " ✓", 3000, "info");
     }
+    let readinessExportBusy = $state(false);
+    async function exportReadinessReport() {
+      if (readinessExportBusy || !app) return;
+      readinessExportBusy = true;
+      try {
+        const md = await app.exportReadinessReportMarkdown(bankId || undefined);
+        const blob = new Blob([md], { type: "text/markdown;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `备考完备度体检报告-${new Date().toISOString().slice(0, 10)}.md`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showMessage("备考完备度体检报告已导出 ✓", 3000, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
+      } finally {
+        readinessExportBusy = false;
+      }
+    }
     let weak = $state<ReturnType<typeof weakTop>>([]);
     let hours = $state<number[]>(new Array(24).fill(0));
     let mockHistory = $state<any[]>([]);
@@ -1124,6 +1144,15 @@
               title={t("report.exportRadarCsv")}
             >
               <Icon name="export" size={12} /> CSV
+            </button>
+            <button
+              type="button"
+              class="lv-chip sm"
+              onclick={exportReadinessReport}
+              disabled={readinessExportBusy}
+              title="导出五维健康度体检雷达与考点盲区清单 Markdown 报告"
+            >
+              <Icon name="sparkles" size={12} /> {readinessExportBusy ? "…" : t("report.readinessReport")}
             </button>
           </div>
         {/if}

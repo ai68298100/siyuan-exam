@@ -464,6 +464,53 @@
       finally { blueprintBusy = false; }
     }
 
+    let sprintBusy = $state(false);
+    let printBusy = $state(false);
+
+    async function generateAdaptiveSprint() {
+      if (sprintBusy || !activeBankId || !questions.length) return;
+      sprintBusy = true;
+      try {
+        const { convertSprintPaperToBlueprint } = await import("@/core/adaptiveMockAssembler");
+        const defaultSize = bp.sections.reduce((acc, s) => acc + s.count, 0) || 20;
+        const paper = await app.assembleAdaptiveSprintPaper(activeBankId, {
+          paperSize: Math.min(30, Math.max(10, Math.min(defaultSize, questions.length))),
+        });
+        bp = convertSprintPaperToBlueprint(paper);
+        showMessage(
+          `⚡ ${paper.title}（盲区 ${paper.composition.criticalBlindspots} + 错题 ${paper.composition.confusingWrongs}）`,
+          4000,
+          "info",
+        );
+      } catch (e) {
+        showMessage(`冲刺密卷装配失败：${String(e instanceof Error ? e.message : e)}`, 4200, "error");
+      } finally {
+        sprintBusy = false;
+      }
+    }
+
+    async function printCompactPaper() {
+      if (printBusy || !activeBankId || !questions.length) return;
+      printBusy = true;
+      try {
+        const html = await app.buildCompactQuestionSheet(bp.name || "全真模拟试卷", activeBankId);
+        const win = window.open("", "_blank");
+        if (win) {
+          win.document.write(html);
+          win.document.close();
+          win.focus();
+        } else {
+          const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+          downloadBlob(blob, `${bp.name || "试卷"}-双栏排版.html`);
+          showMessage("已生成双栏排版试卷文件", 3000, "info");
+        }
+      } catch (e) {
+        showMessage(`打印试卷生成失败：${String(e instanceof Error ? e.message : e)}`, 4200, "error");
+      } finally {
+        printBusy = false;
+      }
+    }
+
     async function startExam() {
       if (starting || loading || resumeBusy || discardBusy || blueprintBusy) return;
       starting = true;
@@ -1310,6 +1357,8 @@
       <button class="lv-btn lv-btn--primary" onclick={startExam} disabled={!canStartExam} title={!canStartExam ? startDisabledReason : ""}><Icon name="play" size={16} /> {starting ? "…" : t("mock.start")}</button>
       <button class="lv-btn sm" onclick={saveBlueprint} disabled={blueprintBusy || starting || resumeBusy || discardBusy} aria-busy={blueprintBusy}><Icon name="save" size={14} /> {blueprintBusy ? "…" : t("mock.bpSave")}</button>
       <button class="lv-btn sm" onclick={restoreBlueprint} disabled={blueprintBusy || starting || resumeBusy || discardBusy} aria-busy={blueprintBusy}><Icon name="folder" size={14} /> {blueprintBusy ? "…" : t("mock.bpRestore")}</button>
+      <button class="lv-btn sm" onclick={generateAdaptiveSprint} disabled={sprintBusy || !questions.length || starting} aria-busy={sprintBusy} title="基于考点盲区与高频错题自适应装配全真密卷"><Icon name="sparkles" size={14} /> {sprintBusy ? "…" : t("mock.sprintPaper")}</button>
+      <button class="lv-btn sm" onclick={printCompactPaper} disabled={printBusy || !questions.length} aria-busy={printBusy} title="导出标准 A4/A3 双栏试卷与答题卡"><Icon name="file" size={14} /> {printBusy ? "…" : t("mock.printCompact")}</button>
     </div>
     {#if !canStartExam && startDisabledReason}<p class="lv-muted" role="status" style="margin:4px 0">{startDisabledReason}</p>{/if}
     <!-- 考后估分 -->

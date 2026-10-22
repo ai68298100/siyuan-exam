@@ -16,3 +16,4 @@ output/
 
 # 本机扫描历史
 .mimosa/
+.jeikcode/codegraph/
