@@ -4,6 +4,7 @@ import {
   buildPrintProCss,
   buildCompactQuestionSheetPro,
   buildCompactAnswerSheetPro,
+  buildTeacherLectureSheetPro,
   auditQuestionSheetSafety,
 } from "../src/core/printPro";
 
@@ -126,6 +127,32 @@ describe("PrintPro A4 双栏紧凑打印与分页防断引擎 (68-04 / 79-02)", 
       expect(html).toContain("参考答案要点");
       // 材料题不占用题号：第一道真实题编号应为 1
       expect(html).toContain(`1. <strong>B</strong>`);
+    });
+  });
+
+  describe("buildTeacherLectureSheetPro (教师授课与备课讲义卷)", () => {
+    it("包含完整题干、选项、教师参考答案、考点星级难度、采分点标准与破题教学点拨", () => {
+      const q: Question = {
+        id: "q-lecture-1",
+        type: "single",
+        stem: "若 $x + 2 = 5$，则 $x$ 等于（ ）",
+        options: ["1", "2", "3", "4"],
+        answer: "C",
+        kp: "初等代数 / 一元一次方程",
+        difficulty: 3,
+        analysis: "移项可得 $x = 5 - 2 = 3$，故选 C。",
+      };
+
+      const html = buildTeacherLectureSheetPro("2026 代数教学教案", [q]);
+      expect(html).toContain("教师讲义教案卷");
+      expect(html).toContain("教师授课讲义卷");
+      expect(html).toContain("初等代数 / 一元一次方程");
+      expect(html).toContain("★★★☆☆");
+      expect(html).toContain("参考答案");
+      expect(html).toContain("<strong>C</strong>");
+      expect(html).toContain("教学点拨与破题分析");
+      expect(html).toContain("移项可得");
+      expect(html).toContain('class="teacher-box"');
     });
   });
 });

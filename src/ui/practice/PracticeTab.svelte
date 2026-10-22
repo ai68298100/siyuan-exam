@@ -105,6 +105,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     let view: View = $state("entry");
     let soundEnabled = $state(readLocal("lv-exam/sound") !== "0");
     let speedDrillEnabled = $state(readLocal("lv-exam/speed-drill") === "1");
+    let userRole = $state<"student" | "teacher">(readLocal("lv-exam/role") === "teacher" ? "teacher" : "student");
     let hotkeysHelpOpen = $state(false);
     let paperGridModalOpen = $state(false);
 
@@ -3503,6 +3504,30 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
 
     let printWrongBusy = $state(false);
 
+    async function printTeacherLectureSheet() {
+      if (!activeBankId || !questions.length) return;
+      try {
+        const html = await app.buildTeacherLectureSheet(bankName || "题库试卷", activeBankId);
+        const win = window.open("", "_blank");
+        if (win) {
+          win.document.write(html);
+          win.document.close();
+          win.focus();
+        } else {
+          const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `${bankName || "题库"}-教师讲义教案卷.html`;
+          a.click();
+          URL.revokeObjectURL(url);
+          showMessage("已生成教师讲义教案卷文件", 3000, "info");
+        }
+      } catch (e) {
+        showMessage(`教师讲义生成失败：${String(e instanceof Error ? e.message : e)}`, 4000, "error");
+      }
+    }
+
     async function printWrongSheet(type: "question" | "answer") {
       if (printWrongBusy || !activeBankId || !filteredWrongQueue.length) return;
       printWrongBusy = true;
@@ -5405,6 +5430,13 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         <span class="lv-chip lv-focus-context">{t("bank.label")} {bankName}</span>
       {/if}
       {#if hasBank}<button class="lv-chip lv-focus-context" title={t("bank.removeTitle")} aria-label={t("bank.removeTitle")} onclick={removeActiveBank} disabled={importBusy || mSaving || aiMutationBusy}>✕</button>{/if}
+      <button class="lv-chip lv-focus-context" style="cursor:pointer" onclick={() => {
+        userRole = userRole === "student" ? "teacher" : "student";
+        writeLocal("lv-exam/role", userRole);
+        showMessage(userRole === "teacher" ? "已切换至【👨‍🏫 教师教研模式】：出题、生命周期审校与排版工具已就绪" : "已切换至【👨‍🎓 备考学员模式】：专注于刷题、错题攻坚与考前冲刺", 3000, "info");
+      }} title="点击切换身份视角（学员专注 vs 教师教研）">
+        {userRole === "teacher" ? "👨‍🏫 " + t("role.teacher") : "👨‍🎓 " + t("role.student")}
+      </button>
   </div>
   <div class="lv-shell" class:lv-shell-focus={view === "session" && !sessionDone} class:lv-shell-tasknav-hidden={(view === "session" && !sessionDone) || (view === "recite" && !reciteDone)}>
     <Rail active="practice" taskactive={view === "browse" || view === "wrongbook" ? "bank" : view === "manual" || view === "import" || view === "ai" || view === "materials" ? "create" : "today"} tasknavhidden={view === "session" && !sessionDone || view === "recite" && !reciteDone} ontasknavigate={onTaskNav} {plugin} items={railItems} open={railOpen} onclose={closeRail}
@@ -7162,6 +7194,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
               <button role="menuitem" title={t("print.qSheetTip")} onclick={() => { printQuestionSheet(); moreOpen = false; }}><Icon name="printer" size={14} /> {t("print.qSheet")}</button>
               <button role="menuitem" title={t("print.aSheetTip")} onclick={() => { printAnswerSheet(); moreOpen = false; }}><Icon name="printer" size={14} /> {t("print.aSheet")}</button>
               <button role="menuitem" title={t("print.cardTip")} onclick={() => { printAnswerCard(); moreOpen = false; }}><Icon name="printer" size={14} /> {t("print.card")}</button>
+              <button role="menuitem" title="导出包含题目、答案、考点、难度、采分点与破题教学点拨的教师讲义卷" onclick={() => { void printTeacherLectureSheet(); moreOpen = false; }}><Icon name="book" size={14} /> {t("mock.printTeacher")}</button>
             </div>
           {/if}
         </div>

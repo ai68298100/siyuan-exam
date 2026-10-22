@@ -29,6 +29,19 @@ export interface PracticeSetFilterSpec {
   onlyFav?: boolean;
 }
 
+export interface AssignmentPackMetadata {
+  /** 教师姓名/出卷人 */
+  authorName?: string;
+  /** 作业/测验建议时长（分钟） */
+  targetDurationMinutes?: number;
+  /** 及格线分数（默认 60） */
+  passLine?: number;
+  /** 作业要求与交卷说明 */
+  instructions?: string;
+  /** 是否防泄密模式（学生在交卷前隐藏答案和解析） */
+  strictExamMode?: boolean;
+}
+
 /** 可重建练习集声明（版本化信封 v1） */
 export interface PracticeSetSpec {
   v: 1;
@@ -47,6 +60,8 @@ export interface PracticeSetSpec {
   snapshot: { qid: string; hash: string }[];
   /** 写回策略：preview=只看不写；practice=正常练习写流水 */
   writePolicy: PracticeSetWritePolicy;
+  /** 教师分发作业包元数据（可选） */
+  assignment?: AssignmentPackMetadata;
 }
 
 export interface PracticeSetDiff {
@@ -192,4 +207,28 @@ export function rebuildPracticeSet(options: {
 export function isPracticeSetStale(spec: PracticeSetSpec, liveQuestions: readonly Question[]): boolean {
   if (spec.v !== 1) return true;
   return computeBankFingerprint(liveQuestions) !== spec.bankFingerprint;
+}
+
+/**
+ * 教师将选定题目封装为学生便携作业集（Assignment Pack）
+ */
+export function createAssignmentPack(options: {
+  id?: string;
+  name: string;
+  bankId: string;
+  questions: readonly Question[];
+  metadata?: AssignmentPackMetadata;
+}): PracticeSetSpec {
+  const spec = createPracticeSetSpec({
+    id: options.id ?? `assign-${Date.now().toString(36)}-${Math.floor(Math.random() * 1000).toString(36)}`,
+    name: options.name,
+    bankId: options.bankId,
+    questions: options.questions,
+    limit: options.questions.length,
+    writePolicy: "practice",
+  });
+  if (options.metadata) {
+    spec.assignment = options.metadata;
+  }
+  return spec;
 }

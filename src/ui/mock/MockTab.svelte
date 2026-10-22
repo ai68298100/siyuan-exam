@@ -533,6 +533,28 @@
       }
     }
 
+    async function printTeacherLecturePaper() {
+      if (printBusy || !activeBankId || !questions.length) return;
+      printBusy = true;
+      try {
+        const html = await app.buildTeacherLectureSheet(bp.name || "全真模拟试卷", activeBankId);
+        const win = window.open("", "_blank");
+        if (win) {
+          win.document.write(html);
+          win.document.close();
+          win.focus();
+        } else {
+          const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+          downloadBlob(blob, `${bp.name || "试卷"}-教师讲义教案卷.html`);
+          showMessage("已生成教师讲义教案卷文件", 3000, "info");
+        }
+      } catch (e) {
+        showMessage(`教师讲义生成失败：${String(e instanceof Error ? e.message : e)}`, 4200, "error");
+      } finally {
+        printBusy = false;
+      }
+    }
+
     async function startExam() {
       if (starting || loading || resumeBusy || discardBusy || blueprintBusy) return;
       starting = true;
@@ -1381,6 +1403,7 @@
       <button class="lv-btn sm" onclick={restoreBlueprint} disabled={blueprintBusy || starting || resumeBusy || discardBusy} aria-busy={blueprintBusy}><Icon name="folder" size={14} /> {blueprintBusy ? "…" : t("mock.bpRestore")}</button>
       <button class="lv-btn sm" onclick={generateAdaptiveSprint} disabled={sprintBusy || !questions.length || starting} aria-busy={sprintBusy} title="基于考点盲区与高频错题自适应装配全真密卷"><Icon name="sparkles" size={14} /> {sprintBusy ? "…" : t("mock.sprintPaper")}</button>
       <button class="lv-btn sm" onclick={printCompactPaper} disabled={printBusy || !questions.length} aria-busy={printBusy} title="导出标准 A4/A3 双栏试卷与答题卡"><Icon name="file" size={14} /> {printBusy ? "…" : t("mock.printCompact")}</button>
+      <button class="lv-btn sm" onclick={printTeacherLecturePaper} disabled={printBusy || !questions.length} aria-busy={printBusy} title="导出包含题目、答案、考点、难度、采分点与破题教学点拨的教师讲义卷"><Icon name="book" size={14} /> {printBusy ? "…" : t("mock.printTeacher")}</button>
     </div>
     {#if !canStartExam && startDisabledReason}<p class="lv-muted" role="status" style="margin:4px 0">{startDisabledReason}</p>{/if}
     <!-- 考后估分 -->
@@ -1864,6 +1887,7 @@
     <div class="lv-row">
       <button class="lv-btn lv-btn--ghost sm" onclick={exportScoreMd} disabled={scoreExportBusy}><Icon name="table" size={13} /> {scoreExportBusy ? "…" : t("mock.exportScore")}</button>
       <button class="lv-btn lv-btn--ghost sm" onclick={printCompactAnswerSheet} disabled={printBusy} title="生成带答案与详细解析的双栏出版级打印册"><Icon name="file" size={13} /> {t("mock.printAnswerSheet")}</button>
+      <button class="lv-btn lv-btn--ghost sm" onclick={printTeacherLecturePaper} disabled={printBusy} title="生成包含题目、答案、考点难度、采分点细则与破题教学点拨的教师讲义教案卷"><Icon name="book" size={13} /> {t("mock.printTeacher")}</button>
       {#if activeBankId}
         <button class="lv-btn lv-btn--ghost sm" onclick={writeScoreDoc} disabled={scoreWriteBusy} aria-busy={scoreWriteBusy}><Icon name="book" size={14} /> {scoreWriteBusy ? t("mock.scoreWriting", "正在写入成绩单…") : scoreWriteError ? t("mock.scoreWriteRetry", "重试写入成绩单") : t("mock.exportToDoc")}</button>
       {/if}

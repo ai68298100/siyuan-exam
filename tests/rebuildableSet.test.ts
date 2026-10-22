@@ -6,6 +6,7 @@ import {
   createPracticeSetSpec,
   rebuildPracticeSet,
   isPracticeSetStale,
+  createAssignmentPack,
 } from "../src/core/rebuildableSet";
 
 function mkQ(id: string, overrides: Partial<Question> = {}): Question {
@@ -173,6 +174,31 @@ describe("RebuildableSet 可重建临时练习集引擎 (65-04 / 61-01 / 55-03)"
       const spec = createPracticeSetSpec({ id: "x", name: "n", bankId: "b", questions: bank, limit: 3 });
       expect(isPracticeSetStale(spec, bank)).toBe(false);
       expect(isPracticeSetStale(spec, [...bank, mkQ("extra")])).toBe(true);
+    });
+  });
+
+  describe("createAssignmentPack (教师分发作业包)", () => {
+    it("正确生成带时长限制、及格线与教师说明的学生作业包", () => {
+      const bank = mkBank(5);
+      const pack = createAssignmentPack({
+        name: "第三周阶段随堂测验",
+        bankId: "b-grade10",
+        questions: bank,
+        metadata: {
+          authorName: "张老师",
+          targetDurationMinutes: 45,
+          passLine: 70,
+          instructions: "请独立完成，严禁查阅教材与笔记",
+          strictExamMode: true,
+        },
+      });
+
+      expect(pack.name).toBe("第三周阶段随堂测验");
+      expect(pack.writePolicy).toBe("practice");
+      expect(pack.assignment?.authorName).toBe("张老师");
+      expect(pack.assignment?.targetDurationMinutes).toBe(45);
+      expect(pack.assignment?.strictExamMode).toBe(true);
+      expect(pack.snapshot).toHaveLength(5);
     });
   });
 });

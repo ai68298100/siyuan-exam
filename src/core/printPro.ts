@@ -100,6 +100,20 @@ export function buildPrintProCss(options: PrintProOptions = {}): string {
     .answer-area { border-bottom: 1px solid #999; height: 1.8em; margin: 4px 0 0 1.2em; }
     .ans-analysis { color: #333; font-size: 9.8pt; margin-left: 1.2em; white-space: pre-wrap; overflow-wrap: anywhere; }
     .kp-tag { color: #666; font-size: 8.5pt; }
+    .teacher-box {
+      margin: 4px 0 0 1.2em;
+      padding: 5px 8px;
+      background: #fafafa;
+      border: 1px dashed #bbb;
+      border-left: 3px solid #2e7d32;
+      border-radius: 2px;
+      font-size: 9.3pt;
+      line-height: 1.45;
+    }
+    .teacher-ans { color: #1b5e20; font-weight: 700; }
+    .teacher-meta { color: #666; font-size: 8.5pt; margin: 2px 0; }
+    .teacher-rubric { color: #0277bd; font-size: 8.8pt; margin: 2px 0; }
+    .teacher-analysis { color: #333; margin-top: 2px; }
     footer.sheet-footer {
       position: fixed; bottom: 0; left: 0; right: 0;
       border-top: 1px solid #ccc; padding-top: 2px; margin-top: 8px;
@@ -214,6 +228,78 @@ export function buildCompactAnswerSheetPro(
   }
 
   parts.push(`</section>`, renderFooter(options.footerNote), `</body></html>`);
+  return parts.join("\n");
+}
+
+/**
+ * 生成 A4 双栏/单栏【教师备课与授课讲义卷】HTML（教师教研核心）。
+ * 特性：题面 + 选项 + 教师参考答案 + 考点难度 + 采分点标准 + 破题教学解析 + 数学公式。
+ */
+export function buildTeacherLectureSheetPro(
+  title: string,
+  questions: readonly Question[],
+  options: PrintProOptions = {},
+): string {
+  const parts: string[] = [
+    `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>${escapeHtml(title)} · 教师讲义教案卷</title><style>${buildPrintProCss(options)}</style></head><body>`,
+    renderHeader(`${title} · 教师授课讲义卷`, `共 ${questions.length} 题`, options.paperNo),
+    `<section class="questions">`,
+  ];
+
+  const printedGroups = new Set<string>();
+
+  questions.forEach((q, i) => {
+    const no = i + 1;
+    let materialHtml = "";
+    if (q.group && !printedGroups.has(q.group)) {
+      const carrier = questions.find((m) => m.group === q.group && m.type === "material" && m.analysis);
+      if (carrier?.analysis) {
+        materialHtml = `<div class="material-block q-group-head">${renderMathInText(carrier.analysis)}</div>`;
+        printedGroups.add(q.group);
+      }
+    }
+
+    if (q.type === "material") {
+      if (q.group) {
+        if (materialHtml) parts.push(`<div class="q">${materialHtml}</div>`);
+        return;
+      }
+      if (q.analysis) {
+        parts.push(`<div class="q">${materialHtml}<div class="material-block">${renderMathInText(q.analysis)}</div></div>`);
+      }
+      return;
+    }
+
+    parts.push(`<div class="q">`);
+    if (materialHtml) parts.push(materialHtml);
+    const scoreText = q.score ? `<span class="q-score">${q.score} 分</span>` : "";
+    parts.push(`<div class="q-head"><span class="q-type">${escapeHtml(TYPE_NAMES[q.type] ?? q.type)}</span>${no}.${scoreText}</div>`);
+    parts.push(`<div class="q-stem">${renderMathInText(q.stem)}</div>`);
+    q.options.forEach((o, oi) => {
+      parts.push(`<div class="opt">${String.fromCharCode(65 + oi)}. ${renderMathInText(o)}</div>`);
+    });
+
+    // 教师备课核心卡片
+    parts.push(`<div class="teacher-box">`);
+    parts.push(`<div>【<span class="teacher-ans">参考答案</span>】：<strong>${escapeHtml(q.answer)}</strong></div>`);
+    const metaParts: string[] = [];
+    if (q.kp) metaParts.push(`🏷️ 考点：${escapeHtml(q.kp)}`);
+    if (q.difficulty) metaParts.push(`⭐ 难度：${"★".repeat(Math.min(5, Math.max(1, q.difficulty)))}${"☆".repeat(Math.max(0, 5 - Math.min(5, q.difficulty)))}`);
+    if (metaParts.length) parts.push(`<div class="teacher-meta">${metaParts.join(" · ")}</div>`);
+
+    if (q.type === "short" && q.rubric?.criteria?.length) {
+      const rubricText = q.rubric.criteria.map((c) => `${c.label}(${Math.round(c.weight * 100)}%)`).join("；");
+      parts.push(`<div class="teacher-rubric">📋 采分点标准：${escapeHtml(rubricText)}</div>`);
+    }
+
+    if (q.analysis) {
+      parts.push(`<div class="teacher-analysis">💡 <strong>教学点拨与破题分析</strong>：${renderMathInText(q.analysis)}</div>`);
+    }
+    parts.push(`</div>`); // end .teacher-box
+    parts.push(`</div>`); // end .q
+  });
+
+  parts.push(`</section>`, renderFooter(options.footerNote || "小驴考试 · 教师备课授课讲义"), `</body></html>`);
   return parts.join("\n");
 }
 

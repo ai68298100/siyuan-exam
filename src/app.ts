@@ -2968,6 +2968,17 @@ export class ExamApp {
     return buildCompactAnswerSheetPro(title, questions, options);
   }
 
+  async buildTeacherLectureSheet(
+    title: string,
+    bankId?: string,
+    options?: import("./core/printPro").PrintProOptions,
+  ): Promise<string> {
+    const targetBank = bankId ?? this.listBanks()[0]?.id;
+    const questions = targetBank ? await this.listQuestions(targetBank) : [];
+    const { buildTeacherLectureSheetPro } = await import("./core/printPro");
+    return buildTeacherLectureSheetPro(title, questions, options);
+  }
+
   // ---------- 65-04 可重建临时练习集声明与管理 ----------
   async savePracticeSetSpec(spec: import("./core/rebuildableSet").PracticeSetSpec): Promise<void> {
     this.assertStorageWritable();
