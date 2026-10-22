@@ -23,7 +23,7 @@ export function escapeHtml(s: string): string {
 /** 属性值转义（同 escapeHtml，语义别名，便于调用点自文档） */
 export const escapeAttr = escapeHtml;
 
-// 排版 + 表格 + GFM 任务列表 + 图/链接； KaTeX 走 span+style，不需要额外标签
+// 排版 + 表格 + GFM 任务列表 + 图/链接 + 矢量数学图表 SVG； KaTeX 走 span+style，不需要额外标签
 const RICH_ALLOWED_TAGS = [
   "p", "br", "hr",
   "h1", "h2", "h3", "h4", "h5", "h6",
@@ -35,13 +35,20 @@ const RICH_ALLOWED_TAGS = [
   "a", "img", "figure", "figcaption",
   "details", "summary",
   "input",
+  // 矢量数学图表标签
+  "svg", "line", "path", "polygon", "polyline", "circle", "rect", "text", "g",
 ];
 
-// class/style 供思源排版与 KaTeX；id 供锚点；colspan/rowspan/start 供表格与有序列表
+// class/style 供思源排版与 KaTeX；id 供锚点；colspan/rowspan/start 供表格；SVG 属性供数学图表
 const RICH_ALLOWED_ATTR = [
   "class", "style", "id", "href", "src", "alt", "title",
   "colspan", "rowspan", "start", "type", "checked", "disabled",
   "data-latex",
+  // 矢量图表属性
+  "viewBox", "viewbox", "x1", "y1", "x2", "y2", "points", "d", "fill",
+  "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "opacity",
+  "x", "y", "cx", "cy", "r", "font-size", "font-family", "font-style", "font-weight", "text-anchor",
+  "role", "aria-label", "width", "height",
 ];
 
 // CSS 属性值可以影响插件壳的布局和交互，即使没有执行脚本也可能把题面

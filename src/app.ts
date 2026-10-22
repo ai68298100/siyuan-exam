@@ -2692,7 +2692,9 @@ export class ExamApp {
     }
     if (!this.kernelOnline) return "";
     try {
-      const raw = await this.deps.client.renderMarkdown(q.stem);
+      const { renderMathDiagramsInText } = await import("./core/mathDiagram");
+      const stemWithDiagrams = renderMathDiagramsInText(q.stem);
+      const raw = await this.deps.client.renderMarkdown(stemWithDiagrams);
       // P0-07：题干来自导入（不可信源），内核 md2html 透传裸 HTML——渲染产物必须过白名单
       const html = sanitizeRichHtml(raw);
       if (this.renderCache.size >= ExamApp.MAX_RENDER_CACHE) {

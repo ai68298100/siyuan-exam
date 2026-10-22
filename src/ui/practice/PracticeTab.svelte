@@ -5567,15 +5567,46 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         <span class="lv-chip lv-focus-context">{t("bank.label")} {bankName}</span>
       {/if}
       {#if hasBank}<button class="lv-chip lv-focus-context" title={t("bank.removeTitle")} aria-label={t("bank.removeTitle")} onclick={removeActiveBank} disabled={importBusy || mSaving || aiMutationBusy}>✕</button>{/if}
-      <button class="lv-chip lv-focus-context" style="cursor:pointer" onclick={() => {
-        userRole = userRole === "student" ? "teacher" : "student";
-        writeLocal("lv-exam/role", userRole);
-        showMessage(userRole === "teacher" ? "已切换至【👨‍🏫 教师教研模式】：出题、生命周期审校与排版工具已就绪" : "已切换至【👨‍🎓 备考学员模式】：专注于刷题、错题攻坚与考前冲刺", 3000, "info");
-      }} title="点击切换身份视角（学员专注 vs 教师教研）">
-        {userRole === "teacher" ? "👨‍🏫 " + t("role.teacher") : "👨‍🎓 " + t("role.student")}
-      </button>
+      <div class="lv-role-segmented lv-focus-context" role="radiogroup" aria-label="身份模式切换">
+        <button
+          type="button"
+          class="lv-role-pill"
+          class:active={userRole === "student"}
+          class:active-student={userRole === "student"}
+          role="radio"
+          aria-checked={userRole === "student"}
+          onclick={() => {
+            if (userRole !== "student") {
+              userRole = "student";
+              writeLocal("lv-exam/role", "student");
+              showMessage("已切换至【👨‍🎓 备考学员模式】：专注于每日计划、极速刷题与错题攻坚", 2500, "info");
+            }
+          }}
+          title={t("role.student")}
+        >
+          <span>👨‍🎓</span> <b>{t("role.student")}</b>
+        </button>
+        <button
+          type="button"
+          class="lv-role-pill"
+          class:active={userRole === "teacher"}
+          class:active-teacher={userRole === "teacher"}
+          role="radio"
+          aria-checked={userRole === "teacher"}
+          onclick={() => {
+            if (userRole !== "teacher") {
+              userRole = "teacher";
+              writeLocal("lv-exam/role", "teacher");
+              showMessage("已切换至【👨‍🏫 教师教研模式】：出题工作台、质量审校与排版工具已就绪", 2500, "info");
+            }
+          }}
+          title={t("role.teacher")}
+        >
+          <span>👨‍🏫</span> <b>{t("role.teacher")}</b>
+        </button>
+      </div>
   </div>
-  <div class="lv-shell" class:lv-shell-focus={view === "session" && !sessionDone} class:lv-shell-tasknav-hidden={(view === "session" && !sessionDone) || (view === "recite" && !reciteDone)}>
+  <div class="lv-shell" data-exam-role={userRole} class:lv-shell-focus={view === "session" && !sessionDone} class:lv-shell-tasknav-hidden={(view === "session" && !sessionDone) || (view === "recite" && !reciteDone)}>
     <Rail active="practice" taskactive={view === "browse" || view === "wrongbook" ? "bank" : view === "manual" || view === "import" || view === "ai" || view === "materials" ? "create" : "today"} tasknavhidden={view === "session" && !sessionDone || view === "recite" && !reciteDone} ontasknavigate={onTaskNav} {plugin} items={railItems} open={railOpen} onclose={closeRail}
       project={{ name: bankName || t("guard.title"), kicker: t("rail.projectKicker") }} onproject={() => (view = "entry")}
       onquickcreate={() => { view = "manual"; }} />
@@ -6738,6 +6769,8 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         <span class="lv-chip">{t("manual.title")}</span>
         <button class="lv-btn sm" onclick={openOcrModal} title="粘贴试题识别文本一键智能提取填入表单"><Icon name="camera" size={13} /> {t("manual.ocrFastFill")}</button>
         <button class="lv-btn sm" onclick={normalizeManualFormulas} title="清洗题干与选项中公式的空格与语法"><Icon name="sparkles" size={13} /> {t("manual.formulaNormalize")}</button>
+        <button class="lv-btn sm" onclick={() => { const plotTpl = `\n\n\`\`\`math-plot\ny = x^2 - 2\nx: [-3, 3]\ny: [-3, 5]\ntitle: 函数图像 y = x² - 2\n\`\`\`\n`; mStem = (mStem ? mStem.trim() : "") + plotTpl; showMessage("已在题干插入函数图像模板", 2500, "info"); }} title="在题干快速插入直角坐标系函数图像绘制模板"><Icon name="chart" size={13} /> {t("manual.insertPlot")}</button>
+        <button class="lv-btn sm" onclick={() => { const diagTpl = `\n\n\`\`\`math-diagram\ntriangle: A(140, 20), B(40, 160), C(240, 160)\n\`\`\`\n`; mStem = (mStem ? mStem.trim() : "") + diagTpl; showMessage("已在题干插入几何图形模板", 2500, "info"); }} title="在题干快速插入几何三角形矢量图模板"><Icon name="activity" size={13} /> {t("manual.insertDiagram")}</button>
         {#if draftRestored}<span class="lv-chip lv-chip--amb">{t("manual.draftRestored")}</span>{/if}
         {#if mSaved}<span class="lv-chip lv-chip--grn num">✓ {mSaved}</span>{/if}
       </div>

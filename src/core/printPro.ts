@@ -10,6 +10,7 @@
 
 import type { Question } from "./types";
 import { renderMathInText, getMathPrintStyles } from "./math";
+import { renderMathDiagramsInText } from "./mathDiagram";
 
 export type PaperSize = "A4" | "Letter";
 export type ColumnLayout = "single" | "double";
@@ -184,7 +185,7 @@ export function buildCompactQuestionSheetPro(
     if (materialHtml) parts.push(materialHtml);
     const scoreHtml = showScore ? `<span class="q-score">${q.score} 分</span>` : "";
     parts.push(`<div class="q-head"><span class="q-type">${escapeHtml(TYPE_NAMES[q.type] ?? q.type)}</span>${no}.${scoreHtml}</div>`);
-    parts.push(`<div class="q-stem">${renderMathInText(q.stem)}</div>`);
+    parts.push(`<div class="q-stem">${renderMathInText(renderMathDiagramsInText(q.stem))}</div>`);
     q.options.forEach((o, oi) => {
       parts.push(`<div class="opt">${String.fromCharCode(65 + oi)}. ${renderMathInText(o)}</div>`);
     });
@@ -274,7 +275,7 @@ export function buildTeacherLectureSheetPro(
     if (materialHtml) parts.push(materialHtml);
     const scoreText = q.score ? `<span class="q-score">${q.score} 分</span>` : "";
     parts.push(`<div class="q-head"><span class="q-type">${escapeHtml(TYPE_NAMES[q.type] ?? q.type)}</span>${no}.${scoreText}</div>`);
-    parts.push(`<div class="q-stem">${renderMathInText(q.stem)}</div>`);
+    parts.push(`<div class="q-stem">${renderMathInText(renderMathDiagramsInText(q.stem))}</div>`);
     q.options.forEach((o, oi) => {
       parts.push(`<div class="opt">${String.fromCharCode(65 + oi)}. ${renderMathInText(o)}</div>`);
     });

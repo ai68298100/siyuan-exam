@@ -138,6 +138,33 @@ export function renderSemanticLatex(latex: string, displayMode = false): string 
 
   let s = escapeHtml(trimmed);
 
+  // 0. 解析矩阵与行列式：\begin{pmatrix} ... \end{pmatrix} / bmatrix / vmatrix / matrix
+  s = s.replace(
+    /\\begin\{(matrix|pmatrix|bmatrix|vmatrix)\}([\s\S]*?)\\end\{\1\}/g,
+    (_m, kind: string, body: string) => {
+      const rows = body.split(/\\\\|\n/).map((r) => r.trim()).filter(Boolean);
+      const rowsHtml = rows
+        .map((r) => {
+          const cells = r.split(/&amp;|&/).map((c) => `<td class="lv-math-cell">${c.trim()}</td>`).join("");
+          return `<tr>${cells}</tr>`;
+        })
+        .join("");
+      return `<table class="lv-math-matrix lv-math-${kind}"><tbody>${rowsHtml}</tbody></table>`;
+    },
+  );
+
+  // 0.1 解析分段函数与方程组：\begin{cases} ... \end{cases}
+  s = s.replace(/\\begin\{cases\}([\s\S]*?)\\end\{cases\}/g, (_m, body: string) => {
+    const rows = body.split(/\\\\|\n/).map((r) => r.trim()).filter(Boolean);
+    const rowsHtml = rows
+      .map((r) => `<div class="lv-math-case-row">${r.replace(/&amp;|&/g, " ")}</div>`)
+      .join("");
+    return `<span class="lv-math-cases">${rowsHtml}</span>`;
+  });
+
+  // 0.2 解析向量：\vec{x}
+  s = s.replace(/\\vec\{([^{}]+)\}/g, '<span class="lv-math-vec"><span class="lv-math-arrow">→</span>$1</span>');
+
   // 1. 解析分式 \frac{A}{B}
   s = s.replace(
     /\\frac\{([^{}]+)\}\{([^{}]+)\}/g,
@@ -343,6 +370,52 @@ export function getMathPrintStyles(): string {
   font-size: 0.75em;
   vertical-align: sub;
   line-height: 0;
+}
+.lv-math-matrix {
+  display: inline-table;
+  vertical-align: middle;
+  border-collapse: collapse;
+  margin: 0 4px;
+}
+.lv-math-matrix td {
+  padding: 1px 6px;
+  text-align: center;
+}
+.lv-math-pmatrix {
+  border-left: 1.5px solid currentColor;
+  border-right: 1.5px solid currentColor;
+  border-radius: 4px;
+}
+.lv-math-bmatrix {
+  border-left: 2px solid currentColor;
+  border-right: 2px solid currentColor;
+}
+.lv-math-vmatrix {
+  border-left: 1px solid currentColor;
+  border-right: 1px solid currentColor;
+}
+.lv-math-cases {
+  display: inline-flex;
+  flex-direction: column;
+  vertical-align: middle;
+  border-left: 2px solid currentColor;
+  padding-left: 6px;
+  margin: 0 4px;
+  font-size: 0.9em;
+}
+.lv-math-case-row {
+  line-height: 1.4;
+}
+.lv-math-vec {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  vertical-align: middle;
+  line-height: 1;
+}
+.lv-math-arrow {
+  font-size: 0.7em;
+  line-height: 0.7;
 }
 `;
 }

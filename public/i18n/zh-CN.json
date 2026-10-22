@@ -377,6 +377,8 @@
     "manual.ocrPasteTip": "支持直接按 Ctrl+V 粘贴试卷截图",
     "manual.formulaNormalize": "规范公式",
     "manual.formulaDone": "公式已规范化",
+    "manual.insertPlot": "插入函数图",
+    "manual.insertDiagram": "插入几何图",
     "manual.type": "题型",
     "manual.switchTypeTitle": "切换题型？",
     "manual.switchTypeConfirm": "当前题干、选项或答案会被清理；已保存的草稿仍可从本页恢复。确认继续吗？",

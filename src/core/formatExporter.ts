@@ -19,22 +19,25 @@ export function exportQuestionsToGift(questions: readonly Question[]): string {
     if (q.type === "material") continue;
 
     const titlePrefix = q.kp ? `::${q.kp.replace(/[/: ]/g, "_")}::` : "";
-    const stem = q.stem.replace(/[{}]/g, "\\$&").trim();
-    const feedback = q.analysis ? `#${q.analysis.replace(/[{}]/g, "\\$&").trim()}` : "";
+    const rawStem = q.stem ?? "";
+    const stem = rawStem.replace(/[{}]/g, "\\$&").trim();
+    const rawAnalysis = q.analysis ?? "";
+    const feedback = rawAnalysis ? `#${rawAnalysis.replace(/[{}]/g, "\\$&").trim()}` : "";
+    const rawAnswer = (q.answer ?? "").trim();
 
     if (q.type === "judge") {
-      const isTrue = /^[Tt]|对|正确|√/.test(q.answer.trim());
+      const isTrue = /^[Tt]|对|正确|√/.test(rawAnswer);
       blocks.push(`${titlePrefix}${stem} {${isTrue ? "TRUE" : "FALSE"}${feedback}}`);
       continue;
     }
 
     if (q.type === "single") {
-      const ansLetter = q.answer.trim().toUpperCase();
+      const ansLetter = rawAnswer.toUpperCase();
       const ansIdx = ansLetter.charCodeAt(0) - 65;
 
       const optParts: string[] = [];
-      q.options.forEach((opt, i) => {
-        const cleanedOpt = opt.replace(/[{}]/g, "\\$&").trim();
+      (q.options ?? []).forEach((opt, i) => {
+        const cleanedOpt = (opt ?? "").replace(/[{}]/g, "\\$&").trim();
         if (i === ansIdx) {
           optParts.push(`=${cleanedOpt}${feedback}`);
         } else {
@@ -47,13 +50,13 @@ export function exportQuestionsToGift(questions: readonly Question[]): string {
     }
 
     if (q.type === "multiple") {
-      const ansLetters: string[] = q.answer.trim().toUpperCase().match(/[A-J]/g) || [];
+      const ansLetters: string[] = rawAnswer.toUpperCase().match(/[A-J]/g) || [];
       const weight = ansLetters.length > 0 ? (100 / ansLetters.length).toFixed(2) : "50";
 
       const optParts: string[] = [];
-      q.options.forEach((opt, i) => {
+      (q.options ?? []).forEach((opt, i) => {
         const letter = String.fromCharCode(65 + i);
-        const cleanedOpt = opt.replace(/[{}]/g, "\\$&").trim();
+        const cleanedOpt = (opt ?? "").replace(/[{}]/g, "\\$&").trim();
         if (ansLetters.includes(letter)) {
           optParts.push(`~%${weight}%${cleanedOpt}`);
         } else {
@@ -66,7 +69,7 @@ export function exportQuestionsToGift(questions: readonly Question[]): string {
     }
 
     if (q.type === "fill" || q.type === "short") {
-      const cleanAns = q.answer.replace(/[{}]/g, "\\$&").trim();
+      const cleanAns = rawAnswer.replace(/[{}]/g, "\\$&").trim();
       blocks.push(`${titlePrefix}${stem} {=${cleanAns}${feedback}}`);
       continue;
     }
@@ -88,17 +91,17 @@ export function exportQuestionsToAnkiTsv(questions: readonly Question[]): string
     if (q.type === "material") continue;
 
     // 正面：题干 + 格式化选项
-    let front = `<div><b>【${q.type === "single" ? "单选题" : q.type === "multiple" ? "多选题" : q.type === "judge" ? "判断题" : q.type === "fill" ? "填空题" : "简答题"}】</b> ${normalizeLatexFormula(q.stem)}</div>`;
-    if (q.options.length) {
+    let front = `<div><b>【${q.type === "single" ? "单选题" : q.type === "multiple" ? "多选题" : q.type === "judge" ? "判断题" : q.type === "fill" ? "填空题" : "简答题"}】</b> ${normalizeLatexFormula(q.stem ?? "")}</div>`;
+    if ((q.options ?? []).length) {
       front += "<ul style='margin-top:6px;padding-left:20px'>";
-      q.options.forEach((opt, oi) => {
-        front += `<li>${String.fromCharCode(65 + oi)}. ${normalizeLatexFormula(opt)}</li>`;
+      (q.options ?? []).forEach((opt, oi) => {
+        front += `<li>${String.fromCharCode(65 + oi)}. ${normalizeLatexFormula(opt ?? "")}</li>`;
       });
       front += "</ul>";
     }
 
     // 反面：正确答案 + 解析 + 采分点
-    let back = `<div><b>✔ 正确答案</b>：<span style='color:#2e7d32;font-weight:bold'>${normalizeLatexFormula(q.answer)}</span></div>`;
+    let back = `<div><b>✔ 正确答案</b>：<span style='color:#2e7d32;font-weight:bold'>${normalizeLatexFormula(q.answer ?? "")}</span></div>`;
     if (q.analysis) {
       back += `<div style='margin-top:6px;color:#555'><b>💡 详解</b>：${normalizeLatexFormula(q.analysis)}</div>`;
     }

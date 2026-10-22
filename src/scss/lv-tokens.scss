@@ -47,6 +47,10 @@
   --lv-red-soft: color-mix(in srgb, var(--lv-red) 10%, transparent);
   --lv-amber: var(--b3-theme-warning, #855318);
   --lv-amber-soft: color-mix(in srgb, var(--lv-amber) 12%, transparent);
+  /* —— 教师教研端专属角色主题色 Token —— */
+  --lv-teacher-primary: #7c4dff;
+  --lv-teacher-soft: color-mix(in srgb, var(--lv-teacher-primary) 12%, transparent);
+  --lv-teacher-border: color-mix(in srgb, var(--lv-teacher-primary) 32%, transparent);
 
   /* —— 表面与文字（三档对比） —— */
   --lv-canvas: var(--b3-theme-background, #f7f7fc);

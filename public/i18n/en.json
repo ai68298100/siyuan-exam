@@ -359,6 +359,8 @@
     "manual.ocrPasteTip": "Supports pressing Ctrl+V to paste screenshot directly",
     "manual.formulaNormalize": "Normalize Formulas",
     "manual.formulaDone": "Formulas normalized",
+    "manual.insertPlot": "Insert Function Plot",
+    "manual.insertDiagram": "Insert Geometry",
     "manual.type": "Type",
     "manual.switchTypeTitle": "Switch question type?",
     "manual.switchTypeConfirm": "The current options or answer will be cleared. Your saved draft remains recoverable from this page. Continue?",

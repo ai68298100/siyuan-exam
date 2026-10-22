@@ -102,6 +102,69 @@
   }
 }
 
+/* —— 双角色分段切换控件（Segmented Control）与双角色主题色体系 —— */
+.lv-role-segmented {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  background: var(--lv-surface-2);
+  border: 1px solid var(--lv-border);
+  border-radius: var(--lv-r-2);
+  gap: 2px;
+  user-select: none;
+}
+
+.lv-role-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: var(--lv-r-1);
+  font-size: var(--lv-font-size-sm);
+  font-weight: var(--lv-font-weight-medium);
+  color: var(--lv-text-3);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all var(--lv-dur-micro) var(--lv-ease-out);
+  opacity: 0.6;
+
+  &:hover {
+    opacity: 0.85;
+    background: color-mix(in srgb, var(--lv-text) 5%, transparent);
+  }
+
+  &.active {
+    opacity: 1;
+    font-weight: var(--lv-font-weight-semibold);
+    background: var(--lv-surface);
+    box-shadow: var(--lv-sh-1);
+  }
+
+  &.active-student {
+    color: var(--b3-theme-primary);
+    border-color: color-mix(in srgb, var(--b3-theme-primary) 30%, transparent);
+  }
+
+  &.active-teacher {
+    color: var(--lv-teacher-primary);
+    border-color: var(--lv-teacher-border);
+    background: var(--lv-teacher-soft);
+  }
+}
+
+/* 教师教研端专属典雅学术主题色调（data-exam-role="teacher"） */
+[data-exam-role="teacher"] {
+  --b3-theme-primary: var(--lv-teacher-primary);
+  --lv-accent: var(--lv-teacher-primary);
+  --lv-accent-soft: var(--lv-teacher-soft);
+
+  .lv-studio-tab.active {
+    color: var(--lv-teacher-primary);
+    border-bottom-color: var(--lv-teacher-primary);
+  }
+}
+
 /* 徽章用作切换按钮时（浏览工具条筛选等）补交互态；静态徽章不受影响 */
 button.lv-chip {
   cursor: pointer;
