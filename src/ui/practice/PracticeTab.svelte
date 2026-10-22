@@ -352,6 +352,23 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     /** 自评已记录回执（当前题最近一次写入成功） */
     let rubricSaved = $state(false);
     let rubricSaveBusy = $state(false);
+    let rubricEvalResult = $state<import("../../core/rubricEvaluator").RubricEvaluationResult | null>(null);
+
+    async function autoAlignRubric() {
+      const curQ = session?.current;
+      if (!curQ) return;
+      const { evaluateStudentAnswerAgainstRubric } = await import("../../core/rubricEvaluator");
+      const ansText = isChoiceQuestion(curQ) ? selected : session?.getDraft(curQ.id) || selected;
+      const res = evaluateStudentAnswerAgainstRubric({
+        studentAnswer: ansText,
+        rubric: curQ.rubric,
+        fallbackAnalysis: curQ.analysis || curQ.answer,
+      });
+      rubricEvalResult = res;
+      rubricRatings = { ...rubricRatings, ...res.recommendedRatings };
+      rubricSaved = false;
+      showMessage(t("rubric.autoAligned"), 2500, "info");
+    }
     /** 当前题是否有 rubric 规格且在反馈态 */
     const currentRubric = $derived(session?.current?.rubric as RubricSpec | undefined);
     /** 当前题的自评计分（未评项不计入分母） */
@@ -3185,6 +3202,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       rubricRatings = {};
       rubricNotes = {};
       rubricSaved = false;
+      rubricEvalResult = null;
     }
     function submitAnswer() {
       clearReciteSubmitTimer();
@@ -6349,6 +6367,9 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
                 <div class="lv-card" style="margin:10px 0;padding:var(--lv-space-3) var(--lv-space-4)">
                   <div class="lv-row" style="justify-content:space-between;align-items:center;margin:0 0 8px;flex-wrap:wrap;gap:var(--lv-space-2)">
                     <b style="font-size:var(--lv-font-size-body-compact)"><Icon name="target" size={13} /> {t("rubric.title")}</b>
+                    <button type="button" class="lv-btn sm lv-btn--ghost" onclick={autoAlignRubric} title="比对学员输入内容智能识别采分点，一键预填自评分">
+                      <Icon name="sparkles" size={12} /> {t("rubric.autoAlign")}
+                    </button>
                     <span class="lv-muted" style="font-size:var(--lv-font-size-caption)">{t("rubric.notOfficial")}</span>
                   </div>
                   {#if currentRubricDrifted}
@@ -6381,6 +6402,9 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
                       <span class="lv-chip lv-chip--acc num" style="font-weight:700">{t("rubric.finalScore").replace("{s}", String(rubricScore.finalScore)).replace("{f}", String(rubricScore.fullScore))}</span>
                     {:else}
                       <span class="lv-chip lv-chip--amb num">{t("rubric.partialScore").replace("{e}", String(rubricScore.earned)).replace("{m}", String(rubricScore.ratedMax)).replace("{n}", String(rubricScore.unratedCount))}</span>
+                    {/if}
+                    {#if rubricEvalResult}
+                      <span class="lv-chip lv-chip--grn num" title="智能识别预估分">AI 对齐: {rubricEvalResult.estimatedScore}/{rubricEvalResult.fullScore} ({rubricEvalResult.matchRatio}%)</span>
                     {/if}
                     <button type="button" class="lv-btn sm lv-btn--ghost" disabled={rubricSaveBusy || rubricSaved} onclick={() => void recordRubricAssessment()} aria-busy={rubricSaveBusy}>
                       <Icon name="save" size={12} /> {rubricSaveBusy ? "…" : rubricSaved ? t("rubric.recorded") : t("rubric.record")}

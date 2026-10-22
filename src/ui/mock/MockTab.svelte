@@ -489,6 +489,31 @@
       );
     }
 
+    import {
+      calculateExamPacingStrategy,
+      auditPacingPostMortem,
+    } from "@/core/pacingStrategy";
+
+    const pacingStrategy = $derived(calculateExamPacingStrategy(bp));
+
+    const pacingPostMortem = $derived.by(() => {
+      if (!score?.sections?.length) return null;
+      const actualSecMap: Record<string, number> = {};
+      for (const sec of score.sections) {
+        actualSecMap[sec.name] = Math.round((sec.timeSpentMs ?? 0) / 1000);
+      }
+      return auditPacingPostMortem(pacingStrategy, actualSecMap);
+    });
+
+    async function exportPacingReport() {
+      if (!pacingPostMortem) return;
+      const { exportPacingReportMarkdown } = await import("@/core/pacingStrategy");
+      const md = exportPacingReportMarkdown(pacingPostMortem);
+      const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+      downloadBlob(blob, `${bp.name || "试卷"}-考场配时复盘沙盘.md`);
+      showMessage("考场配时复盘报告已导出 ✓", 3000, "info");
+    }
+
     async function loadPresets() {
       if (!app) return;
       try {
@@ -1435,6 +1460,21 @@
       {/each}
       <div style="padding:8px 12px"><button class="lv-btn sm" style="border-style:dashed;width:100%" onclick={addSection}>＋ {t("mock.addSec")}</button></div>
     </div>
+    {#if pacingStrategy.sections.length}
+      <div class="lv-card" style="margin:8px 0;padding:10px 14px;background:var(--lv-surface-2)">
+        <div class="lv-row" style="margin:0 0 6px">
+          <b style="font-size:var(--lv-font-size-body-compact)"><Icon name="clock" size={13} /> {t("mock.pacingStrategy")}</b>
+          <span class="lv-muted" style="font-size:var(--lv-font-size-caption)">{pacingStrategy.overallAdvice}</span>
+        </div>
+        <div class="lv-row" style="gap:var(--lv-space-2);flex-wrap:wrap">
+          {#each pacingStrategy.sections as ps (ps.sectionName)}
+            <span class="lv-chip num" title={`单题目标 ${ps.targetPerQuestionS}s，超过 ${ps.alertThresholdS}s 需果断止损`}>
+              {ps.sectionName}: ~{Math.round(ps.budgetSeconds / 60)}m (均 {ps.targetPerQuestionS}s/题)
+            </span>
+          {/each}
+        </div>
+      </div>
+    {/if}
     <div class="lv-row">
       <label class="lv-row" style="margin:0">{t("mock.durationMinutes", "考试时长（分钟）")} <input class="lv-input num" type="number" min="1" step="1" value={bp.durationS / 60} oninput={(e) => bp.durationS = Number((e.target as HTMLInputElement).value) * 60} /></label>
       <label class="lv-row" style="margin:0"><input type="checkbox" bind:checked={bp.sectionTimed} /> {t("mock.sectionTimed")}</label>
@@ -1847,6 +1887,27 @@
         {/if}
       </div>
     {/each}
+    {#if pacingPostMortem}
+      <div class="lv-card" style="margin:12px 0;padding:12px 16px;background:var(--lv-surface-2)">
+        <div class="lv-row" style="justify-content:space-between;align-items:center;margin:0 0 8px">
+          <b style="font-size:var(--lv-font-size-body-compact)"><Icon name="clock" size={13} /> {t("mock.pacingPostMortem")}</b>
+          <button class="lv-btn sm lv-btn--ghost" onclick={exportPacingReport}><Icon name="export" size={12} /> {t("mock.exportPacing")}</button>
+        </div>
+        <p class="lv-muted" style="font-size:var(--lv-font-size-caption);margin:0 0 8px">{pacingPostMortem.summary}</p>
+        <div class="lv-bp-table">
+          <div class="lv-bp-row head"><span>大题分段</span><span>建议预算</span><span>实际用时</span><span>耗时偏差</span><span>节奏诊断</span></div>
+          {#each pacingPostMortem.sections as ps (ps.sectionName)}
+            <div class="lv-bp-row">
+              <span>{ps.sectionName}</span>
+              <span class="num">{Math.round(ps.budgetSeconds / 60)}m</span>
+              <span class="num">{Math.round(ps.actualSeconds / 60)}m</span>
+              <span class="num" class:lv-chip--grn={ps.diffSeconds < 0} class:lv-chip--red={ps.diffSeconds > 120}>{ps.diffSeconds > 0 ? `+${Math.round(ps.diffSeconds / 60)}m` : `${Math.round(ps.diffSeconds / 60)}m`}</span>
+              <span style="font-size:var(--lv-font-size-caption)">{ps.status === "time_sink" ? "🔴 耗时陷阱" : ps.status === "efficient" ? "⚡ 高效提分" : "🟢 稳健"}</span>
+            </div>
+          {/each}
+        </div>
+      </div>
+    {/if}
     {#if historyLoading}
       <p class="lv-muted" role="status" aria-live="polite">{t("mock.historyLoading", "正在读取模考历史…")}</p>
     {:else if historyError}
