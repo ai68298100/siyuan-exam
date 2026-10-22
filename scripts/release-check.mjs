@@ -30,8 +30,8 @@ const mismatch = Object.keys(zh).filter((k) => en[k] != null && ph(zh[k]) !== ph
 check("i18n 占位符 zh/en 一致", mismatch.length === 0, mismatch.length ? mismatch.join("、") : "全部一致");
 
 // 3. 依赖安全审计（生产依赖）
-let auditOk = true;
-let auditNote = "No known vulnerabilities found";
+let auditOk;
+let auditNote;
 if (process.env.CI || process.env.ENABLE_AUDIT) {
   try {
     const out = execSync("pnpm audit --prod", { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 15000 });
