@@ -26,7 +26,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     import { randomSeedId } from "../../core/random";
     import { newBatchId } from "../../core/ids";
     import { ELIMINATE_STREAK, localDate, streak, wrongReasonMix } from "../../core/replayer";
-    import { countWordsAndCharacters } from "../../core/wordCount";
+    import { countWordsAndCharacters, generatePaperGrid } from "../../core/wordCount";
     import { recentlySeen } from "../../core/exposure";
     import { validate } from "../../importer/pipeline";
     import {
@@ -106,6 +106,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     let soundEnabled = $state(readLocal("lv-exam/sound") !== "0");
     let speedDrillEnabled = $state(readLocal("lv-exam/speed-drill") === "1");
     let hotkeysHelpOpen = $state(false);
+    let paperGridModalOpen = $state(false);
 
     let touchStartX = 0;
     let touchStartY = 0;
@@ -2060,7 +2061,11 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       }
       if (!qs.length) { showMessage(t("state.emptyBank"), 2800, "info"); return; }
       let picked: Question[];
-      if (mode === "wrong") {
+      if (mode.startsWith("tag:")) {
+        const targetTag = mode.slice(4);
+        picked = qs.filter((q) => (q.userTags || []).includes(targetTag));
+        if (!picked.length) { showMessage("当前标签下暂无题目", 2800, "info"); return; }
+      } else if (mode === "wrong") {
         picked = app.wrongDrill(qs);
         if (!picked.length) { showMessage(t("state.noWrong"), 2800, "info"); return; }
       } else if (mode === "cram") {
@@ -4552,6 +4557,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     /** 三七批补全：仅受助（本题作答前被讲解/提示过）/ 近 N 天有作答（0=不限） */
     let filterHelp = $state(false);
     let filterDays = $state(0);
+    let filterUserTag = $state("");
     const sourceOptions = $derived(
       [...new Set(questions.map((q) => (q.source ?? "").trim()).filter(Boolean))].sort().slice(0, 30),
     );
@@ -4595,6 +4601,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         wrongOnly: filterWrong,
         helpedOnly: filterHelp,
         recentOnly: filterDays > 0,
+        userTag: filterUserTag || null,
         keyword: kw,
         wrongCountOf: (id) => wb?.get(id)?.wrongCount ?? 0,
         helped,
@@ -4681,6 +4688,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       filterSource = "";
       filterWrong = false;
       filterHelp = false;
+      filterUserTag = "";
       filterDays = 0;
       sectionSel = null;
       selectedView = "";
@@ -5684,6 +5692,18 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
           <button class="lv-mode lv-mode--minor" disabled={!favoriteCount} title={!favoriteCount ? t("state.noFav") : ""} onclick={() => startDrill("fav")}>
             <span class="lv-mode-icon lv-mode-icon--fav"><Icon name="star" /></span><span class="lv-mode-body"><b>{t("mode.fav")}</b><span class="lv-muted">{t("mode.fav.desc")}（<span class="num">{favoriteCount}</span> {t("mode.wrong.unit")}）</span></span>
           </button>
+          {#if practiceQuestions.filter((q) => (q.userTags || []).includes("star")).length > 0}
+            {@const count = practiceQuestions.filter((q) => (q.userTags || []).includes("star")).length}
+            <button class="lv-mode lv-mode--minor" onclick={() => void startDrill("tag:star")}>
+              <span class="lv-mode-icon lv-mode-icon--fav">⭐️</span><span class="lv-mode-body"><b>好题特训</b><span class="lv-muted">必背好题专项（<span class="num">{count}</span> {t("mode.wrong.unit")}）</span></span>
+            </button>
+          {/if}
+          {#if practiceQuestions.filter((q) => (q.userTags || []).includes("trap")).length > 0}
+            {@const count = practiceQuestions.filter((q) => (q.userTags || []).includes("trap")).length}
+            <button class="lv-mode lv-mode--minor" onclick={() => void startDrill("tag:trap")}>
+              <span class="lv-mode-icon lv-mode-icon--wrong">⚠️</span><span class="lv-mode-body"><b>陷阱排雷</b><span class="lv-muted">易混陷阱攻坚（<span class="num">{count}</span> {t("mode.wrong.unit")}）</span></span>
+            </button>
+          {/if}
         </div>
         <div class="lv-section-title" style="margin-top:22px"><span>{t("entry.tools")}</span></div>
         <div class="lv-row" style="margin-top:0">
@@ -6067,12 +6087,38 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
                     <span class="lv-muted">
                       字数统计：<strong class="num">{words.examWords}</strong> 字（中文 {words.chineseChars} · 英文 {words.englishWords} · {words.paragraphs} 段）
                     </span>
-                    {#if words.examWords >= 200}
-                      <span class="lv-chip sm lv-chip--grn num">字数充足</span>
-                    {:else if words.examWords > 0}
-                      <span class="lv-chip sm num">作答中</span>
-                    {/if}
+                    <div class="lv-row" style="margin:0;gap:6px">
+                      <button type="button" class="lv-btn sm lv-btn--ghost" style="padding:1px 6px;font-size:11px" onclick={() => (paperGridModalOpen = !paperGridModalOpen)} title={t("session.gridPreview")}>
+                        <Icon name="grid" size={11} /> {t("session.gridPreview")}
+                      </button>
+                      {#if words.examWords >= 200}
+                        <span class="lv-chip sm lv-chip--grn num">字数充足</span>
+                      {:else if words.examWords > 0}
+                        <span class="lv-chip sm num">作答中</span>
+                      {/if}
+                    </div>
                   </div>
+                  {#if paperGridModalOpen}
+                    {@const gridModel = generatePaperGrid(feedback?.myAnswer ?? currentDraft ?? "", { columns: 20 })}
+                    <div class="lv-card" style="margin:8px 0;padding:10px 12px;background:var(--lv-surface-2);border-left:3px solid var(--b3-theme-primary)">
+                      <div class="lv-row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
+                        <b style="font-size:12px">📝 考场 20×20 规范作文答题纸模拟（已占 {gridModel.totalCellsOccupied} 格 · {gridModel.totalRows} 行）</b>
+                        <button type="button" class="lv-btn sm lv-btn--ghost" onclick={() => (paperGridModalOpen = false)}>✕</button>
+                      </div>
+                      <div style="display:flex;flex-direction:column;gap:2px;overflow-x:auto;padding:4px;background:var(--lv-surface);border:1px solid var(--lv-border);max-height:200px">
+                        {#each gridModel.rows as r (r.rowNumber)}
+                          <div style="display:flex;gap:2px;align-items:center">
+                            <span class="lv-muted num" style="width:24px;font-size:9px;text-align:right;flex-shrink:0">{r.rowNumber * 20}</span>
+                            {#each r.cells as c (c.cellIndex)}
+                              <div style="width:18px;height:20px;border:1px solid color-mix(in srgb, var(--lv-red) 30%, transparent);display:flex;align-items:center;justify-content:center;font-size:12px;font-family:serif;background:var(--lv-surface)">
+                                {c.char || ""}
+                              </div>
+                            {/each}
+                          </div>
+                        {/each}
+                      </div>
+                    </div>
+                  {/if}
                 {/if}
               {/if}
             {/if}
@@ -7074,6 +7120,9 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         <button class="lv-chip" class:acc={filterDispute} class:lv-chip--red={filterDispute} onclick={() => (filterDispute = !filterDispute)} title={t("browse.fDisputeTip")}><Icon name="alert-triangle" size={12} /> {t("browse.fDispute")}</button>
         <button class="lv-chip" class:acc={filterHelp} onclick={() => (filterHelp = !filterHelp)} title={t("browse.fHelpTip")}><Icon name="bulb" size={12} /> {t("browse.fHelp")}</button>
         <button class="lv-chip" class:acc={favOnly} onclick={() => favOnly = !favOnly}><Icon name="star" size={12} /> {t("browse.favOnly")}</button>
+        <button class="lv-chip" class:acc={filterUserTag === "star"} onclick={() => (filterUserTag = filterUserTag === "star" ? "" : "star")} title={t("session.tagStar")}>⭐️ {t("session.tagStar")}</button>
+        <button class="lv-chip" class:acc={filterUserTag === "trap"} onclick={() => (filterUserTag = filterUserTag === "trap" ? "" : "trap")} title={t("session.tagTrap")}>⚠️ {t("session.tagTrap")}</button>
+        <button class="lv-chip" class:acc={filterUserTag === "doubt"} onclick={() => (filterUserTag = filterUserTag === "doubt" ? "" : "doubt")} title={t("session.tagDoubt")}>❓ {t("session.tagDoubt")}</button>
         <select class="lv-select" style="max-width:110px" bind:value={filterDays} title={t("browse.fDaysTip")}>
           <option value={0}>{t("browse.fAnyDay")}</option>
           <option value={1}>{t("browse.fToday")}</option>

@@ -148,6 +148,17 @@ describe("浏览过滤谓词（从 PracticeTab.filteredQuestions 抽出）", () 
       expect(out.map((x) => x.id)).toEqual(["a", "c"]);
     });
 
+    it("userTag 速记标签过滤（好题/陷阱/存疑）", () => {
+      const qStar = q({ id: "q-s", userTags: ["star", "key"] });
+      const qTrap = q({ id: "q-t", userTags: ["trap"] });
+      const qNone = q({ id: "q-n" });
+
+      expect(matchesBrowseFilter(qStar, { userTag: "star" })).toBe(true);
+      expect(matchesBrowseFilter(qTrap, { userTag: "star" })).toBe(false);
+      expect(matchesBrowseFilter(qNone, { userTag: "star" })).toBe(false);
+      expect(matchesBrowseFilter(qTrap, { userTag: "trap" })).toBe(true);
+    });
+
     it("空列表与无条件过滤返回等长副本", () => {
       expect(filterBrowseQuestions([], { keyword: "x" })).toEqual([]);
       const list = [q({ id: "a" }), q({ id: "b" })];

@@ -3418,6 +3418,22 @@ export class ExamApp {
     return renderMathInText(text);
   }
 
+  // ---------- 考点拓扑图谱与阶段通关导学案导出 ----------
+  async exportClearanceStudyGuideMarkdown(bankId?: string): Promise<string> {
+    const targetBank = bankId ?? this.listBanks()[0]?.id;
+    const questions = targetBank ? await this.listQuestions(targetBank) : [];
+    const events = this.attempts.all();
+    const { buildKnowledgeGraph, planClearancePath, exportClearanceGuideMarkdown } = await import("./core/knowledgeGraphPath");
+    const genericQs = questions.map((q) => ({ id: q.id, kp: q.kp, stem: q.stem, difficulty: q.difficulty }));
+    const graph = buildKnowledgeGraph({
+      questions: genericQs,
+      relations: [],
+      attempts: events.map((e) => ({ qid: e.qid, verdict: e.verdict === "correct" ? "right" : "wrong" })),
+    });
+    const plan = planClearancePath(graph, { questions: genericQs });
+    return exportClearanceGuideMarkdown(plan);
+  }
+
   dailySet(questions: Question[], dueFirst: Question[], n: number): Question[] {
     const seen = new Set<string>();
     const out: Question[] = [];

@@ -29,6 +29,8 @@ export interface BrowseFilterInput {
   helpedOnly?: boolean;
   /** 仅最近练过的题（recent 集合内） */
   recentOnly?: boolean;
+  /** 速记标签过滤（如 star, trap, doubt, key；空/null = 不限） */
+  userTag?: string | null;
   /** 章节过滤（null = 不限） */
   section?: SectionRef | null;
   /** 错题计数查询（qid → 错次）；未提供时错题过滤视为无错题 */
@@ -71,6 +73,9 @@ export function matchesBrowseFilter(q: BrowseQuestion, input: BrowseFilterInput 
   if (input.status && getQuestionLifecycle(q) !== input.status) return false;
   if (input.disputedOnly && !isQuestionDisputed(q)) return false;
   if (input.targetIds instanceof Set && !input.targetIds.has(q.id)) return false;
+  if (input.userTag) {
+    if (!q.userTags || !q.userTags.includes(input.userTag)) return false;
+  }
   if (input.source === "@@none") {
     if ((q.source ?? "").trim()) return false;
   } else if (input.source) {

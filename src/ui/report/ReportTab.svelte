@@ -104,6 +104,26 @@
         readinessExportBusy = false;
       }
     }
+    let graphGuideBusy = $state(false);
+    async function exportClearanceGuide() {
+      if (graphGuideBusy || !app) return;
+      graphGuideBusy = true;
+      try {
+        const md = await app.exportClearanceStudyGuideMarkdown(bankId || undefined);
+        const blob = new Blob([md], { type: "text/markdown;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `考点通关路径与图谱导学案-${new Date().toISOString().slice(0, 10)}.md`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showMessage("考点通关导学案已导出 ✓", 3000, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4200, "error");
+      } finally {
+        graphGuideBusy = false;
+      }
+    }
     let weak = $state<ReturnType<typeof weakTop>>([]);
     let hours = $state<number[]>(new Array(24).fill(0));
     let mockHistory = $state<any[]>([]);
@@ -1153,6 +1173,15 @@
               title="导出五维健康度体检雷达与考点盲区清单 Markdown 报告"
             >
               <Icon name="sparkles" size={12} /> {readinessExportBusy ? "…" : t("report.readinessReport")}
+            </button>
+            <button
+              type="button"
+              class="lv-chip sm"
+              onclick={exportClearanceGuide}
+              disabled={graphGuideBusy}
+              title="导出考点拓扑图谱与阶段通关路径导学案"
+            >
+              <Icon name="book" size={12} /> {graphGuideBusy ? "…" : t("report.graphGuide")}
             </button>
           </div>
         {/if}
