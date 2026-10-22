@@ -115,16 +115,34 @@ function makeTransport(onConnectionChange?: (ok: boolean, error?: KernelError) =
 }
 
 /** plugin 私有存储（data/storage/petal/siyuan-exam/）适配 */
-function makeStorage(plugin: Plugin): StorageAdapter {
+function makeStorage(plugin: Plugin & { isUnloaded?: boolean }): StorageAdapter {
   return {
     async load(key) {
-      const v = await plugin.loadData(`${key}.json`);
-      // 思源 loadData 对不存在的文件返回 ""；只有这个明确哨兵归一化为空，其他异常必须上抛，
-      // 否则暂时的权限/IO 失败会被误当成空数据并在下一次写入时覆盖原文件。
-      return v === "" || v == null ? undefined : v;
+      if (plugin.isUnloaded) return undefined;
+      try {
+        const v = await plugin.loadData(`${key}.json`);
+        // 思源 loadData 对不存在的文件返回 ""；只有这个明确哨兵归一化为空，其他异常必须上抛，
+        // 否则暂时的权限/IO 失败会被误当成空数据并在下一次写入时覆盖原文件。
+        return v === "" || v == null ? undefined : v;
+      } catch (e: unknown) {
+        const errObj = e as { code?: number; message?: string } | undefined;
+        if (errObj?.code === 410 || String(errObj?.message).includes("lifecycle has ended")) {
+          return undefined;
+        }
+        throw e;
+      }
     },
     async save(key, value) {
-      await plugin.saveData(`${key}.json`, value);
+      if (plugin.isUnloaded) return;
+      try {
+        await plugin.saveData(`${key}.json`, value);
+      } catch (e: unknown) {
+        const errObj = e as { code?: number; message?: string } | undefined;
+        if (errObj?.code === 410 || String(errObj?.message).includes("lifecycle has ended")) {
+          return;
+        }
+        throw e;
+      }
     },
   };
 }

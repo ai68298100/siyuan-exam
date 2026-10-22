@@ -1397,7 +1397,7 @@ export class ExamApp {
     return new Map(this.wrongReasons);
   }
 
-  private invalidate() {
+  invalidate() {
     this.replayCache = null;
   }
 

@@ -52,6 +52,7 @@ export default class LvExamPlugin extends Plugin implements ExamPluginLike {
   practiceViewRequestId?: string;
   private isMobile: boolean;
   settingUtils: SettingUtils;
+  isUnloaded = false;
   /** 每个宿主 Custom 模型独立持有实例；同 type 不是唯一页签身份。 */
   private tabApps = new TabAppRegistry();
   /** 应用组装层（与基类 Plugin.app: App 无关，刻意改名避免遮蔽） */
@@ -60,6 +61,8 @@ export default class LvExamPlugin extends Plugin implements ExamPluginLike {
   private queuedTab: { type: string; icon: string; title: string } | null = null;
   private openingTabs = new Set<string>();
   private boundBlockIcon = this.onBlockIconClick.bind(this);
+  private boundImageMenu = this.onImageMenu.bind(this);
+  private boundFlashcardAction = this.onFlashcardAction.bind(this);
   /** 47-05 lite：设置默认值快照（注册完成时；恢复默认用） */
   private settingDefaults: Map<string, unknown> = new Map();
   /** Epoch 6：服务桥注销句柄 */
@@ -240,6 +243,23 @@ export default class LvExamPlugin extends Plugin implements ExamPluginLike {
     this.settingDefaults = new Map([...this.settingUtils.settings].map(([k, item]) => [k, item.value]));
 
     this.eventBus.on("click-blockicon", this.boundBlockIcon);
+    this.eventBus.on("open-menu-image", this.boundImageMenu);
+    this.eventBus.on("click-flashcard-action", this.boundFlashcardAction);
+  }
+
+  /**
+   * 官方 Petal Lifecycle 核心契约：
+   * 收到数据变更（sync 跨端同步 / overwrite 其他实例写入）时触发。
+   * 覆盖此方法以防止思源官方采取默认策略暴力重载整个插件（导致正在进行的考试/刷题中断）。
+   */
+  async onDataChanged(_reason?: import("siyuan").TPluginDataChangeReason): Promise<void> {
+    try {
+      this.examApp?.invalidate();
+      emitExamEvent("bank-changed", { bank: this.pendingPracticeBankId || "" });
+      this.dispatchPublicStats();
+    } catch (e) {
+      console.warn("[lv-exam] onDataChanged handling warning:", e);
+    }
   }
 
   async onLayoutReady() {
@@ -352,7 +372,10 @@ export default class LvExamPlugin extends Plugin implements ExamPluginLike {
   }
 
   async onunload() {
+    this.isUnloaded = true;
     this.eventBus.off("click-blockicon", this.boundBlockIcon);
+    this.eventBus.off("open-menu-image", this.boundImageMenu);
+    this.eventBus.off("click-flashcard-action", this.boundFlashcardAction);
     // 48-05：雷切组件注销（注册/注销配对；重试定时器一并清理）
     this.speedSwitchHandle?.dispose();
     this.speedSwitchHandle = null;
@@ -765,6 +788,60 @@ export default class LvExamPlugin extends Plugin implements ExamPluginLike {
         this.openPractice();
       },
     });
+  }
+
+  private onImageMenu({ detail }: { detail?: { menu?: Menu; element?: HTMLElement } }) {
+    if (!detail?.menu || !detail?.element) return;
+    const img = detail.element;
+    const src = img.getAttribute("data-src") || img.getAttribute("src") || "";
+    if (!src) return;
+
+    detail.menu.addItem({
+      iconHTML: "<svg><use xlink:href='#iconExam'></use></svg>",
+      label: this.i18n["menu.ocrQuestion"] ?? "用小驴考试识别试题入库",
+      click: async () => {
+        try {
+          if (!this.examApp) {
+            showMessage(this.i18n["state.loading"] ?? "小驴考试正在启动，请稍候…", 2500, "info");
+            return;
+          }
+          const cleanPath = src.startsWith("assets/") ? src : src.includes("/assets/") ? `assets/${src.split("/assets/").pop()}` : src;
+          const q = await this.examApp.ocrAndParseQuestion(cleanPath);
+          this.pendingEditQid = q.id;
+          this.openPractice();
+          showMessage("已识别并提取试题内容，正在打开编辑表单…", 3000, "info");
+        } catch (e) {
+          showMessage(`识题失败：${String(e instanceof Error ? e.message : e)}`, 4000, "error");
+        }
+      },
+    });
+  }
+
+  private onFlashcardAction({ detail }: { detail?: { card?: { blockID?: string }; type?: string } }) {
+    if (!detail?.card?.blockID || !detail.type || !this.examApp) return;
+    const blockId = detail.card.blockID;
+    const typeNum = Number(detail.type);
+    if (![1, 2, 3, 4].includes(typeNum)) return;
+
+    void (async () => {
+      try {
+        const hit = await this.examApp!.findQuestionByBlock(blockId);
+        if (hit?.q) {
+          const verdict = typeNum >= 3 ? "correct" : "wrong";
+          this.examApp!.recordAttempt({
+            qid: hit.q.id,
+            kind: "practice",
+            mode: "flashcard_sync",
+            verdict,
+            myAnswer: verdict === "correct" ? hit.q.answer : null,
+            sessionId: "siyuan-riff",
+          });
+          void this.examApp!.saveSession().catch(() => undefined);
+        }
+      } catch {
+        /* 容错静默 */
+      }
+    })();
   }
 
   openPractice(): boolean {
