@@ -335,3 +335,87 @@ export function createCramSessionSpec(options: {
     receipt,
   };
 }
+
+/**
+ * 为指定错题/种子题提取考法变式题队列（同题族兄弟题优先，其次同精确考点，再次同根考点）
+ */
+export function extractVariantQuestions(
+  allQuestions: readonly Question[],
+  seed: Question,
+  n = 5,
+  rnd: () => number = Math.random,
+): { questions: Question[]; count: number; reason: string } {
+  const pool = allQuestions.filter((q) => q.id !== seed.id && q.status !== "deprecated");
+  // 1. 同族变式题
+  const familyKey = seed.family?.parentId || (seed.group ? `grp:${seed.group}` : "");
+  const familyVariants = familyKey
+    ? pool.filter((q) => (q.family?.parentId && q.family.parentId === familyKey) || (q.group && `grp:${q.group}` === familyKey))
+    : [];
+
+  // 2. 同精确考点题
+  const exactKpVariants = seed.kp
+    ? pool.filter((q) => q.kp === seed.kp && !familyVariants.includes(q))
+    : [];
+
+  // 3. 同大纲根考点题
+  const rootKp = seed.kp ? seed.kp.split("/")[0] : "";
+  const rootKpVariants = rootKp
+    ? pool.filter((q) => q.kp && q.kp.split("/")[0] === rootKp && !familyVariants.includes(q) && !exactKpVariants.includes(q))
+    : [];
+
+  const out: Question[] = [];
+  const drain = (arr: Question[]) => {
+    const copy = [...arr];
+    while (copy.length && out.length < n) {
+      const idx = Math.floor(rnd() * copy.length);
+      out.push(copy.splice(idx, 1)[0]);
+    }
+  };
+
+  drain(familyVariants);
+  drain(exactKpVariants);
+  drain(rootKpVariants);
+
+  const reason = familyVariants.length
+    ? `已推荐 ${familyVariants.length} 道同族变式题${out.length > familyVariants.length ? `及 ${out.length - familyVariants.length} 道同考点巩固题` : ""}`
+    : `已围绕考点【${seed.kp || "相关章节"}】推荐 ${out.length} 道典型变形题`;
+
+  return { questions: out, count: out.length, reason };
+}
+
+/**
+ * 生成考前 7 天急救小抄与核心考点速记手账 Markdown（45-08 纯文本等价物规范）
+ */
+export function generateCramCheatSheetMarkdown(
+  questions: readonly Question[],
+  wrongItems: readonly WrongItem[],
+  options: { title?: string; maxItems?: number } = {},
+): string {
+  const title = options.title || "考前高频错题与核心考点速记小抄（急救手账）";
+  const max = options.maxItems ?? 30;
+  const candidates = extractCramCandidates({
+    allQuestions: questions,
+    wrongItems,
+    filter: { limit: max, minWrongCount: 1 },
+  });
+
+  const lines: string[] = [];
+  lines.push(`# 📌 ${title}`);
+  lines.push(`> 导出口径：精选自 ${questions.length} 道题库题中的 **${candidates.length} 道高频错题与核心高危考点** · 建议打印双栏随身诵读复盘\n`);
+
+  candidates.forEach((c, i) => {
+    const q = c.question;
+    const no = i + 1;
+    lines.push(`### ${no}. 【${q.kp || "核心题"}】${q.stem.trim()}`);
+    lines.push(`- **✔ 核心结论/答案**：**${q.answer.trim()}**`);
+    if (q.options.length) {
+      lines.push(`- 选项备忘：${q.options.map((opt, oi) => `${String.fromCharCode(65 + oi)}.${opt}`).join("  ")}`);
+    }
+    if (q.analysis) {
+      lines.push(`- 💡 **破题手记**：${q.analysis.trim()}`);
+    }
+    lines.push(`- ⚡ 考前警示：累计答错 ${c.wrongCount} 次 · 紧急度评分 ${c.score} 分\n`);
+  });
+
+  return lines.join("\n");
+}

@@ -3445,6 +3445,57 @@ export class ExamApp {
     return exportClearanceGuideMarkdown(plan);
   }
 
+  // ---------- 学生向：考法变式题提取与考前急救手账小抄 ----------
+  async pickVariantQuestions(
+    seed: Question,
+    n = 5,
+  ): Promise<{ questions: Question[]; count: number; reason: string }> {
+    const targetBank = seed.rootId ? this.listBanks().find((b) => b.id === seed.rootId)?.id : this.listBanks()[0]?.id;
+    const all = targetBank ? await this.listQuestions(targetBank) : [];
+    const { extractVariantQuestions } = await import("./core/cramScheduler");
+    return extractVariantQuestions(all, seed, n);
+  }
+
+  async exportCramCheatSheetMarkdown(
+    bankId?: string,
+    options?: { maxItems?: number },
+  ): Promise<string> {
+    const targetBank = bankId ?? this.listBanks()[0]?.id;
+    const questions = targetBank ? await this.listQuestions(targetBank) : [];
+    const wrongItems = this.wrongItems();
+    const { generateCramCheatSheetMarkdown } = await import("./core/cramScheduler");
+    return generateCramCheatSheetMarkdown(questions, wrongItems, options);
+  }
+
+  // ---------- 教师向：试题质量 CTT 诊断与考场全真 A/B 卷分化 ----------
+  async exportItemQualityAuditMarkdown(bankId?: string): Promise<string> {
+    const targetBank = bankId ?? this.listBanks()[0]?.id;
+    const questions = targetBank ? await this.listQuestions(targetBank) : [];
+    const attempts = this.attempts.all();
+    const { generateItemQualityAuditReport, exportItemQualityAuditMarkdown } = await import("./core/itemAnalysis");
+    const report = generateItemQualityAuditReport(questions, attempts);
+    return exportItemQualityAuditMarkdown(report);
+  }
+
+  async exportItemQualityAuditCsv(bankId?: string): Promise<string> {
+    const targetBank = bankId ?? this.listBanks()[0]?.id;
+    const questions = targetBank ? await this.listQuestions(targetBank) : [];
+    const attempts = this.attempts.all();
+    const { generateItemQualityAuditReport, exportItemQualityAuditCsv } = await import("./core/itemAnalysis");
+    const report = generateItemQualityAuditReport(questions, attempts);
+    return exportItemQualityAuditCsv(report);
+  }
+
+  async generateABExamPapers(
+    bankId?: string,
+    options?: { rnd?: () => number },
+  ): Promise<import("./core/paperSnapshot").ABExamPaperResult> {
+    const targetBank = bankId ?? this.listBanks()[0]?.id;
+    const questions = targetBank ? await this.listQuestions(targetBank) : [];
+    const { generateABExamPapers } = await import("./core/paperSnapshot");
+    return generateABExamPapers(questions, options);
+  }
+
   dailySet(questions: Question[], dueFirst: Question[], n: number): Question[] {
     const seen = new Set<string>();
     const out: Question[] = [];

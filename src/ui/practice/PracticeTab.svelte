@@ -3528,6 +3528,64 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       }
     }
 
+    let cheatSheetBusy = $state(false);
+
+    async function exportCheatSheet() {
+      if (cheatSheetBusy || !app) return;
+      cheatSheetBusy = true;
+      try {
+        const md = await app.exportCramCheatSheetMarkdown(activeBankId);
+        const blob = new Blob([md], { type: "text/markdown;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `考前核心高频错题急救小抄-${new Date().toISOString().slice(0, 10)}.md`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showMessage("考前急救小抄已导出 ✓", 3000, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4000, "error");
+      } finally {
+        cheatSheetBusy = false;
+      }
+    }
+
+    async function exportItemQualityReport() {
+      if (!activeBankId || !app) return;
+      try {
+        const md = await app.exportItemQualityAuditMarkdown(activeBankId);
+        const blob = new Blob([md], { type: "text/markdown;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `题库试题质量CTT与干扰项诊断报告-${new Date().toISOString().slice(0, 10)}.md`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showMessage("试题质量 CTT 诊断报告已导出 ✓", 3000, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4000, "error");
+      }
+    }
+
+    async function drillVariantFor(q: Question) {
+      if (!q) return;
+      try {
+        const res = await app.pickVariantQuestions(q, 5);
+        if (!res.questions.length) {
+          showMessage("未检索到相关考点或同族的变式题", 2500, "info");
+          return;
+        }
+        await safeStart(res.questions, "quick", () => {
+          feedback = null; selected = ""; confidenceSel = ""; sessionDone = null;
+          view = "session";
+          restoreQuestionControls();
+          showMessage(`⚡ ${res.reason}`, 3000, "info");
+        });
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 3000, "error");
+      }
+    }
+
     async function printWrongSheet(type: "question" | "answer") {
       if (printWrongBusy || !activeBankId || !filteredWrongQueue.length) return;
       printWrongBusy = true;
@@ -6267,6 +6325,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
               {:else}
                 <button class="lv-btn lv-btn--primary" onclick={nextQuestion}>{t("session.next")} →</button>
                 {#if feedback.verdict === "wrong"}
+                  <button class="lv-btn" onclick={() => void drillVariantFor(q)} title={t("session.drillVariantTip")}><Icon name="layers" size={15} /> {t("session.drillVariant")}</button>
                   <button class="lv-btn" onclick={toCard}><Icon name="layers" size={16} /> {t("memory.toCard")}</button>
                   {#if cardResult}<span class="lv-muted">{cardResult}</span>{/if}
                   <button class="lv-btn" onclick={() => explainCurrent("explain")} disabled={explainBusy}><Icon name="sparkles" size={16} /> {explainBusy ? "…" : t("explain.ask")}</button>
@@ -6482,6 +6541,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
                   </button>
                   <button class="lv-btn sm lv-btn--ghost" onclick={() => void printWrongSheet("question")} disabled={printWrongBusy || !filteredWrongQueue.length} title="将当前筛选的错题导出或打印为 A4 双栏试卷（绝不泄题）"><Icon name="file" size={13} /> {t("mock.printCompact")}</button>
                   <button class="lv-btn sm lv-btn--ghost" onclick={() => void printWrongSheet("answer")} disabled={printWrongBusy || !filteredWrongQueue.length} title="导出或打印配套答案册"><Icon name="book" size={13} /> 答案册</button>
+                  <button class="lv-btn sm lv-btn--ghost" onclick={exportCheatSheet} disabled={cheatSheetBusy || !filteredWrongQueue.length} title={t("cram.cheatSheetTip")}><Icon name="file-text" size={13} /> {t("cram.cheatSheet")}</button>
                 </div>
                 <span class="lv-muted" style="font-size:var(--lv-font-size-caption)">{t("wrongbook.queue.note")}</span>
               </div>
@@ -6529,6 +6589,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
                       </div>
                     </div>
                     <button class="lv-btn sm" onclick={() => void startWrongFor(w.qid)}><Icon name="play" size={13} /> {t("wrongbook.retry")}</button>
+                    <button class="lv-btn sm lv-btn--ghost" title={t("session.drillVariantTip")} onclick={() => { const q = qOf(w.qid); if (q) void drillVariantFor(q); }}><Icon name="layers" size={13} /> {t("session.drillVariant")}</button>
                     <button class="lv-btn sm lv-btn--ghost" title={t("wrongbook.snooze7")} onclick={() => void snoozeWrong(w.qid, 7)}><Icon name="clock" size={12} /> {t("wrongbook.snooze7")}</button>
                     <button class="lv-btn sm lv-btn--ghost" title={t("wrongbook.archiveTip")} onclick={() => void archiveWrong(w.qid)}><Icon name="folder" size={12} /> {t("wrongbook.archive")}</button>
                     <button class="lv-btn sm lv-btn--ghost" title={t("wrongbook.sameKpTip")} onclick={() => void startSameKpFor(w.qid)}><Icon name="link" size={13} /> {t("wrongbook.sameKp")}</button>
@@ -7195,6 +7256,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
               <button role="menuitem" title={t("print.aSheetTip")} onclick={() => { printAnswerSheet(); moreOpen = false; }}><Icon name="printer" size={14} /> {t("print.aSheet")}</button>
               <button role="menuitem" title={t("print.cardTip")} onclick={() => { printAnswerCard(); moreOpen = false; }}><Icon name="printer" size={14} /> {t("print.card")}</button>
               <button role="menuitem" title="导出包含题目、答案、考点、难度、采分点与破题教学点拨的教师讲义卷" onclick={() => { void printTeacherLectureSheet(); moreOpen = false; }}><Icon name="book" size={14} /> {t("mock.printTeacher")}</button>
+              <button role="menuitem" title="导出全库试题实测难度、区分度与死干扰项诊断报告" onclick={() => { void exportItemQualityReport(); moreOpen = false; }}><Icon name="chart" size={14} /> {t("health.itemQualityAudit")}</button>
             </div>
           {/if}
         </div>

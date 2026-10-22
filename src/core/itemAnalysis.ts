@@ -199,3 +199,128 @@ export {
   type BankDiscriminationAudit,
   type DiscriminationGrade,
 } from "./itemDiscrimination";
+
+import { auditBankDiscrimination, type DiscriminationGrade } from "./itemDiscrimination";
+
+export interface ItemQualityAuditItem {
+  qid: string;
+  stem: string;
+  kp?: string;
+  difficultyP: number;
+  discriminationD: number;
+  grade: DiscriminationGrade;
+  deadDistractorCount: number;
+  deadDistractorLetters: string[];
+  totalAttempts: number;
+  advice: string;
+}
+
+export interface ItemQualityAuditReport {
+  bankTotal: number;
+  evaluatedCount: number;
+  averageP: number;
+  averageD: number;
+  flawedQuestionsCount: number;
+  deadDistractorsTotal: number;
+  items: ItemQualityAuditItem[];
+}
+
+/**
+ * 教师教研端：全库试题质量 CTT 指标与死干扰项综合诊断
+ */
+export function generateItemQualityAuditReport(
+  questions: readonly Question[],
+  attempts: readonly AttemptEvent[],
+): ItemQualityAuditReport {
+  const cttAudit = auditBankDiscrimination(questions, attempts);
+  const items: ItemQualityAuditItem[] = [];
+
+  let deadDistractorsTotal = 0;
+  let flawedQuestionsCount = 0;
+
+  for (const q of questions) {
+    if (q.type === "material") continue;
+    const usage = analyzeQuestionUsage(q, attempts);
+    const disc = cttAudit.items.find((it) => it.qid === q.id);
+
+    const deadLetters = usage.options
+      .filter((opt) => opt.isDeadDistractor)
+      .map((opt) => opt.letter);
+
+    deadDistractorsTotal += deadLetters.length;
+
+    const grade = disc?.grade ?? "good";
+    if (grade === "poor" || grade === "negative" || deadLetters.length > 0) {
+      flawedQuestionsCount++;
+    }
+
+    let advice = "试题表现正常";
+    if (grade === "negative") {
+      advice = "🚨 负区分度严重异常：高分组得分率反而低于低分组，提示题面可能有歧义或答案有误，需立即核查修订！";
+    } else if (grade === "poor") {
+      advice = "⚠️ 区分度偏低（D < 0.2）：试题辨别优劣能力较差，建议优化题干设问或干扰项。";
+    } else if (deadLetters.length > 0) {
+      advice = `🔧 存在死干扰项（选项 ${deadLetters.join(",")} 零选择）：干扰项缺乏迷惑度，建议替换为典型认知误区。`;
+    }
+
+    items.push({
+      qid: q.id,
+      stem: q.stem,
+      kp: q.kp,
+      difficultyP: disc?.difficultyP ?? 0.5,
+      discriminationD: disc?.discriminationD ?? 0.3,
+      grade,
+      deadDistractorCount: deadLetters.length,
+      deadDistractorLetters: deadLetters,
+      totalAttempts: usage.totalAttempts,
+      advice,
+    });
+  }
+
+  return {
+    bankTotal: questions.length,
+    evaluatedCount: items.length,
+    averageP: cttAudit.averageP,
+    averageD: cttAudit.averageD,
+    flawedQuestionsCount,
+    deadDistractorsTotal,
+    items,
+  };
+}
+
+export function exportItemQualityAuditMarkdown(report: ItemQualityAuditReport): string {
+  const lines: string[] = [];
+  lines.push(`# 📊 题库试题质量 CTT 测验理论与干扰项诊断报告`);
+  lines.push(`> 评估题量：**${report.evaluatedCount}** 题 | 全库平均实测难度 P：**${report.averageP}** | 平均区分度 D：**${report.averageD}**\n`);
+
+  lines.push(`## 🚨 教学教研重点关注指标`);
+  lines.push(`- 区分度异常或需修订题目：**${report.flawedQuestionsCount}** 题`);
+  lines.push(`- 0% 零选择死干扰项总计：**${report.deadDistractorsTotal}** 个\n`);
+
+  lines.push(`## 📋 试题质量诊断清单`);
+  lines.push(`| 题号/题干 | 考点 | 实测难度 P | 区分度 D | 评级 | 死干扰项 | 教研修订建议 |`);
+  lines.push(`|---|---|---|---|---|---|---|`);
+
+  for (const it of report.items) {
+    const stemSnippet = it.stem.replace(/[\r\n|]/g, " ").slice(0, 30);
+    const deadText = it.deadDistractorLetters.length ? it.deadDistractorLetters.join(",") : "无";
+    lines.push(`| ${stemSnippet} | ${it.kp || "未分类"} | ${it.difficultyP} | ${it.discriminationD} | ${it.grade} | ${deadText} | ${it.advice} |`);
+  }
+
+  return lines.join("\n");
+}
+
+export function exportItemQualityAuditCsv(report: ItemQualityAuditReport): string {
+  const lines: string[] = [];
+  lines.push("题目ID,题干摘要,考点,实测难度P,区分度D,质量评级,死干扰项数,死干扰项列表,作答人次,教研修订建议");
+
+  for (const it of report.items) {
+    const escStem = `"${it.stem.replace(/"/g, '""').replace(/[\r\n]/g, " ")}"`;
+    const escKp = `"${(it.kp || "").replace(/"/g, '""')}"`;
+    const escDead = `"${it.deadDistractorLetters.join(",")}"`;
+    const escAdvice = `"${it.advice.replace(/"/g, '""')}"`;
+    lines.push(`${it.qid},${escStem},${escKp},${it.difficultyP},${it.discriminationD},${it.grade},${it.deadDistractorCount},${escDead},${it.totalAttempts},${escAdvice}`);
+  }
+
+  return "\uFEFF" + lines.join("\r\n");
+}

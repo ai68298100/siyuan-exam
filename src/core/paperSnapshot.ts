@@ -457,3 +457,82 @@ export function paperSnapshotToQuestions(snapshot: PaperSnapshot): Question[] {
     return q;
   });
 }
+
+export interface ABExamPaperResult {
+  paperA: Question[];
+  paperB: Question[];
+  answerKeyA: Record<string, string>;
+  answerKeyB: Record<string, string>;
+  diffSummary: string;
+}
+
+/**
+ * 考场防抄袭：同一套试题一键分化为全真 A 卷与 B 卷
+ * A 卷：原始题序与标准选项
+ * B 卷：单选题/多选题选项洗牌打乱，并自动重写对应正确答案字母
+ */
+export function generateABExamPapers(
+  questions: readonly Question[],
+  options: { rnd?: () => number } = {},
+): ABExamPaperResult {
+  const rnd = options.rnd ?? Math.random;
+
+  const paperA: Question[] = JSON.parse(JSON.stringify(questions)) as Question[];
+  const paperB: Question[] = [];
+  const answerKeyA: Record<string, string> = {};
+  const answerKeyB: Record<string, string> = {};
+
+  let shuffledCount = 0;
+
+  for (const q of paperA) {
+    answerKeyA[q.id] = q.answer;
+
+    if ((q.type === "single" || q.type === "multiple") && q.options.length >= 2) {
+      const indexed = q.options.map((text, idx) => ({
+        letter: String.fromCharCode(65 + idx),
+        text,
+      }));
+
+      // Fisher-Yates 洗牌
+      const shuffled = [...indexed];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(rnd() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+
+      const newOptions = shuffled.map((it) => it.text);
+      const oldAnsLetters = (q.answer ?? "").toUpperCase().split("");
+      const newAnsLetters: string[] = [];
+
+      for (let newIdx = 0; newIdx < shuffled.length; newIdx++) {
+        const origLetter = shuffled[newIdx].letter;
+        if (oldAnsLetters.includes(origLetter)) {
+          newAnsLetters.push(String.fromCharCode(65 + newIdx));
+        }
+      }
+
+      const newAnswer = newAnsLetters.sort().join("");
+      answerKeyB[q.id] = newAnswer;
+
+      paperB.push({
+        ...JSON.parse(JSON.stringify(q)),
+        options: newOptions,
+        answer: newAnswer,
+      });
+      shuffledCount++;
+    } else {
+      answerKeyB[q.id] = q.answer;
+      paperB.push(JSON.parse(JSON.stringify(q)));
+    }
+  }
+
+  const diffSummary = `成功生成考场 A/B 卷：全卷共 ${questions.length} 题，其中 ${shuffledCount} 道客观选择题已完成选项乱序洗牌与答案重映射。`;
+
+  return {
+    paperA,
+    paperB,
+    answerKeyA,
+    answerKeyB,
+    diffSummary,
+  };
+}
