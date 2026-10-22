@@ -1036,6 +1036,7 @@
     "session.recordedSilent": "Recorded (review at session end)",
     "session.speedDrill": "Speed Drill",
     "session.speedDrillTip": "Speed mode: auto submit single/judge on click, advance on correct, pause on wrong",
+    "session.card": "Question Card",
     "session.tagStar": "⭐️ Good",
     "session.tagTrap": "⚠️ Trap",
     "session.tagDoubt": "❓ Unsure",

@@ -1125,7 +1125,10 @@ export class ExamApp {
   }
 
   /** 派生视图（缓存；写流水后失效） */
-  derived(): ReplayResult {
+  derived(options?: { eliminateStreak?: number }): ReplayResult {
+    if (options?.eliminateStreak !== undefined) {
+      return replay(this.attempts.all(), options);
+    }
     if (!this.replayCache) this.replayCache = replay(this.attempts.all());
     return this.replayCache;
   }

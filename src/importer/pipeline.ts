@@ -343,8 +343,8 @@ export function autoMapExcel(header: string[]): { map: ExcelColumnMap; missing: 
   return { map, missing };
 }
 
-/** 粘贴文本按内容特征分流：GIFT（::题::/答案区）→ TSV（#头/制表符/两列问答）→ Aiken（默认）。
- *  gift/tsv 动态加载：二者复用本模块的 parseExcelRows/validate，静态依赖会成环 */
+/** 粘贴文本按内容特征分流：GIFT（::题::/答案区）→ TSV（#头/制表符/两列问答）→ Markdown试卷（【答案】/题号）→ Aiken（默认）。
+ *  gift/tsv/markdownExam 动态加载：复用本模块的 parseExcelRows/validate，静态依赖会成环 */
 export async function parseText(text: string, opt: ImportOptions = {}): Promise<ImportReport> {
   if (isGiftText(text)) {
     const { parseGift } = await import("./gift");
@@ -353,6 +353,10 @@ export async function parseText(text: string, opt: ImportOptions = {}): Promise<
   if (isTsvText(text)) {
     const { parseTsv } = await import("./tsv");
     return parseTsv(text, opt);
+  }
+  const { isMarkdownExamText, parseMarkdownExam } = await import("./markdownExam");
+  if (isMarkdownExamText(text)) {
+    return parseMarkdownExam(text, opt);
   }
   return parseAiken(text, opt);
 }

@@ -1036,6 +1036,7 @@
     "session.recordedSilent": "已记录（会话末统一复盘）",
     "session.speedDrill": "极速刷题",
     "session.speedDrillTip": "极速模式：单选/判断题点击选项自动提交，答对即跳下一题，答错停下看解析",
+    "session.card": "作答卡片",
     "session.tagStar": "⭐️ 好题",
     "session.tagTrap": "⚠️ 陷阱",
     "session.tagDoubt": "❓ 存疑",

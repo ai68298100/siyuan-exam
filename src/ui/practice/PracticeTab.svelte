@@ -26,6 +26,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     import { randomSeedId } from "../../core/random";
     import { newBatchId } from "../../core/ids";
     import { ELIMINATE_STREAK, localDate, streak, wrongReasonMix } from "../../core/replayer";
+    import { countWordsAndCharacters } from "../../core/wordCount";
     import { recentlySeen } from "../../core/exposure";
     import { validate } from "../../importer/pipeline";
     import {
@@ -105,6 +106,40 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     let soundEnabled = $state(readLocal("lv-exam/sound") !== "0");
     let speedDrillEnabled = $state(readLocal("lv-exam/speed-drill") === "1");
     let hotkeysHelpOpen = $state(false);
+
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchStartTime = 0;
+
+    function onTouchStart(e: TouchEvent) {
+      if (e.touches.length !== 1) return;
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+      touchStartTime = Date.now();
+    }
+
+    function onTouchEnd(e: TouchEvent) {
+      if (e.changedTouches.length !== 1) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      const deltaX = e.changedTouches[0].clientX - touchStartX;
+      const deltaY = e.changedTouches[0].clientY - touchStartY;
+      const deltaTime = Date.now() - touchStartTime;
+
+      if (Math.abs(deltaX) > 60 && Math.abs(deltaX) > Math.abs(deltaY) * 2 && deltaTime < 600) {
+        if (deltaX < 0) {
+          if (feedback || (session?.current && !isChoiceQuestion(session.current))) {
+            nextQuestion();
+          }
+        } else {
+          previousQuestion();
+        }
+      }
+    }
+
+    const effectiveEliminateStreak = $derived(
+      Math.max(1, Number(plugin.settingUtils?.get?.("eliminateStreak") ?? ELIMINATE_STREAK))
+    );
     let loading = $state(true);
     let appliedPracticeViewRequestId = "";
     let tabRoot = $state<HTMLDivElement | null>(null);
@@ -5918,7 +5953,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
               </button>
             </div>
           {/if}
-          <div class="lv-card lv-question" class:lv-pure={pureListen}>
+          <div class="lv-card lv-question" class:lv-pure={pureListen} role="region" aria-label={t("session.card")} ontouchstart={onTouchStart} ontouchend={onTouchEnd}>
             {#if materialContext}
               <div class="lv-analysis lv-rich b3-typography" style="margin-bottom:12px">
                 <div class="lv-row" style="margin:0 0 6px;justify-content:space-between;align-items:center;flex-wrap:wrap">
@@ -6026,6 +6061,19 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
                   oninput={(e) => { draftLive = (e.target as HTMLTextAreaElement).value; session.setDraft(q.id, draftLive); }}
                 onchange={(e) => trailInput(q.id, (e.target as HTMLTextAreaElement).value)}
                   disabled={!!feedback}></textarea>
+                {#if q.type === "short"}
+                  {@const words = countWordsAndCharacters(feedback?.myAnswer ?? currentDraft ?? "")}
+                  <div class="lv-row" style="margin:4px 0 0;font-size:var(--lv-font-size-caption);justify-content:space-between;align-items:center">
+                    <span class="lv-muted">
+                      字数统计：<strong class="num">{words.examWords}</strong> 字（中文 {words.chineseChars} · 英文 {words.englishWords} · {words.paragraphs} 段）
+                    </span>
+                    {#if words.examWords >= 200}
+                      <span class="lv-chip sm lv-chip--grn num">字数充足</span>
+                    {:else if words.examWords > 0}
+                      <span class="lv-chip sm num">作答中</span>
+                    {/if}
+                  </div>
+                {/if}
               {/if}
             {/if}
             {/key}
@@ -6307,7 +6355,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       <div class="lv-screen-head">
         <span class="lv-eyebrow">WRONG BOOK</span>
         <h1 class="lv-h1">{t("wrongbook.title")}</h1>
-        <p>{t("wrongbook.desc").replace("{n}", String(ELIMINATE_STREAK))}</p>
+        <p>{t("wrongbook.desc").replace("{n}", String(effectiveEliminateStreak))}</p>
       </div>
       {#if !wrongList.length}
         <div class="lv-empty">
@@ -6396,7 +6444,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
                             🔥 {t("wrongbook.stubbornBadge")}
                           </span>
                         {/if}
-                        {#if w.streakCorrect > 0}<span class="lv-chip lv-chip--grn num">{t("wrongbook.reClear").replace("{n}", String(ELIMINATE_STREAK - w.streakCorrect))}</span>{/if}
+                        {#if w.streakCorrect > 0}<span class="lv-chip lv-chip--grn num">{t("wrongbook.reClear").replace("{n}", String(effectiveEliminateStreak - w.streakCorrect))}</span>{/if}
                         {#if reasonOf(w.qid)}<span class="lv-chip num">{t("reason." + reasonOf(w.qid))}</span>{/if}
                         <span>{t("wrongbook.lastWrong")} {new Date(w.lastWrongAt).toLocaleDateString()}</span>
                         {#if q?.kp}<span class="lv-chip num">{q.kp}</span>{/if}

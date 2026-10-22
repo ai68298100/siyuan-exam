@@ -10,7 +10,11 @@ export const ELIMINATE_STREAK = 2;
 /** 背诵连击毕业线：连续 ≥4 次"会"从背诵池出清（形态升级回选择题） */
 export const RECITE_GRADUATE_STREAK = 4;
 
-export function replay(events: readonly AttemptEvent[]): ReplayResult {
+export function replay(
+  events: readonly AttemptEvent[],
+  options: { eliminateStreak?: number } = {},
+): ReplayResult {
+  const eliminateThreshold = Math.max(1, options.eliminateStreak ?? ELIMINATE_STREAK);
   const wrongbook = new Map<string, WrongItem>();
   const byQuestion = new Map<string, { attempts: number; correct: number; lastAt: number }>();
   const days = new Map<string, DayStats>();
@@ -109,7 +113,7 @@ export function replay(events: readonly AttemptEvent[]): ReplayResult {
     } else if (e.verdict === "correct" && entersWrongbook) {
       if (w && w.status === "active") {
         w.streakCorrect++;
-        if (w.streakCorrect >= ELIMINATE_STREAK) w.status = "eliminated";
+        if (w.streakCorrect >= eliminateThreshold) w.status = "eliminated";
       }
     }
   }

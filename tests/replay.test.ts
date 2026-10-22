@@ -377,6 +377,21 @@ describe("ExamApp 集成（mock 内核 + 内存存储）", () => {
     expect(r.byQuestion.get("q9")!.attempts).toBe(3);
   });
 
+  it("replay 支持自定义错题消灭门槛 eliminateStreak（如设定为 1 时做对一次即出库）", () => {
+    const events: AttemptEvent[] = [
+      { v: 1, eid: "e1", qid: "q-el-1", kind: "practice", mode: "single", verdict: "wrong", ts: 1000 },
+      { v: 1, eid: "e2", qid: "q-el-1", kind: "practice", mode: "wrong", verdict: "correct", ts: 2000 },
+    ];
+
+    // 默认门槛为 2：连对 1 次仍在册
+    const defaultRes = replay(events);
+    expect(defaultRes.wrongbook.get("q-el-1")?.status).toBe("active");
+
+    // 自定义门槛为 1：连对 1 次即消灭
+    const customRes = replay(events, { eliminateStreak: 1 });
+    expect(customRes.wrongbook.get("q-el-1")?.status).toBe("eliminated");
+  });
+
   it("HttpTransport 错误分类：fatal 不重试直接抛 KernelError", async () => {
     const calls = 0;
     const transport = new HttpTransport(
