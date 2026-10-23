@@ -360,14 +360,14 @@
     <nav class="lv-rail-nav">
       {#each globals as g (g.target)}
         <button class="lv-rail-btn" class:on={activeTask === g.target} title={g.label} aria-label={g.label} onclick={() => { goTask(g.target); if (drawerOpen) onclose?.(); }} aria-current={activeTask === g.target ? "page" : undefined}>
-          <Icon name={g.icon} size={16} /> {g.label}
+          <Icon name={g.icon} size={16} /> <span class="lv-rail-btn-text">{g.label}</span>
         </button>
       {/each}
       {#if items.length}
         <div class="lv-rail-divider" role="separator"></div>
         {#each items as it (it.name)}
           <button class="lv-rail-btn lv-rail-btn--sub" class:on={it.on} title={it.name} onclick={() => nav(it)} aria-current={it.on ? "page" : undefined}>
-            <Icon name={it.icon} size={16} /> {it.name}
+            <Icon name={it.icon} size={16} /> <span class="lv-rail-btn-text">{it.name}</span>
             {#if it.badge}<span class="lv-rail-badge">{it.badge}</span>{/if}
           </button>
         {/each}
@@ -538,9 +538,10 @@
     outline: 2px solid var(--lv-accent);
     outline-offset: 1px;
   }
-  @container lv-exam (min-width: 760px) and (max-width: 1119px) {
+  @container lv-exam (min-width: 760px) and (max-width: 1080px) {
     .lv-rail-scroll {
-      padding: 22px 10px;
+      padding: 18px 4px;
+      gap: 12px;
     }
     .lv-brand {
       justify-content: center;
@@ -554,19 +555,32 @@
     }
     .lv-quick-create {
       justify-content: center;
+      width: 44px;
+      height: 44px;
       min-height: 44px;
-      padding: 10px;
-      font-size: 0;
+      padding: 0;
+      margin: 0 auto;
+      border-radius: 50%;
     }
     .lv-quick-create-text,
     .lv-quick-create-chevron {
       display: none;
     }
     .lv-rail-btn {
+      flex-direction: column;
       justify-content: center;
-      min-height: 44px;
-      padding: 10px;
-      font-size: 0;
+      align-items: center;
+      min-height: 50px;
+      padding: 6px 2px;
+      gap: 3px;
+      border-radius: 8px;
+    }
+    .lv-rail-btn-text {
+      font-size: 11px;
+      line-height: 1;
+      font-weight: 500;
+      white-space: nowrap;
+      text-align: center;
     }
     .lv-rail-btn :global(svg) {
       flex: 0 0 auto;
@@ -586,6 +600,8 @@
     border-radius: var(--lv-r-2);
     box-shadow: var(--lv-sh-card, var(--lv-sh-1)), var(--lv-inset-subtle, inset 0 1px 0 transparent);
     cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
     transition:
       transform var(--lv-dur-micro) ease,
       box-shadow var(--lv-dur-micro) ease,
@@ -787,10 +803,17 @@
     font-size: var(--lv-font-size-body-compact);
     min-height: 46px;
     cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
     transition:
       background-color var(--lv-dur-micro) ease,
       color var(--lv-dur-micro) ease,
       transform var(--lv-dur-micro) ease;
+  }
+  .lv-rail-btn-text {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .lv-rail-btn:hover {
     background: var(--lv-surface);

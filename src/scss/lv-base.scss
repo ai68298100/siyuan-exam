@@ -758,6 +758,24 @@ input[type="range"] {
   min-height: 0;
 }
 
+.lv-shell > .lv-rail {
+  width: 184px;
+  min-width: 184px;
+  flex-shrink: 0;
+}
+
+/* 窄桌面/平板分屏（760px - 1080px）：侧栏转为 72px 紧凑功能模式，主内容区防挤压 */
+@container lv-exam (min-width: 760px) and (max-width: 1080px) {
+  .lv-shell {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+  .lv-shell > .lv-rail {
+    width: 72px;
+    min-width: 72px;
+    flex-shrink: 0;
+  }
+}
+
 /* R54 专注态：进入连续作答或回看成绩时移除工作台导航，让题面成为唯一主任务。
    窄屏仍由菜单按钮唤出抽屉，因此这里仅改变桌面壳层。 */
 @container lv-exam (min-width: 760px) {
@@ -869,6 +887,21 @@ input[type="range"] {
   box-shadow: var(--lv-sh-1);
   padding: var(--lv-space-relaxed) var(--lv-space-4);
   min-height: 48px;
+}
+.lv-exam-tab > .block__icons {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--lv-space-2);
+  min-height: 42px;
+  padding: 4px 14px;
+}
+.lv-exam-tab > .block__icons .lv-crumbs {
+  display: inline-flex;
+  align-items: center;
+}
+.lv-exam-tab > .block__icons .lv-role-segmented {
+  margin-left: 4px;
 }
 /* 桌面工具行拥挤时也允许换行：报告中心控件多（筛选/刷新/AI 双按钮/库切换/提示），
    无 wrap 时 flex 挤压面包屑与提示文本竖排（真机走查发现） */

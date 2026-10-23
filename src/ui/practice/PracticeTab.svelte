@@ -6046,14 +6046,22 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
             </div>
           </div>
         {:else if questionsLoaded && !practiceQuestions.length}
-          <div class="lv-card lv-empty lv-entry-empty">
-            <div class="lv-empty-icon"><Icon name="file" size={28} /></div>
-            <b>{t("entry.emptyTitle")}</b>
-            <p class="lv-muted">{t("entry.emptyDesc")}</p>
-            <div class="lv-row" style="justify-content:center;margin-top:14px">
-              <button class="lv-btn" onclick={createSampleBank} disabled={creating || offline} title={offline ? t("state.offlineHint") : t("guard.demoDesc")}><Icon name="book" size={15} /> {creatingSample ? t("guard.sampleCreating") : t("guard.sampleOpen")}</button>
-              <button class="lv-btn lv-btn--primary" onclick={() => { view = "import"; }}><Icon name="import" size={15} /> {t("import.title")}</button>
-              <button class="lv-btn" onclick={() => { view = "manual"; }}><Icon name="pencil" size={15} /> {t("entry.manual")}</button>
+          <div class="lv-card lv-empty lv-entry-empty" style="border-top:3.5px solid var(--lv-brand);box-shadow:var(--lv-sh-pop);padding:32px 24px;border-radius:var(--lv-r-3)">
+            <div class="lv-empty-icon" style="width:52px;height:52px;border-radius:14px;background:var(--lv-brand-soft);color:var(--lv-brand);display:grid;place-items:center;margin:0 auto 12px">
+              <Icon name="book" size={26} />
+            </div>
+            <b style="font-size:16px;color:var(--lv-text);margin-bottom:4px">{t("entry.emptyTitle")}</b>
+            <p class="lv-muted" style="max-width:440px;margin:0 auto 18px;line-height:1.6">{t("entry.emptyDesc")}</p>
+            <div class="lv-row" style="justify-content:center;gap:12px;flex-wrap:wrap">
+              <button class="lv-btn sm" onclick={createSampleBank} disabled={creating || offline} title={offline ? t("state.offlineHint") : t("guard.demoDesc")}>
+                <Icon name="sparkles" size={14} /> {creatingSample ? t("guard.sampleCreating") : t("guard.sampleOpen")}
+              </button>
+              <button class="lv-btn lv-btn--primary" onclick={() => { view = "import"; }}>
+                <Icon name="import" size={15} /> {t("import.title")}
+              </button>
+              <button class="lv-btn sm" onclick={() => { view = "manual"; }}>
+                <Icon name="pencil" size={14} /> {t("entry.manual")}
+              </button>
             </div>
           </div>
         {/if}

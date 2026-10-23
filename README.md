@@ -16,7 +16,11 @@
 
 [English](README.en-US.md) · [当前状态](docs/STATUS.md) · [交付说明](docs/DELIVERY.md) · [组件清单](docs/UI-COMPONENTS.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md) · [下载发行包](https://github.com/ai68298100/siyuan-exam/releases) · [查看 R54 UI 原型](design/prototype-r54/index.html) · [反馈问题](https://github.com/ai68298100/siyuan-exam/issues) · [参与讨论](https://github.com/ai68298100/siyuan-exam/discussions)
 
-## 最新版本：v0.11.13（2026-10-23）
+## 最新版本：v0.11.14（2026-10-23）
+
+本版本为左侧栏文字竖排挤压根治修复、全套现代专业矢量图标重构与顶栏对齐升级版本。彻底排查并修复中窄屏与分屏下侧栏被内容区压扁导致“今日/题库/出题/模考”两字被折行竖排的视觉缺陷，增加 72px/184px 两档严格防挤压列宽保护，实现紧凑模式下的上下垂直居中堆叠布局与全局 `white-space: nowrap` 锁；重构【今日仪表台（日历打卡板）】、【题库（双页题册）】、【出题（专业绘图笔）】、【模考（考场秒表）】、【复盘报告（趋势折线图）】与【能量闪电】全套矢量图标；优化顶栏中轴线像素级对齐与空状态卡片 Bento 美学重构。全套单测 176 个测试文件、1354 项单测 100% 全部通过。
+
+## 上一版本：v0.11.13（2026-10-23）
 
 本版本为小驴生态中枢统领指令专项全覆盖、preview 图产物规范统一与白名单收窄升级版本。严格保持 256×256 殿堂级头像（`icon.png` 54KB）不变；`plugin.json` 补齐前置品牌关键词（`["小驴", "小驴考试", "xiaolv", "lv", ...]`），开启桌面独立设置大窗（`settingsWindow: true`）；预览图统一定稿为轻量 `preview.png`（315KB，严格低于 350KB 规范要求）；顶栏升级带满分对勾的单色矢量图标（`iconExam`）；落实做题自动打卡、错题推闪卡 45% 幽灵按钮与 `lv-exam:session-ended` 事件广播；移动端键盘防遮挡。全套单测 176 个测试文件、1354 项单测 100% 全部通过。
 
