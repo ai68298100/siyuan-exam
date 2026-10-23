@@ -128,6 +128,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
 
     function onTouchEnd(e: TouchEvent) {
       if (e.changedTouches.length !== 1) return;
+      if (view !== "session" || !session) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
       const deltaX = e.changedTouches[0].clientX - touchStartX;

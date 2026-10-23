@@ -125,16 +125,23 @@
       }
     }
     let badgeWallBusy = $state(false);
-    let userRole = $state<"student" | "teacher">(
-      typeof localStorage !== "undefined" && localStorage.getItem("lv-exam/role") === "teacher"
-        ? "teacher"
-        : "student",
-    );
+    function readLocalRole(): "student" | "teacher" {
+      try {
+        return typeof localStorage !== "undefined" && localStorage.getItem("lv-exam/role") === "teacher"
+          ? "teacher"
+          : "student";
+      } catch {
+        return "student";
+      }
+    }
+    let userRole = $state<"student" | "teacher">(readLocalRole());
 
     function switchRole(role: "student" | "teacher") {
       userRole = role;
       try {
-        localStorage.setItem("lv-exam/role", role);
+        if (typeof localStorage !== "undefined") {
+          localStorage.setItem("lv-exam/role", role);
+        }
       } catch { /* 容错 */ }
       showMessage(
         role === "teacher"

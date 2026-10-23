@@ -38,6 +38,7 @@ export function splitMarkdownExamBlocks(text: string): Array<{ blockText: string
   let currentLines: string[] = [];
   let blockStartLine = 1;
   let currentSectionKp = "";
+  let inCodeFence = false;
 
   // 匹配题号开始标记：如 "1."、"2、"、"第3题"、"【1】"、"### 1."、"- 1."、"**1.**"
   const QUESTION_START_REGEX = /^\s*(?:[-*+]\s+)?(?:#{1,6}\s+)?(?:\*\*)?(?:第?\s*\d+\s*[.、题:：]|【\d+】)/;
@@ -46,6 +47,20 @@ export function splitMarkdownExamBlocks(text: string): Array<{ blockText: string
     const line = lines[i];
     const trimmed = line.trim();
     const lineNo = i + 1;
+
+    // 代码块围栏状态切换：在代码块内部不触发题号切题或章节标题
+    if (trimmed.startsWith("```")) {
+      inCodeFence = !inCodeFence;
+      if (currentLines.length === 0) blockStartLine = lineNo;
+      currentLines.push(line);
+      continue;
+    }
+
+    if (inCodeFence) {
+      if (currentLines.length === 0) blockStartLine = lineNo;
+      currentLines.push(line);
+      continue;
+    }
 
     // 检查是否为 Markdown 标题行：如 "# 2026年综合能力模拟试卷"、"## 一、单项选择题"
     const headingMatch = line.match(/^\s*#+\s*(.*)$/);

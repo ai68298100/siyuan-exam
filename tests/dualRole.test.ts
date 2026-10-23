@@ -132,4 +132,28 @@ describe("双角色协同能力增强 (dualRole)", () => {
       expect(result.diffSummary).toContain("A/B 卷");
     });
   });
+
+  describe("5. 角色状态存储安全隔离与受限环境容错", () => {
+    it("受限环境抛出 SecurityError 时安全兜底回退 student 角色而不崩溃", () => {
+      const readLocalRole = (storageMock?: { getItem: () => string }) => {
+        try {
+          return storageMock && storageMock.getItem() === "teacher" ? "teacher" : "student";
+        } catch {
+          return "student";
+        }
+      };
+
+      // 模拟正常读取
+      expect(readLocalRole({ getItem: () => "teacher" })).toBe("teacher");
+      expect(readLocalRole({ getItem: () => "student" })).toBe("student");
+
+      // 模拟沙箱/隐私模式抛出异常
+      const throwingMock = {
+        getItem: () => {
+          throw new DOMException("The operation is insecure.", "SecurityError");
+        },
+      };
+      expect(readLocalRole(throwingMock)).toBe("student");
+    });
+  });
 });

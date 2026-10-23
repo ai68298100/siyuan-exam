@@ -94,4 +94,25 @@ D. 罚款
     expect(report.errors).toHaveLength(0);
     expect(report.ok).toHaveLength(4);
   });
+
+  it("splitMarkdownExamBlocks 保护题干内代码块，不被代码块中的注释或编号误切断", () => {
+    const codeExamMd = `
+1. 阅读以下 Python 代码并选出运行结果：
+\`\`\`python
+# 1. 初始化数组
+# ## 二、测试标题
+def solve():
+    return 42
+\`\`\`
+A. 42
+B. None
+【答案】A
+    `;
+
+    const blocks = splitMarkdownExamBlocks(codeExamMd);
+    expect(blocks.length).toBe(1);
+    expect(blocks[0].blockText).toContain("def solve():");
+    expect(blocks[0].blockText).toContain("# 1. 初始化数组");
+    expect(blocks[0].blockText).toContain("【答案】A");
+  });
 });
