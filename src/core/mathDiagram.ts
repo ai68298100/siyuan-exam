@@ -26,6 +26,15 @@ export interface StatsChartItem {
   value: number;
 }
 
+function escapeXml(s: string): string {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
 /**
  * 绘制数理统计柱状图 SVG
  */
@@ -52,11 +61,11 @@ export function renderBarChartSvg(
   const barW = Math.max(8, Math.min(48, (plotW - totalGaps) / barCount));
 
   const parts: string[] = [];
-  parts.push(`<svg class="lv-math-diagram lv-math-bar" viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px;height:auto;display:block;margin:8px auto;background:var(--lv-surface);border:1px solid var(--lv-border);border-radius:6px" role="img" aria-label="柱状统计图: ${options.title || "数据统计"}">`);
+  parts.push(`<svg class="lv-math-diagram lv-math-bar" viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px;height:auto;display:block;margin:8px auto;background:var(--lv-surface);border:1px solid var(--lv-border);border-radius:6px" role="img" aria-label="柱状统计图: ${escapeXml(options.title || "数据统计")}">`);
 
   // 标题
   if (options.title) {
-    parts.push(`<text x="${padLeft}" y="18" font-size="11" font-weight="bold" fill="currentColor" opacity="0.9">${options.title}</text>`);
+    parts.push(`<text x="${padLeft}" y="18" font-size="11" font-weight="bold" fill="currentColor" opacity="0.9">${escapeXml(options.title)}</text>`);
   }
 
   // 坐标轴
@@ -83,7 +92,7 @@ export function renderBarChartSvg(
     // 柱上数值
     parts.push(`<text x="${(curX + barW / 2).toFixed(1)}" y="${(curY - 4).toFixed(1)}" font-size="10" font-family="serif" text-anchor="middle" fill="currentColor">${it.value}</text>`);
     // 柱下类目标签
-    parts.push(`<text x="${(curX + barW / 2).toFixed(1)}" y="${(axisY + 14).toFixed(1)}" font-size="10" text-anchor="middle" fill="currentColor" opacity="0.85">${it.label}</text>`);
+    parts.push(`<text x="${(curX + barW / 2).toFixed(1)}" y="${(axisY + 14).toFixed(1)}" font-size="10" text-anchor="middle" fill="currentColor" opacity="0.85">${escapeXml(it.label)}</text>`);
   });
 
   parts.push(`</svg>`);
@@ -107,10 +116,10 @@ export function renderPieChartSvg(
   if (total <= 0) return "";
 
   const parts: string[] = [];
-  parts.push(`<svg class="lv-math-diagram lv-math-pie" viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px;height:auto;display:block;margin:8px auto;background:var(--lv-surface);border:1px solid var(--lv-border);border-radius:6px" role="img" aria-label="扇形统计图: ${options.title || "占比分布"}">`);
+  parts.push(`<svg class="lv-math-diagram lv-math-pie" viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px;height:auto;display:block;margin:8px auto;background:var(--lv-surface);border:1px solid var(--lv-border);border-radius:6px" role="img" aria-label="扇形统计图: ${escapeXml(options.title || "占比分布")}">`);
 
   if (options.title) {
-    parts.push(`<text x="14" y="20" font-size="11" font-weight="bold" fill="currentColor" opacity="0.9">${options.title}</text>`);
+    parts.push(`<text x="14" y="20" font-size="11" font-weight="bold" fill="currentColor" opacity="0.9">${escapeXml(options.title)}</text>`);
   }
 
   const colors = [
@@ -146,7 +155,7 @@ export function renderPieChartSvg(
     if (legY < h - 10) {
       const pct = (fraction * 100).toFixed(0);
       parts.push(`<rect x="180" y="${legY - 9}" width="12" height="12" rx="2" fill="${color}" />`);
-      parts.push(`<text x="198" y="${legY + 1}" font-size="10" fill="currentColor">${it.label}: ${pct}%</text>`);
+      parts.push(`<text x="198" y="${legY + 1}" font-size="10" fill="currentColor">${escapeXml(it.label)}: ${pct}%</text>`);
     }
 
     currentAngle = endAngle;
@@ -171,17 +180,18 @@ export function renderNumberLineSvg(options: {
   const h = options.height ?? 80;
   const min = options.range?.[0] ?? -5;
   const max = options.range?.[1] ?? 5;
+  const safeSpan = Math.max(0.001, max - min);
   const pad = 24;
   const lineY = h / 2 + 4;
   const axisW = w - pad * 2;
 
-  const toX = (val: number) => pad + ((val - min) / (max - min)) * axisW;
+  const toX = (val: number) => pad + ((val - min) / safeSpan) * axisW;
 
   const parts: string[] = [];
-  parts.push(`<svg class="lv-math-diagram lv-math-numberline" viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px;height:auto;display:block;margin:8px auto;background:var(--lv-surface);border:1px solid var(--lv-border);border-radius:6px" role="img" aria-label="数轴区间图: ${options.title || "数轴"}">`);
+  parts.push(`<svg class="lv-math-diagram lv-math-numberline" viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px;height:auto;display:block;margin:8px auto;background:var(--lv-surface);border:1px solid var(--lv-border);border-radius:6px" role="img" aria-label="数轴区间图: ${escapeXml(options.title || "数轴")}">`);
 
   if (options.title) {
-    parts.push(`<text x="14" y="16" font-size="10" font-weight="bold" fill="currentColor" opacity="0.85">${options.title}</text>`);
+    parts.push(`<text x="14" y="16" font-size="10" font-weight="bold" fill="currentColor" opacity="0.85">${escapeXml(options.title)}</text>`);
   }
 
   // 数轴横线与两端箭头
@@ -271,16 +281,18 @@ export function renderFunctionPlotSvg(
   const pad = 24;
   const plotW = w - pad * 2;
   const plotH = h - pad * 2;
+  const xSpan = Math.max(0.001, xMax - xMin);
+  const ySpan = Math.max(0.001, yMax - yMin);
 
   // 坐标映射
-  const toSvgX = (x: number) => pad + ((x - xMin) / (xMax - xMin)) * plotW;
-  const toSvgY = (y: number) => pad + ((yMax - y) / (yMax - yMin)) * plotH;
+  const toSvgX = (x: number) => pad + ((x - xMin) / xSpan) * plotW;
+  const toSvgY = (y: number) => pad + ((yMax - y) / ySpan) * plotH;
 
   const origX = toSvgX(0);
   const origY = toSvgY(0);
 
   const parts: string[] = [];
-  parts.push(`<svg class="lv-math-diagram lv-math-plot" viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px;height:auto;display:block;margin:8px auto;background:var(--lv-surface);border:1px solid var(--lv-border);border-radius:6px" role="img" aria-label="函数图像: ${funcExpr}">`);
+  parts.push(`<svg class="lv-math-diagram lv-math-plot" viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px;height:auto;display:block;margin:8px auto;background:var(--lv-surface);border:1px solid var(--lv-border);border-radius:6px" role="img" aria-label="函数图像: ${escapeXml(funcExpr)}">`);
 
   // 1. 绘制网格与坐标轴
   // X 轴
@@ -334,7 +346,7 @@ export function renderFunctionPlotSvg(
 
   // 3. 图表说明标题
   const title = options.title || funcExpr;
-  parts.push(`<text x="${pad + 4}" y="${pad + 4}" font-size="11" font-family="serif" font-weight="bold" fill="currentColor" opacity="0.9">${title}</text>`);
+  parts.push(`<text x="${pad + 4}" y="${pad + 4}" font-size="11" font-family="serif" font-weight="bold" fill="currentColor" opacity="0.9">${escapeXml(title)}</text>`);
 
   parts.push(`</svg>`);
   return parts.join("\n");
@@ -365,12 +377,12 @@ export function renderTriangleSvg(
   const labelOffset = (p: { x: number; y: number }, ox: number, oy: number, name: string) =>
     `<text x="${p.x + ox}" y="${p.y + oy}" font-size="12" font-weight="bold" font-family="serif" fill="currentColor">${name}</text>`;
 
-  parts.push(labelOffset(p1, -4, -8, p1.name));
-  parts.push(labelOffset(p2, -14, 12, p2.name));
-  parts.push(labelOffset(p3, 8, 12, p3.name));
+  parts.push(labelOffset(p1, -4, -8, escapeXml(p1.name)));
+  parts.push(labelOffset(p2, -14, 12, escapeXml(p2.name)));
+  parts.push(labelOffset(p3, 8, 12, escapeXml(p3.name)));
 
   if (options.title) {
-    parts.push(`<text x="12" y="18" font-size="11" font-weight="bold" fill="currentColor" opacity="0.85">${options.title}</text>`);
+    parts.push(`<text x="12" y="18" font-size="11" font-weight="bold" fill="currentColor" opacity="0.85">${escapeXml(options.title)}</text>`);
   }
 
   parts.push(`</svg>`);
@@ -431,7 +443,7 @@ export function renderMathDiagramsInText(text: string): string {
       const p3 = { name: triMatch[7], x: parseInt(triMatch[8], 10), y: parseInt(triMatch[9], 10) };
       return renderTriangleSvg([p1, p2, p3], { title: "几何参考示意图" });
     }
-    return `<div class="lv-math-diagram-raw">${raw}</div>`;
+    return `<div class="lv-math-diagram-raw">${escapeXml(raw)}</div>`;
   });
 
   // 3. 匹配 ```math-bar ... ``` （柱状图）

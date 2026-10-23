@@ -10,13 +10,17 @@
 
 [![Release](https://img.shields.io/github/v/release/ai68298100/siyuan-exam?logo=github)](https://github.com/ai68298100/siyuan-exam/releases)
 [![CI](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml/badge.svg)](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml)
-[![Tests](https://img.shields.io/badge/tests-1342%20passed-brightgreen)](#开发)
+[![Tests](https://img.shields.io/badge/tests-1345%20passed-brightgreen)](#开发)
 [![SiYuan](https://img.shields.io/badge/SiYuan-%3E%3D%203.8.0-blue)](https://github.com/siyuan-note/siyuan)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 [English](README.en-US.md) · [当前状态](docs/STATUS.md) · [交付说明](docs/DELIVERY.md) · [组件清单](docs/UI-COMPONENTS.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md) · [下载发行包](https://github.com/ai68298100/siyuan-exam/releases) · [查看 R54 UI 原型](design/prototype-r54/index.html) · [反馈问题](https://github.com/ai68298100/siyuan-exam/issues) · [参与讨论](https://github.com/ai68298100/siyuan-exam/discussions)
 
-## 最新版本：v0.11.7（2026-10-23）
+## 最新版本：v0.11.8（2026-10-23）
+
+本版本为矢量数学图表安全转义、除零边界防御与思源原生文档 IAL 双引号加固升级版本。全面排查并修复柱图、饼图、几何图、数轴及函数图中的字符串拼接注入隐患，统一经过 `escapeXml` 实体转义，杜绝特殊字符（如 `<`、`>`、`&`、`"`）导致的 SVG XML 解析崩溃；修复数轴与函数图在极值区间相等时产生除以零得到 `NaN`/`Infinity` 的边界缺陷；同步题库与错题手册为原生折叠笔记时，自动对块属性值（考点名称、试题编号）中的双引号进行反斜杠转义。全套单测扩充至 176 个测试文件、1345 项单测 100% 全部通过。
+
+## 上一版本：v0.11.7（2026-10-23）
 
 本版本为学习报告中心全景诊断战报导出与考场交卷闭环深化升级版本。学习报告中心新增一键导出出版级 A4 完整学情诊断报告（HTML），整合总作答、正确率、自律连击天数、艾宾浩斯临界高危考点清障清单、备考完备度五维雷达与失分考点排查，支持免外部网络直接离线打印成 PDF 或永久存档；考场交卷后呈现普鲁士学院蓝（`--lv-brand`）与朱砂红满分火漆印（`--lv-accent-seal`）战报成就胶囊矩阵；新增【🖨️ 打印本次错题精练卷】与【📥 存为错题集笔记】，实现模考错题一键纸质打印订正与沉淀消灭。全套单测扩充至 176 个测试文件、1342 项单测 100% 全部通过。
 

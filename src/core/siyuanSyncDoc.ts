@@ -26,6 +26,10 @@ const TYPE_CN_MAP: Record<string, string> = {
   material: "材料题",
 };
 
+function escIal(v: string): string {
+  return String(v ?? "").replace(/"/g, '\\"');
+}
+
 /**
  * 将题目列表格式化为思源笔记原生文档 Markdown
  */
@@ -93,7 +97,7 @@ export function buildSiyuanExamDocMarkdown(
 
     // 思源块属性（供重装插件或块查询识别）
     if (options.includeAttrs !== false) {
-      lines.push(`{: custom-exam-id="${q.id}" custom-exam-type="${q.type}" custom-exam-kp="${q.kp || ""}"}\n`);
+      lines.push(`{: custom-exam-id="${escIal(q.id)}" custom-exam-type="${escIal(q.type)}" custom-exam-kp="${escIal(q.kp || "")}"}\n`);
     } else {
       lines.push("");
     }

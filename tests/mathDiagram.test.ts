@@ -213,5 +213,22 @@ interval: [-1, 3)
       expect(html).toContain("lim");
       expect(html).toContain("lv-math-lim-sub");
     });
+
+    it("SVG XML 实体特殊字符严格转义防注入与解析错误", () => {
+      const svg = renderBarChartSvg([{ label: "A & B < C >", value: 10 }], { title: "Title with <tag> & &" });
+      expect(svg).toContain("A &amp; B &lt; C &gt;");
+      expect(svg).toContain("Title with &lt;tag&gt; &amp; &amp;");
+      expect(svg).not.toContain("<tag>");
+    });
+
+    it("数轴与函数图极小范围防除零 NaN 保护", () => {
+      const lineSvg = renderNumberLineSvg({ range: [5, 5] });
+      expect(lineSvg).not.toContain("NaN");
+      expect(lineSvg).toContain("<svg");
+
+      const plotSvg = renderFunctionPlotSvg("y = x", { xRange: [2, 2], yRange: [3, 3] });
+      expect(plotSvg).not.toContain("NaN");
+      expect(plotSvg).toContain("<svg");
+    });
   });
 });

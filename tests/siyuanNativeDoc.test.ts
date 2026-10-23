@@ -176,12 +176,22 @@ ANSWER: A
     ];
 
     it("buildSiyuanExamDocMarkdown 排版生成带折叠块答案与思源块属性的原生文档", () => {
-      const docMd = buildSiyuanExamDocMarkdown("2026年考研高数与法理全真模考卷", testQuestions, {
+      const qWithQuotes: Question = {
+        id: 'q-"quote"-test',
+        type: "single",
+        stem: '测试带引号考点"物权法"',
+        options: ["A", "B"],
+        answer: "A",
+        kp: '民法/"物权法"',
+      };
+      const docMd = buildSiyuanExamDocMarkdown("2026年考研高数与法理全真模考卷", [...testQuestions, qWithQuotes], {
         durationMinutes: 120,
         passLine: 60,
       });
 
       expect(docMd).toContain("# 📚 2026年考研高数与法理全真模考卷");
+      expect(docMd).toContain('custom-exam-id="q-\\"quote\\"-test"');
+      expect(docMd).toContain('custom-exam-kp="民法/\\"物权法\\""');
       expect(docMd).toContain("⏱️ 建议限时：**120 分钟**");
       expect(docMd).toContain("## 一、单项选择题");
       expect(docMd).toContain("## 二、简答论述题");
