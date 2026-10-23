@@ -51,6 +51,12 @@ export function parseNumeric(raw: string): number | null {
     .replace(/,/g, "")
     .replace(/[×xX]\s*10\s*\^?/i, "e");
   if (!s) return null;
+  // 百分号数字支持：如 85% 或 85.5％ 转换为标准数值 85
+  if (s.endsWith("%") || s.endsWith("％")) {
+    const numPart = s.slice(0, -1).trim();
+    const n = Number(numPart);
+    return Number.isFinite(n) ? n : null;
+  }
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
 }
@@ -146,7 +152,9 @@ export interface MultiBlankVerdict {
 
 /** 逐空判分：作答按 ";;" 分段、按位置对应空位；缺段=空白（incorrect+empty，部分作答可逐空解释） */
 export function gradeMultiBlank(spec: MultiBlankSpec, given: string): MultiBlankVerdict {
-  const parts = given.split(MULTI_BLANK_SEP).map((s) => s.trim());
+  // 兼容中文输入法连续全角分号 "；；" 归一化为半角 ";;"
+  const normalizedGiven = String(given ?? "").replace(/；；/g, MULTI_BLANK_SEP);
+  const parts = normalizedGiven.split(MULTI_BLANK_SEP).map((s) => s.trim());
   const blanks: BlankResult[] = spec.blanks.map((b, i) => {
     const g = parts[i] ?? "";
     const empty = g === "";
@@ -168,7 +176,8 @@ export function gradeMultiBlank(spec: MultiBlankSpec, given: string): MultiBlank
 
 /** 草稿 → 逐空数组：按 ";;" 切分，不足 n 段补空串（判分按位置对应，多余段保留如实提交） */
 export function splitBlanks(draft: string, n: number): string[] {
-  const parts = String(draft ?? "").split(MULTI_BLANK_SEP);
+  const normalized = String(draft ?? "").replace(/；；/g, MULTI_BLANK_SEP);
+  const parts = normalized.split(MULTI_BLANK_SEP);
   while (parts.length < n) parts.push("");
   return parts;
 }
@@ -189,8 +198,9 @@ export function inferAnswerSpec(
   if (type !== "fill") return undefined;
   const text = String(answer ?? "").trim();
   if (!text) return undefined;
-  if (text.includes(MULTI_BLANK_SEP)) {
-    const segs = text
+  const normalizedText = text.replace(/；；/g, MULTI_BLANK_SEP);
+  if (normalizedText.includes(MULTI_BLANK_SEP)) {
+    const segs = normalizedText
       .split(MULTI_BLANK_SEP)
       .map((x) => x.trim())
       .filter(Boolean);

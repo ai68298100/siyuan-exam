@@ -89,6 +89,15 @@ describe("数学公式处理引擎 (math)", () => {
       expect(html).toContain("&lt;script&gt;");
       expect(html).toContain('class="lv-math-expr lv-math-inline"');
     });
+
+    it("行内公式不跨行匹配，杜绝普通文本多行美元符号误吞题干", () => {
+      const multiLineText = "商品原价 $50 元。\n第二行促销现价 $100 元。";
+      const html = renderMathInText(multiLineText);
+      // 行内不应跨行吞噬为单一公式
+      expect(html).not.toContain('class="lv-math-expr');
+      expect(html).toContain("商品原价 $50 元。");
+      expect(html).toContain("第二行促销现价 $100 元。");
+    });
   });
 
   describe("4. 选项渲染集成 (renderInlineText) 与样式净化", () => {

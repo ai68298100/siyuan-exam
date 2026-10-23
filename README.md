@@ -10,13 +10,17 @@
 
 [![Release](https://img.shields.io/github/v/release/ai68298100/siyuan-exam?logo=github)](https://github.com/ai68298100/siyuan-exam/releases)
 [![CI](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml/badge.svg)](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml)
-[![Tests](https://img.shields.io/badge/tests-1348%20passed-brightgreen)](#开发)
+[![Tests](https://img.shields.io/badge/tests-1349%20passed-brightgreen)](#开发)
 [![SiYuan](https://img.shields.io/badge/SiYuan-%3E%3D%203.8.0-blue)](https://github.com/siyuan-note/siyuan)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 [English](README.en-US.md) · [当前状态](docs/STATUS.md) · [交付说明](docs/DELIVERY.md) · [组件清单](docs/UI-COMPONENTS.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md) · [下载发行包](https://github.com/ai68298100/siyuan-exam/releases) · [查看 R54 UI 原型](design/prototype-r54/index.html) · [反馈问题](https://github.com/ai68298100/siyuan-exam/issues) · [参与讨论](https://github.com/ai68298100/siyuan-exam/discussions)
 
-## 最新版本：v0.11.10（2026-10-23）
+## 最新版本：v0.11.11（2026-10-23）
+
+本版本为行内公式跨行误吞防御、多空填空全角分号容错与题库健康防崩溃升级版本。重构 `renderMathInText` 正则表达式，严格限定行内公式（`$...$`）在单行内匹配且两端紧贴非空白字符，彻底杜绝多行题干中因偶发出现两个美元价格符号（如 `$50` 与 `$100`）而将中间全部正常文字误吞为一个巨大公式的缺陷；多空判分全面支持自动将中文输入法下的连续全角分号（`；；`）归一化为标准半角分号（`;;`），支持百分号数字（如 `85%`）标准判分；加固题库健康体检算法，杜绝题目对象选项缺失时的白屏隐患。全套单测 176 个测试文件、1349 项单测 100% 全部通过。
+
+## 上一版本：v0.11.10（2026-10-23）
 
 本版本为主观题采分点空字符串全匹配漏洞修复与 TSV 尾随制表符自愈容错升级版本。修复采分点说明在空文本或纯标点符号时，提取出空字符串关键词 `""` 进而导致任意作答被 `includes("")` 判定为完全命中的逻辑缺陷，增加 Unicode 全角标点集过滤与未作答严格阻断；从 Excel 或剪贴板复制两列问答卡时，自动修剪末尾多余的空白制表符列，避免因个别行带有尾部空白列导致整份问答卡全部被误判为未识别格式。全套单测 176 个测试文件、1348 项单测 100% 全部通过。
 

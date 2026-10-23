@@ -45,7 +45,8 @@ export function jaccard(a: string, b: string): number {
 }
 
 function stemFingerprint(q: Question): string {
-  return (q.stem + "\u0000" + q.options.join("\u0001")).replace(/\s+/g, "");
+  const opts = Array.isArray(q.options) ? q.options.join("\u0001") : "";
+  return (String(q.stem ?? "") + "\u0000" + opts).replace(/\s+/g, "");
 }
 
 // ---------- 重复检测 ----------
@@ -119,8 +120,9 @@ export function missingFields(qs: Question[]): MissingFieldRow[] {
     if (!q.kp?.trim()) noKp.push(q.id);
     if (!q.source?.trim()) noSource.push(q.id);
     if (CHOICE_TYPES.has(q.type)) {
-      if (q.options.filter((o) => o.trim()).length < 2) noOptions.push(q.id);
-      if (!q.answer.trim()) noAnswer.push(q.id);
+      const opts = Array.isArray(q.options) ? q.options : [];
+      if (opts.filter((o) => (o ?? "").trim()).length < 2) noOptions.push(q.id);
+      if (!(q.answer ?? "").trim()) noAnswer.push(q.id);
     }
   }
   const rows = [

@@ -257,12 +257,11 @@ export function renderMathInText(text: string): string {
   // 先统一归一化语法
   const normalized = normalizeLatexFormula(text);
 
-  // 分块解析：优先提取块级公式 $$...$$，再提取行内公式 $...$
+  // 分块解析：优先提取块级公式 $$...$$，再提取单行且两端非空白的行内公式 $...$
   const chunks: Array<{ type: "text" | "blockMath" | "inlineMath"; content: string }> = [];
 
-  // 正则：非贪婪匹配 $$...$$ 与 $...$
-  // 注意：需要避免匹配空 $ 或转义的 \$
-  const MATH_PATTERN = /(\$\$[\s\S]*?\$\$|\$(?!\$)[\s\S]*?\$)/g;
+  // 正则：块级公式支持跨行，行内公式严格限定在单行且紧贴非空白字符，避免跨行吞噬或误吞美元价格符号
+  const MATH_PATTERN = /(\$\$[\s\S]*?\$\$|\$(?!\s)(?:[^$\r\n]+?)(?<!\s)\$)/g;
 
   let lastIndex = 0;
   let match: RegExpExecArray | null;

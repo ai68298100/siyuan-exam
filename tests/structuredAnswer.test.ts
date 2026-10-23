@@ -33,6 +33,8 @@ describe("54-02 数值解析", () => {
     expect(parseNumeric("-2.5")).toBe(-2.5);
     expect(parseNumeric("1e-3")).toBe(0.001);
     expect(parseNumeric("3×10^8")).toBe(3e8);
+    expect(parseNumeric("85%")).toBe(85);
+    expect(parseNumeric("85.5％")).toBe(85.5);
     expect(parseNumeric("abc")).toBeNull();
   });
 });
@@ -121,5 +123,11 @@ describe("54-03 多空题逐空判分", () => {
     const future = { ...mbQ, answerSpec: { v: 2, kind: "multiBlank", blanks: [] } as unknown as Question["answerSpec"] };
     // 回退旧口径：fill 按整串匹配 → wrong（而非抛错或误判 correct）
     expect(grade(future, "H2O;;氧;;2").verdict).toBe("wrong");
+  });
+
+  it("中文连续全角分号；；自动归一化为半角;;，顺利判定全对", () => {
+    const v = gradeMultiBlank(mbSpec, "H2O；；氧；；2");
+    expect(v.allCorrect).toBe(true);
+    expect(v.correctCount).toBe(3);
   });
 });

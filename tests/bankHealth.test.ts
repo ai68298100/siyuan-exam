@@ -128,4 +128,23 @@ describe("43-04 孤儿题目诊断队列与健康清单导出", () => {
     expect(csv).toContain("缺答案题");
     expect(ORPHAN_KIND_LABELS.orphan_group_sub).toBe("无母块子题");
   });
+
+  it("损坏对象与空 options 字段安全容错，不抛异常并归入缺失选项", () => {
+    const corruptQ = {
+      id: "q-corrupt-1",
+      type: "single" as const,
+      stem: "损坏题目",
+      options: undefined as unknown as string[],
+      answer: "A",
+    } as Question;
+
+    // duplicateClusters 能够安全处理 options 缺失
+    expect(() => duplicateClusters([corruptQ])).not.toThrow();
+
+    // missingFields 能够安全检出缺选项
+    const rows = missingFields([corruptQ]);
+    const optMiss = rows.find((r) => r.field === "options");
+    expect(optMiss).toBeDefined();
+    expect(optMiss?.count).toBe(1);
+  });
 });
