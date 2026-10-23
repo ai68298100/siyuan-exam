@@ -284,6 +284,7 @@
     "import.pickExcel": "Pick Excel/CSV",
     "import.orPaste": "or paste Aiken text",
     "import.fromSiyuanDoc": "Import from SiYuan Doc",
+    "import.siyuanDocSafety": "🔒 Read-only safety: only reads plain text to generate questions, never modifies or deletes your original notes.",
     "import.searchDocPlaceholder": "Search SiYuan doc title or path…",
     "bank.hubTitle": "Question Bank Hub",
     "bank.openInSiyuan": "Open in SiYuan",

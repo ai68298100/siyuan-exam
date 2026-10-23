@@ -102,8 +102,8 @@ export function parseOcrQuestionText(
       else if (tag.includes("简答") || tag.includes("论述") || tag.includes("主观")) detectedType = "short";
     }
 
-    // 检查答案标签
-    const ansMatch = line.match(/(?:【(?:参考)?答案】|^(?:参考)?答案\s*[:：]|^ANSWER\s*[:：])\s*(.*)$/i);
+    // 检查答案标签：支持 【答案】、答案：、ANSWER:、答：、【答】、A: 等
+    const ansMatch = line.match(/(?:【(?:参考)?答案】|^(?:参考)?答案\s*[:：]|^ANSWER\s*[:：]|^答\s*[:：]|【答】|^A\s*[:：])\s*(.*)$/i);
     if (ansMatch) {
       extractedAnswer = ansMatch[1].trim();
       currentSection = "answer";
@@ -126,10 +126,11 @@ export function parseOcrQuestionText(
       continue;
     }
 
-    // 检查选项行起始标记：必须为行首 A-J 加点/顿号/括号/空格，或同行多个空格后的选项标记
+    // 检查选项行起始标记：支持行首 A-J 或列表项 - A.、* A.、+ A. 加点/顿号/括号/空格
+    const cleanOptLine = line.replace(/^[-*+•]\s+/, "");
     const hasOptionPrefix =
-      /^(?:[A-J][.、:）\s]|[(（[【][A-J][)）\]】])/.test(line) ||
-      /(?:\s{2,}|\t)(?:[A-J][.、:）\s]|[(（[【][A-J][)）\]】])/.test(line);
+      /^(?:[A-J][.、:）\s]|[(（[【][A-J][)）\]】])/.test(cleanOptLine) ||
+      /(?:\s{2,}|\t)(?:[A-J][.、:）\s]|[(（[【][A-J][)）\]】])/.test(cleanOptLine);
 
     if (currentSection === "analysis") {
       extractedAnalysis += (extractedAnalysis ? "\n" : "") + line;
@@ -154,7 +155,7 @@ export function parseOcrQuestionText(
 
     if (hasOptionPrefix) {
       currentSection = "options";
-      optionLines.push(line);
+      optionLines.push(cleanOptLine);
       continue;
     }
 

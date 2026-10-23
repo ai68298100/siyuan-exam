@@ -10,13 +10,17 @@
 
 [![Release](https://img.shields.io/github/v/release/ai68298100/siyuan-exam?logo=github)](https://github.com/ai68298100/siyuan-exam/releases)
 [![CI](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml/badge.svg)](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml)
-[![Tests](https://img.shields.io/badge/tests-1337%20passed-brightgreen)](#开发)
+[![Tests](https://img.shields.io/badge/tests-1339%20passed-brightgreen)](#开发)
 [![SiYuan](https://img.shields.io/badge/SiYuan-%3E%3D%203.8.0-blue)](https://github.com/siyuan-note/siyuan)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 [English](README.en-US.md) · [当前状态](docs/STATUS.md) · [交付说明](docs/DELIVERY.md) · [组件清单](docs/UI-COMPONENTS.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md) · [下载发行包](https://github.com/ai68298100/siyuan-exam/releases) · [查看 R54 UI 原型](design/prototype-r54/index.html) · [反馈问题](https://github.com/ai68298100/siyuan-exam/issues) · [参与讨论](https://github.com/ai68298100/siyuan-exam/discussions)
 
-## 最新版本：v0.11.3（2026-10-23）
+## 最新版本：v0.11.4（2026-10-23）
+
+本版本为思源笔记文档转入题库体验深化与离线资产安全保障升级版本。强化思源原生 Markdown/Kramdown 预清洗引擎，兼容引用块试题（`>`）、列表项选项（`- A.`）、问答卡（`Q:` / `A:` 与 `【问】` / `【答】`），并优雅清洗块引用与双链语法；全流程内存只读导出（`exportDocMarkdown`），严格保障原笔记绝对不被修改或覆盖；从文档提取的试题自动绑定原笔记路径溯源，基于内容指纹（`q.hash`）实现多次导入幂等去重；支持题库画廊管理（Bank Hub）与题库/试卷/错题本一键生成思源原生折叠笔记文档。全套单测扩充至 175 个测试文件、1339 项单测 100% 全部通过。
+
+## 上一版本：v0.11.3（2026-10-23）
 
 本版本为小驴生态中枢统领与集市协同升级版本。全面对齐 Epoch 6 标准联邦规范，规范主别名 `window.LvExam` 与能力协商契约；刷题结算自动向小驴打卡安全写入作答事实并广播标准 `lv-exam:session-ended` 生态事件；错题本接入小驴闪卡同步幽灵按钮降级；顶栏与侧栏升级为 32×32 满分通关双层题卷矢量徽标（`iconExam`）；注入普鲁士学院蓝（`--lv-brand`）与朱砂红满分火漆印（`--lv-accent-seal`）；刷题结算呈现温情鼓励大卡片与 9999px 成就胶囊矩阵；补齐集市前置搜索关键词（`小驴`、`小驴考试` 等），开启独立桌面设置大窗（`settingsWindow: true`），预览图统一为轻量高清 PNG（`preview.png` 314KB），保持最新 256×256 殿堂级头像；升级 `dompurify` 依赖彻底修补安全漏洞。全套自动化单测扩充至 175 个测试文件、1337 项单测 100% 全部通过。
 

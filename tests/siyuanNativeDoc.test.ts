@@ -37,6 +37,22 @@ ANSWER: B
       expect(cleaned).toContain("宪法第一条明确规定");
     });
 
+    it("cleanSiyuanDocMarkdown 兼容引用块前缀、块引用与双链语法", () => {
+      const raw = `
+> ### 1. ((20261022123456-abcdefg "法的本质与特征"))
+> - A. 统治阶级意志的体现
+> - B. 全民意志的体现
+> 答案：A
+> 解析：参见 [[法理学讲义|第一章]]。
+      `;
+      const cleaned = cleanSiyuanDocMarkdown(raw);
+      expect(cleaned).not.toContain(">");
+      expect(cleaned).not.toContain("((20261022123456-abcdefg");
+      expect(cleaned).toContain("法的本质与特征");
+      expect(cleaned).toContain("第一章");
+      expect(cleaned).not.toContain("[[法理学讲义|第一章]]");
+    });
+
     it("parseQuestionsFromSiyuanDoc 成功提取思源文档试题并注入来源与考点元数据", async () => {
       const docMarkdown = `
 1. 我国宪法的修改由全国人民代表大会以全体代表的（ ）以上的多数通过。
@@ -59,6 +75,36 @@ ANSWER: B
       expect(q.source).toBe("2026年法考宪法精讲讲义");
       expect(q.sourceKind).toBe("real");
       expect(q.kp).toContain("法律职业资格考试/宪法学");
+    });
+
+    it("parseQuestionsFromSiyuanDoc 兼容引用块与列表项选择题，并具备幂等哈希一致性", async () => {
+      const docMarkdown = `
+> 1. 根据物权法律制度的规定，下列各项中，属于独立物权的是（ ）。
+> - A. 建设用地使用权
+> - B. 地役权
+> - C. 抵押权
+> - D. 留置权
+> 【答案】A
+      `;
+
+      const meta = {
+        docId: "doc-property-law",
+        title: "民法物权精选",
+        hpath: "/民法/物权法",
+      };
+
+      const report1 = await parseQuestionsFromSiyuanDoc(docMarkdown, meta);
+      expect(report1.ok.length).toBe(1);
+      const q1 = report1.ok[0];
+      expect(q1.options.length).toBe(4);
+      expect(q1.answer).toBe("A");
+
+      // 再次提取，生成确定性 hash，保证幂等去重
+      const report2 = await parseQuestionsFromSiyuanDoc(docMarkdown, meta, {
+        existingHashes: [q1.hash],
+      });
+      expect(report2.duplicates).toBe(1);
+      expect(report2.ok.length).toBe(0); // 幂等去重，不重复入库
     });
   });
 

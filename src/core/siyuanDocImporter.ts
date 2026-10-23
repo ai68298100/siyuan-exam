@@ -19,10 +19,13 @@ export interface SiyuanDocMeta {
 }
 
 /**
- * 预处理思源笔记文档 Markdown 文本：
+ * 预处理思源笔记文档 Markdown 文本（完全只读，不修改原笔记）：
  * 1. 剥离思源专有的 IAL 属性段 `{: id="xxx" ...}`，避免干扰题干解析；
- * 2. 将思源折叠块 `::: details 答案 ... :::` 或 `<details><summary>答案</summary>...</details>` 标准化；
- * 3. 规范化空白与换行。
+ * 2. 剥离引用块前缀 `>`，支持存放在引用块中的题面；
+ * 3. 将思源折叠块 `::: details 答案 ... :::` 或 `<details><summary>答案</summary>...</details>` 标准化；
+ * 4. 转换思源块引用 `((id "锚文本"))` 为易读文本；
+ * 5. 转换思源双链 `[[文档|别名]]` 为纯文本别名；
+ * 6. 将笔记常见问答卡 `Q:` / `A:` / `【问】` / `【答】` 映射为标准题面与答案结构。
  */
 export function cleanSiyuanDocMarkdown(raw: string): string {
   if (!raw) return "";
@@ -32,19 +35,33 @@ export function cleanSiyuanDocMarkdown(raw: string): string {
   // 1. 移除思源 IAL 块属性行（例如 {: id="2026..." updated="2026..."}）
   s = s.replace(/\{:[^}]*\}\s*$/gm, "");
 
-  // 2. 将思源常用折叠块答案转为标准提示词
+  // 2. 剥离行首引用块标记（支持整道题写在引用块 > 里的场景）
+  s = s.replace(/^>\s?/gm, "");
+
+  // 3. 将思源常用折叠块答案转为标准提示词
   // 如 ::: details 答案与解析 ... ::: 转换为 【答案】与【解析】
   s = s.replace(/:::\s*details\s*(?:答案|解析|答案与解析)?\s*\r?\n([\s\S]*?):::/gi, (_m, body: string) => {
-    return `\n${body.trim()}\n`;
+    return `\n【答案】\n${body.trim()}\n`;
   });
 
-  // 3. 将 HTML <details> 折叠块转换为标准行
+  // 4. 将 HTML <details> 折叠块转换为标准行
   s = s.replace(/<details>\s*<summary>([^<]*)<\/summary>([\s\S]*?)<\/details>/gi, (_m, summary: string, body: string) => {
-    return `\n${summary.trim()}\n${body.trim()}\n`;
+    const sum = summary.trim();
+    const isAns = /(?:答案|解析|详解)/.test(sum);
+    return `\n${isAns ? "【答案】" : sum}\n${body.trim()}\n`;
   });
 
-  // 4. 清洗思源原生单行高亮 ==重点== 或挖空 {{c1::...}}
-  // 保持内容分流识别能力
+  // 5. 替换思源块引用：((id "锚文本")) 替换为 锚文本；纯 ((id)) 移除
+  s = s.replace(/\(\([0-9a-zA-Z-]+\s+"([^"]+)"\)\)/g, "$1");
+  s = s.replace(/\(\([0-9a-zA-Z-]+\)\)/g, "");
+
+  // 6. 替换思源双链：[[title|alias]] 替换为 alias；[[title]] 替换为 title
+  s = s.replace(/\[\[([^|\]]+)\|([^\]]+)\]\]/g, "$2");
+  s = s.replace(/\[\[([^\]]+)\]\]/g, "$1");
+
+  // 7. 问答卡问答标号归一化：支持 Q: ... A: ... 与 【问】... 【答】...
+  s = s.replace(/^\s*(?:Q\d*|【问\d*】)\s*[:：]\s*/gim, "");
+  s = s.replace(/^\s*(?:A\d*|【答\d*】)\s*[:：]\s*/gim, "【答案】：");
 
   return s.trim();
 }

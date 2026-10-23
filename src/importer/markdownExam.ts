@@ -18,10 +18,10 @@ import { parseOcrQuestionText } from "../core/ocr";
  */
 export function isMarkdownExamText(text: string): boolean {
   if (!text || text.length < 10) return false;
-  // 包含典型的答案标签：【答案】或 答案：或 参考答案
-  const hasAnswerTag = /(?:【(?:参考)?答案】|^(?:参考)?答案\s*[:：])/m.test(text);
-  // 包含题号开头：如 "1." 或 "1、" 或 "第1题" 或 "### 1."
-  const hasQuestionNumber = /^\s*(?:###?\s*)?(?:第?\s*\d+\s*[.、题:：])/m.test(text);
+  // 包含典型的答案标签：【答案】或 答案：或 参考答案 或 ANSWER: 或 答：
+  const hasAnswerTag = /(?:【(?:参考)?答案】|^(?:参考)?答案\s*[:：]|^ANSWER\s*[:：]|【答】|^答\s*[:：])/mi.test(text);
+  // 包含题号开头：如 "1." 或 "1、" 或 "第1题" 或 "### 1." 或 "**1.**"
+  const hasQuestionNumber = /^\s*(?:[-*+]\s+)?(?:#{1,6}\s+)?(?:\*\*)?(?:第?\s*\d+\s*[.、题:：]|【\d+】)/m.test(text);
   // 包含选项标号
   const hasOptions = /^[A-D][.、\s]/m.test(text);
 
@@ -39,8 +39,8 @@ export function splitMarkdownExamBlocks(text: string): Array<{ blockText: string
   let blockStartLine = 1;
   let currentSectionKp = "";
 
-  // 匹配题号开始标记：如 "1."、"2、"、"第3题"、"【1】"、"### 1."
-  const QUESTION_START_REGEX = /^\s*(?:###?\s*)?(?:第?\s*\d+\s*[.、题:：]|【\d+】)/;
+  // 匹配题号开始标记：如 "1."、"2、"、"第3题"、"【1】"、"### 1."、"- 1."、"**1.**"
+  const QUESTION_START_REGEX = /^\s*(?:[-*+]\s+)?(?:#{1,6}\s+)?(?:\*\*)?(?:第?\s*\d+\s*[.、题:：]|【\d+】)/;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];

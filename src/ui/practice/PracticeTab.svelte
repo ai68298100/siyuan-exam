@@ -8626,6 +8626,9 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
           {#if importSubTab === "siyuan"}
             <!-- 从思源笔记原生文档直接提取题目导入 -->
             <div class="stack-sm" style="margin-top:6px">
+              <div class="lv-chip lv-chip--grn" style="font-size:11px;padding:4px 8px;margin-bottom:4px" role="note">
+                {t("import.siyuanDocSafety")}
+              </div>
               <div class="lv-row" style="margin:0">
                 <input class="lv-input" style="flex:1" placeholder={t("import.searchDocPlaceholder")} bind:value={docSearchQuery} oninput={(e) => void doSearchDocs((e.target as HTMLInputElement).value)} />
                 <button class="lv-btn sm" onclick={() => void doSearchDocs(docSearchQuery)} disabled={siyuanDocBusy}><Icon name="search" size={13} /> {siyuanDocBusy ? "…" : "搜索"}</button>
