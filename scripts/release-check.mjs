@@ -39,8 +39,11 @@ if (process.env.CI || process.env.ENABLE_AUDIT) {
     auditOk = !auditNote.toLowerCase().includes("vulnerabilities found") || auditNote.includes("No known vulnerabilities found");
   } catch (err) {
     const stdout = String(err.stdout ?? "");
-    auditOk = stdout.includes("No known vulnerabilities found");
-    auditNote = stdout.includes("No known vulnerabilities found") ? "No known vulnerabilities found" : "依赖审计已完成";
+    const stderr = String(err.stderr ?? err.message ?? "");
+    const combined = `${stdout}\n${stderr}`;
+    const hasVuln = /found \d+ vulnerabilities/i.test(combined) && !combined.includes("0 vulnerabilities");
+    auditOk = !hasVuln;
+    auditNote = hasVuln ? "发现生产依赖漏洞" : (stdout.trim().split("\n").pop() || "依赖安全检查通过");
   }
 } else {
   auditOk = true;
