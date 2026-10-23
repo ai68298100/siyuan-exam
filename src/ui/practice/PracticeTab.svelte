@@ -5,6 +5,10 @@
 import { showMessage } from "siyuan";
 import manifest from "../../../plugin.json";
 import { logCheckinEventSafely, getBridgeSafely } from "@/libs/ecosystem-bridge-kit";
+import { renderMathInText } from "@/core/math";
+import { renderMathDiagramsInText } from "@/core/mathDiagram";
+import { auditForgettingRisks } from "@/core/forgettingRisk";
+import { sanitizeRichHtml } from "@/libs/sanitize";
     import { planToday, parseExamProfiles, nearestUpcoming, nextPlanTrace, remainingPlan } from "@/core/planner";
 import { ttsSpeak, ttsSupported } from "@/core/tts";
     import type { ExamApp } from "../../app";
@@ -158,6 +162,25 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     let questionLoadSeq = 0;
     let viewportBottomPad = $state(0);
     const hasCardsPlugin = $derived(Boolean(getBridgeSafely("cards")));
+
+    const criticalForgettingKps = $derived.by(() => {
+      if (!questions.length || !app) return [];
+      const rep = auditForgettingRisks(questions, app.attempts.all());
+      return rep.urgentRescueKps.filter((k) => k.riskTier === "critical");
+    });
+
+    async function rescueEbbinghausNow() {
+      if (!criticalForgettingKps.length) return;
+      const qids = criticalForgettingKps.flatMap((k) => k.candidateQids).slice(0, 10);
+      const qs = qids.map((id) => questionMap.get(id)).filter(Boolean) as Question[];
+      if (!qs.length) return;
+      await safeStart(qs, "quick", () => {
+        feedback = null; selected = ""; confidenceSel = ""; sessionDone = null;
+        view = "session";
+        restoreQuestionControls();
+        showMessage(`⚡ 已开启艾宾浩斯临界考点急救特训（共 ${qs.length} 题）`, 3000, "info");
+      });
+    }
 
     // 题库管理画廊 Hub 状态
     let bankHubOpen = $state(false);
@@ -5445,6 +5468,27 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       }
     }
 
+    async function importAllSearchedDocs() {
+      if (!siyuanDocCandidates.length || !app) return;
+      siyuanDocBusy = true;
+      try {
+        const docIds = siyuanDocCandidates.map((d) => d.id);
+        const report = await app.importFromSiyuanDocBatch(docIds);
+        if (!report.ok.length) {
+          showMessage(report.errors[0]?.reason || "所选文档内未检索到题目格式内容", 3500, "info");
+          return;
+        }
+        importReport = report;
+        importText = "";
+        importSubTab = "standard";
+        showMessage(`从 ${docIds.length} 篇文档中成功批量提取 ${report.ok.length} 道试题，请在下方预览并确认入库！`, 4200, "info");
+      } catch (e) {
+        showMessage(`批量提取失败：${String(e instanceof Error ? e.message : e)}`, 4000, "error");
+      } finally {
+        siyuanDocBusy = false;
+      }
+    }
+
     function toggleClozeMode(mode: "highlight" | "curly" | "bracket") {
       if (clozeModes.includes(mode)) {
         if (clozeModes.length > 1) clozeModes = clozeModes.filter((m) => m !== mode);
@@ -5994,6 +6038,23 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         {/if}
         {#if plan}
           <div class="lv-entry-overview">
+          {#if criticalForgettingKps.length > 0}
+            <div class="lv-card" style="margin-bottom:12px;padding:12px 16px;border-left:4px solid var(--lv-accent-seal);background:var(--lv-surface);box-shadow:var(--lv-sh-1)">
+              <div class="lv-row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span class="lv-achievement-pill lv-achievement-pill--seal">
+                    🚨 艾宾浩斯记忆急救
+                  </span>
+                  <span style="font-size:var(--lv-font-size-body-compact);font-weight:600;color:var(--lv-text)">
+                    检测到 {criticalForgettingKps.length} 个核心考点记忆留存已跌破 35% 临界线！
+                  </span>
+                </div>
+                <button class="lv-btn sm lv-btn--primary" onclick={rescueEbbinghausNow}>
+                  <Icon name="play" size={13} /> 立即抢救（{criticalForgettingKps[0].kp} 等 5 题）
+                </button>
+              </div>
+            </div>
+          {/if}
           <div class="lv-card lv-hero lv-entry-hero">
             <div class="lv-entry-main">
               <span class="lv-focus-label">{t("entry.today")}</span>
@@ -7201,13 +7262,13 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         </div>
         <div class="lv-preview-face">
           <span class="lv-chip lv-chip--acc">{t("qtype." + mType)}</span>
-          <h3>{mStem.trim() || t("manual.stemPlaceholder")}</h3>
+          <h3>{@html sanitizeRichHtml(renderMathInText(renderMathDiagramsInText(mStem.trim() || t("manual.stemPlaceholder"))))}</h3>
           {#if mType === "single" || mType === "multiple"}
             <div class="lv-preview-options">
               {#each mOptions as option, i (i)}
                 <div class="lv-preview-option" class:selected={mAnswer.includes(String.fromCharCode(65 + i))}>
                   <span class="lv-preview-key">{String.fromCharCode(65 + i)}</span>
-                  <span>{option.trim() || "待填写选项"}</span>
+                  <span>{@html sanitizeRichHtml(renderMathInText(option.trim() || "待填写选项"))}</span>
                 </div>
               {/each}
             </div>
@@ -8637,6 +8698,12 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
                 {#if siyuanDocCandidates.length === 0}
                   <div class="lv-muted" style="padding:10px;text-align:center">{siyuanDocBusy ? "正在搜索思源文档…" : "输入文档标题或路径开始查找"}</div>
                 {:else}
+                  <div class="lv-row" style="justify-content:space-between;padding:4px 8px;margin-bottom:4px;background:var(--lv-surface-2);border-radius:4px">
+                    <span class="lv-muted" style="font-size:11px">已搜索到 {siyuanDocCandidates.length} 篇相关笔记</span>
+                    <button class="lv-btn sm lv-btn--primary" disabled={siyuanDocBusy} onclick={importAllSearchedDocs}>
+                      <Icon name="layers" size={12} /> 一键批量提取全部 ({siyuanDocCandidates.length})
+                    </button>
+                  </div>
                   {#each siyuanDocCandidates as doc (doc.id)}
                     <div class="lv-row" style="justify-content:space-between;align-items:center;padding:6px 8px;border-bottom:1px solid var(--lv-border-subtle)">
                       <div style="flex:1;min-width:0;margin-right:10px">

@@ -3669,6 +3669,28 @@ export class ExamApp {
     return parseQuestionsFromSiyuanDoc(rawMd, { docId, title, hpath });
   }
 
+  async importFromSiyuanDocBatch(docIds: string[]): Promise<import("./importer/pipeline").ImportReport> {
+    const { newBatchId } = await import("./core/ids");
+    if (!docIds.length) return { batch: newBatchId(), ok: [], errors: [], duplicates: 0 };
+    const batchItems: import("./core/siyuanDocImporter").SiyuanDocBatchItem[] = [];
+    for (const id of docIds) {
+      try {
+        const docRes = await this.deps.client.exportDocMarkdown(id);
+        const rows = await this.deps.client.sql<Record<string, string>>(
+          `SELECT content, hpath FROM blocks WHERE id='${id.replace(/'/g, "''")}' LIMIT 1`,
+        );
+        batchItems.push({
+          docId: id,
+          title: rows[0]?.content?.trim() || docRes.title || "思源文档",
+          hpath: rows[0]?.hpath || "",
+          markdown: docRes.content || "",
+        });
+      } catch { /* 容错跳过不可读文档 */ }
+    }
+    const { parseQuestionsFromSiyuanDocBatch } = await import("./core/siyuanDocImporter");
+    return parseQuestionsFromSiyuanDocBatch(batchItems);
+  }
+
   async syncBankToSiyuanDoc(bankId?: string): Promise<{ docId: string; title: string; hpath: string }> {
     const targetBank = bankId ?? this.listBanks()[0]?.id;
     if (!targetBank) throw new Error("请先选择或创建一个题库");

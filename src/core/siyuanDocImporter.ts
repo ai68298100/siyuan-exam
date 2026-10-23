@@ -104,3 +104,51 @@ export async function parseQuestionsFromSiyuanDoc(
     ok: enrichedQuestions,
   };
 }
+
+export interface SiyuanDocBatchItem {
+  docId: string;
+  title: string;
+  hpath?: string;
+  markdown: string;
+}
+
+/**
+ * 批量从多篇思源笔记文档中提取试题，合并结果并确定性去重
+ */
+export async function parseQuestionsFromSiyuanDocBatch(
+  docs: readonly SiyuanDocBatchItem[],
+  options: ImportOptions = {},
+): Promise<ImportReport> {
+  const allQuestions: import("./types").Question[] = [];
+  const allErrors: import("../importer/pipeline").ImportError[] = [];
+  let duplicates = 0;
+  const seenHash = new Set(options.existingHashes);
+
+  for (const doc of docs) {
+    const singleReport = await parseQuestionsFromSiyuanDoc(doc.markdown, {
+      docId: doc.docId,
+      title: doc.title,
+      hpath: doc.hpath,
+    }, {
+      ...options,
+      existingHashes: seenHash,
+    });
+
+    for (const q of singleReport.ok) {
+      if (seenHash.has(q.hash)) {
+        duplicates++;
+      } else {
+        seenHash.add(q.hash);
+        allQuestions.push(q);
+      }
+    }
+    allErrors.push(...singleReport.errors);
+  }
+
+  return {
+    batch: newBatchId(),
+    ok: allQuestions,
+    errors: allErrors,
+    duplicates,
+  };
+}

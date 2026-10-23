@@ -10,13 +10,17 @@
 
 [![Release](https://img.shields.io/github/v/release/ai68298100/siyuan-exam?logo=github)](https://github.com/ai68298100/siyuan-exam/releases)
 [![CI](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml/badge.svg)](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml)
-[![Tests](https://img.shields.io/badge/tests-1339%20passed-brightgreen)](#开发)
+[![Tests](https://img.shields.io/badge/tests-1340%20passed-brightgreen)](#开发)
 [![SiYuan](https://img.shields.io/badge/SiYuan-%3E%3D%203.8.0-blue)](https://github.com/siyuan-note/siyuan)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 [English](README.en-US.md) · [当前状态](docs/STATUS.md) · [交付说明](docs/DELIVERY.md) · [组件清单](docs/UI-COMPONENTS.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md) · [下载发行包](https://github.com/ai68298100/siyuan-exam/releases) · [查看 R54 UI 原型](design/prototype-r54/index.html) · [反馈问题](https://github.com/ai68298100/siyuan-exam/issues) · [参与讨论](https://github.com/ai68298100/siyuan-exam/discussions)
 
-## 最新版本：v0.11.4（2026-10-23）
+## 最新版本：v0.11.5（2026-10-23）
+
+本版本为思源笔记本批量入库、录题即时渲染与艾宾浩斯急救看板深化升级版本。导入工作台支持一键批量提取搜索出的全部思源文档试题，自动按文档层级建立章节考点树并幂等去重；手工录题工作台全面接入实时公式渲染与数学图表绘制，支持即时预览 LaTeX 矩阵、分段、化学方程式、函数曲线、几何图形、柱图、饼图与数轴，告别盲打；首页备考看板联动艾宾浩斯高危考点急救胶囊卡，支持一键发起 5-10 题定向唤醒抢救。全套单测扩充至 175 个测试文件、1340 项单测 100% 全部通过。
+
+## 上一版本：v0.11.4（2026-10-23）
 
 本版本为思源笔记文档转入题库体验深化与离线资产安全保障升级版本。强化思源原生 Markdown/Kramdown 预清洗引擎，兼容引用块试题（`>`）、列表项选项（`- A.`）、问答卡（`Q:` / `A:` 与 `【问】` / `【答】`），并优雅清洗块引用与双链语法；全流程内存只读导出（`exportDocMarkdown`），严格保障原笔记绝对不被修改或覆盖；从文档提取的试题自动绑定原笔记路径溯源，基于内容指纹（`q.hash`）实现多次导入幂等去重；支持题库画廊管理（Bank Hub）与题库/试卷/错题本一键生成思源原生折叠笔记文档。全套单测扩充至 175 个测试文件、1339 项单测 100% 全部通过。
 

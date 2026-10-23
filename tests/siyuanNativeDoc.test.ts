@@ -3,6 +3,7 @@ import type { Question } from "../src/core/types";
 import {
   cleanSiyuanDocMarkdown,
   parseQuestionsFromSiyuanDoc,
+  parseQuestionsFromSiyuanDocBatch,
 } from "../src/core/siyuanDocImporter";
 import {
   buildSiyuanExamDocMarkdown,
@@ -101,10 +102,42 @@ ANSWER: B
 
       // 再次提取，生成确定性 hash，保证幂等去重
       const report2 = await parseQuestionsFromSiyuanDoc(docMarkdown, meta, {
-        existingHashes: [q1.hash],
+        existingHashes: new Set([q1.hash]),
       });
       expect(report2.duplicates).toBe(1);
       expect(report2.ok.length).toBe(0); // 幂等去重，不重复入库
+    });
+
+    it("parseQuestionsFromSiyuanDocBatch 并发从多篇文档批量提取试题并合并去重", async () => {
+      const doc1 = {
+        docId: "doc-ch1",
+        title: "第一章 法的本体",
+        hpath: "/法理学/第一章",
+        markdown: `
+1. 法的根本属性是（ ）。
+A. 阶级性
+B. 社会性
+ANSWER: A
+        `,
+      };
+      const doc2 = {
+        docId: "doc-ch2",
+        title: "第二章 法的运行",
+        hpath: "/法理学/第二章",
+        markdown: `
+1. 法律适用的核心主体是（ ）。
+A. 国家司法机关
+B. 行政机关
+ANSWER: A
+        `,
+      };
+
+      const batchReport = await parseQuestionsFromSiyuanDocBatch([doc1, doc2]);
+      expect(batchReport.ok.length).toBe(2);
+      expect(batchReport.ok[0].source).toBe("第一章 法的本体");
+      expect(batchReport.ok[1].source).toBe("第二章 法的运行");
+      expect(batchReport.ok[0].kp).toBe("法理学");
+      expect(batchReport.ok[1].kp).toBe("法理学");
     });
   });
 
