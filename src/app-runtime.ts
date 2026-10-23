@@ -152,7 +152,7 @@ function readOrCreateDeviceId(): string {
   try {
     let id = localStorage.getItem(K);
     if (id) return id;
-    if (!globalThis.crypto?.randomUUID) throw new Error("[lv-exam] WebCrypto 不可用");
+    if (!globalThis.crypto?.randomUUID) throw new Error("[LvExam] WebCrypto 不可用");
     id = `d-${globalThis.crypto.randomUUID().replace(/-/g, "").slice(0, 6)}`;
     localStorage.setItem(K, id);
     return id;

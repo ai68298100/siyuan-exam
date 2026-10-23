@@ -3,6 +3,8 @@
     // 状态设计（docs/11）：loading/empty(守卫)/error/normal 四态可达
     import { onMount, tick } from "svelte";
 import { showMessage } from "siyuan";
+import manifest from "../../../plugin.json";
+import { logCheckinEventSafely, getBridgeSafely } from "@/libs/ecosystem-bridge-kit";
     import { planToday, parseExamProfiles, nearestUpcoming, nextPlanTrace, remainingPlan } from "@/core/planner";
 import { ttsSpeak, ttsSupported } from "@/core/tts";
     import type { ExamApp } from "../../app";
@@ -154,6 +156,8 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     let questionsError = $state("");
     let questionsLoaded = $state(false);
     let questionLoadSeq = 0;
+    let viewportBottomPad = $state(0);
+    const hasCardsPlugin = $derived(Boolean(getBridgeSafely("cards")));
 
     // 题库管理画廊 Hub 状态
     let bankHubOpen = $state(false);
@@ -1397,6 +1401,23 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         onExamEvent("session-ended", onDataChanged),
         onExamEvent("wrongbook-changed", onDataChanged),
       ];
+
+      // 移动端虚拟键盘避让：监听 visualViewport 动态抬升底边距，防遮挡按钮
+      if (typeof window !== "undefined" && window.visualViewport) {
+        const onViewportChange = () => {
+          const vv = window.visualViewport;
+          if (!vv) return;
+          const diff = Math.max(0, window.innerHeight - vv.height - (vv.offsetTop || 0));
+          viewportBottomPad = diff > 80 ? diff : 0;
+        };
+        window.visualViewport.addEventListener("resize", onViewportChange);
+        window.visualViewport.addEventListener("scroll", onViewportChange);
+        offs.push(() => {
+          window.visualViewport?.removeEventListener("resize", onViewportChange);
+          window.visualViewport?.removeEventListener("scroll", onViewportChange);
+        });
+      }
+
       onMountCleanup = () => offs.forEach((off) => off());
       const pendingView = consumePendingPracticeView(plugin);
       const initialView = pendingView?.view ?? plugin?.pendingInitialView;
@@ -3346,10 +3367,68 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
         correct: sessionDone.correct,
         wrong: sessionDone.wrong,
       });
+
+      // Epoch 6：小驴生态联邦标准事件广播 lv-exam:session-ended
+      if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+        window.dispatchEvent(
+          new CustomEvent("lv-exam:session-ended", {
+            detail: {
+              v: 1,
+              source: "siyuan-exam",
+              type: "lv-exam:session-ended",
+              eventId: `ev-exam-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+              at: new Date().toISOString(),
+              idempotencyKey: `exam-session:${session.id}`,
+              payload: {
+                sessionId: session.id,
+                mode: session.state.mode,
+                total: sessionDone.total,
+                correct: sessionDone.correct,
+                wrong: sessionDone.wrong,
+              },
+            },
+          }),
+        );
+      }
+
       await app.saveSession();
       await app.flush();
       rebuildPlan();
+
+      // 小驴打卡联动（安全调用，未配置或未安装时优雅跳过）
+      const checkinItemId = String(plugin.settingUtils?.get?.("checkinItemId") ?? "").trim();
+      const completedQuestions = sessionDone.total;
+      const accuracy = sessionDone.total > 0 ? Math.round((sessionDone.correct / sessionDone.total) * 100) : 0;
+      const today = new Date().toISOString().slice(0, 10);
+      if (checkinItemId && completedQuestions > 0) {
+        void logCheckinEventSafely({
+          itemId: checkinItemId,
+          value: completedQuestions,
+          unit: "题",
+          externalRef: `exam:${checkinItemId}:${today}`,
+          note: `完成备考刷题 ${completedQuestions} 题（正确率 ${accuracy}%）`,
+        }).catch(() => undefined);
+      }
+
       void runCheckinBridge().catch((e: unknown) => showMessage(String(e instanceof Error ? e.message : e), 4200, "error")); // 48-03 lite：结算自动同步打卡（幂等 externalRef，失败进待重试）
+    }
+
+    async function syncWrongbookToCards() {
+      if (!hasCardsPlugin) {
+        showMessage("[小驴考试] 未检测到小驴闪卡插件（siyuan-lv-cards），可前往思源集市安装以开启卡包同步；当前内置错题重练已就绪！", 3500, "info");
+        return;
+      }
+      const wrongQs = questions.filter((q) => filteredWrongQueue.some((w) => w.qid === q.id));
+      if (!wrongQs.length) {
+        showMessage("[小驴考试] 当前筛选下没有可推送到闪卡的错题", 2500, "info");
+        return;
+      }
+      try {
+        const n = await app.convertToCards(activeBankId, bankName, wrongQs);
+        showMessage(`[小驴考试] 已将 ${n} 道错题同步推送到小驴闪卡卡包 ✓`, 3500, "info");
+      } catch (e) {
+        showMessage(`[小驴考试] 推送闪卡失败：${String(e instanceof Error ? e.message : e)}`, 4000, "error");
+      }
     }
 
     /** 44-09 撤销作答：在反馈态下撤回刚才误触的提交，恢复原草稿并安全回滚作答流水 */
@@ -5733,7 +5812,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     <Rail active="practice" taskactive={view === "browse" || view === "wrongbook" ? "bank" : view === "manual" || view === "import" || view === "ai" || view === "materials" ? "create" : "today"} tasknavhidden={view === "session" && !sessionDone || view === "recite" && !reciteDone} ontasknavigate={onTaskNav} {plugin} items={railItems} open={railOpen} onclose={closeRail}
       project={{ name: bankName || t("guard.title"), kicker: t("rail.projectKicker") }} onproject={() => (view = "entry")}
       onquickcreate={() => { view = "manual"; }} />
-    <div class="lv-main">
+    <div class="lv-main" style={viewportBottomPad > 0 ? `padding-bottom: ${viewportBottomPad + 16}px;` : undefined}>
   {#if errorMsg && errorMsg !== t("state.emptyBank") && view !== "session"}
     <div class="lv-pad" style="padding-bottom:0"><div class="lv-error" role="alert">{errorMsg}</div></div>
   {/if}
@@ -6077,8 +6156,25 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     <!-- ===== S2 会话 ===== -->
     {#if sessionDone}
       <div class="lv-pad lv-center">
-        <div class="lv-card lv-guard">
-          <div class="lv-guard-title"><Icon name="trophy" size={18} /> {t("session.done")}</div>
+        <div class="lv-card lv-guard" style="border-top:3.5px solid var(--lv-brand);box-shadow:var(--lv-sh-pop)">
+          <div class="lv-guard-title" style="color:var(--lv-brand);display:flex;align-items:center;justify-content:center;gap:8px">
+            <Icon name="trophy" size={20} />
+            <span>{sessionDone.wrong === 0 ? "🎉 满分通关 · 太棒了！" : sessionDone.correct >= sessionDone.wrong ? "🎉 备考达标 · 战绩优异！" : "💪 坚持不懈 · 查漏补缺！"}</span>
+          </div>
+          <!-- 战报成就胶囊矩阵（9999px） -->
+          <div class="lv-row" style="justify-content:center;gap:6px;margin:8px 0 14px;flex-wrap:wrap">
+            <span class="lv-achievement-pill">
+              🎯 {sessionDone.total > 0 ? Math.round((sessionDone.correct / sessionDone.total) * 100) : 0}% 正确率
+            </span>
+            {#if streakDays > 0}
+              <span class="lv-achievement-pill lv-achievement-pill--seal">
+                🔥 连续 {streakDays} 天自律打卡
+              </span>
+            {/if}
+            <span class="lv-achievement-pill">
+              ⏱️ 累计用时 {sessionDone.totalTimeS || 0}s
+            </span>
+          </div>
           <div class="lv-done-stats num">
             <div><strong>{sessionDone.total}</strong><span>{t("session.total")}</span></div>
             <div class="good"><strong>{sessionDone.correct}</strong><span>{t("session.correct")}</span></div>
@@ -6794,6 +6890,15 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
                   <button class="lv-btn sm lv-btn--ghost" onclick={() => void printWrongSheet("answer")} disabled={printWrongBusy || !filteredWrongQueue.length} title="导出或打印配套答案册"><Icon name="book" size={13} /> 答案册</button>
                   <button class="lv-btn sm lv-btn--ghost" onclick={exportCheatSheet} disabled={cheatSheetBusy || !filteredWrongQueue.length} title={t("cram.cheatSheetTip")}><Icon name="file-text" size={13} /> {t("cram.cheatSheet")}</button>
                   <button class="lv-btn sm lv-btn--ghost" onclick={saveWrongbookAsDoc} disabled={!filteredWrongQueue.length} title="将当前筛选的错题组建排版为思源笔记文档，折叠答案，卸载插件永久保留"><Icon name="file" size={13} /> {t("wrongbook.saveAsSiyuanDoc")}</button>
+                  <button
+                    class="lv-btn sm lv-btn--ghost"
+                    style={!hasCardsPlugin ? "opacity: 0.45;" : ""}
+                    onclick={() => void syncWrongbookToCards()}
+                    disabled={!filteredWrongQueue.length}
+                    title={hasCardsPlugin ? "将当前筛选的错题同步推送到小驴闪卡（siyuan-lv-cards）卡包中进行 FSRS 间隔复习" : "未检测到小驴闪卡插件（siyuan-lv-cards），安装后可一键将错题同步至 FSRS 卡包复习；当前内置错题重练 100% 独立可用"}
+                  >
+                    <Icon name="layers" size={13} /> {t("wrongbook.pushCards")}
+                  </button>
                   <button class="lv-btn sm lv-btn--primary" onclick={() => void launchWrongbookMockExam()} disabled={!filteredWrongQueue.length} title="将当前筛选的错题组建为全真限时模拟考卷，拉起答题卡进行考场高压攻坚"><Icon name="clock" size={13} /> {t("wrongbook.launchExam")}</button>
                 </div>
                 <span class="lv-muted" style="font-size:var(--lv-font-size-caption)">{t("wrongbook.queue.note")}</span>
@@ -8802,7 +8907,11 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       <div class="lv-hotkeys-wrap">
         <div class="lv-card" role="dialog" aria-modal="true" tabindex="-1" aria-label={t("bank.hubTitle")} style="width:min(640px, 100%);max-height:85vh;overflow-y:auto;pointer-events:auto;padding:20px;border-radius:var(--lv-r-3);box-shadow:var(--lv-sh-pop)">
           <div class="lv-row" style="justify-content:space-between;margin:0 0 12px">
-            <b style="font-size:16px"><Icon name="folder" size={16} /> {t("bank.hubTitle")}（共 {banks.length} 个题库）</b>
+            <div class="lv-dialog-title-wrap">
+              <span class="lv-dialog-title-icon"><Icon name="folder" size={13} /></span>
+              <span>{t("bank.hubTitle")}</span>
+              <span class="lv-dialog-title-tag">{banks.length} 题库</span>
+            </div>
             <button class="lv-btn sm lv-btn--ghost" onclick={() => bankHubOpen = false}>✕</button>
           </div>
           <div class="lv-row" style="margin:0 0 12px">
@@ -8839,7 +8948,11 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       <div class="lv-hotkeys-wrap">
         <div class="lv-card lv-hotkeys-card" role="dialog" aria-modal="true" tabindex="-1" aria-label={t("hotkeys.title")}>
           <div class="lv-row" style="justify-content:space-between;margin:0 0 14px">
-            <b style="font-size:16px"><Icon name="activity" size={16} /> {t("hotkeys.title")}</b>
+            <div class="lv-dialog-title-wrap">
+              <span class="lv-dialog-title-icon"><Icon name="activity" size={13} /></span>
+              <span>{t("hotkeys.title")}</span>
+              <span class="lv-dialog-title-tag">v{manifest.version}</span>
+            </div>
             <button class="lv-btn sm lv-btn--ghost" onclick={() => hotkeysHelpOpen = false}>✕</button>
           </div>
           <div class="lv-hotkeys-grid">

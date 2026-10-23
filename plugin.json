@@ -3,7 +3,8 @@
   "author": "ai68298100",
   "url": "https://github.com/ai68298100/siyuan-exam",
   "version": "0.11.2",
-  "minAppVersion": "3.8.0",
+  "minAppVersion": "3.8.4",
+  "settingsWindow": true,
   "backends": [
     "windows",
     "linux",
@@ -35,8 +36,12 @@
     "en_US": "README.en-US.md"
   },
   "icon": "icon.png",
-  "preview": "preview.jpg",
+  "preview": "preview.png",
   "keywords": [
+    "小驴",
+    "小驴考试",
+    "xiaolv",
+    "lv",
     "exam",
     "quiz",
     "flashcard",

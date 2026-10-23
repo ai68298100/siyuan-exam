@@ -50,7 +50,7 @@ export class OpenAiChannel implements AiChannel {
 
   async chat(messages: AiMessage[], signal?: AbortSignal): Promise<string> {
     if (!this.cfg.endpoint || !this.cfg.apiKey) {
-      throw new Error("[lv-exam] AI 端点或 Key 未配置");
+      throw new Error("[LvExam] AI 端点或 Key 未配置");
     }
     const ctrl = new AbortController();
     // 外部 signal → 内联中止（链式）

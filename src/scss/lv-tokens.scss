@@ -51,6 +51,11 @@
   --lv-teacher-primary: #7c4dff;
   --lv-teacher-soft: color-mix(in srgb, var(--lv-teacher-primary) 12%, transparent);
   --lv-teacher-border: color-mix(in srgb, var(--lv-teacher-primary) 32%, transparent);
+  /* —— 小驴生态品牌色（普鲁士学院蓝与朱砂红满分印） —— */
+  --lv-brand: #0284C7; /* 普鲁士学院蓝 */
+  --lv-brand-soft: color-mix(in srgb, var(--lv-brand) 12%, transparent);
+  --lv-accent-seal: #E11D48; /* 朱砂红满分印 */
+  --lv-accent-seal-soft: color-mix(in srgb, var(--lv-accent-seal) 12%, transparent);
 
   /* —— 表面与文字（三档对比） —— */
   --lv-canvas: var(--b3-theme-background, #f7f7fc);

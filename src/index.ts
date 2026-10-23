@@ -75,7 +75,11 @@ export default class LvExamPlugin extends Plugin implements ExamPluginLike {
 
     this.addIcons(`
 <symbol id="iconExam" viewBox="0 0 32 32">
-<path d="M22 3h-12a2 2 0 0 0-2 2v22a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-18l-6-6zM12 14h8v2h-8v-2zM12 18h8v2h-8v-2zM12 22h5v2h-5v-2zM19 5.5l3.5 3.5h-3.5v-3.5z"></path>
+  <path d="M11 5h9c1.7 0 3 1.3 3 3v13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-opacity="0.4"/>
+  <rect x="6" y="8" width="16" height="19" rx="3.5" fill="none" stroke="currentColor" stroke-width="2"/>
+  <path d="M10 13h5M10 16h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-opacity="0.5"/>
+  <path d="m9.5 21 2.5 2.5 5.5-5.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="22.5" cy="24" r="3" fill="currentColor"/>
 </symbol>
 <symbol id="iconMock" viewBox="0 0 32 32">
 <path d="M16 3a13 13 0 1 0 13 13 13 13 0 0 0-13-13zM16 26a10 10 0 1 1 10-10 10 10 0 0 1-10 10zM17 9h-2v8l6 3.6 1-1.6-5-3z"></path>
@@ -258,7 +262,7 @@ export default class LvExamPlugin extends Plugin implements ExamPluginLike {
       emitExamEvent("bank-changed", { bank: this.pendingPracticeBankId || "" });
       this.dispatchPublicStats();
     } catch (e) {
-      console.warn("[lv-exam] onDataChanged handling warning:", e);
+      console.warn("[LvExam] onDataChanged handling warning:", e);
     }
   }
 
@@ -269,14 +273,14 @@ export default class LvExamPlugin extends Plugin implements ExamPluginLike {
       // A corrupt/blocked settings file must not prevent the exam app from
       // starting with shipped defaults. SettingUtils keeps invalid fields at
       // their defaults; this catch covers host I/O failures.
-      console.error("[lv-exam] settings load failed; using defaults", e);
+      console.error("[LvExam] settings load failed; using defaults", e);
       showMessage(this.i18n["setting.loadFailed"] ?? "设置读取失败，已使用默认值；请检查存储权限后重试。", 5200, "error");
     }
     try {
       this.examApp = await createExamApp(this);
       emitExamEvent("app-ready", { ready: true });
     } catch (e) {
-      console.error("[lv-exam] app init failed", e);
+      console.error("[LvExam] app init failed", e);
       showMessage(String(e instanceof Error ? e.message : e), 5200, "error");
     }
     this.appInitializing = false;
@@ -388,7 +392,11 @@ export default class LvExamPlugin extends Plugin implements ExamPluginLike {
       this.disposeLvExamBridge();
       this.disposeLvExamBridge = undefined;
     } else {
-      delete (window as Window & { siyuanExam?: unknown }).siyuanExam;
+      const w = window as unknown as Record<string, unknown>;
+      delete w.LvExam;
+      delete w.siyuanExam;
+      delete w.xiaolvExam;
+      delete w.lvExam;
     }
     // 37-02 卸载顺序：先最终落盘（此时 dirty 仍在），再 dispose 清定时器——
     // 反过来 dispose 先清 dirty 会让随后的 flush 变成空操作，未落盘事件全部丢失
@@ -405,7 +413,7 @@ export default class LvExamPlugin extends Plugin implements ExamPluginLike {
     try {
       await this.tabApps.clear((instance) => unmount(instance));
     } catch (error) {
-      console.error("[lv-exam] failed to unmount tabs during unload", error);
+      console.error("[LvExam] failed to unmount tabs during unload", error);
     }
   }
 
@@ -453,7 +461,7 @@ export default class LvExamPlugin extends Plugin implements ExamPluginLike {
         destroy() {
           const plugin = getPlugin();
           void plugin.tabApps.destroy(this, (instance) => unmount(instance)).catch((error) => {
-            console.error(`[lv-exam] failed to unmount tab: ${type}`, error);
+            console.error(`[LvExam] failed to unmount tab: ${type}`, error);
           });
         },
       });
@@ -552,7 +560,7 @@ export default class LvExamPlugin extends Plugin implements ExamPluginLike {
         rememberOpenTab(type);
       },
       (error) => {
-        console.error(`[lv-exam] failed to open tab: ${type}`, error);
+        console.error(`[LvExam] failed to open tab: ${type}`, error);
         this.openingTabs.delete(type);
         const reason = String(error instanceof Error ? error.message : error);
         showMessage(

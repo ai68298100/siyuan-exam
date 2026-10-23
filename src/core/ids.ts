@@ -5,7 +5,7 @@ let counter = 0;
 function rand(n: number): string {
   const g = globalThis.crypto;
   if (!g?.getRandomValues) {
-    throw new Error("[lv-exam] WebCrypto 不可用：无法生成安全随机 ID");
+    throw new Error("[LvExam] WebCrypto 不可用：无法生成安全随机 ID");
   }
   const buf = new Uint8Array(n);
   g.getRandomValues(buf);

@@ -153,7 +153,60 @@
   }
 }
 
-/* 教师教研端专属典雅学术主题色调（data-exam-role="teacher"） */
+/* —— 弹窗标题栏标准容器（22×22 蓝底白标 + 标题 + 版本/状态胶囊） —— */
+.lv-dialog-title-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lv-space-2);
+  font-size: var(--lv-font-size-h3);
+  font-weight: var(--lv-font-weight-semibold);
+  color: var(--lv-text);
+
+  .lv-dialog-title-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border-radius: var(--lv-r-1);
+    background: var(--lv-brand);
+    color: var(--b3-theme-on-primary, #fff);
+  }
+
+  .lv-dialog-title-tag {
+    padding: 1px 8px;
+    border-radius: 9999px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--lv-brand);
+    background: var(--lv-brand-soft);
+  }
+}
+
+/* —— 战报成就胶囊矩阵（9999px 药丸胶囊，学院蓝与朱砂印点缀） —— */
+.lv-achievement-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lv-space-1);
+  padding: 4px 12px;
+  border-radius: 9999px;
+  font-size: var(--lv-font-size-sm);
+  font-weight: var(--lv-font-weight-semibold);
+  color: var(--lv-brand);
+  background: var(--lv-brand-soft);
+  border: 1px solid color-mix(in srgb, var(--lv-brand) 25%, transparent);
+  box-shadow: var(--lv-inset-subtle, inset 0 1px 0 transparent);
+  transition: transform var(--lv-dur-micro) ease;
+
+  &--seal {
+    color: var(--lv-accent-seal);
+    background: var(--lv-accent-seal-soft);
+    border-color: color-mix(in srgb, var(--lv-accent-seal) 25%, transparent);
+  }
+
+  &:hover {
+    transform: translateY(-0.5px);
+  }
+}
 [data-exam-role="teacher"] {
   --b3-theme-primary: var(--lv-teacher-primary);
   --lv-accent: var(--lv-teacher-primary);
@@ -233,9 +286,9 @@ button.lv-chip {
     background: var(--lv-accent-soft);
     box-shadow: var(--lv-sh-2), var(--lv-inset-subtle, inset 0 1px 0 transparent);
   }
-  /* 通用按压反馈（primary 单独定义压平）；disabled 前面已返回 */
+  /* 通用按压反馈（物理微触感）；disabled 前面已返回 */
   &:active:not(:disabled) {
-    transform: scale(0.975);
+    transform: translateY(1.5px) scale(0.985);
   }
   &:focus-visible {
     outline: none;

@@ -1,5 +1,5 @@
 // ============================================================
-// [lv-exam] 日志封装 + 错误二分类工具（TODO 0 组）
+// [LvExam] 日志封装 + 错误二分类工具（TODO 0 组）
 // - 前缀统一，控制台检索可过滤；生产环境 info/debug 静默（console 仍可由宿主开关）
 // - 错误二分类与 KernelApiClient 同口径：网络/超时/中断 → retryable，其余 → fatal
 // - 纯 console，不依赖 siyuan 包（core 层约束）；不采集个人数据、不外发
@@ -21,7 +21,7 @@ export function classifyError(e: unknown): LvErrKind {
 
 type Level = "debug" | "info" | "warn" | "error";
 
-const PREFIX = "[lv-exam]";
+const PREFIX = "[LvExam]";
 
 function emit(level: Level, scope: string, msg: string, detail?: unknown) {
   const line = `${PREFIX}[${scope}] ${msg}`;

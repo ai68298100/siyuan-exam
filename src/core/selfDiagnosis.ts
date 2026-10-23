@@ -76,7 +76,7 @@ export function createDiagnosisEntry(
 ): SelfDiagnosisEntry {
   const cleanQid = qid.trim();
   if (!cleanQid) {
-    throw new Error("[lv-exam] 无法创建自诊断：qid 不能为空");
+    throw new Error("[LvExam] 无法创建自诊断：qid 不能为空");
   }
 
   const rootCause = input.rootCause ?? "unknown";

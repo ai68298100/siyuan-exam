@@ -290,6 +290,7 @@
     "bank.syncToDoc": "Sync to SiYuan Note",
     "mock.saveAsSiyuanDoc": "Save as SiYuan Doc",
     "wrongbook.saveAsSiyuanDoc": "Save as SiYuan Wrongbook",
+    "wrongbook.pushCards": "Push to Lv Cards",
     "import.placeholder": "What kernel does SiYuan use?\nA. Electron + Node.js\nB. Go\nC. Rust\nANSWER: B",
     "cloze.tab": "Cloze Generator",
     "cloze.placeholder": "Paste notes with highlights or clozes, e.g.:\nSiYuan kernel is written in ==Go== language.\n{{c1::Nuclear fusion::Physics concept}} powers the stars.",

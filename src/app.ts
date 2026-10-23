@@ -2303,7 +2303,7 @@ export class ExamApp {
     this.assertStorageWritable();
     const integrity = verifyPaperIntegrity(snapshot);
     if (!integrity.valid) {
-      throw new Error(`[lv-exam] 试卷快照校验失败，拒绝写入: ${integrity.errors.join("; ")}`);
+      throw new Error(`[LvExam] 试卷快照校验失败，拒绝写入: ${integrity.errors.join("; ")}`);
     }
     const paperKey = `mock/papers/${snapshot.paperId}`;
     await this.queueStorageWrite(paperKey, () =>
@@ -2357,7 +2357,7 @@ export class ExamApp {
   async exportPaper(paperId: string, options: { note?: string } = {}): Promise<{ paperMd: string; answerKeyMd: string }> {
     const snap = await this.loadPaperSnapshot(paperId);
     if (!snap) {
-      throw new Error(`[lv-exam] 未找到试卷快照: ${paperId}`);
+      throw new Error(`[LvExam] 未找到试卷快照: ${paperId}`);
     }
     const paperMd = exportPaperMarkdown(snap, { note: options.note });
     const answerKeyMd = exportAnswerKeyMarkdown(snap, { note: options.note });
@@ -2417,7 +2417,7 @@ export class ExamApp {
     try {
       wrongbookDocId = await this.exportWrongbook(bankId, bankName);
     } catch (e) {
-      console.warn("[lv-exam] sync wrongbook doc failed:", e);
+      console.warn("[LvExam] sync wrongbook doc failed:", e);
     }
 
     // 2. 将在册错题与收藏题同步转换为标准正反面列表卡片
@@ -2429,7 +2429,7 @@ export class ExamApp {
         flashcardCount = await this.convertToCards(bankId, bankName, targetQuestions);
       }
     } catch (e) {
-      console.warn("[lv-exam] sync flashcards doc failed:", e);
+      console.warn("[LvExam] sync flashcards doc failed:", e);
     }
 
     return { wrongbookDocId, flashcardCount };

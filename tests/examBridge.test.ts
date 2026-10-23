@@ -54,8 +54,11 @@ describe("小驴考试 · 服务桥与生态集成契约 (Epoch 6)", () => {
       "stats",
       "statsRead",
       "whenReady",
+      "hasCapability",
       "getOverview",
     ]);
+    expect(bridge.hasCapability("statsRead")).toBe(true);
+    expect(bridge.hasCapability("unknownCap")).toBe(false);
   });
 
   it("whenReady 恒为 resolve(true)", async () => {

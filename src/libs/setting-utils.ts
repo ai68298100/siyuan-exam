@@ -169,7 +169,7 @@ export class SettingUtils {
           item.value = this.validateValue(key, item, data[key]);
         } catch (error) {
           // Keep the shipped default and allow the user to correct the field.
-          console.warn(`[lv-exam] ignoring invalid setting ${key}:`, error);
+          console.warn(`[LvExam] ignoring invalid setting ${key}:`, error);
         }
       }
     }

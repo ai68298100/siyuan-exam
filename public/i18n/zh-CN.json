@@ -290,6 +290,7 @@
     "bank.syncToDoc": "同步为思源文档",
     "mock.saveAsSiyuanDoc": "存为思源文档",
     "wrongbook.saveAsSiyuanDoc": "存为思源错题集",
+    "wrongbook.pushCards": "推送到小驴闪卡",
     "import.placeholder": "思源笔记的内核是什么？\nA. Electron + Node.js\nB. Go\nC. Rust\nANSWER: B",
     "cloze.tab": "正文划重点挖空出题",
     "cloze.placeholder": "粘贴带有划重点的笔记，支持识别 ==高亮词== 与 {{花括号挖空}}，例如：\n我国思源笔记的内核是用 ==Go== 语言编写的。\n{{c1::核聚变::物理概念}} 是恒星发光发热的核心能源机制。",

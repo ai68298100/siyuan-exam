@@ -7,12 +7,12 @@
 import { emitExamEvent } from "./bus";
 
 export const LVEXAM_BRIDGE_PROTOCOL = 1;
-export const LVEXAM_API_NAME = "siyuanExam";
+export const LVEXAM_API_NAME = "LvExam";
 export const LVEXAM_API_ALIASES = [
+  "LvExam",
   "siyuanExam",
   "xiaolvExam",
   "lvExam",
-  "LvExam",
 ] as const;
 
 export type LvExamApiAlias = (typeof LVEXAM_API_ALIASES)[number];
@@ -41,6 +41,7 @@ export interface LvExamBridgeApi {
   protocol: number;
   capabilities: readonly string[];
   whenReady: () => Promise<boolean>;
+  hasCapability: (name: string) => boolean;
   open: () => void;
   practice: () => void;
   wrongbook: () => void;
@@ -69,6 +70,7 @@ export function buildLvExamBridge(host: ExamBridgeHost): LvExamBridgeApi {
     "stats",
     "statsRead",
     "whenReady",
+    "hasCapability",
     "getOverview",
   ] as const;
 
@@ -78,6 +80,9 @@ export function buildLvExamBridge(host: ExamBridgeHost): LvExamBridgeApi {
     capabilities,
     whenReady() {
       return Promise.resolve(true);
+    },
+    hasCapability(name: string) {
+      return (capabilities as readonly string[]).includes(name);
     },
     open() {
       host.openPractice();

@@ -47,7 +47,7 @@ export function guardLockout(targetIndex: number, answeredFlags: readonly boolea
 /** 材料组 ID：g-xxxxxx（子题 exam-group 关联） */
 export const newGroupId = (): string => {
   const g = globalThis.crypto;
-  if (!g?.getRandomValues) throw new Error("[lv-exam] WebCrypto 不可用");
+  if (!g?.getRandomValues) throw new Error("[LvExam] WebCrypto 不可用");
   const buf = new Uint8Array(3);
   g.getRandomValues(buf);
   return "g-" + [...buf].map((b) => b.toString(16).padStart(2, "0")).join("");

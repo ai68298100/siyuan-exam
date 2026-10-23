@@ -101,7 +101,7 @@ export function createPaperSnapshot(options: {
 }): PaperSnapshot {
   const { title, blueprint, paper, scoringPolicy } = options;
   if (!paper.length) {
-    throw new Error("[lv-exam] 无法创建空试卷快照：题目列表为空");
+    throw new Error("[LvExam] 无法创建空试卷快照：题目列表为空");
   }
 
   const paperId = options.paperId ?? newPaperId();
