@@ -487,6 +487,7 @@
     let sprintBusy = $state(false);
     let printBusy = $state(false);
     let abBusy = $state(false);
+    let mockMiniSheetOpen = $state(false);
     let presetOptions = $state<import("@/core/examPresets").ExamBlueprintPreset[]>([]);
     function readLocalRole(): "student" | "teacher" {
       try {
@@ -1939,6 +1940,63 @@
       <!-- 位置读数：顺序作答模式下尤其需要知道当前进度 -->
       <span class="lv-muted num">{cursor + 1} / {session.state.qids.length}</span>
     </div>
+    {#if view === "exam" && session}
+      <div style="position:fixed;bottom:22px;right:22px;z-index:90">
+        <button
+          type="button"
+          class="lv-achievement-pill lv-achievement-pill--seal"
+          style="box-shadow:var(--lv-sh-pop);cursor:pointer;font-size:12px;padding:6px 14px;border-radius:9999px"
+          onclick={() => (mockMiniSheetOpen = !mockMiniSheetOpen)}
+          title="展开考场快捷答题卡"
+        >
+          <Icon name="edit" size={13} />
+          <span>{unansweredIndices.length > 0 ? `未答 ${unansweredIndices.length}` : "全部答完"} ({cursor + 1}/{session.state.qids.length})</span>
+        </button>
+      </div>
+    {/if}
+    {#if mockMiniSheetOpen && session}
+      <button type="button" class="lv-hotkeys-backdrop" aria-label="关闭答题卡" onclick={() => (mockMiniSheetOpen = false)}></button>
+      <div class="lv-hotkeys-wrap">
+        <div class="lv-card" role="dialog" aria-modal="true" tabindex="-1" aria-label="考场快捷答题卡" style="width:min(460px, 92vw);max-height:80vh;overflow-y:auto;pointer-events:auto;padding:16px;border-radius:var(--lv-r-3);box-shadow:var(--lv-sh-pop)">
+          <div class="lv-row" style="justify-content:space-between;align-items:center;margin:0 0 10px">
+            <div class="lv-dialog-title-wrap">
+              <span class="lv-dialog-title-icon"><Icon name="edit" size={13} /></span>
+              <span>考场快捷答题卡</span>
+              <span class="lv-dialog-title-tag">{cursor + 1}/{session.state.qids.length}</span>
+            </div>
+            <button class="lv-btn sm lv-btn--ghost" onclick={() => (mockMiniSheetOpen = false)}>✕</button>
+          </div>
+          <div class="lv-row" style="margin-bottom:8px;font-size:11px;color:var(--lv-text-3);gap:8px">
+            <span>已答 {session.state.qids.length - unansweredIndices.length}</span>
+            <span>未答 {unansweredIndices.length}</span>
+            <span>标记 {flaggedIndices.length}</span>
+          </div>
+          <div class="lv-sheet" style="max-height:50vh;overflow-y:auto">
+            {#each session.state.qids as qid, i (i)}
+              {@const answered = Boolean(answeredMap[qid]?.trim())}
+              {@const flagged = session.flags.has(qid)}
+              <button
+                class="lv-cell"
+                class:done={answered}
+                class:flag={flagged}
+                class:cur={i === cursor}
+                disabled={examLocked}
+                onclick={() => { goto(i); mockMiniSheetOpen = false; }}
+              >
+                {i + 1}
+              </button>
+            {/each}
+          </div>
+          {#if unansweredIndices.length > 0}
+            <div class="lv-row" style="margin-top:12px;justify-content:center">
+              <button class="lv-btn sm lv-btn--primary" onclick={() => { gotoNextUnanswered(); mockMiniSheetOpen = false; }}>
+                跳至下一道未答题 →
+              </button>
+            </div>
+          {/if}
+        </div>
+      </div>
+    {/if}
   {:else if view === "report" && score}
     <!-- ===== S7 成绩单 ===== -->
     <div class="lv-row">

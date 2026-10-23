@@ -185,6 +185,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
 
     // 题库管理画廊 Hub 状态
     let bankHubOpen = $state(false);
+    let sessionSheetOpen = $state(false);
     let bankFilterKeyword = $state("");
     const filteredBanks = $derived(
       banks.filter((b) => !bankFilterKeyword.trim() || String(b.name || "").toLowerCase().includes(bankFilterKeyword.trim().toLowerCase())),
@@ -9001,6 +9002,62 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
   {/if}
     </div>
     <Palette commands={paletteCommands} bind:open={paletteOpen} {t} />
+    {#if view === "session" && session && !sessionDone}
+      <div style="position:fixed;bottom:22px;right:22px;z-index:90">
+        <button
+          type="button"
+          class="lv-achievement-pill"
+          style="box-shadow:var(--lv-sh-pop);cursor:pointer;font-size:12px;padding:6px 14px;border-radius:9999px"
+          onclick={() => (sessionSheetOpen = !sessionSheetOpen)}
+          title="展开会话答题卡"
+        >
+          <Icon name="grid" size={13} />
+          <span>{curProgress.done}/{curProgress.total} 题</span>
+        </button>
+      </div>
+    {/if}
+    {#if sessionSheetOpen && session}
+      <button type="button" class="lv-hotkeys-backdrop" aria-label="关闭答题卡" onclick={() => (sessionSheetOpen = false)}></button>
+      <div class="lv-hotkeys-wrap">
+        <div class="lv-card" role="dialog" aria-modal="true" tabindex="-1" aria-label="练习答题卡" style="width:min(440px, 92vw);max-height:80vh;overflow-y:auto;pointer-events:auto;padding:16px;border-radius:var(--lv-r-3);box-shadow:var(--lv-sh-pop)">
+          <div class="lv-row" style="justify-content:space-between;align-items:center;margin:0 0 10px">
+            <div class="lv-dialog-title-wrap">
+              <span class="lv-dialog-title-icon"><Icon name="grid" size={13} /></span>
+              <span>练习答题卡</span>
+              <span class="lv-dialog-title-tag">第 {session.state.cursor + 1} 题</span>
+            </div>
+            <button class="lv-btn sm lv-btn--ghost" onclick={() => (sessionSheetOpen = false)}>✕</button>
+          </div>
+          <div class="lv-row" style="margin-bottom:8px;font-size:11px;color:var(--lv-text-3);gap:8px">
+            <span>已答 {curProgress.done}</span>
+            <span>未答 {curProgress.total - curProgress.done}</span>
+          </div>
+          <div class="lv-sheet" style="max-height:50vh;overflow-y:auto">
+            {#each session.state.qids as _qid, i (i)}
+              {@const isCur = i === session.state.cursor}
+              {@const ansItem = session.state.answered?.find((a) => a.pos === i)}
+              {@const isDone = Boolean(ansItem)}
+              {@const isWrong = ansItem?.verdict === "wrong"}
+              {@const isCorrect = ansItem?.verdict === "correct"}
+              <button
+                class="lv-cell"
+                class:cur={isCur}
+                class:done={isDone}
+                style={isWrong ? "background:var(--lv-red-soft);color:var(--lv-red);border-color:var(--lv-red);" : isCorrect ? "background:var(--lv-green-soft);color:var(--lv-green);border-color:var(--lv-green);" : ""}
+                onclick={() => {
+                  session.jumpTo(i);
+                  sessionRev++;
+                  restoreQuestionControls();
+                  sessionSheetOpen = false;
+                }}
+              >
+                {i + 1}
+              </button>
+            {/each}
+          </div>
+        </div>
+      </div>
+    {/if}
     {#if bankHubOpen}
       <button type="button" class="lv-hotkeys-backdrop" aria-label="关闭" onclick={() => bankHubOpen = false}></button>
       <div class="lv-hotkeys-wrap">
