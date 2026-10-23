@@ -61,6 +61,20 @@ describe("TSV / Anki 导出解析（TODO 2.3 / 42-04，廿五批）", () => {
     expect(r.errors).toHaveLength(0);
     expect(r.ok[0]).toMatchObject({ type: "fill", stem: "什么是 FSRS", answer: "一种调度算法" });
   });
+
+  it("容错尾随空白制表符（兼容 Excel 剪贴板复制多出的尾随列）", () => {
+    const text = [
+      "问题一\t答案一\t",
+      "问题二\t答案二\t\t",
+    ].join("\n");
+    const r = parseTsv(text);
+    expect(r.errors).toHaveLength(0);
+    expect(r.ok).toHaveLength(2);
+    expect(r.ok[0].stem).toBe("问题一");
+    expect(r.ok[0].answer).toBe("答案一");
+    expect(r.ok[1].stem).toBe("问题二");
+    expect(r.ok[1].answer).toBe("答案二");
+  });
 });
 
 describe("parseText 内容分流（廿五批）", () => {

@@ -10,13 +10,17 @@
 
 [![Release](https://img.shields.io/github/v/release/ai68298100/siyuan-exam?logo=github)](https://github.com/ai68298100/siyuan-exam/releases)
 [![CI](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml/badge.svg)](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml)
-[![Tests](https://img.shields.io/badge/tests-1345%20passed-brightgreen)](#开发)
+[![Tests](https://img.shields.io/badge/tests-1348%20passed-brightgreen)](#开发)
 [![SiYuan](https://img.shields.io/badge/SiYuan-%3E%3D%203.8.0-blue)](https://github.com/siyuan-note/siyuan)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 [English](README.en-US.md) · [当前状态](docs/STATUS.md) · [交付说明](docs/DELIVERY.md) · [组件清单](docs/UI-COMPONENTS.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md) · [下载发行包](https://github.com/ai68298100/siyuan-exam/releases) · [查看 R54 UI 原型](design/prototype-r54/index.html) · [反馈问题](https://github.com/ai68298100/siyuan-exam/issues) · [参与讨论](https://github.com/ai68298100/siyuan-exam/discussions)
 
-## 最新版本：v0.11.9（2026-10-23）
+## 最新版本：v0.11.10（2026-10-23）
+
+本版本为主观题采分点空字符串全匹配漏洞修复与 TSV 尾随制表符自愈容错升级版本。修复采分点说明在空文本或纯标点符号时，提取出空字符串关键词 `""` 进而导致任意作答被 `includes("")` 判定为完全命中的逻辑缺陷，增加 Unicode 全角标点集过滤与未作答严格阻断；从 Excel 或剪贴板复制两列问答卡时，自动修剪末尾多余的空白制表符列，避免因个别行带有尾部空白列导致整份问答卡全部被误判为未识别格式。全套单测 176 个测试文件、1348 项单测 100% 全部通过。
+
+## 上一版本：v0.11.9（2026-10-23）
 
 本版本为移动端滑动手势视图隔离、受限环境本地存储容错与代码块导入保护升级版本。在触摸横滑切题逻辑中增加视图状态守卫，严格限定仅在刷题会话界面（`view === "session"`）响应滑动切换，杜绝在浏览列表、错题本或录题界面横滑触摸时误触发后台会话切题的缺陷；在模考与报告中心全面替换直接裸访问 `localStorage.getItem` 为带安全容错的 `readLocalRole`，消除隐私无痕模式或受限环境下的崩溃隐患；切题解析器支持识别三反引号代码块围栏，代码块内的注释与编号不再被误当作题号切断，编程题与数学公式代码块完整保真。全套单测 176 个测试文件、1345 项单测 100% 全部通过。
 

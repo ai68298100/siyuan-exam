@@ -17,6 +17,23 @@ describe("主观题采分点智能对齐与诊断引擎 (rubricEvaluator)", () =
     expect(kws).not.toContain("的");
   });
 
+  it("extractCriterionKeywords 遇到空文本或纯标点安全返回空数组，杜绝空字符串全匹配漏洞", () => {
+    expect(extractCriterionKeywords("")).toEqual([]);
+    expect(extractCriterionKeywords("   ")).toEqual([]);
+    expect(extractCriterionKeywords("，。！？；：")).toEqual([]);
+  });
+
+  it("evaluateStudentAnswerAgainstRubric 遇到学员未作答或空采分点时判定 none 并不给分", () => {
+    const result = evaluateStudentAnswerAgainstRubric({
+      studentAnswer: "   ",
+      fallbackAnalysis: "标准解析内容必须包含唯物史观与唯心史观辨析",
+    });
+    expect(result.estimatedScore).toBe(0);
+    expect(result.matchRatio).toBe(0);
+    expect(result.criteriaResults.every((c) => c.matchLevel === "none")).toBe(true);
+    expect(result.criteriaResults[0].diagnosticAdvice).toContain("未作答");
+  });
+
   it("evaluateStudentAnswerAgainstRubric 准确识别完全命中、部分提及与遗漏", () => {
     const testRubric: RubricSpec = {
       v: 1,

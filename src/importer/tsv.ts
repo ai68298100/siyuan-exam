@@ -64,6 +64,7 @@ function parseTwoColumn(
   rows.forEach((row, i) => {
     const rowNo = i + 1;
     try {
+      if (row.length < 2) throw new Error("列数不足两列（需要问答两列）");
       const stem = html ? stripHtml(row[0] ?? "") : (row[0] ?? "").trim();
       const answer = html ? stripHtml(row[1] ?? "") : (row[1] ?? "").trim();
       if (!stem) throw new Error("题干为空");
@@ -108,7 +109,17 @@ export function parseTsv(text: string, opt: ImportOptions = {}): ImportReport {
   if (!dataLines.length) {
     return { ok: [], errors: [{ row: 1, reason: "TSV 内容为空（# 注释行之外没有数据行）", raw: "" }], duplicates: 0, batch: newBatchId() };
   }
-  const rows = dataLines.map((l) => l.split(sep).map((c) => c.trim()));
+  const rawRows = dataLines.map((l) => l.split(sep).map((c) => c.trim()));
+
+  // 预清洗：剥除末尾连续空单元格（兼容 Excel/剪贴板导出的多余尾随制表符）
+  const rows = rawRows.map((r) => {
+    const copy = [...r];
+    while (copy.length > 2 && copy[copy.length - 1] === "") {
+      copy.pop();
+    }
+    return copy;
+  });
+
   // 表头模式：首行含 ≥2 个已识别表头名 → 复用 Excel 列映射与解析漏斗
   if (looksLikeHeader(rows[0])) {
     const { map, missing } = autoMapExcel(rows[0]);
@@ -123,7 +134,8 @@ export function parseTsv(text: string, opt: ImportOptions = {}): ImportReport {
     return parseExcelRows(rows.slice(1), map as ExcelColumnMap, opt);
   }
   // Anki 问答两列模式 → 填空题；首行若是 front/back 表头对则跳过
-  if (rows.every((r) => r.length === 2)) {
+  const isTwoColCandidate = rows.every((r) => r.length === 2) || (rows.length >= 2 && rows.filter((r) => r.length === 2).length >= rows.length * 0.7);
+  if (isTwoColCandidate) {
     const isHeaderPair = /^(front|frontside)$/i.test(rows[0][0] ?? "") && /^(back|backside)$/i.test(rows[0][1] ?? "");
     return parseTwoColumn(isHeaderPair ? rows.slice(1) : rows, html, opt);
   }

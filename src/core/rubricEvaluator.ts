@@ -43,16 +43,20 @@ const STOP_WORDS = new Set([
  * 从采分点说明或例句中提取核心特征词组
  */
 export function extractCriterionKeywords(text: string): string[] {
-  // 将标点与常见助词/动词连接词替换为分隔符
-  const splitPattern = /[0-9、，。；：:;,!?.()（）[\]【】"'\n\r\t\s]|(?:是|的|了|和|与|及|或|在|为|由|对|以|等|其|于|中|把|被|将|并|但|而|包括|主要|要求)/g;
+  if (!text || !text.trim()) return [];
+  // 将标点与常见助词/动词连接词替换为分隔符（全面涵盖半角与全角中英文标点）
+  const splitPattern = /[0-9、，。！？；：:;,!?~·`^&%*()（）[\]【】{}《》""''“”‘’—…\n\r\t\s]|(?:是|的|了|和|与|及|或|在|为|由|对|以|等|其|于|中|把|被|将|并|但|而|包括|主要|要求)/g;
   const rawTokens = text
     .split(splitPattern)
     .map((s) => s.trim())
     .filter((s) => s.length >= 2 && s.length <= 12 && !STOP_WORDS.has(s.toLowerCase()));
 
   // 去重
-  const unique = Array.from(new Set(rawTokens));
-  return unique.length > 0 ? unique : [text.trim().slice(0, 10)];
+  const unique = Array.from(new Set(rawTokens)).filter(Boolean);
+  if (unique.length > 0) return unique;
+  // 兜底：去除所有标点与空白后提取有效字符
+  const cleanedAlpha = text.replace(/[\p{P}\p{S}\s]/gu, "").trim().slice(0, 10);
+  return cleanedAlpha.length >= 2 ? [cleanedAlpha] : [];
 }
 
 /**
@@ -65,6 +69,21 @@ function evaluateSingleCriterion(
 ): CriterionMatchResult {
   const sampleText = criterion.example ? `${criterion.example} ${criterion.label}` : criterion.label;
   const keywords = extractCriterionKeywords(sampleText);
+
+  // 空答案或无可用关键词：一律按未作答 none 处理，绝不误判命中
+  if (!answerNormalized.trim() || keywords.length === 0) {
+    return {
+      criterionId: criterion.id,
+      label: criterion.label,
+      weight: criterion.weight,
+      matchedKeywords: [],
+      missingKeywords: keywords,
+      matchLevel: "none",
+      recommendedLevel: "none",
+      scoreContribution: 0,
+      diagnosticAdvice: !answerNormalized.trim() ? "未作答，无法评估采分点。" : "采分点缺少有效关键词。",
+    };
+  }
 
   const matchedKeywords: string[] = [];
   const missingKeywords: string[] = [];
