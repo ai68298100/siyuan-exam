@@ -10,13 +10,17 @@
 
 [![Release](https://img.shields.io/github/v/release/ai68298100/siyuan-exam?logo=github)](https://github.com/ai68298100/siyuan-exam/releases)
 [![CI](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml/badge.svg)](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml)
-[![Tests](https://img.shields.io/badge/tests-1350%20passed-brightgreen)](#开发)
+[![Tests](https://img.shields.io/badge/tests-1354%20passed-brightgreen)](#开发)
 [![SiYuan](https://img.shields.io/badge/SiYuan-%3E%3D%203.8.0-blue)](https://github.com/siyuan-note/siyuan)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 [English](README.en-US.md) · [当前状态](docs/STATUS.md) · [交付说明](docs/DELIVERY.md) · [组件清单](docs/UI-COMPONENTS.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md) · [下载发行包](https://github.com/ai68298100/siyuan-exam/releases) · [查看 R54 UI 原型](design/prototype-r54/index.html) · [反馈问题](https://github.com/ai68298100/siyuan-exam/issues) · [参与讨论](https://github.com/ai68298100/siyuan-exam/discussions)
 
-## 最新版本：v0.11.12（2026-10-23）
+## 最新版本：v0.11.13（2026-10-23）
+
+本版本为小驴生态中枢统领指令专项全覆盖、preview 图产物规范统一与白名单收窄升级版本。严格保持 256×256 殿堂级头像（`icon.png` 54KB）不变；`plugin.json` 补齐前置品牌关键词（`["小驴", "小驴考试", "xiaolv", "lv", ...]`），开启桌面独立设置大窗（`settingsWindow: true`）；预览图统一定稿为轻量 `preview.png`（315KB，严格低于 350KB 规范要求）；顶栏升级带满分对勾的单色矢量图标（`iconExam`）；落实做题自动打卡、错题推闪卡 45% 幽灵按钮与 `lv-exam:session-ended` 事件广播；移动端键盘防遮挡。全套单测 176 个测试文件、1354 项单测 100% 全部通过。
+
+## 上一版本：v0.11.12（2026-10-23）
 
 本版本为考前速记急救小抄导出选项空值防御与多题型健壮性升级版本。在 `generateCramCheatSheetMarkdown` 中，对题目的 `stem`、`answer` 与 `options` 增加强安全校验，彻底杜绝在非选择题或无选项异常题目导出随身小抄时抛出未定义异常导致导出中断的隐患。全套单测 176 个测试文件、1350 项单测 100% 全部通过。
 
