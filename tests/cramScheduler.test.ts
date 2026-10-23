@@ -9,6 +9,7 @@ import {
   calculateCramBudget,
   createCramSessionSpec,
   findFoundationMotherQuestion,
+  generateCramCheatSheetMarkdown,
 } from "../src/core/cramScheduler";
 
 function createMockQuestion(id: string, overrides: Partial<Question> = {}): Question {
@@ -244,6 +245,31 @@ describe("CramScheduler 考前急救冲刺与动态间隔压缩引擎 (53-04 / 3
       const res2 = findFoundationMotherQuestion([qMother, qHardNoFamily, qOtherKp], qHardNoFamily);
       expect(res2.motherQuestion?.id).toBe("q-mother");
       expect(res2.reason).toContain("基础基石概念题");
+    });
+  });
+
+  describe("generateCramCheatSheetMarkdown (考前急救速记小抄)", () => {
+    it("正确生成随身小抄，对填空题/无选项题安全容错", () => {
+      const qFill = createMockQuestion("q-fill", {
+        type: "fill",
+        options: undefined as unknown as string[],
+        answer: "社会主义制度",
+        kp: "宪法学",
+      });
+      const wrongItem: WrongItem = {
+        qid: "q-fill",
+        firstWrongAt: Date.now() - 86400000,
+        lastWrongAt: Date.now(),
+        wrongCount: 3,
+        streakCorrect: 0,
+        status: "active",
+      };
+
+      const md = generateCramCheatSheetMarkdown([qFill], [wrongItem], { title: "考前 24 小时急救小抄" });
+      expect(md).toContain("# 📌 考前 24 小时急救小抄");
+      expect(md).toContain("社会主义制度");
+      expect(md).toContain("宪法学");
+      expect(md).toContain("累计答错 3 次");
     });
   });
 });

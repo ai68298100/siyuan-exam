@@ -406,9 +406,9 @@ export function generateCramCheatSheetMarkdown(
   candidates.forEach((c, i) => {
     const q = c.question;
     const no = i + 1;
-    lines.push(`### ${no}. 【${q.kp || "核心题"}】${q.stem.trim()}`);
-    lines.push(`- **✔ 核心结论/答案**：**${q.answer.trim()}**`);
-    if (q.options.length) {
+    lines.push(`### ${no}. 【${q.kp || "核心题"}】${String(q.stem ?? "").trim()}`);
+    lines.push(`- **✔ 核心结论/答案**：**${String(q.answer ?? "").trim()}**`);
+    if (Array.isArray(q.options) && q.options.length) {
       lines.push(`- 选项备忘：${q.options.map((opt, oi) => `${String.fromCharCode(65 + oi)}.${opt}`).join("  ")}`);
     }
     if (q.analysis) {
