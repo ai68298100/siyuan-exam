@@ -16,7 +16,11 @@
 
 [English](README.en-US.md) · [当前状态](docs/STATUS.md) · [交付说明](docs/DELIVERY.md) · [组件清单](docs/UI-COMPONENTS.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md) · [下载发行包](https://github.com/ai68298100/siyuan-exam/releases) · [查看 R54 UI 原型](design/prototype-r54/index.html) · [反馈问题](https://github.com/ai68298100/siyuan-exam/issues) · [参与讨论](https://github.com/ai68298100/siyuan-exam/discussions)
 
-## 最新版本：v0.11.2（2026-10-22）
+## 最新版本：v0.11.3（2026-10-23）
+
+本版本为小驴生态中枢统领与集市协同升级版本。全面对齐 Epoch 6 标准联邦规范，规范主别名 `window.LvExam` 与能力协商契约；刷题结算自动向小驴打卡安全写入作答事实并广播标准 `lv-exam:session-ended` 生态事件；错题本接入小驴闪卡同步幽灵按钮降级；顶栏与侧栏升级为 32×32 满分通关双层题卷矢量徽标（`iconExam`）；注入普鲁士学院蓝（`--lv-brand`）与朱砂红满分火漆印（`--lv-accent-seal`）；刷题结算呈现温情鼓励大卡片与 9999px 成就胶囊矩阵；补齐集市前置搜索关键词（`小驴`、`小驴考试` 等），开启独立桌面设置大窗（`settingsWindow: true`），预览图统一为轻量高清 PNG（`preview.png` 314KB），保持最新 256×256 殿堂级头像；升级 `dompurify` 依赖彻底修补安全漏洞。全套自动化单测扩充至 175 个测试文件、1337 项单测 100% 全部通过。
+
+## 上一版本：v0.11.2（2026-10-22）
 
 本轮为学生备考与教师教研双角色体验的重大里程碑升级。全面实现学生专注模式与教师教研模式双视角自由切换；试题图片与截图 OCR 识别一键填单、LaTeX 数学公式语法清洗与 KaTeX 双模渲染；推出 A4 双栏全真试卷与教师专用【A4 双栏授课讲义教案卷】排版打印；上线极速刷题模式（单选/判断即选即跳、错题顿歇）、题目速记标签系统（⭐️好题/⚠️陷阱/❓存疑/💡重点）多维过滤与一键专项特训；新增 Markdown 试卷批量智能解析导入器；实现错题同族考点变式题特训（Drill Variant）、考前 1-3 天急救速记小抄（Cheat Sheet）、考场全真 A/B 卷选项智能洗牌防抄袭、经典考试标准化组卷模板库（行测/考研政治/法考等标准化蓝图）与错题本一键组建限时特训卷；接入备考里程碑荣誉成长勋章墙、多平台格式导出（Moodle GIFT / Anki TSV / Markdown 题册）、考纲出题缺口深度体检与移动端左右滑动手势切题。全套单测扩充至 169 个测试文件、1309 项测试 100% 通过。
 
@@ -80,7 +84,7 @@
 | 小驴闪卡（内测版） | 基于思源原生 FSRS 的闪卡学习与复习平台。                           | [GitHub](https://github.com/ai68298100/siyuan-lv-cards)     |
 | 小驴常用（内测版） | 基于思源文档与块保存、搜索并快速调用常用内容。                     | [GitHub](https://github.com/ai68298100/xiaolv-common)       |
 
-<img src="preview.jpg" alt="小驴考试（内测版）· 预览" width="640"/>
+<img src="preview.png" alt="小驴考试（内测版）· 预览" width="640"/>
 
 ## 界面一览
 

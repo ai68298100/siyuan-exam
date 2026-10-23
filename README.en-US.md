@@ -15,7 +15,7 @@
 [![SiYuan](https://img.shields.io/badge/SiYuan-%3E%3D%203.8.0-blue)](https://github.com/siyuan-note/siyuan)
 [![License](https://img.shields.io/badge/license-MIT-green)](#-license)
 
-<img src="preview.jpg" alt="Lv Exam (Beta) preview" width="640"/>
+<img src="preview.png" alt="Lv Exam (Beta) preview" width="640"/>
 
 
 ## Screenshots
