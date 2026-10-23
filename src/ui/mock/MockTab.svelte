@@ -689,6 +689,52 @@
       }
     }
 
+    async function printMockWrongSheet() {
+      if (printBusy || !wrongList.length) return;
+      const wrongIds = wrongList.map((w) => w.qid);
+      const wrongQuestions = questions.filter((q) => wrongIds.includes(q.id));
+      if (!wrongQuestions.length) return;
+      printBusy = true;
+      try {
+        const { buildCompactQuestionSheetPro } = await import("@/core/printPro");
+        const html = buildCompactQuestionSheetPro(`${bp.name || "模拟考"} · 错题精练攻坚卷`, wrongQuestions, {
+          headerTitle: `${bp.name || "全真模拟"} · 错题特训`,
+          columns: "double",
+          groupByKp: true,
+        });
+        const win = window.open("", "_blank");
+        if (win) {
+          win.document.write(html);
+          win.document.close();
+          win.focus();
+        } else {
+          const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+          downloadBlob(blob, `${bp.name || "试卷"}-错题特训卷.html`);
+          showMessage("已生成错题精练试卷文件", 3000, "info");
+        }
+      } catch (e) {
+        showMessage(`打印错题卷失败：${String(e instanceof Error ? e.message : e)}`, 4000, "error");
+      } finally {
+        printBusy = false;
+      }
+    }
+
+    async function saveMockWrongsAsDoc() {
+      if (!activeBankId || !app || !wrongList.length) return;
+      try {
+        const wrongIds = wrongList.map((w) => w.qid);
+        const wrongQuestions = questions.filter((q) => wrongIds.includes(q.id));
+        const title = `${bp.name || "模拟考"} · 错题攻坚手册（${wrongQuestions.length}题）`;
+        const res = await app.saveQuestionsToSiyuanDoc(title, wrongQuestions, {
+          bankId: activeBankId,
+          isMock: false,
+        });
+        showMessage(`已在思源中生成错题集文档：《${res.title}》✓`, 3500, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 4000, "error");
+      }
+    }
+
     async function startExam() {
       if (starting || loading || resumeBusy || discardBusy || blueprintBusy) return;
       starting = true;
@@ -1902,7 +1948,27 @@
         </span>
       {/if}
     </div>
-    <div class="lv-card lv-score-card" style="margin-bottom:14px">
+    <div class="lv-card lv-score-card" style="margin-bottom:14px;border-top:3.5px solid var(--lv-brand);box-shadow:var(--lv-sh-pop)">
+      <div class="lv-guard-title" style="color:var(--lv-brand);display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <Icon name="trophy" size={20} />
+        <span>{score.percent === 100 ? "🎉 满分通关 · 金榜题名！" : score.pass ? "🎉 模考达标 · 战绩优异！" : "💪 查漏补缺 · 再接再厉！"}</span>
+      </div>
+      <div class="lv-row" style="gap:6px;margin:4px 0 10px;flex-wrap:wrap">
+        <span class="lv-achievement-pill">
+          🎯 得分率 {score.percent}%
+        </span>
+        <span class="lv-achievement-pill {score.pass ? '' : 'lv-achievement-pill--seal'}">
+          {score.pass ? "✓ 达到合格线" : "✕ 距离及格线 " + (bp.passLine - score.percent) + "%"}
+        </span>
+        <span class="lv-achievement-pill">
+          ⏱️ 题量 {score.sections.reduce((acc, s) => acc + s.total, 0)} 题
+        </span>
+        {#if wrongList.length > 0}
+          <span class="lv-achievement-pill lv-achievement-pill--seal">
+            ❌ 错题 {wrongList.length} 道
+          </span>
+        {/if}
+      </div>
       <div class="lv-row" style="align-items:center;padding:6px 4px">
         <span class="num" style="font-size:40px;font-weight:800;color:var(--lv-accent)">{score.total}</span>
         <span class="lv-muted">/ {score.full}</span>
@@ -2147,7 +2213,11 @@
         </div>
       </div>
     {/if}
-    <div class="lv-row">
+    <div class="lv-row" style="flex-wrap:wrap;gap:6px">
+      {#if wrongList.length}
+        <button class="lv-btn sm lv-btn--primary" onclick={printMockWrongSheet} disabled={printBusy} title="将本次模考全部错题排版生成 A4 双栏精练卷"><Icon name="file" size={13} /> {t("mock.printWrongSheet", "打印本次错题精练卷")}</button>
+        <button class="lv-btn sm lv-btn--ghost" onclick={saveMockWrongsAsDoc} title="将本次模考错题存为思源原生笔记文档"><Icon name="book" size={13} /> {t("mock.saveWrongsToDoc", "存为错题集笔记")}</button>
+      {/if}
       <button class="lv-btn lv-btn--ghost sm" onclick={exportScoreMd} disabled={scoreExportBusy}><Icon name="table" size={13} /> {scoreExportBusy ? "…" : t("mock.exportScore")}</button>
       <button class="lv-btn lv-btn--ghost sm" onclick={printCompactAnswerSheet} disabled={printBusy} title="生成带答案与详细解析的双栏出版级打印册"><Icon name="file" size={13} /> {t("mock.printAnswerSheet")}</button>
       <button class="lv-btn lv-btn--ghost sm" onclick={printTeacherLecturePaper} disabled={printBusy} title="生成包含题目、答案、考点难度、采分点细则与破题教学点拨的教师讲义教案卷"><Icon name="book" size={13} /> {t("mock.printTeacher")}</button>

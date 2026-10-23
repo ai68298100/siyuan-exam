@@ -164,6 +164,63 @@
       }
     }
     import { auditForgettingRisks, exportForgettingRiskMarkdown } from "@/core/forgettingRisk";
+    import { buildFullReportHtml } from "@/core/fullReportHtml";
+
+    async function exportFullHtmlReport() {
+      if (!app) return;
+      try {
+        const banks = app.listBanks();
+        const curBank = banks.find((b) => b.id === bankId) ?? banks[0];
+        const curBankName = curBank?.name || "小驴考试";
+
+        const html = buildFullReportHtml({
+          bankName: curBankName,
+          rangeDays,
+          kpi: {
+            attempts: kpi.attempts,
+            accuracy: kpi.accuracy,
+            streakDays: kpi.streak,
+          },
+          forgettingSummary: forgettingReport ? {
+            criticalCount: forgettingReport.criticalCount,
+            urgentKps: forgettingReport.urgentRescueKps.map((u) => ({
+              kp: u.kp,
+              retentionPct: u.estimatedRetentionPct,
+              riskTier: u.riskTier,
+            })),
+          } : undefined,
+          radarDimensions: radarDimensions.map((r) => ({
+            label: r.label,
+            score: r.score,
+            fullScore: 100,
+            grade: r.score >= 80 ? "优秀" : r.score >= 60 ? "良好" : "待提升",
+          })),
+          weakKps: weak.slice(0, 8).map((w) => ({
+            kp: w.root,
+            accuracy: w.accuracy,
+            total: w.total,
+          })),
+        });
+
+        const win = window.open("", "_blank");
+        if (win) {
+          win.document.write(html);
+          win.document.close();
+          win.focus();
+        } else {
+          const blob = new Blob([html], { type: "text/html;charset=utf-8;" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `${curBankName}-全景学情诊断报告-${new Date().toISOString().slice(0, 10)}.html`;
+          a.click();
+          URL.revokeObjectURL(url);
+          showMessage("全景学情诊断报告已生成 ✓", 3000, "info");
+        }
+      } catch (e) {
+        showMessage(`生成学情报告失败：${String(e instanceof Error ? e.message : e)}`, 4000, "error");
+      }
+    }
 
     const forgettingReport = $derived.by(() => {
       if (!questions.length) return null;
@@ -1277,6 +1334,14 @@
               title={t("report.exportRadarCsv")}
             >
               <Icon name="export" size={12} /> CSV
+            </button>
+            <button
+              type="button"
+              class="lv-chip sm lv-chip--acc"
+              onclick={exportFullHtmlReport}
+              title="生成出版级 A4 双栏全景学情诊断分析报告（HTML/可直接打印成 PDF）"
+            >
+              <Icon name="file" size={12} /> {t("report.fullHtmlReport")}
             </button>
             <button
               type="button"
