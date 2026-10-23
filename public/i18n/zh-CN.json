@@ -287,6 +287,7 @@
     "import.siyuanDocSafety": "🔒 只读安全保障：仅读取文档文本生成题目，绝不修改、覆盖或删除您的原有思源笔记内容。",
     "import.searchDocPlaceholder": "搜索思源文档标题或路径…",
     "bank.hubTitle": "题库管理中心",
+    "bank.rename": "重命名",
     "bank.openInSiyuan": "在思源中打开",
     "bank.syncToDoc": "同步为思源文档",
     "mock.saveAsSiyuanDoc": "存为思源文档",

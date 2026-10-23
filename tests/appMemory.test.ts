@@ -641,4 +641,20 @@ describe("应用层记忆/写入路径（应用编排层测试补盲）", () => 
     const html = await app.renderFormula("计算 $x^2$");
     expect(html).toContain('class="lv-math-expr lv-math-inline"');
   });
+
+  it("题库管理：ExamApp.renameBank 能够重命名题库并持久化注册表", async () => {
+    const client = {
+      createNotebook: async () => "nb-mock-id",
+      createDocWithMd: async () => "doc-mock-id",
+    } as unknown as KernelApiClient;
+    const app = mkApp(client);
+    const b = await app.createBank("旧名称");
+    expect(app.listBanks().find((x) => x.id === b.id)?.name).toBe("旧名称");
+
+    const renamed = await app.renameBank(b.id, "新名称");
+    expect(renamed.name).toBe("新名称");
+    expect(app.listBanks().find((x) => x.id === b.id)?.name).toBe("新名称");
+
+    await expect(app.renameBank(b.id, "")).rejects.toThrow("题库名称不能为空");
+  });
 });

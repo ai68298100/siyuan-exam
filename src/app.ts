@@ -635,6 +635,25 @@ export class ExamApp {
     return false;
   }
 
+  async renameBank(id: string, newName: string): Promise<BankInfo> {
+    this.assertStorageWritable();
+    const clean = newName.trim();
+    if (!clean) throw new Error("题库名称不能为空");
+    const target = this.banks.find((b) => b.id === id);
+    if (!target) throw new Error("未找到对应题库");
+    const previous = [...this.banks];
+    target.name = clean;
+    this.banks = [...this.banks];
+    try {
+      await this.saveBankRegistry();
+      this.invalidate();
+      return target;
+    } catch (e) {
+      this.banks = previous;
+      throw e;
+    }
+  }
+
   /** 导入提交：按考点落章节文档（无考点 → "导入/<批次>"），返回写入数与真实读回清单（U08）。
    *  onProgress 逐文档回传 (已处理, 总数)；isCancelled 在文档间检查，取消时如实返回 partial。
    *  取消不回滚已写文档（batch 可在题库健康面板整批撤销），written 只计真实写出的题。 */

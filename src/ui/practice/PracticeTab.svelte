@@ -189,6 +189,26 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       banks.filter((b) => !bankFilterKeyword.trim() || String(b.name || "").toLowerCase().includes(bankFilterKeyword.trim().toLowerCase())),
     );
 
+    let renamingBankId = $state("");
+    let renameInputName = $state("");
+
+    function startRenameBank(b: any) {
+      renamingBankId = b.id;
+      renameInputName = b.name;
+    }
+
+    async function submitRenameBank(bId: string) {
+      if (!renameInputName.trim() || !app) return;
+      try {
+        await app.renameBank(bId, renameInputName.trim());
+        banks = app.listBanks();
+        renamingBankId = "";
+        showMessage("题库名称已更新 ✓", 2500, "info");
+      } catch (e) {
+        showMessage(String(e instanceof Error ? e.message : e), 3500, "error");
+      }
+    }
+
     async function syncBankToDoc(bId: string) {
       if (!app) return;
       try {
@@ -8991,12 +9011,25 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
             {#each filteredBanks as b (b.id)}
               <div class="lv-card" style="padding:12px;margin-bottom:6px;border-left:3px solid {b.id === activeBankId ? 'var(--lv-accent)' : 'transparent'};background:var(--lv-surface-2)">
                 <div class="lv-row" style="justify-content:space-between;align-items:center;margin:0 0 6px">
-                  <div style="flex:1;min-width:0">
-                    <b style="font-size:var(--lv-font-size-body)">{b.name}</b>
-                    {#if b.id === activeBankId}<span class="lv-chip sm lv-chip--acc" style="margin-left:6px">当前激活</span>{/if}
-                    <div class="lv-muted" style="font-size:11px;margin-top:2px">ID: {b.id} · 创建于 {new Date(b.createdAt || Date.now()).toLocaleDateString()}</div>
+                  <div style="flex:1;min-width:0;margin-right:8px">
+                    {#if renamingBankId === b.id}
+                      <div class="lv-row" style="margin:0;gap:4px">
+                        <input class="lv-input" style="max-width:180px;height:28px" bind:value={renameInputName} placeholder="输入新题库名…" />
+                        <button class="lv-btn sm lv-btn--primary" onclick={() => void submitRenameBank(b.id)}>保存</button>
+                        <button class="lv-btn sm lv-btn--ghost" onclick={() => { renamingBankId = ""; }}>取消</button>
+                      </div>
+                    {:else}
+                      <b style="font-size:var(--lv-font-size-body)">{b.name}</b>
+                      {#if b.id === activeBankId}<span class="lv-chip sm lv-chip--acc" style="margin-left:6px">当前激活</span>{/if}
+                      <div class="lv-muted" style="font-size:11px;margin-top:2px">ID: {b.id} · 创建于 {new Date(b.createdAt || Date.now()).toLocaleDateString()}</div>
+                    {/if}
                   </div>
                   <div class="lv-row" style="margin:0;gap:4px">
+                    {#if renamingBankId !== b.id}
+                      <button class="lv-btn sm lv-btn--ghost" onclick={() => startRenameBank(b)} title={t("bank.rename")}>
+                        <Icon name="pencil" size={12} /> {t("bank.rename")}
+                      </button>
+                    {/if}
                     {#if b.id !== activeBankId}
                       <button class="lv-btn sm lv-btn--primary" onclick={() => { activeBankId = b.id; onBankSwitch(); bankHubOpen = false; }}>
                         激活开练

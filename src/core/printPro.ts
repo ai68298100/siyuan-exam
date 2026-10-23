@@ -30,6 +30,8 @@ export interface PrintProOptions {
   showAnswerArea?: boolean;
   /** 是否打印分值 */
   showScore?: boolean;
+  /** 是否按考点章节分组排版（默认 true） */
+  groupByKp?: boolean;
 }
 
 const TYPE_NAMES: Record<string, string> = {
@@ -92,6 +94,18 @@ export function buildPrintProCss(options: PrintProOptions = {}): string {
       padding: 5px 8px; margin: 0 0 6px;
       font-size: 9.8pt; white-space: pre-wrap; overflow-wrap: anywhere;
     }
+    .section-divider {
+      column-span: all;
+      font-weight: 700;
+      font-size: 10.5pt;
+      margin: 10pt 0 5pt;
+      padding: 2pt 6pt;
+      background: #f1f5f9;
+      border-left: 3.5pt solid #0284c7;
+      color: #0f172a;
+      page-break-after: avoid;
+      break-after: avoid;
+    }
     .q-group-head { page-break-after: avoid; break-after: avoid; }
     .q-head { font-weight: 700; margin-bottom: 2px; }
     .q-type { font-size: 8.5pt; color: #555; border: 1px solid #999; border-radius: 2px; padding: 0 3px; margin-right: 5px; }
@@ -148,6 +162,7 @@ export function buildCompactQuestionSheetPro(
 ): string {
   const showArea = options.showAnswerArea !== false;
   const showScore = options.showScore === true;
+  const groupByKp = options.groupByKp !== false;
   const parts: string[] = [
     `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>${buildPrintProCss(options)}</style></head><body>`,
     renderHeader(options.headerTitle || title, `共 ${questions.length} 题`, options.paperNo),
@@ -155,9 +170,16 @@ export function buildCompactQuestionSheetPro(
   ];
 
   const printedGroups = new Set<string>();
+  let lastKp = "";
 
   questions.forEach((q, i) => {
     const no = i + 1;
+
+    // 考点章节分组排版
+    if (groupByKp && q.kp && q.kp !== lastKp) {
+      lastKp = q.kp;
+      parts.push(`<div class="section-divider">📌 考点章节：${escapeHtml(q.kp)}</div>`);
+    }
     // 材料组：组首打印材料卡片，组内后续子题不再重复
     let materialHtml = "";
     if (q.group && !printedGroups.has(q.group)) {
@@ -248,9 +270,15 @@ export function buildTeacherLectureSheetPro(
   ];
 
   const printedGroups = new Set<string>();
+  const groupByKp = options.groupByKp !== false;
+  let lastKp = "";
 
   questions.forEach((q, i) => {
     const no = i + 1;
+    if (groupByKp && q.kp && q.kp !== lastKp) {
+      lastKp = q.kp;
+      parts.push(`<div class="section-divider">📌 考点章节：${escapeHtml(q.kp)}</div>`);
+    }
     let materialHtml = "";
     if (q.group && !printedGroups.has(q.group)) {
       const carrier = questions.find((m) => m.group === q.group && m.type === "material" && m.analysis);

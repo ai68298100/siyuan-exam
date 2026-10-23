@@ -154,5 +154,14 @@ describe("PrintPro A4 双栏紧凑打印与分页防断引擎 (68-04 / 79-02)", 
       expect(html).toContain("移项可得");
       expect(html).toContain('class="teacher-box"');
     });
+
+    it("groupByKp 开启时自动在题目跨章节考点时插入考点小标题", () => {
+      const q1 = mkQ("q-kp-1", { kp: "常识/宪法" });
+      const q2 = mkQ("q-kp-2", { kp: "常识/经济" });
+      const html = buildCompactQuestionSheetPro("试卷", [q1, q2], { groupByKp: true });
+      expect(html).toContain("section-divider");
+      expect(html).toContain("📌 考点章节：常识/宪法");
+      expect(html).toContain("📌 考点章节：常识/经济");
+    });
   });
 });

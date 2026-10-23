@@ -10,13 +10,17 @@
 
 [![Release](https://img.shields.io/github/v/release/ai68298100/siyuan-exam?logo=github)](https://github.com/ai68298100/siyuan-exam/releases)
 [![CI](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml/badge.svg)](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml)
-[![Tests](https://img.shields.io/badge/tests-1340%20passed-brightgreen)](#开发)
+[![Tests](https://img.shields.io/badge/tests-1341%20passed-brightgreen)](#开发)
 [![SiYuan](https://img.shields.io/badge/SiYuan-%3E%3D%203.8.0-blue)](https://github.com/siyuan-note/siyuan)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 [English](README.en-US.md) · [当前状态](docs/STATUS.md) · [交付说明](docs/DELIVERY.md) · [组件清单](docs/UI-COMPONENTS.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md) · [下载发行包](https://github.com/ai68298100/siyuan-exam/releases) · [查看 R54 UI 原型](design/prototype-r54/index.html) · [反馈问题](https://github.com/ai68298100/siyuan-exam/issues) · [参与讨论](https://github.com/ai68298100/siyuan-exam/discussions)
 
-## 最新版本：v0.11.5（2026-10-23）
+## 最新版本：v0.11.6（2026-10-23）
+
+本版本为题库管理中心交互深化与出版级考点章节分组排版升级版本。题库管理中心（Bank Hub）支持直接内联重命名题库名称，修改后自动同步持久化题库注册表；在 A4/Letter 双栏试卷与教师讲义教案卷打印中，自动识别题目考点变更并插入优雅跨栏考点小标题（`📌 考点章节：... `），彻底解决大批题目跨章节排版混乱的问题。全套单测扩充至 175 个测试文件、1341 项单测 100% 全部通过。
+
+## 上一版本：v0.11.5（2026-10-23）
 
 本版本为思源笔记本批量入库、录题即时渲染与艾宾浩斯急救看板深化升级版本。导入工作台支持一键批量提取搜索出的全部思源文档试题，自动按文档层级建立章节考点树并幂等去重；手工录题工作台全面接入实时公式渲染与数学图表绘制，支持即时预览 LaTeX 矩阵、分段、化学方程式、函数曲线、几何图形、柱图、饼图与数轴，告别盲打；首页备考看板联动艾宾浩斯高危考点急救胶囊卡，支持一键发起 5-10 题定向唤醒抢救。全套单测扩充至 175 个测试文件、1340 项单测 100% 全部通过。
 

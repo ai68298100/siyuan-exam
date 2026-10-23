@@ -287,6 +287,7 @@
     "import.siyuanDocSafety": "🔒 Read-only safety: only reads plain text to generate questions, never modifies or deletes your original notes.",
     "import.searchDocPlaceholder": "Search SiYuan doc title or path…",
     "bank.hubTitle": "Question Bank Hub",
+    "bank.rename": "Rename",
     "bank.openInSiyuan": "Open in SiYuan",
     "bank.syncToDoc": "Sync to SiYuan Note",
     "mock.saveAsSiyuanDoc": "Save as SiYuan Doc",
