@@ -158,9 +158,36 @@ describe("块模板往返", () => {
   it("非法属性缺 exam-id → null", () => {
     expect(questionFromBlock({ attrs: {}, text: "x" })).toBeNull();
   });
-  it("validate 兜底", () => {
+  it("validate 兜底与空字段安全防御", () => {
     const bad = makeQuestion({ type: "single", stem: "", options: ["1"], answer: "A" });
     expect(validate(bad)).not.toBeNull();
+
+    // 损坏题目对象（stem 或 options 缺失）不抛异常，返回明确错误
+    const corruptSingle = {
+      id: "q-bad",
+      type: "single" as const,
+      stem: undefined as unknown as string,
+      options: undefined as unknown as string[],
+      answer: "A",
+      score: 1,
+      origin: "manual" as const,
+      hash: "h",
+    };
+    expect(() => validate(corruptSingle)).not.toThrow();
+    expect(validate(corruptSingle)).toBe("题干为空");
+
+    const corruptMultiple = {
+      id: "q-bad-multi",
+      type: "multiple" as const,
+      stem: "多选题干",
+      options: undefined as unknown as string[],
+      answer: "AB",
+      score: 1,
+      origin: "manual" as const,
+      hash: "h",
+    };
+    expect(() => validate(corruptMultiple)).not.toThrow();
+    expect(validate(corruptMultiple)).toBe("多选题至少需要 2 个选项");
   });
   it("parseType 别名", () => {
     expect(parseType(" 单选题 ")).toBe("single");

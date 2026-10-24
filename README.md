@@ -16,7 +16,11 @@
 
 [English](README.en-US.md) · [当前状态](docs/STATUS.md) · [交付说明](docs/DELIVERY.md) · [组件清单](docs/UI-COMPONENTS.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md) · [下载发行包](https://github.com/ai68298100/siyuan-exam/releases) · [查看 R54 UI 原型](design/prototype-r54/index.html) · [反馈问题](https://github.com/ai68298100/siyuan-exam/issues) · [参与讨论](https://github.com/ai68298100/siyuan-exam/discussions)
 
-## 最新版本：v0.11.20（2026-10-24）
+## 最新版本：v0.11.21（2026-10-24）
+
+本版本为题目散列计算与导入校验函数空指针深层防御升级版本。在 `answer.ts` 中 `questionHash` 增加对可选/空值选项（`options?: readonly string[]`）的强类型安全规整，杜绝任意未配置 options 的题目对象在计算去重散列值时抛出未捕获 TypeError；在 `pipeline.ts` 的 `validate` 中对单选、多选、选项折叠去重及题干泄漏核验全面引入 `Array.isArray(q.options)` 与空字符串兜底，让草稿题、残缺题或脏数据在导入和校验时安全返回明确错误原因，杜绝崩溃。全套单测 177 个测试文件、1359 项单测 100% 全部通过。
+
+## 上一版本：v0.11.20（2026-10-24）
 
 本版本为区分度分析空 stem 防御与多篇思源笔记批量提取试题重复统计修复升级版本。在 `calculateItemDiscrimination` 中对题目 `stem` 增加空值安全转换，修复在面对不完整草稿题或空块数据时直接访问 `.trim()` 抛出异常崩溃的隐患，并在 CSV 导出时增加安全空值防御；修复在批量从多篇思源笔记提取试题时 `duplicates` 漏计单篇内部自身重复数的缺陷。全套单测 177 个测试文件、1359 项单测 100% 全部通过。
 

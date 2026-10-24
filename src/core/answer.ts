@@ -77,8 +77,9 @@ export function grade(q: Question, myAnswerRaw: string | null | undefined): Grad
 }
 
 /** 去重指纹：题干+选项（fold 后）——导入去重与题库健康共用 */
-export function questionHash(stem: string, options: string[]): string {
-  const material = foldText(stem) + "\u0001" + options.map(foldText).join("\u0002");
+export function questionHash(stem: string, options?: readonly string[]): string {
+  const optList = Array.isArray(options) ? options : [];
+  const material = foldText(stem ?? "") + "\u0001" + optList.map((o) => foldText(o ?? "")).join("\u0002");
   return sha1like(material);
 }
 
