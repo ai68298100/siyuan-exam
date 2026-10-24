@@ -74,7 +74,7 @@
     "minimist": "^1.2.8",
     "npm-run-all2": "^9.0.3",
     "playwright-core": "^1.63.0",
-    "prettier": "^3.9.9",
+    "prettier": "^3.9.10",
     "sass": "^1.105.1",
     "siyuan": "1.2.9",
     "svelte": "^5.57.1",
