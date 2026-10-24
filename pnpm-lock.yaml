@@ -181,7 +181,7 @@ importers:
     devDependencies:
       '@commitlint/cli':
         specifier: ^21.2.3
-        version: 21.2.3(@types/node@26.6.4)(conventional-commits-parser@7.1.2)(typescript@6.0.3)
+        version: 21.2.3(@types/node@26.6.5)(conventional-commits-parser@7.1.2)(typescript@6.0.3)
       '@commitlint/config-conventional':
         specifier: ^21.2.3
         version: 21.2.3
@@ -190,7 +190,7 @@ importers:
         version: 10.0.1(eslint@10.12.0(jiti@2.6.1)(supports-color@7.2.0))
       '@sveltejs/vite-plugin-svelte':
         specifier: ^7.3.1
-        version: 7.3.1(svelte@5.57.1(@typescript-eslint/types@8.71.1))(vite@8.3.3(@types/node@26.6.4)(jiti@2.6.1)(sass@1.105.1))
+        version: 7.3.1(svelte@5.57.1(@typescript-eslint/types@8.71.1))(vite@8.3.3(@types/node@26.6.5)(jiti@2.6.1)(sass@1.105.1))
       '@tsconfig/svelte':
         specifier: ^5.0.8
         version: 5.0.8
@@ -201,8 +201,8 @@ importers:
         specifier: ^1.2.5
         version: 1.2.5
       '@types/node':
-        specifier: ^26.6.4
-        version: 26.6.4
+        specifier: ^26.6.5
+        version: 26.6.5
       cross-env:
         specifier: ^10.1.0
         version: 10.1.0
@@ -214,7 +214,7 @@ importers:
         version: 10.1.8(eslint@10.12.0(jiti@2.6.1)(supports-color@7.2.0))
       eslint-plugin-svelte:
         specifier: ^3.23.0
-        version: 3.23.0(eslint@10.12.0(jiti@2.6.1)(supports-color@7.2.0))(svelte@5.57.1(@typescript-eslint/types@8.71.1))(ts-node@10.9.2(@types/node@26.6.4)(typescript@6.0.3))
+        version: 3.23.0(eslint@10.12.0(jiti@2.6.1)(supports-color@7.2.0))(svelte@5.57.1(@typescript-eslint/types@8.71.1))(ts-node@10.9.2(@types/node@26.6.5)(typescript@6.0.3))
       fast-glob:
         specifier: ^3.3.3
         version: 3.3.3
@@ -259,7 +259,7 @@ importers:
         version: 4.7.6(picomatch@4.0.7)(svelte@5.57.1(@typescript-eslint/types@8.71.1))(typescript@6.0.3)
       ts-node:
         specifier: ^10.9.2
-        version: 10.9.2(@types/node@26.6.4)(typescript@6.0.3)
+        version: 10.9.2(@types/node@26.6.5)(typescript@6.0.3)
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -268,16 +268,16 @@ importers:
         version: 8.71.1(eslint@10.12.0(jiti@2.6.1)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@6.0.3)
       vite:
         specifier: ^8.3.3
-        version: 8.3.3(@types/node@26.6.4)(jiti@2.6.1)(sass@1.105.1)
+        version: 8.3.3(@types/node@26.6.5)(jiti@2.6.1)(sass@1.105.1)
       vite-plugin-static-copy:
         specifier: ^4.1.1
-        version: 4.1.1(vite@8.3.3(@types/node@26.6.4)(jiti@2.6.1)(sass@1.105.1))
+        version: 4.1.1(vite@8.3.3(@types/node@26.6.5)(jiti@2.6.1)(sass@1.105.1))
       vite-plugin-zip-pack:
         specifier: ^1.2.4
-        version: 1.2.4(vite@8.3.3(@types/node@26.6.4)(jiti@2.6.1)(sass@1.105.1))
+        version: 1.2.4(vite@8.3.3(@types/node@26.6.5)(jiti@2.6.1)(sass@1.105.1))
       vitest:
         specifier: ^5.0.3
-        version: 5.0.3(@types/node@26.6.4)(happy-dom@20.14.5)(jsdom@30.1.2)(vite@8.3.3(@types/node@26.6.4)(jiti@2.6.1)(sass@1.105.1))
+        version: 5.0.3(@types/node@26.6.5)(happy-dom@20.14.5)(jsdom@30.1.2)(vite@8.3.3(@types/node@26.6.5)(jiti@2.6.1)(sass@1.105.1))
 
 packages:
 
@@ -801,8 +801,8 @@ packages:
   '@types/minimist@1.2.5':
     resolution: {integrity: sha512-hov8bUuiLiyFPGyFPE1lwWhmzYbirOXQNNo40+y3zow8aFVTeyn3VWL0VFFfdNddA8S4Vf0Tc062rzyNr7Paag==}
 
-  '@types/node@26.6.4':
-    resolution: {integrity: sha512-ldVPDCzj7fsaGZrLB0NuHuTvJcsNasysBAqMolr/cgxrLd1xbqxIr3XJiPnHHJUCxj5sNF1vnRj9aWnrVh5Jcg==}
+  '@types/node@26.6.5':
+    resolution: {integrity: sha512-uMzsv9stDdofIZBx4UGh4Z9ZgXnGC9seRDscilBcTHAeOFk67MZg/k9bWVfO+bk4qZmG+l52hRnLwUiH2LnJTg==}
 
   '@types/trusted-types@2.0.7':
     resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
@@ -2190,12 +2190,12 @@ snapshots:
       hashery: 1.5.1
       keyv: 5.6.0
 
-  '@commitlint/cli@21.2.3(@types/node@26.6.4)(conventional-commits-parser@7.1.2)(typescript@6.0.3)':
+  '@commitlint/cli@21.2.3(@types/node@26.6.5)(conventional-commits-parser@7.1.2)(typescript@6.0.3)':
     dependencies:
       '@commitlint/config-conventional': 21.2.3
       '@commitlint/format': 21.2.3
       '@commitlint/lint': 21.2.3
-      '@commitlint/load': 21.2.3(@types/node@26.6.4)(typescript@6.0.3)
+      '@commitlint/load': 21.2.3(@types/node@26.6.5)(typescript@6.0.3)
       '@commitlint/read': 21.2.3(conventional-commits-parser@7.1.2)
       '@commitlint/types': 21.2.3
       tinyexec: 1.3.1
@@ -2240,14 +2240,14 @@ snapshots:
       '@commitlint/rules': 21.2.3
       '@commitlint/types': 21.2.3
 
-  '@commitlint/load@21.2.3(@types/node@26.6.4)(typescript@6.0.3)':
+  '@commitlint/load@21.2.3(@types/node@26.6.5)(typescript@6.0.3)':
     dependencies:
       '@commitlint/config-validator': 21.2.3
       '@commitlint/execute-rule': 21.0.1
       '@commitlint/resolve-extends': 21.2.3
       '@commitlint/types': 21.2.3
       cosmiconfig: 9.0.2(typescript@6.0.3)
-      cosmiconfig-typescript-loader: 6.3.0(@types/node@26.6.4)(cosmiconfig@9.0.2(typescript@6.0.3))(typescript@6.0.3)
+      cosmiconfig-typescript-loader: 6.3.0(@types/node@26.6.5)(cosmiconfig@9.0.2(typescript@6.0.3))(typescript@6.0.3)
       es-toolkit: 1.52.0
       is-plain-obj: 4.1.0
       picocolors: 1.1.1
@@ -2566,14 +2566,14 @@ snapshots:
 
   '@sveltejs/load-config@0.2.3': {}
 
-  '@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.1(@typescript-eslint/types@8.71.1))(vite@8.3.3(@types/node@26.6.4)(jiti@2.6.1)(sass@1.105.1))':
+  '@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.1(@typescript-eslint/types@8.71.1))(vite@8.3.3(@types/node@26.6.5)(jiti@2.6.1)(sass@1.105.1))':
     dependencies:
       deepmerge: 4.3.1
       magic-string: 1.2.3
       obug: 2.1.4
       svelte: 5.57.1(@typescript-eslint/types@8.71.1)
-      vite: 8.3.3(@types/node@26.6.4)(jiti@2.6.1)(sass@1.105.1)
-      vitefu: 1.1.3(vite@8.3.3(@types/node@26.6.4)(jiti@2.6.1)(sass@1.105.1))
+      vite: 8.3.3(@types/node@26.6.5)(jiti@2.6.1)(sass@1.105.1)
+      vitefu: 1.1.3(vite@8.3.3(@types/node@26.6.5)(jiti@2.6.1)(sass@1.105.1))
 
   '@tsconfig/node10@1.0.13': {}
 
@@ -2604,7 +2604,7 @@ snapshots:
 
   '@types/minimist@1.2.5': {}
 
-  '@types/node@26.6.4':
+  '@types/node@26.6.5':
     dependencies:
       undici-types: 8.9.0
 
@@ -2616,7 +2616,7 @@ snapshots:
 
   '@types/ws@8.18.1':
     dependencies:
-      '@types/node': 26.6.4
+      '@types/node': 26.6.5
 
   '@typescript-eslint/eslint-plugin@8.71.1(@typescript-eslint/parser@8.71.1(eslint@10.12.0(jiti@2.6.1)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@6.0.3))(eslint@10.12.0(jiti@2.6.1)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@6.0.3)':
     dependencies:
@@ -2709,14 +2709,14 @@ snapshots:
       '@typescript-eslint/types': 8.71.1
       eslint-visitor-keys: 5.0.1
 
-  '@vitest/mocker@5.0.3(vite@8.3.3(@types/node@26.6.4)(jiti@2.6.1)(sass@1.105.1))':
+  '@vitest/mocker@5.0.3(vite@8.3.3(@types/node@26.6.5)(jiti@2.6.1)(sass@1.105.1))':
     dependencies:
       '@jridgewell/trace-mapping': 0.3.31
       '@vitest/spy': 5.0.3
       estree-walker: 3.0.3
       magic-string: 1.2.3
     optionalDependencies:
-      vite: 8.3.3(@types/node@26.6.4)(jiti@2.6.1)(sass@1.105.1)
+      vite: 8.3.3(@types/node@26.6.5)(jiti@2.6.1)(sass@1.105.1)
 
   '@vitest/spy@5.0.3': {}
 
@@ -2785,7 +2785,7 @@ snapshots:
 
   buffer-image-size@0.6.4:
     dependencies:
-      '@types/node': 26.6.4
+      '@types/node': 26.6.5
     optional: true
 
   cacheable@2.5.0:
@@ -2843,9 +2843,9 @@ snapshots:
 
   core-util-is@1.0.3: {}
 
-  cosmiconfig-typescript-loader@6.3.0(@types/node@26.6.4)(cosmiconfig@9.0.2(typescript@6.0.3))(typescript@6.0.3):
+  cosmiconfig-typescript-loader@6.3.0(@types/node@26.6.5)(cosmiconfig@9.0.2(typescript@6.0.3))(typescript@6.0.3):
     dependencies:
-      '@types/node': 26.6.4
+      '@types/node': 26.6.5
       cosmiconfig: 9.0.2(typescript@6.0.3)
       jiti: 2.6.1
       typescript: 6.0.3
@@ -2933,7 +2933,7 @@ snapshots:
     dependencies:
       eslint: 10.12.0(jiti@2.6.1)(supports-color@7.2.0)
 
-  eslint-plugin-svelte@3.23.0(eslint@10.12.0(jiti@2.6.1)(supports-color@7.2.0))(svelte@5.57.1(@typescript-eslint/types@8.71.1))(ts-node@10.9.2(@types/node@26.6.4)(typescript@6.0.3)):
+  eslint-plugin-svelte@3.23.0(eslint@10.12.0(jiti@2.6.1)(supports-color@7.2.0))(svelte@5.57.1(@typescript-eslint/types@8.71.1))(ts-node@10.9.2(@types/node@26.6.5)(typescript@6.0.3)):
     dependencies:
       '@eslint-community/eslint-utils': 4.10.1(eslint@10.12.0(jiti@2.6.1)(supports-color@7.2.0))
       '@jridgewell/sourcemap-codec': 1.6.0
@@ -2942,7 +2942,7 @@ snapshots:
       globals: 16.5.0
       known-css-properties: 0.37.0
       postcss: 8.5.26
-      postcss-load-config: 3.1.4(postcss@8.5.26)(ts-node@10.9.2(@types/node@26.6.4)(typescript@6.0.3))
+      postcss-load-config: 3.1.4(postcss@8.5.26)(ts-node@10.9.2(@types/node@26.6.5)(typescript@6.0.3))
       postcss-safe-parser: 7.1.0(postcss@8.5.26)
       semver: 7.8.5
       svelte-eslint-parser: 1.8.1(svelte@5.57.1(@typescript-eslint/types@8.71.1))
@@ -3120,7 +3120,7 @@ snapshots:
 
   happy-dom@20.14.5:
     dependencies:
-      '@types/node': 26.6.4
+      '@types/node': 26.6.5
       '@types/whatwg-mimetype': 3.0.2
       '@types/ws': 8.18.1
       buffer-image-size: 0.6.4
@@ -3454,13 +3454,13 @@ snapshots:
 
   playwright-core@1.63.0: {}
 
-  postcss-load-config@3.1.4(postcss@8.5.26)(ts-node@10.9.2(@types/node@26.6.4)(typescript@6.0.3)):
+  postcss-load-config@3.1.4(postcss@8.5.26)(ts-node@10.9.2(@types/node@26.6.5)(typescript@6.0.3)):
     dependencies:
       lilconfig: 2.1.0
       yaml: 1.10.3
     optionalDependencies:
       postcss: 8.5.26
-      ts-node: 10.9.2(@types/node@26.6.4)(typescript@6.0.3)
+      ts-node: 10.9.2(@types/node@26.6.5)(typescript@6.0.3)
 
   postcss-safe-parser@7.1.0(postcss@8.5.26):
     dependencies:
@@ -3698,14 +3698,14 @@ snapshots:
     dependencies:
       typescript: 6.0.3
 
-  ts-node@10.9.2(@types/node@26.6.4)(typescript@6.0.3):
+  ts-node@10.9.2(@types/node@26.6.5)(typescript@6.0.3):
     dependencies:
       '@cspotcode/source-map-support': 0.8.1
       '@tsconfig/node10': 1.0.13
       '@tsconfig/node12': 1.0.7
       '@tsconfig/node14': 1.0.0
       '@tsconfig/node16': 1.0.2
-      '@types/node': 26.6.4
+      '@types/node': 26.6.5
       acorn: 8.18.0
       acorn-walk: 8.3.5
       arg: 4.1.3
@@ -3745,20 +3745,20 @@ snapshots:
 
   v8-compile-cache-lib@3.0.1: {}
 
-  vite-plugin-static-copy@4.1.1(vite@8.3.3(@types/node@26.6.4)(jiti@2.6.1)(sass@1.105.1)):
+  vite-plugin-static-copy@4.1.1(vite@8.3.3(@types/node@26.6.5)(jiti@2.6.1)(sass@1.105.1)):
     dependencies:
       chokidar: 3.6.0
       p-map: 7.0.7
       picocolors: 1.1.1
       tinyglobby: 0.2.17
-      vite: 8.3.3(@types/node@26.6.4)(jiti@2.6.1)(sass@1.105.1)
+      vite: 8.3.3(@types/node@26.6.5)(jiti@2.6.1)(sass@1.105.1)
 
-  vite-plugin-zip-pack@1.2.4(vite@8.3.3(@types/node@26.6.4)(jiti@2.6.1)(sass@1.105.1)):
+  vite-plugin-zip-pack@1.2.4(vite@8.3.3(@types/node@26.6.5)(jiti@2.6.1)(sass@1.105.1)):
     dependencies:
       jszip: 3.10.1
-      vite: 8.3.3(@types/node@26.6.4)(jiti@2.6.1)(sass@1.105.1)
+      vite: 8.3.3(@types/node@26.6.5)(jiti@2.6.1)(sass@1.105.1)
 
-  vite@8.3.3(@types/node@26.6.4)(jiti@2.6.1)(sass@1.105.1):
+  vite@8.3.3(@types/node@26.6.5)(jiti@2.6.1)(sass@1.105.1):
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.7
@@ -3766,19 +3766,19 @@ snapshots:
       rolldown: 1.2.12
       tinyglobby: 0.2.17
     optionalDependencies:
-      '@types/node': 26.6.4
+      '@types/node': 26.6.5
       fsevents: 2.3.3
       jiti: 2.6.1
       sass: 1.105.1
 
-  vitefu@1.1.3(vite@8.3.3(@types/node@26.6.4)(jiti@2.6.1)(sass@1.105.1)):
+  vitefu@1.1.3(vite@8.3.3(@types/node@26.6.5)(jiti@2.6.1)(sass@1.105.1)):
     optionalDependencies:
-      vite: 8.3.3(@types/node@26.6.4)(jiti@2.6.1)(sass@1.105.1)
+      vite: 8.3.3(@types/node@26.6.5)(jiti@2.6.1)(sass@1.105.1)
 
-  vitest@5.0.3(@types/node@26.6.4)(happy-dom@20.14.5)(jsdom@30.1.2)(vite@8.3.3(@types/node@26.6.4)(jiti@2.6.1)(sass@1.105.1)):
+  vitest@5.0.3(@types/node@26.6.5)(happy-dom@20.14.5)(jsdom@30.1.2)(vite@8.3.3(@types/node@26.6.5)(jiti@2.6.1)(sass@1.105.1)):
     dependencies:
       '@types/chai': 5.2.3
-      '@vitest/mocker': 5.0.3(vite@8.3.3(@types/node@26.6.4)(jiti@2.6.1)(sass@1.105.1))
+      '@vitest/mocker': 5.0.3(vite@8.3.3(@types/node@26.6.5)(jiti@2.6.1)(sass@1.105.1))
       chai: 6.2.2
       es-module-lexer: 2.3.2
       expect-type: 1.4.0
@@ -3789,10 +3789,10 @@ snapshots:
       tinybench: 6.2.0
       tinyexec: 1.3.1
       tinyglobby: 0.2.17
-      vite: 8.3.3(@types/node@26.6.4)(jiti@2.6.1)(sass@1.105.1)
+      vite: 8.3.3(@types/node@26.6.5)(jiti@2.6.1)(sass@1.105.1)
       why-is-node-running: 3.2.1
     optionalDependencies:
-      '@types/node': 26.6.4
+      '@types/node': 26.6.5
       happy-dom: 20.14.5
       jsdom: 30.1.2
     transitivePeerDependencies:
