@@ -10,13 +10,17 @@
 
 [![Release](https://img.shields.io/github/v/release/ai68298100/siyuan-exam?logo=github)](https://github.com/ai68298100/siyuan-exam/releases)
 [![CI](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml/badge.svg)](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml)
-[![Tests](https://img.shields.io/badge/tests-1354%20passed-brightgreen)](#开发)
+[![Tests](https://img.shields.io/badge/tests-1358%20passed-brightgreen)](#开发)
 [![SiYuan](https://img.shields.io/badge/SiYuan-%3E%3D%203.8.0-blue)](https://github.com/siyuan-note/siyuan)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 [English](README.en-US.md) · [当前状态](docs/STATUS.md) · [交付说明](docs/DELIVERY.md) · [组件清单](docs/UI-COMPONENTS.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md) · [下载发行包](https://github.com/ai68298100/siyuan-exam/releases) · [查看 R54 UI 原型](design/prototype-r54/index.html) · [反馈问题](https://github.com/ai68298100/siyuan-exam/issues) · [参与讨论](https://github.com/ai68298100/siyuan-exam/discussions)
 
-## 最新版本：v0.11.17（2026-10-24）
+## 最新版本：v0.11.18（2026-10-24）
+
+本版本为模考考场移动端虚拟键盘防遮挡、多平台试题导出防御与语音朗读空值拦截升级版本。在 `MockTab.svelte` 考场中完整挂载视口动态监听，当考生在手机或平板输入填空与主观题作答时，底部自动抬升安全间距，彻底消除软键盘对下方切题按钮、交卷确认与快捷答题卡的遮挡；修复在 `formatExporter` 导出 Markdown 试题精选手册时对非选择题选项访问的未定义异常；加固语音朗读引擎，空值安全拦截。全套单测 177 个测试文件、1358 项单测 100% 全部通过。
+
+## 上一版本：v0.11.17（2026-10-24）
 
 本版本为错题本考点章节级深度过滤联动与侧栏品牌徽标现代重构升级版本。在错题攻坚队列中新增考点章节分类下拉筛选，支持点击错题卡片上的考点芯片秒级联动过滤，并支持一键发起该章节所有错题的针对性特训；将侧栏顶部的“驴”字升级为普鲁士学院蓝高反差底、白色加粗字形、带圆角与微质感阴影的现代产品 Logo 徽章。全套单测 176 个测试文件、1354 项单测 100% 全部通过。
 

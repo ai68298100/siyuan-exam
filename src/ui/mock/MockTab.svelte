@@ -345,6 +345,22 @@
           refreshPendingBankData();
         }),
       ];
+      // 移动端虚拟键盘避让：监听 visualViewport 动态抬升底边距，防遮挡操作
+      if (typeof window !== "undefined" && window.visualViewport) {
+        const onViewportChange = () => {
+          const vv = window.visualViewport;
+          if (!vv) return;
+          const diff = Math.max(0, window.innerHeight - vv.height - (vv.offsetTop || 0));
+          viewportBottomPad = diff > 80 ? diff : 0;
+        };
+        window.visualViewport.addEventListener("resize", onViewportChange);
+        window.visualViewport.addEventListener("scroll", onViewportChange);
+        offs.push(() => {
+          window.visualViewport?.removeEventListener("resize", onViewportChange);
+          window.visualViewport?.removeEventListener("scroll", onViewportChange);
+        });
+      }
+
       return () => {
         document.removeEventListener("fullscreenchange", updateFullscreenState);
         offs.forEach((off) => off());
@@ -490,6 +506,7 @@
     let abBusy = $state(false);
     let mockMiniSheetOpen = $state(false);
     let mockPaperGridOpen = $state(false);
+    let viewportBottomPad = $state(0);
     let presetOptions = $state<import("@/core/examPresets").ExamBlueprintPreset[]>([]);
     function readLocalRole(): "student" | "teacher" {
       try {
@@ -1487,7 +1504,7 @@
 <div class="fn__flex-1 lv-shell" data-exam-role={userRole} class:lv-shell-focus={view === "exam" || view === "report"}>
   <Rail active="mock" taskactive="mock" tasknavhidden={view === "exam" || view === "report"} ontasknavigate={onTaskNav} {plugin} open={railOpen} onclose={closeRail}
     project={{ name: railBankName || t("guard.title"), kicker: t("rail.projectKicker") }} onproject={() => plugin.openPractice?.()} />
-  <div class="lv-main">
+  <div class="lv-main" style={viewportBottomPad > 0 ? `padding-bottom: ${viewportBottomPad + 16}px;` : undefined}>
   <div class="fn__flex-1 lv-pad">
   {#if view === "config"}
     <div class="lv-screen-head"><span class="lv-eyebrow">{t("head.mock.eyebrow")}</span><h1 class="lv-h1">{t("head.mock.title")}</h1><p>{t("head.mock.desc")}</p></div>

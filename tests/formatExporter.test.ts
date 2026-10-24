@@ -61,4 +61,19 @@ describe("多平台试题格式转换导出器 (formatExporter)", () => {
     expect(md).toContain("> **【正确答案】**：`B`");
     expect(md).toContain("> **【核心考点】**：宪法学/国体");
   });
+
+  it("导出 Markdown 题册时，对 fill/short 等无 options 字段的题目安全防御不抛异常", () => {
+    const corruptQ = {
+      id: "q-corrupt-no-options",
+      type: "short" as const,
+      stem: "简述诉讼时效中止的法定事由",
+      options: undefined as unknown as string[],
+      answer: "不可抗力或者其他障碍",
+    } as Question;
+
+    expect(() => exportQuestionsToExamDocMarkdown([corruptQ])).not.toThrow();
+    const md = exportQuestionsToExamDocMarkdown([corruptQ]);
+    expect(md).toContain("简述诉讼时效中止的法定事由");
+    expect(md).toContain("不可抗力或者其他障碍");
+  });
 });

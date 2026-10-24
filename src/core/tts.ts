@@ -5,7 +5,7 @@ export const ttsSupported = (): boolean =>
   typeof globalThis.speechSynthesis !== "undefined" && typeof globalThis.SpeechSynthesisUtterance !== "undefined";
 
 export function ttsSpeak(text: string, rate = 1): boolean {
-  if (!ttsSupported()) return false;
+  if (!text || !text.trim() || !ttsSupported()) return false;
   const synth = globalThis.speechSynthesis;
   synth.cancel();
   // 按句切分（引擎对超长文本不稳；docs/11 §听学）

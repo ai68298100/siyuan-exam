@@ -139,21 +139,21 @@ export function exportQuestionsToExamDocMarkdown(
   questions.forEach((q, i) => {
     const no = i + 1;
     const typeLabel = q.type === "single" ? "单选题" : q.type === "multiple" ? "多选题" : q.type === "judge" ? "判断题" : q.type === "fill" ? "填空题" : q.type === "material" ? "材料题" : "简答题";
-    lines.push(`### ${no}. 【${typeLabel}】${q.stem.trim()}`);
+    lines.push(`### ${no}. 【${typeLabel}】${String(q.stem ?? "").trim()}`);
 
-    if (q.options.length) {
+    if (Array.isArray(q.options) && q.options.length > 0) {
       lines.push("");
       q.options.forEach((opt, oi) => {
-        lines.push(`- **${String.fromCharCode(65 + oi)}.** ${opt}`);
+        lines.push(`- **${String.fromCharCode(65 + oi)}.** ${String(opt ?? "").trim()}`);
       });
     }
 
     lines.push("");
-    lines.push(`> **【正确答案】**：\`${q.answer}\``);
+    lines.push(`> **【正确答案】**：\`${String(q.answer ?? "").trim()}\``);
     if (q.kp) lines.push(`> **【核心考点】**：${q.kp}`);
     if (q.difficulty) lines.push(`> **【难度系数】**：${"★".repeat(Math.min(5, Math.max(1, q.difficulty)))}`);
     if (q.analysis) {
-      lines.push(`> **【试题解析】**：${q.analysis.trim()}`);
+      lines.push(`> **【试题解析】**：${String(q.analysis).trim()}`);
     }
     lines.push("\n---");
   });
