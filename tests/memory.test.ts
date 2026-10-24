@@ -178,4 +178,35 @@ describe("题型转闪卡 Markdown 引擎 (questionToFlashCardMarkdown)", () => 
     expect(md).toContain("- **✔ 参考得分要点**：");
     expect(md).toContain("主动回忆、间隔复测、归因纠错。");
   });
+
+  it("当题目缺少 options 字段或 stem 为空时安全防御不抛出未捕获异常", () => {
+    const corruptSingle = {
+      id: "q-single-corrupt",
+      type: "single" as const,
+      stem: undefined as unknown as string,
+      options: undefined as unknown as string[],
+      answer: "A",
+      score: 1,
+      origin: "manual" as const,
+      hash: "h",
+    };
+    expect(() => questionToFlashCardMarkdown(corruptSingle)).not.toThrow();
+    const md = questionToFlashCardMarkdown(corruptSingle);
+    expect(md).toContain("【单选题】");
+
+    const corruptMulti = {
+      id: "q-multi-corrupt",
+      type: "multiple" as const,
+      stem: "多选题目",
+      options: undefined as unknown as string[],
+      answer: "AB",
+      score: 1,
+      origin: "manual" as const,
+      hash: "h",
+    };
+    expect(() => questionToFlashCardMarkdown(corruptMulti)).not.toThrow();
+    const md2 = questionToFlashCardMarkdown(corruptMulti);
+    expect(md2).toContain("【多选题】");
+    expect(md2).toContain("A, B");
+  });
 });

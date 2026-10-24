@@ -10,13 +10,17 @@
 
 [![Release](https://img.shields.io/github/v/release/ai68298100/siyuan-exam?logo=github)](https://github.com/ai68298100/siyuan-exam/releases)
 [![CI](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml/badge.svg)](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml)
-[![Tests](https://img.shields.io/badge/tests-1359%20passed-brightgreen)](#开发)
+[![Tests](https://img.shields.io/badge/tests-1360%20passed-brightgreen)](#开发)
 [![SiYuan](https://img.shields.io/badge/SiYuan-%3E%3D%203.8.0-blue)](https://github.com/siyuan-note/siyuan)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 [English](README.en-US.md) · [当前状态](docs/STATUS.md) · [交付说明](docs/DELIVERY.md) · [组件清单](docs/UI-COMPONENTS.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md) · [下载发行包](https://github.com/ai68298100/siyuan-exam/releases) · [查看 R54 UI 原型](design/prototype-r54/index.html) · [反馈问题](https://github.com/ai68298100/siyuan-exam/issues) · [参与讨论](https://github.com/ai68298100/siyuan-exam/discussions)
 
-## 最新版本：v0.11.22（2026-10-24）
+## 最新版本：v0.11.23（2026-10-24）
+
+本版本为思源原生文档与闪卡制卡空值防御及健壮性加固升级版本。在 `siyuanSyncDoc.ts` 中对题干、选项数组与试题解析全面引入 `String(q.stem ?? "")` 与 `Array.isArray(q.options)` 安全防护，彻底杜绝在生成思源原生题库或错题手册笔记时因草稿题或空字段抛出异常崩溃的隐患；在 `memory.ts` 中对单选、多选、多空填空与判断题的题干、答案与选项数组增加强类型安全规整与空值截断防御，支持任意试题安全格式化为列表闪卡 Markdown。全套单测 177 个测试文件、1360 项单测 100% 全部通过。
+
+## 上一版本：v0.11.22（2026-10-24）
 
 本版本为学习打卡自律连胜（streak）保号机制与连续天数算法体验升级版本。升级 `replayer.ts` 中的 `streak` 计算逻辑，当用户在今日尚未作答时，若昨日有作答打卡，自动延续并保留昨日的连续自律天数，彻底解决用户每天午夜过后打开插件看到连胜瞬间归零的体验痛点；只有在连续整整一天未学习时才判定断签归零。全套单测 177 个测试文件、1359 项单测 100% 全部通过。
 

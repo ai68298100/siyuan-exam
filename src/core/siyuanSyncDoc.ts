@@ -67,13 +67,13 @@ export function buildSiyuanExamDocMarkdown(
     const stars = q.difficulty ? `★${q.difficulty} ` : "";
 
     // 题干
-    lines.push(`### ${no}. ${q.stem.trim()} ${scoreText}`);
+    lines.push(`### ${no}. ${String(q.stem ?? "").trim()} ${scoreText}`);
 
     // 选择题选项
-    if (q.options && q.options.length > 0) {
+    if (Array.isArray(q.options) && q.options.length > 0) {
       lines.push("");
       q.options.forEach((opt, oi) => {
-        lines.push(`- **${String.fromCharCode(65 + oi)}.** ${opt.trim()}`);
+        lines.push(`- **${String.fromCharCode(65 + oi)}.** ${String(opt ?? "").trim()}`);
       });
       lines.push("");
     }
@@ -81,11 +81,11 @@ export function buildSiyuanExamDocMarkdown(
     // 答案与解析折叠块（思源原生支持点击展开）
     lines.push(`<details>`);
     lines.push(`<summary><b>✔ 参考答案与核心解析点拨（点击展开）</b></summary>\n`);
-    lines.push(`- **标准答案**：\`${q.answer}\``);
+    lines.push(`- **标准答案**：\`${String(q.answer ?? "").trim()}\``);
     if (q.kp) lines.push(`- **核心考点**：\`${q.kp}\``);
     if (q.difficulty) lines.push(`- **难度系数**：${stars}`);
     if (q.analysis) {
-      lines.push(`- **试题解析**：${q.analysis.trim()}`);
+      lines.push(`- **试题解析**：${String(q.analysis).trim()}`);
     }
     if (q.rubric?.criteria?.length) {
       lines.push(`- **主观采分点细则**：`);

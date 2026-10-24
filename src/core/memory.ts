@@ -106,56 +106,59 @@ export function dailySet(
 /** 将一道 Question 格式化为思源笔记标准的列表闪卡 Markdown（具有完美的正反面遮挡与复习体验） */
 export function questionToFlashCardMarkdown(q: Question): string {
   // 保持题干与选项中多行文本的列表缩进，防止多行内容被解析为列表外部段落
-  const indentLines = (text: string, indent = "  ") => text.trim().replace(/\r?\n/g, `\n${indent}`);
-  const stem = indentLines(q.stem, "  ");
+  const indentLines = (text: string, indent = "  ") => String(text ?? "").trim().replace(/\r?\n/g, `\n${indent}`);
+  const stem = indentLines(q?.stem ?? "", "  ");
   let front: string;
   let back: string;
+
+  const rawAns = String(q?.answer ?? "").trim();
+  const opts = Array.isArray(q?.options) ? q.options : [];
 
   switch (q.type) {
     case "single": {
       front = `- **【单选题】** ${stem}`;
-      if (q.options.length) {
-        front += "\n  " + q.options.map((opt, i) => `${OPTION_LETTERS[i]}. ${indentLines(opt, "    ")}`).join("\n  ");
+      if (opts.length > 0) {
+        front += "\n  " + opts.map((opt, i) => `${OPTION_LETTERS[i]}. ${indentLines(opt, "    ")}`).join("\n  ");
       }
-      const ansLetter = q.answer.trim().toUpperCase();
+      const ansLetter = rawAns.toUpperCase();
       const ansIdx = OPTION_LETTERS.indexOf(ansLetter);
-      const ansText = ansIdx >= 0 && q.options[ansIdx] ? ` (${q.options[ansIdx].trim()})` : "";
+      const ansText = ansIdx >= 0 && opts[ansIdx] ? ` (${String(opts[ansIdx]).trim()})` : "";
       back = `  - **✔ 正确答案**：**${ansLetter}**${ansText}`;
       break;
     }
     case "multiple": {
       front = `- **【多选题】** ${stem} *（多选/少选均不得分）*`;
-      if (q.options.length) {
-        front += "\n  " + q.options.map((opt, i) => `${OPTION_LETTERS[i]}. ${indentLines(opt, "    ")}`).join("\n  ");
+      if (opts.length > 0) {
+        front += "\n  " + opts.map((opt, i) => `${OPTION_LETTERS[i]}. ${indentLines(opt, "    ")}`).join("\n  ");
       }
-      const letters = [...new Set(q.answer.replace(/[^A-Za-z]/g, "").toUpperCase().split(""))].sort();
+      const letters = [...new Set(rawAns.replace(/[^A-Za-z]/g, "").toUpperCase().split(""))].sort();
       const ansDetail = letters.map((l) => {
         const idx = OPTION_LETTERS.indexOf(l);
-        return idx >= 0 && q.options[idx] ? `${l}. ${q.options[idx].trim()}` : l;
+        return idx >= 0 && opts[idx] ? `${l}. ${String(opts[idx]).trim()}` : l;
       }).join("；");
       back = `  - **✔ 正确答案**：**${letters.join(", ")}**` + (ansDetail ? `\n    > ${ansDetail}` : "");
       break;
     }
     case "judge": {
       front = `- **【判断题】** ${stem}\n  *(A) 正确  |  (B) 错误*`;
-      const isTrue = q.answer.includes("对") || q.answer.includes("正确") || q.answer.trim().toUpperCase() === "A";
+      const isTrue = rawAns.includes("对") || rawAns.includes("正确") || rawAns.toUpperCase() === "A";
       back = `  - **✔ 正确判断**：**${isTrue ? "正确 ✔" : "错误 ✕"}**`;
       break;
     }
     case "fill": {
-      const isMulti = q.answer.includes(";;") || q.answerSpec?.kind === "multiBlank";
+      const isMulti = rawAns.includes(";;") || q.answerSpec?.kind === "multiBlank";
       if (isMulti) {
         front = `- **【多空填空题】** ${stem}`;
-        const blanks = q.answer.split(";;").map((b) => b.trim()).filter(Boolean);
+        const blanks = rawAns.split(";;").map((b) => b.trim()).filter(Boolean);
         back = `  - **✔ 参考填空**：\n` + blanks.map((b, i) => `    - 空 ${i + 1}：**${b}**`).join("\n");
       } else if (q.answerSpec?.kind === "numeric") {
         const unitTip = q.answerSpec.unit ? ` *(作答单位：${q.answerSpec.unit})*` : "";
         front = `- **【数值计算题】** ${stem}${unitTip}`;
         const tol = q.answerSpec.absTol ? ` *(允许误差 ±${q.answerSpec.absTol})*` : "";
-        back = `  - **✔ 正确数值**：**${q.answer.trim()}**${q.answerSpec.unit ? ` ${q.answerSpec.unit}` : ""}${tol}`;
+        back = `  - **✔ 正确数值**：**${rawAns}**${q.answerSpec.unit ? ` ${q.answerSpec.unit}` : ""}${tol}`;
       } else {
         front = `- **【填空题】** ${stem}`;
-        back = `  - **✔ 参考答案**：**${q.answer.trim()}**`;
+        back = `  - **✔ 参考答案**：**${rawAns}**`;
       }
       break;
     }
