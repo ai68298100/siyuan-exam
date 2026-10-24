@@ -461,15 +461,17 @@
     padding: 0 10px;
   }
   .lv-brand-mark {
-    width: 29px;
-    height: 34px;
-    border-radius: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--lv-r-2);
     display: grid;
     place-items: center;
-    background: transparent;
-    color: var(--lv-accent);
-    font-family: Georgia, "Songti SC", serif;
-    font-size: 22px;
+    background: var(--lv-brand);
+    color: var(--b3-theme-on-primary, #fff);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 16px;
+    font-weight: 800;
+    box-shadow: 0 2px 6px color-mix(in srgb, var(--lv-brand) 35%, transparent);
     flex-shrink: 0;
   }
   .lv-brand-name {

@@ -2002,6 +2002,7 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     let wbTab = $state<"active" | "archived">("active");
     let wbReasonFilter = $state<"all" | "careless" | "unknown" | "trap">("all");
     let wbFilterStubborn = $state(false);
+    let wbKpFilter = $state("");
     const archivedWrongList = $derived.by(() => {
       void dataRev;
       if (!app) return [];
@@ -2011,10 +2012,20 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
     const wrongQueue = $derived(
       [...wrongList].sort((a, b) => b.wrongCount - a.wrongCount || b.lastWrongAt - a.lastWrongAt),
     );
+    const wbKpOptions = $derived.by(() => {
+      // eslint-disable-next-line svelte/prefer-svelte-reactivity -- derived 内纯派生去重集
+      const set = new Set<string>();
+      for (const w of wrongQueue) {
+        const q = questionMap.get(w.qid);
+        if (q?.kp) set.add(q.kp.split("/")[0]);
+      }
+      return Array.from(set).sort();
+    });
     const filteredWrongQueue = $derived.by(() => {
       let list = wrongQueue;
       if (wbReasonFilter !== "all") list = list.filter((w) => reasonOf(w.qid) === wbReasonFilter);
       if (wbFilterStubborn) list = list.filter((w) => isStubbornWrong(w));
+      if (wbKpFilter) list = list.filter((w) => questionMap.get(w.qid)?.kp?.startsWith(wbKpFilter));
       return list;
     });
 
@@ -7042,6 +7053,14 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
                   <button class="lv-chip" class:acc={wbFilterStubborn} class:lv-chip--amb={wbFilterStubborn} onclick={() => wbFilterStubborn = !wbFilterStubborn} title={t("wrongbook.filterStubbornTip")}>
                     🔥 {t("wrongbook.filterStubborn")}
                   </button>
+                  {#if wbKpOptions.length > 0}
+                    <select class="lv-select" style="max-width:140px;height:28px" bind:value={wbKpFilter}>
+                      <option value="">全部考点章节</option>
+                      {#each wbKpOptions as kp (kp)}
+                        <option value={kp}>{kp}</option>
+                      {/each}
+                    </select>
+                  {/if}
                   {#if filteredWrongQueue.length > 0}
                     <button class="lv-btn sm lv-btn--primary" style="margin-left:auto" onclick={() => void startFilteredWrongDrill()} title={t("wrongbook.drillFiltered")}>
                       <Icon name="play" size={13} /> {t("wrongbook.drillFiltered")} ({filteredWrongQueue.length})
@@ -7065,7 +7084,17 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
                         {#if w.streakCorrect > 0}<span class="lv-chip lv-chip--grn num">{t("wrongbook.reClear").replace("{n}", String(effectiveEliminateStreak - w.streakCorrect))}</span>{/if}
                         {#if reasonOf(w.qid)}<span class="lv-chip num">{t("reason." + reasonOf(w.qid))}</span>{/if}
                         <span>{t("wrongbook.lastWrong")} {new Date(w.lastWrongAt).toLocaleDateString()}</span>
-                        {#if q?.kp}<span class="lv-chip num">{q.kp}</span>{/if}
+                        {#if q?.kp}
+                          <button
+                            type="button"
+                            class="lv-chip num"
+                            style="cursor:pointer"
+                            title="点击筛选该章节考点错题"
+                            onclick={() => { wbKpFilter = q.kp.split("/")[0]; }}
+                          >
+                            {q.kp}
+                          </button>
+                        {/if}
                       </div>
                     </div>
                     <button class="lv-btn sm" onclick={() => void startWrongFor(w.qid)}><Icon name="play" size={13} /> {t("wrongbook.retry")}</button>
