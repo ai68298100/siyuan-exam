@@ -16,7 +16,11 @@
 
 [English](README.en-US.md) · [当前状态](docs/STATUS.md) · [交付说明](docs/DELIVERY.md) · [组件清单](docs/UI-COMPONENTS.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md) · [下载发行包](https://github.com/ai68298100/siyuan-exam/releases) · [查看 R54 UI 原型](design/prototype-r54/index.html) · [反馈问题](https://github.com/ai68298100/siyuan-exam/issues) · [参与讨论](https://github.com/ai68298100/siyuan-exam/discussions)
 
-## 最新版本：v0.11.23（2026-10-24）
+## 最新版本：v0.11.24（2026-10-24）
+
+本版本为考点树遍历与自适应靶向组卷空指针拦截与深层健壮性升级版本。在 `kpTree.ts` 中对树查找、扁平化与条件剪枝函数前置加入 `!Array.isArray(roots) || !roots.length` 强空值拦截，彻底杜绝在空题库或无考点题目环境下进行考点树递归时抛出未捕获异常的隐患；在 `adaptiveTarget.ts` 中对薄弱考点挖掘与靶向组卷引入安全空值规整，确保无考点或全掌握良好环境下优雅降级。全套单测 177 个测试文件、1360 项单测 100% 全部通过。
+
+## 上一版本：v0.11.23（2026-10-24）
 
 本版本为思源原生文档与闪卡制卡空值防御及健壮性加固升级版本。在 `siyuanSyncDoc.ts` 中对题干、选项数组与试题解析全面引入 `String(q.stem ?? "")` 与 `Array.isArray(q.options)` 安全防护，彻底杜绝在生成思源原生题库或错题手册笔记时因草稿题或空字段抛出异常崩溃的隐患；在 `memory.ts` 中对单选、多选、多空填空与判断题的题干、答案与选项数组增加强类型安全规整与空值截断防御，支持任意试题安全格式化为列表闪卡 Markdown。全套单测 177 个测试文件、1360 项单测 100% 全部通过。
 

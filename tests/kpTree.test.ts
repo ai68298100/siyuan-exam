@@ -239,5 +239,11 @@ describe("KpTree 考点层级大纲树与掌握度多级穿透聚合引擎 (51-0
       expect(pruned[0].children[0].name).toBe("代数");
       expect(pruned[0].children[0].children[0].name).toBe("微积分");
     });
+
+    it("空 roots 或非数组输入安全容错，不抛出异常", () => {
+      expect(findKpSubtree(undefined as unknown as [], "path")).toBeNull();
+      expect(flattenKpTree(undefined as unknown as [])).toEqual([]);
+      expect(pruneKpTree(undefined as unknown as [], () => true)).toEqual([]);
+    });
   });
 });

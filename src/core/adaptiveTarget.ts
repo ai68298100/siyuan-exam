@@ -58,7 +58,7 @@ export function findWeakKnowledgePoints(
   const topCount = options.topCount ?? 3;
 
   // 展开全树，优先考虑具有题目的叶子考点或细分节点
-  const allNodes = flattenKpTree(roots);
+  const allNodes = flattenKpTree(roots ?? []);
   const candidates: WeakKpInfo[] = [];
 
   for (const n of allNodes) {

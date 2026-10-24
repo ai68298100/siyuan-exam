@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.11.24 (2026-10-24)
+
+### 用户可读摘要
+
+> 本版本为考点树遍历与自适应靶向组卷空指针拦截与深层健壮性升级版本。
+> 1. **考点树函数（findKpSubtree/flattenKpTree/pruneKpTree）数组空指针全拦截**：在 \`kpTree.ts\` 中，对树查找、扁平化与条件剪枝函数前置加入 \`!Array.isArray(roots) || !roots.length\` 强空值拦截，彻底杜绝在空题库或无考点题目环境下进行考点树递归时抛出 \`roots is not iterable\` 的隐患；
+> 2. **自适应靶向组卷（assembleAdaptiveTargetSession）考点树防御加固**：在 \`adaptiveTarget.ts\` 中，对薄弱考点挖掘与靶向组卷引入安全空值规整（\`roots ?? []\`），确保无考点或全掌握良好环境下优雅降级；全套单测 177 个测试文件、1360 项单测 100% 全部通过。
+
 ## 0.11.23 (2026-10-24)
 
 ### 用户可读摘要

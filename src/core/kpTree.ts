@@ -274,6 +274,7 @@ export function buildKpTree(
 
 /** 深度优先查找指定考点路径对应的子树节点 */
 export function findKpSubtree(roots: readonly KpTreeNode[], targetPath: string): KpTreeNode | null {
+  if (!Array.isArray(roots) || !roots.length) return null;
   const clean = normalizeKpPath(targetPath);
   if (!clean) return null;
 
@@ -295,6 +296,7 @@ export function flattenKpTree(
     includeLeafOnly?: boolean;
   } = {},
 ): KpTreeNode[] {
+  if (!Array.isArray(roots) || !roots.length) return [];
   const list: KpTreeNode[] = [];
 
   const traverse = (node: KpTreeNode) => {
@@ -324,6 +326,7 @@ export function pruneKpTree(
   roots: readonly KpTreeNode[],
   predicate: (node: KpTreeNode) => boolean,
 ): KpTreeNode[] {
+  if (!Array.isArray(roots) || !roots.length) return [];
   const out: KpTreeNode[] = [];
 
   for (const root of roots) {
