@@ -1483,6 +1483,7 @@
     "batch.selectAll": "全选当前",
     "batch.clearSel": "清空勾选",
     "batch.toCards": "批量转闪卡",
+    "batch.printSelected": "打印勾选题",
     "mock.toggleWrongDetail": "展开逐题复盘",
     "mock.hideWrongDetail": "收起错题明细",
     "browse.drillSingle": "练这道题",

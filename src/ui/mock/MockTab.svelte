@@ -25,6 +25,7 @@
     import { createQuestionVersionSnapshot } from "../../core/revision";
     import { simulateAllPolicySamples, SCORING_POLICY_LABELS, type ScoringPolicyKind } from "../../core/scoringPolicy";
     import { buildPoolModel, computePercentile, buildScoreBands, buildPercentileCurve, historyPercents, exportPercentileCsv } from "../../core/percentile";
+    import { countWordsAndCharacters, generatePaperGrid } from "../../core/wordCount";
     import { getScratchpadText, updateScratchpadText, clearCurrentScratchpad, type ScratchpadStore, type ScratchpadMode } from "../../core/scratchpad";
     import { resolveCbtKeyAction, computeSectionNavigation } from "../../core/cbtKeyboard";
     
@@ -488,6 +489,7 @@
     let printBusy = $state(false);
     let abBusy = $state(false);
     let mockMiniSheetOpen = $state(false);
+    let mockPaperGridOpen = $state(false);
     let presetOptions = $state<import("@/core/examPresets").ExamBlueprintPreset[]>([]);
     function readLocalRole(): "student" | "teacher" {
       try {
@@ -1835,6 +1837,45 @@
           <textarea class="lv-input lv-textarea" value={answeredMap[current] ?? ""} disabled={examLocked}
             placeholder={currentQ.type === "short" ? t("session.shortPlaceholder") : t("session.fillPlaceholder")}
             oninput={(e) => setTextAnswer((e.target as HTMLTextAreaElement).value)}></textarea>
+          {#if currentQ.type === "short"}
+            {@const words = countWordsAndCharacters(answeredMap[current] ?? "")}
+            <div class="lv-row" style="margin:4px 0 0;font-size:var(--lv-font-size-caption);justify-content:space-between;align-items:center">
+              <span class="lv-muted">
+                字数统计：<strong class="num">{words.examWords}</strong> 字（中文 {words.chineseChars} · 英文 {words.englishWords} · {words.paragraphs} 段）
+              </span>
+              <div class="lv-row" style="margin:0;gap:6px">
+                <button type="button" class="lv-btn sm lv-btn--ghost" style="padding:1px 6px;font-size:11px" onclick={() => (mockPaperGridOpen = !mockPaperGridOpen)} title={t("session.gridPreview")}>
+                  <Icon name="grid" size={11} /> {t("session.gridPreview")}
+                </button>
+                {#if words.examWords >= 200}
+                  <span class="lv-chip sm lv-chip--grn num">字数充足</span>
+                {:else if words.examWords > 0}
+                  <span class="lv-chip sm num">作答中</span>
+                {/if}
+              </div>
+            </div>
+            {#if mockPaperGridOpen}
+              {@const gridModel = generatePaperGrid(answeredMap[current] ?? "", { columns: 20 })}
+              <div class="lv-card" style="margin:8px 0;padding:10px 12px;background:var(--lv-surface-2);border-left:3px solid var(--b3-theme-primary)">
+                <div class="lv-row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
+                  <b style="font-size:12px">📝 考场 20×20 规范作文答题纸模拟（已占 {gridModel.totalCellsOccupied} 格 · {gridModel.totalRows} 行）</b>
+                  <button type="button" class="lv-btn sm lv-btn--ghost" onclick={() => (mockPaperGridOpen = false)}>✕</button>
+                </div>
+                <div class="lv-grid-paper" style="max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:3px;padding:6px;background:var(--lv-surface);border-radius:4px;border:1px solid var(--lv-border)">
+                  {#each gridModel.rows as row, _ri (_ri)}
+                    <div style="display:flex;gap:2px;align-items:center">
+                      <span class="lv-muted num" style="width:20px;font-size:10px;text-align:right;margin-right:4px">{row.rowNumber}</span>
+                      {#each row.cells as cell, _ci (_ci)}
+                        <span style="width:20px;height:20px;border:1px solid var(--lv-border-subtle);display:grid;place-items:center;font-size:12px;background:{cell.isIndent ? 'var(--lv-surface-2)' : 'transparent'}">
+                          {cell.char || ""}
+                        </span>
+                      {/each}
+                    </div>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+          {/if}
         {/if}
       {/if}
       {/key}

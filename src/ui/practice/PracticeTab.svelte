@@ -770,6 +770,37 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
       }
     }
 
+    async function printSelectedQuestions() {
+      if (!selectedCount) return;
+      const ids = new Set(Object.keys(selectedIds));
+      const targetQuestions = questions.filter((q) => ids.has(q.id));
+      if (!targetQuestions.length) return;
+      try {
+        const { buildCompactQuestionSheetPro } = await import("@/core/printPro");
+        const html = buildCompactQuestionSheetPro(`${bankName || "题库"} · 勾选精选题卷`, targetQuestions, {
+          headerTitle: `${bankName || "题库"} · 精选练习`,
+          columns: "double",
+          groupByKp: true,
+        });
+        const win = window.open("", "_blank");
+        if (win) {
+          win.document.write(html);
+          win.document.close();
+          win.focus();
+        } else {
+          const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = `${bankName || "题库"}-精选题卷.html`;
+          a.click();
+          URL.revokeObjectURL(a.href);
+          showMessage("已生成勾选题排版试卷文件", 3000, "info");
+        }
+      } catch (e) {
+        showMessage(`打印勾选题失败：${String(e instanceof Error ? e.message : e)}`, 4000, "error");
+      }
+    }
+
     function previewBatch() {
       batchNote = "";
       const picked = questions.filter((q) => selectedIds[q.id]);
@@ -7964,6 +7995,9 @@ import { ttsSpeak, ttsSupported } from "@/core/tts";
               <button class="lv-btn sm lv-btn--ghost" onclick={clearSelection}>{t("batch.clearSel")}</button>
               <button class="lv-btn sm lv-btn--ghost" onclick={() => void batchConvertToCards()} disabled={batchCardBusy || !app?.kernelOnline} title="将勾选的题目批量制成闪卡送入卡包">
                 <Icon name="layers" size={13} /> {batchCardBusy ? "…" : t("batch.toCards")}
+              </button>
+              <button class="lv-btn sm lv-btn--ghost" onclick={printSelectedQuestions} title="将勾选的题目生成 A4 双栏试卷">
+                <Icon name="file" size={13} /> {t("batch.printSelected")}
               </button>
             {/if}
             {#if batchUndoHere && !appliedChanges.length}

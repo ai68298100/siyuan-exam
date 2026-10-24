@@ -1483,6 +1483,7 @@
     "batch.selectAll": "Select Page",
     "batch.clearSel": "Clear Selection",
     "batch.toCards": "Batch Flashcards",
+    "batch.printSelected": "Print Selected",
     "mock.toggleWrongDetail": "Show Questions Detail",
     "mock.hideWrongDetail": "Hide Questions Detail",
     "browse.drillSingle": "Practice Question",
