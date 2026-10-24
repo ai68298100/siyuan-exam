@@ -133,10 +133,22 @@ export function activeWrongItems(r: ReplayResult): WrongItem[] {
     .sort((a, b) => b.wrongCount - a.wrongCount || b.firstWrongAt - a.firstWrongAt);
 }
 
-/** 连续学习天数（自然日有任一有效事件即保号） */
+/** 连续学习天数（自然日有任一有效事件即保号；今天进行中未作答时保留昨日连胜） */
 export function streak(r: ReplayResult, today = new Date()): number {
   let n = 0;
   const cur = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const todayKey = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, "0")}-${String(cur.getDate()).padStart(2, "0")}`;
+
+  // 若今天已有作答，从今天开始往前累计；
+  // 若今天尚未作答，检查昨天：若昨天有作答则从昨天开始累计（保号在途中），若昨天也没有则连击断开归零
+  if (!r.days.get(todayKey)?.attempts) {
+    cur.setDate(cur.getDate() - 1);
+    const yesterdayKey = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, "0")}-${String(cur.getDate()).padStart(2, "0")}`;
+    if (!r.days.get(yesterdayKey)?.attempts) {
+      return 0;
+    }
+  }
+
   for (;;) {
     const key = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, "0")}-${String(cur.getDate()).padStart(2, "0")}`;
     if (!r.days.get(key)?.attempts) break;

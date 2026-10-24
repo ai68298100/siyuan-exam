@@ -187,6 +187,13 @@ describe("AttemptLog + replay：错题状态机", () => {
     const r = replay((await run()).all());
     const eventDay = new Date(T0 + 1_000);
     expect(streak(r, eventDay)).toBeGreaterThanOrEqual(1);
+
+    // 今日进行中（今日尚未做题但昨日有做题，保留连胜；空两天则归零）
+    const dayAfterEvent = new Date(T0 + 86_400_000 + 1_000);
+    expect(streak(r, dayAfterEvent)).toBe(1);
+
+    const twoDaysAfter = new Date(T0 + 86_400_000 * 2 + 1_000);
+    expect(streak(r, twoDaysAfter)).toBe(0);
   });
 });
 
