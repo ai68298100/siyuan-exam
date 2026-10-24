@@ -31,9 +31,12 @@ function parseGiftBody(body: string): GiftParsed | null {
     .trim()
     .replace(/(^|[^\\])~/g, "$1\n~");
 
-  // 判断题：TRUE/FALSE
-  if (/^(TRUE|FALSE|T|F)$/i.test(inner)) {
-    return { type: "judge", stem, options: [], answer: /t/i.test(inner[0]) ? "对" : "错", analysis: "" };
+  // 判断题：TRUE/FALSE（支持带 # 反馈解析，如 {TRUE#解析} 或 {FALSE#解析}）
+  const judgeMatch = inner.match(/^(TRUE|FALSE|T|F)(?:#([\s\S]*))?$/i);
+  if (judgeMatch) {
+    const isTrue = /t/i.test(judgeMatch[1][0]);
+    const feedback = judgeMatch[2] ? judgeMatch[2].trim() : "";
+    return { type: "judge", stem, options: [], answer: isTrue ? "对" : "错", analysis: feedback };
   }
 
   // 题型预判：含 ~ 行 = 选择题；全部 = 行 = 短答

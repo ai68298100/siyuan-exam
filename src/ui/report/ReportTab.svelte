@@ -980,6 +980,9 @@
     <button class="lv-btn sm" onclick={() => void runNextAction()} disabled={!app || loading || reportRefreshing || scopeLoading || nextActionBusy} aria-busy={nextActionBusy}>
       <Icon name="target" size={13} /> {nextActionBusy ? "…" : t("nextAction.ask")}
     </button>
+    <button class="lv-btn sm lv-btn--primary" onclick={exportFullHtmlReport} title="一键导出全景学情诊断 HTML 报告（可免网直接打印成 A4 PDF）">
+      <Icon name="file" size={13} /> {t("report.fullHtmlReport")}
+    </button>
     <span class="lv-chip">{t("report.dataFromLog")}</span>
   </div>
 <div class="fn__flex-1 lv-shell" data-exam-role={userRole}>

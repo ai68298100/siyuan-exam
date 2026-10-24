@@ -41,6 +41,22 @@ describe("GIFT 解析器（TODO 5 组）", () => {
     expect(r.ok[0].answer).toBe("对");
   });
 
+  it("判断题支持带 # 解析反馈（如 {TRUE#解析说明} 或 {FALSE#解析说明}）", () => {
+    const textWithFeedback = "思源笔记的数据保存在用户本地磁盘中。{TRUE#遵循本地优先理念，数据完全由用户掌控。}";
+    const r = parseGift(textWithFeedback);
+    expect(r.ok).toHaveLength(1);
+    expect(r.ok[0].type).toBe("judge");
+    expect(r.ok[0].answer).toBe("对");
+    expect(r.ok[0].analysis).toBe("遵循本地优先理念，数据完全由用户掌控。");
+
+    const falseWithFeedback = "思源笔记需要强制登录云端才能使用。{F#无需云端即可完全离线使用。}";
+    const r2 = parseGift(falseWithFeedback);
+    expect(r2.ok).toHaveLength(1);
+    expect(r2.ok[0].type).toBe("judge");
+    expect(r2.ok[0].answer).toBe("错");
+    expect(r2.ok[0].analysis).toBe("无需云端即可完全离线使用。");
+  });
+
   it("短答：= 文本 # 反馈", () => {
     const r = parseGift(SHORT);
     expect(r.ok[0].type).toBe("short");
