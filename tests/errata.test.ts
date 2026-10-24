@@ -59,6 +59,12 @@ describe("57 勘误回导：解析", () => {
     expect(r.rows).toHaveLength(500);
     expect(r.errors.at(-1)?.reason).toContain("500");
   });
+
+  it("空文本或未定义入参安全防御，不抛异常返回文件为空", () => {
+    expect(parseErrataCsv("")).toEqual({ rows: [], errors: [{ row: 1, reason: "文件为空" }] });
+    expect(parseErrataCsv("   \n  ")).toEqual({ rows: [], errors: [{ row: 1, reason: "文件为空" }] });
+    expect(parseErrataCsv(undefined as unknown as string)).toEqual({ rows: [], errors: [{ row: 1, reason: "文件为空" }] });
+  });
 });
 
 describe("57 勘误回导：计划", () => {

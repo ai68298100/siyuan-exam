@@ -147,4 +147,21 @@ describe("Misconception 选项干扰项误概念对照引擎 (52-05 / 43-02)", (
     expect(md).toContain("选项 B");
     expect(md).toContain("现期比重 vs 基期比重");
   });
+
+  it("当 events 或 misconceptions 为空或未定义时安全容错不抛异常", () => {
+    const q = mkQ("q-safe");
+    expect(() => diagnoseMisconceptions({
+      question: q,
+      events: undefined as unknown as AttemptEvent[],
+      misconceptions: undefined as unknown as OptionMisconception[],
+    })).not.toThrow();
+
+    const res = diagnoseMisconceptions({
+      question: q,
+      events: undefined as unknown as AttemptEvent[],
+      misconceptions: undefined as unknown as OptionMisconception[],
+    });
+    expect(res.hasDiagnosis).toBe(false);
+    expect(res.items).toEqual([]);
+  });
 });

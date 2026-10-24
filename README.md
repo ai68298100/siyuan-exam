@@ -10,13 +10,17 @@
 
 [![Release](https://img.shields.io/github/v/release/ai68298100/siyuan-exam?logo=github)](https://github.com/ai68298100/siyuan-exam/releases)
 [![CI](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml/badge.svg)](https://github.com/ai68298100/siyuan-exam/actions/workflows/check.yml)
-[![Tests](https://img.shields.io/badge/tests-1360%20passed-brightgreen)](#开发)
+[![Tests](https://img.shields.io/badge/tests-1362%20passed-brightgreen)](#开发)
 [![SiYuan](https://img.shields.io/badge/SiYuan-%3E%3D%203.8.0-blue)](https://github.com/siyuan-note/siyuan)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 [English](README.en-US.md) · [当前状态](docs/STATUS.md) · [交付说明](docs/DELIVERY.md) · [组件清单](docs/UI-COMPONENTS.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md) · [下载发行包](https://github.com/ai68298100/siyuan-exam/releases) · [查看 R54 UI 原型](design/prototype-r54/index.html) · [反馈问题](https://github.com/ai68298100/siyuan-exam/issues) · [参与讨论](https://github.com/ai68298100/siyuan-exam/discussions)
 
-## 最新版本：v0.11.24（2026-10-24）
+## 最新版本：v0.11.25（2026-10-24）
+
+本版本为干扰项误概念诊断与勘误 CSV 回导空值防御及深层健壮性升级版本。在 `misconception.ts` 中对作答事件列表与误概念字典全面引入数组安全规整，彻底杜绝在空流水或未配置误概念选项的题目调用认知诊断时抛出未捕获 TypeError；在 `errata.ts` 中对传入的勘误 CSV 文本进行空串与未定义前置拦截，安全返回文件为空错误，彻底消除崩溃。全套单测 177 个测试文件、1362 项单测 100% 全部通过。
+
+## 上一版本：v0.11.24（2026-10-24）
 
 本版本为考点树遍历与自适应靶向组卷空指针拦截与深层健壮性升级版本。在 `kpTree.ts` 中对树查找、扁平化与条件剪枝函数前置加入 `!Array.isArray(roots) || !roots.length` 强空值拦截，彻底杜绝在空题库或无考点题目环境下进行考点树递归时抛出未捕获异常的隐患；在 `adaptiveTarget.ts` 中对薄弱考点挖掘与靶向组卷引入安全空值规整，确保无考点或全掌握良好环境下优雅降级。全套单测 177 个测试文件、1360 项单测 100% 全部通过。
 

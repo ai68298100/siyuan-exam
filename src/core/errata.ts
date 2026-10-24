@@ -54,6 +54,7 @@ function detectDelimiter(headerLine: string): "," | "\t" {
 
 /** 勘误 CSV 解析：qid 必填列（题目ID/qid/ID），5 字段列可选；非法行进 errors 不中断 */
 export function parseErrataCsv(text: string): { rows: ErrataRow[]; errors: { row: number; reason: string }[] } {
+  if (!text || !text.trim()) return { rows: [], errors: [{ row: 1, reason: "文件为空" }] };
   const lines = text.split(/\r?\n/).filter((l) => l.trim());
   const errors: { row: number; reason: string }[] = [];
   if (!lines.length) return { rows: [], errors: [{ row: 1, reason: "文件为空" }] };

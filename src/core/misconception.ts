@@ -61,11 +61,13 @@ export function diagnoseMisconceptions(options: {
 }): MisconceptionDiagnosisResult {
   const { question, events, misconceptions } = options;
   const minRepeat = Math.max(1, options.minRepeatCount ?? DEFAULT_REPEAT_THRESHOLD);
+  const safeEvents = Array.isArray(events) ? events : [];
+  const safeMisconceptions = Array.isArray(misconceptions) ? misconceptions : [];
 
   // 1. 筛选本题的答错事件
-  const qWrongEvents = events.filter(
-    (e) => e.qid === question.id && e.verdict === "wrong" && e.myAnswer,
-  );
+  const qWrongEvents = question?.id
+    ? safeEvents.filter((e) => e.qid === question.id && e.verdict === "wrong" && e.myAnswer)
+    : [];
   const totalWrongAttempts = qWrongEvents.length;
 
   // 统计每个选项的选择频次及最新时间
@@ -88,8 +90,8 @@ export function diagnoseMisconceptions(options: {
   const items: MisconceptionItem[] = [];
   let repeatedErrorFound = false;
 
-  for (const misc of misconceptions) {
-    const letter = misc.letter.trim().toUpperCase();
+  for (const misc of safeMisconceptions) {
+    const letter = (misc.letter ?? "").trim().toUpperCase();
     const stat = pickCounts.get(letter);
     const count = stat?.count ?? 0;
     const lastPickedAt = stat?.lastAt ?? 0;
