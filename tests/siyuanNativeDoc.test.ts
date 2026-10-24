@@ -138,6 +138,26 @@ ANSWER: A
       expect(batchReport.ok[1].source).toBe("第二章 法的运行");
       expect(batchReport.ok[0].kp).toBe("法理学");
       expect(batchReport.ok[1].kp).toBe("法理学");
+
+      // 验证单篇内包含重复试题时，duplicates 计数准确无遗漏
+      const docWithDupe = {
+        docId: "doc-dupe",
+        title: "含重复题文档",
+        markdown: `
+1. 试题一
+A. 选项A
+B. 选项B
+ANSWER: A
+
+2. 试题一
+A. 选项A
+B. 选项B
+ANSWER: A
+        `,
+      };
+      const dupeBatchReport = await parseQuestionsFromSiyuanDocBatch([docWithDupe]);
+      expect(dupeBatchReport.ok.length).toBe(1);
+      expect(dupeBatchReport.duplicates).toBe(1);
     });
   });
 

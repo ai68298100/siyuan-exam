@@ -110,7 +110,7 @@ export function calculateItemDiscrimination(
   );
   const validAttempts = validQEvents.length;
 
-  const stemSnippet = question.stem.trim().split("\n")[0].slice(0, 40) || "未命名题干";
+  const stemSnippet = String(question?.stem ?? "").trim().split("\n")[0].slice(0, 40) || "未命名题干";
   const authorStars = typeof question.difficulty === "number" && question.difficulty >= 1 && question.difficulty <= 5
     ? Math.round(question.difficulty)
     : null;
@@ -321,7 +321,7 @@ export function exportDiscriminationCsv(audit: BankDiscriminationAudit): string 
 
   const rows = audit.items.map((it) => [
     it.qid,
-    `"${it.stemSnippet.replace(/"/g, '""')}"`,
+    `"${(it.stemSnippet ?? "").replace(/"/g, '""')}"`,
     it.type,
     it.validAttempts,
     it.difficultyP >= 0 ? it.difficultyP : "",
@@ -333,7 +333,7 @@ export function exportDiscriminationCsv(audit: BankDiscriminationAudit): string 
     it.highGroup.passRate,
     it.lowGroup.passRate,
     it.confident ? "是" : "否",
-    `"${it.diagnosisNote.replace(/"/g, '""')}"`,
+    `"${(it.diagnosisNote ?? "").replace(/"/g, '""')}"`,
   ]);
 
   return "\uFEFF" + [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");

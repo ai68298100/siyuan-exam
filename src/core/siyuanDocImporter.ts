@@ -134,6 +134,8 @@ export async function parseQuestionsFromSiyuanDocBatch(
       existingHashes: seenHash,
     });
 
+    duplicates += singleReport.duplicates || 0;
+
     for (const q of singleReport.ok) {
       if (seenHash.has(q.hash)) {
         duplicates++;

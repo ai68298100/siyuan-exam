@@ -16,7 +16,11 @@
 
 [English](README.en-US.md) · [当前状态](docs/STATUS.md) · [交付说明](docs/DELIVERY.md) · [组件清单](docs/UI-COMPONENTS.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md) · [下载发行包](https://github.com/ai68298100/siyuan-exam/releases) · [查看 R54 UI 原型](design/prototype-r54/index.html) · [反馈问题](https://github.com/ai68298100/siyuan-exam/issues) · [参与讨论](https://github.com/ai68298100/siyuan-exam/discussions)
 
-## 最新版本：v0.11.19（2026-10-24）
+## 最新版本：v0.11.20（2026-10-24）
+
+本版本为区分度分析空 stem 防御与多篇思源笔记批量提取试题重复统计修复升级版本。在 `calculateItemDiscrimination` 中对题目 `stem` 增加空值安全转换，修复在面对不完整草稿题或空块数据时直接访问 `.trim()` 抛出异常崩溃的隐患，并在 CSV 导出时增加安全空值防御；修复在批量从多篇思源笔记提取试题时 `duplicates` 漏计单篇内部自身重复数的缺陷。全套单测 177 个测试文件、1359 项单测 100% 全部通过。
+
+## 上一版本：v0.11.19（2026-10-24）
 
 本版本为 GIFT 判断题解析反馈导入缺陷修复与报告中心顶栏全景学情诊断直达升级版本。修复在 `gift.ts` 解析判断题时，若选项块带有反馈解析（如 `{TRUE#解析说明}` 或 `{FALSE#解析说明}`）因正则仅匹配纯关键字导致误判短答并最终解析为 null 报错的缺陷，重构解析正则并提取反馈填入试题解析，对齐 Moodle/学习通标准规范；在报告中心顶栏操作区常驻高对比主按钮【📊 全景学情报告】，支持一键导出带离线 CSS 与五维雷达的出版级 A4 学情报告。全套单测 177 个测试文件、1359 项单测 100% 全部通过。
 

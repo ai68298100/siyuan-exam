@@ -194,5 +194,12 @@ describe("ItemDiscrimination 题目实测难度与区分度自动校准引擎 (4
       expect(csv).toContain("q2");
       expect(csv).toContain("负区分度严重异常");
     });
+
+    it("空 stem 或草稿损坏题目安全容错，不抛出异常", () => {
+      const corruptQ = mkQuestion("q-corrupt", { stem: undefined as unknown as string });
+      expect(() => calculateItemDiscrimination(corruptQ, [])).not.toThrow();
+      const res = calculateItemDiscrimination(corruptQ, []);
+      expect(res.stemSnippet).toBe("未命名题干");
+    });
   });
 });
